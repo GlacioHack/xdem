@@ -24,10 +24,10 @@ import warnings
 from typing import Any, Callable, Literal, overload
 
 import geopandas as gpd
+import geoutils.profiler as Profiler
 import numpy as np
 import rasterio as rio
 from affine import Affine
-from geoutils.profiler import profile_tool
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad
@@ -84,7 +84,7 @@ class DEM(Raster):  # type: ignore
     See the API for more details.
     """
 
-    @profile_tool("dem.__init__", memprof=True)  # type: ignore
+    @Profiler.profile("dem.__init__", memprof=True)  # type: ignore
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
@@ -493,7 +493,7 @@ class DEM(Raster):  # type: ignore
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
-    @profile_tool("dem.coregister_3d", memprof=True)  # type: ignore
+    @Profiler.profile("dem.coregister_3d", memprof=True)  # type: ignore
     def coregister_3d(  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,

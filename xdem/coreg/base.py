@@ -39,6 +39,7 @@ from typing import (
 import affine
 import geopandas as gpd
 import geoutils as gu
+import geoutils.profiler as Profiler
 import numpy as np
 import pandas as pd
 import rasterio as rio
@@ -49,7 +50,6 @@ import scipy.ndimage
 import scipy.optimize
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolate import _interp_points
-from geoutils.profiler import profile_tool
 from geoutils.raster import Raster, RasterType, raster
 from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
@@ -2328,7 +2328,7 @@ class Coreg:
         apply_kwargs: dict[str, Any] | None = None,
     ) -> RasterType | gpd.GeoDataFrame: ...
 
-    @profile_tool("coreg.base.fit_and_apply", memprof=True)  # type: ignore
+    @Profiler.profile("coreg.base.fit_and_apply", memprof=True)  # type: ignore
     def fit_and_apply(
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
