@@ -335,7 +335,7 @@ class TestDEM:
         """Tests grids to convert vertical CRS."""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         # Using an arbitrary elevation of 100 m (no influence on the transformation)
         dem = DEM.from_array(
