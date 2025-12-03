@@ -2396,7 +2396,8 @@ def slope(
     http://dx.doi.org/10.1002/esp.3290120107.
 
     :param dem: The DEM to generate a slope map for.
-    :param method: Method to calculate slope: "Horn" or "ZevenbergThorne".
+    :param method: Deprecated; use `surface_fit` instead.
+    :param surface_fit: Surface fit method to use for slope: "Horn", "ZevenbergThorne" or "Florinsky".
     :param degrees: Whether to use degrees or radians (False means radians).
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
@@ -2472,7 +2473,8 @@ def aspect(
     Note that aspect, representing only the orientation of the slope, is independent of the grid resolution.
 
     :param dem: The DEM to calculate the aspect from.
-    :param method: Method to calculate aspect: "Horn" or "ZevenbergThorne".
+    :param method: Deprecated; use `surface_fit` instead.
+    :param surface_fit: Surface fit method to use for aspect: "Horn", "ZevenbergThorne" or "Florinsky".
     :param degrees: Whether to use degrees or radians (False means radians).
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
 
@@ -2556,7 +2558,8 @@ def hillshade(
     Based on Horn (1981), http://dx.doi.org/10.1109/PROC.1981.11918.
 
     :param dem: The input DEM to calculate the hillshade from.
-    :param method: Method to calculate the slope and aspect used for hillshading.
+    :param method: Deprecated; use `surface_fit` instead.
+    :param surface_fit: Surface fit method to use for slope and aspect: "Horn", "ZevenbergThorne" or "Florinsky".
     :param azimuth: The shading azimuth in degrees (0-360°) going clockwise, starting from north.
     :param altitude: The shading altitude in degrees (0-90°). 90° is straight from above.
     :param z_factor: Vertical exaggeration factor.

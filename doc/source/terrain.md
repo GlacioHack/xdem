@@ -214,10 +214,10 @@ $$
 \arctan \left( \sqrt{ z_x^2 + z_y^2 } \right),
 $$
 
-and the surface derivatives can be computed either by the method of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default).
+and the surface derivatives can be computed either by the method of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499). By default, `"Florisnky"` is used.
 
 ```{code-cell} ipython3
-slope = dem.slope()
+slope = dem.slope(surface_fit = "Florinsky")  # "Florisnky" is default
 slope.plot(cmap="Reds", cbar_title="Slope (°)")
 ```
 
@@ -236,7 +236,7 @@ $$
 \theta = -\arctan\left( \frac{-z_x}{z_y} \right) \bmod (2\pi).
 $$
 
-Like with slope, the surface derivatives can be calculated following the methods of of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default).
+Like with slope, the surface derivatives can be calculated following the methods of of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499). By default, `"Florinsky"` is used.
 
 ```{warning}
 A north aspect represents the upper direction of the Y axis in the coordinate reference system of the
@@ -257,7 +257,7 @@ The hillshade is a slope map, shaded by the aspect of the slope.
 With a westerly azimuth (a simulated sun coming from the west), all eastern slopes are slightly darker.
 This mode of shading the slopes often generates a map that is much more easily interpreted than the slope.
 
-The hillshade $hs$ is directly based on the slope $\alpha$ and aspect $\theta$, and thus also varies between the methods of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default). It is often scaled between 1 and 255:
+The hillshade $hs$ is directly based on the slope $\alpha$ and aspect $\theta$, and thus also varies between the methods of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499). By default, `"Florinsky"` is used. It is often scaled between 1 and 255:
 
 $$
 hs = 1 + 254 \left[ \sin(alt) \cos(\alpha) + \cos(alt) \sin(\alpha) \sin(2\pi - azim - \theta) \right],
@@ -282,7 +282,7 @@ There are countless possible curvatures to calculate, the most common of which w
 
 There are two parallel systems of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field). For more information on this, [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414) provides a comprehensive review. The choice of system be be set in xDEM via the `curv_method` parameter. This defaults to the `"geometric"` method, which should be suitable for most users, although `"directional"` is also available for those interested.
 
-All curvatures require $z_{xx}$, $z_{xy}$, and/or $z_{yy}$ partial derivatives to calculate: as a result, only [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default) surfacr fit methods can be used.
+All curvatures require $z_{xx}$, $z_{xy}$, and/or $z_{yy}$ partial derivatives to calculate: as a result, only [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) surface fit methods can be used. By default, `"Florinsky"` is used.
 
 The curvature values in units of m{sup}`-1` are quite small, so they are by convention multiplied by 100.
 

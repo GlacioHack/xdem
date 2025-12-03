@@ -5,7 +5,7 @@ Terrain attributes
 Terrain attributes generated from a DEM have a multitude of uses for analytic and visual purposes.
 Here is an example of how to generate these products.
 
-For more information, see the :ref:`terrain-attributes` feature page.
+As a reminder: the slope, aspect, and hillshade are calculated following Horn (1981); the system of curvatures follows that described by Minár et al. (2020)l and the terrain ruggedness index and rugosity follow Riley et al. (1999) and Jenness (2004), respectively. For more information, see the :ref:`terrain-attributes` feature page.
 
 **References:** `Horn (1981) <https://ieeexplore.ieee.org/document/1456186>`_ (slope, aspect, hillshade),
 `Minár et al. (2020) <[Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414)>`_ (curvature),
