@@ -69,7 +69,7 @@ class TestVCRS:
         """Tests the function _vcrs_from_user_input for varying user inputs, for which it will return a CRS."""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid * not found in *")
 
         # Get user input
         vcrs = xdem.dem._vcrs_from_user_input(vcrs_input)
@@ -126,7 +126,7 @@ class TestVCRS:
         """Test that vertical CRS are correctly built from grid"""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid * not found in *")
 
         # Build vertical CRS
         vcrs = xdem.vcrs._build_vcrs_from_grid(grid=grid)
@@ -152,7 +152,7 @@ class TestVCRS:
         """Test the function build_ccrs_from_crs_and_vcrs."""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid * not found in *")
 
         # Get the vertical CRS from user input
         vcrs = xdem.vcrs._vcrs_from_user_input(vcrs_input=vcrs_input)
@@ -203,7 +203,7 @@ class TestVCRS:
         """Tests grids to convert vertical CRS."""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid * not found in *")
 
         # Using an arbitrary elevation of 100 m (no influence on the transformation)
         zz = 100
