@@ -238,7 +238,7 @@ class TestDEM:
 
         # -- Test 2: we check with grids --
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid * not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         dem.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
         assert dem.vcrs_name == "unknown using geoidgrids=us_nga_egm96_15.tif"
