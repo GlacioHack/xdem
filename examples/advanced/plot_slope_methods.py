@@ -2,31 +2,9 @@
 Slope and aspect methods
 ========================
 
-Within `xdem`, slope is always calculated as
-
-$$
-\alpha = \arctan\\!\\left(
-  \\sqrt{
-    \\left(\frac{\\partial z}{\\partial x}\right)^{2}
-    +
-    \\left(\frac{\\partial z}{\\partial y}\right)^{2}
-  }
-\right),
-$$
-
-Where $z$ is elevation, and $x$ and $y$ are the Cartesian co-ordinates.
-
-Aspect is always calculated as
-
-$$
-\theta =
-\\left( -\tan^{-1} \\left(
-    \frac{\\partial z/\\partial x}{\\partial z/\\partial y}
-  \right) - \\pi
-\right) \bmod (2\\pi).
-$$
-
-However, calculating terrain attributes - not only slope and aspect but also curvatures - requires estimating the elevation derivatives of the surface (e.g. $\frac{\\partial z}{\\partial x}$). `xdem` offers three different ways to calculate elevation derivatives, which can result in slightly different results.
+Calculating terrain attributes—not only slope and aspect but also curvatures—requires estimating the
+elevation derivatives of the surface. xDEM offers three different ways to
+calculate elevation derivatives, which can result in slightly different results.
 
 Here is an example of how to generate the two with each method, and understand their differences.
 
@@ -66,6 +44,8 @@ def plot_attribute(attribute, cmap, label=None, vlim=None):
 
 # %%
 # Slope with method of Horn (1981).
+
+# %%
 # .. note::  (GDAL default), based on a refined approximation of the gradient (page 18, bottom left, and pages 20-21).
 
 slope_horn = xdem.terrain.slope(dem, surface_fit="Horn")
@@ -142,4 +122,5 @@ plot_attribute(
 # differences for areas with nearly flat slopes, owing to the high sensitivity of orientation estimation
 # for flat terrain.
 
+# %%
 # .. note:: The default aspect for a 0° slope is 180°, as in GDAL.
