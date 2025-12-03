@@ -188,6 +188,143 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     DEM.estimate_uncertainty
 ```
 
+
+## EPC
+
+```{important}
+An {class}`~xdem.EPC` inherits all point cloud methods and attributes from the {class}`~geoutils.PointCloud` object of GeoUtils.
+Below, we only repeat some core attributes and methods of GeoUtils, see
+[the PointCloud API in GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#point-cloud) for the full list.
+```
+
+### Opening or saving
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC
+    EPC.save
+```
+
+### Plotting or summarize info
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.info
+    EPC.plot
+```
+
+### Create from arrays or tuples
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.from_xyz
+    EPC.from_tuples
+    EPC.from_array
+```
+
+(api-dem-attrs)=
+
+### Unique attributes
+
+#### Inherited from {class}`~geoutils.PointCloud`
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.ds
+    EPC.data_column
+```
+
+#### Specific to {class}`~xdem.EPC`
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.vcrs
+```
+
+### Other attributes
+
+#### Inherited from {class}`~geoutils.PointCloud`
+
+See the full list in [the PointCloud API of GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#point-cloud).
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.point_count
+    EPC.bounds
+    EPC.crs
+```
+
+### Georeferencing
+
+#### Inherited from {class}`~geoutils.Raster`
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.info
+    EPC.reproject
+    EPC.crop
+```
+
+#### Vertical referencing for {class}`~xdem.DEM`
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.set_vcrs
+    EPC.to_vcrs
+```
+
+### Interface with rasters and vectors
+
+```{note}
+See the full list of vector methods in [GeoUtils' documentation](https://geoutils.readthedocs.io/en/latest/api.html#vector).
+```
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.grid
+    EPC.rasterize
+```
+
+### Coregistration and bias corrections
+
+```{tip}
+To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d`, see the API of {ref}`api-geo-handle`.
+```
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.coregister_3d
+```
+
+### Uncertainty analysis
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.estimate_uncertainty
+```
+
 (api-geo-handle)=
 
 ## Coreg
