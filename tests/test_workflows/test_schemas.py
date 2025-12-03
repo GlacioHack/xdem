@@ -20,6 +20,7 @@
 test for schema files
 """
 import logging
+
 import pyproj
 
 # mypy: disable-error-code=no-untyped-def
