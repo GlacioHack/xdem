@@ -167,16 +167,15 @@ class DEM(Raster):  # type: ignore
             self.set_vcrs(vcrs)
 
     @overload
-    def info(self, generic: bool = True, stats: bool = False, *, verbose: Literal[True] = ...) -> None: ...
+    def info(self, stats: bool = False, *, verbose: Literal[True] = ...) -> None: ...
 
     @overload
-    def info(self, generic: bool = True, stats: bool = False, *, verbose: Literal[False]) -> str: ...
+    def info(self, stats: bool = False, *, verbose: Literal[False]) -> str: ...
 
-    def info(self, generic: bool = True, stats: bool = False, verbose: bool = True) -> None | str:
+    def info(self, stats: bool = False, verbose: bool = True) -> None | str:
         """
         Print summary information about the DEM.
 
-        :param generic: Add generics information.
         :param stats: Add statistics for each band of the dataset (max, min, median, mean, std. dev.). Default is to
             not calculate statistics.
         :param verbose: If set to True (default) will directly print to screen and return None
@@ -184,24 +183,23 @@ class DEM(Raster):  # type: ignore
         :returns: Summary string or None.
         """
 
-        raster_info = ""
+        # Get super.infos()
+        raster_info = super().info(stats=stats, verbose=False)  # type: ignore
+        raster_info_split = raster_info.split("\n")
 
-        if generic:
-            as_str = [f"VCRS:                 {self.vcrs_name}\n"]
+        # VCRS info
+        vcrs_str = f"VCRS:                 {self.vcrs_name}"
+        vcrs_after_stat = "Coordinate system:"
 
-            raster_info = super().info(stats=False, verbose=False)  # type: ignore
-            raster_info = raster_info + "".join(as_str)
-
-        if stats:
-            if raster_info:
-                raster_info = raster_info + "\n"
-            raster_info = raster_info + super().info(generic=False, stats=True, verbose=False)
+        # Dynamic Insertion
+        start = [raster_info_split.index(line) for line in raster_info_split if line.startswith(vcrs_after_stat)]
+        raster_info_split.insert(start[0] + 1, vcrs_str)
 
         if verbose:
-            print(raster_info)
+            print("\n".join(raster_info_split))
             return None
         else:
-            return raster_info
+            return "\n".join(raster_info_split)
 
     def copy(self, new_array: NDArrayf | None = None) -> DEM:
         """

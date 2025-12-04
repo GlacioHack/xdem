@@ -375,28 +375,30 @@ class TestDEM:
         raster = gu.Raster(dem_path)
         dem = xdem.dem.DEM(dem_path)
 
-        # Test addition of one line
+        # Test addition of the VCRS line after Coordinate System
+
+        # with stats
         dem_infos_array = dem.info(stats=True, verbose=False).split("\n")
         assert len(dem_infos_array) == len(raster.info(stats=True, verbose=False).split("\n")) + 1
+        vcrs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith("VCRS")]
+        assert len(vcrs_line) == 1
+        assert dem_infos_array[vcrs_line[0] - 1].startswith("Coordinate system:")
+        assert dem_infos_array[vcrs_line[0]].split(":")[1].strip() == "None"
+
+        # with no stats
         dem_infos_array = dem.info(verbose=False).split("\n")
         assert len(dem_infos_array) == len(raster.info(verbose=False).split("\n")) + 1
+        vcrs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith("VCRS")]
+        assert len(vcrs_line) == 1
+        assert dem_infos_array[vcrs_line[0] - 1].startswith("Coordinate system:")
+        assert dem_infos_array[vcrs_line[0]].split(":")[1].strip() == "None"
 
-        # Test vcrs (None) with onyy generic info
-        vcrs_line = dem_infos_array[-2]
-        assert vcrs_line.split(":")[0] == "VCRS"
-        assert vcrs_line.split(":")[1].strip() == "None"
-
-        # Test vcrs (specific)
+        # test other vcrs value
         dem.set_vcrs(new_vcrs="EGM96")
-        vcrs_line = dem.info(verbose=False).split("\n")[-2]
-        assert vcrs_line.split(":")[1].strip() == dem.vcrs_name
-
-        # Test no infos
-        assert dem.info(generic=False, stats=False, verbose=False) == ""
-
-        # Test no generic infos
-        output = dem.info(generic=False, stats=True, verbose=False)
-        assert output.startswith("Statistics:")
+        dem_infos_array = dem.info(verbose=False).split("\n")
+        vcrs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith("VCRS")]
+        assert len(vcrs_line) == 1
+        assert dem_infos_array[vcrs_line[0]].split(":")[1].strip() == dem.vcrs_name
 
     @staticmethod
     @pytest.mark.parametrize(  # type: ignore
