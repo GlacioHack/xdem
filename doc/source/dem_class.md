@@ -67,11 +67,11 @@ The {class}`~xdem.DEM` data array remains implicitly unloaded until {attr}`~xdem
 The georeferencing metadata ({attr}`~xdem.DEM.transform`, {attr}`~xdem.DEM.crs`, {attr}`~xdem.DEM.nodata`), however, is always loaded. This allows to pass it effortlessly to other objects requiring it for geospatial operations (reproject-match, rasterizing a vector, etc).
 ```
 
-A {class}`~xdem.DEM` is saved to file by calling {func}`~xdem.DEM.save` with a {class}`str` or a {class}`pathlib.Path`.
+A {class}`~xdem.DEM` is saved to file by calling {func}`~xdem.DEM.to_file` with a {class}`str` or a {class}`pathlib.Path`.
 
 ```{code-cell} ipython3
 # Save raster to disk
-dem.save("mydem.tif")
+dem.to_file("mydem.tif")
 ```
 ```{code-cell} ipython3
 :tags: [remove-cell]

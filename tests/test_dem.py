@@ -94,7 +94,7 @@ class TestDEM:
         # Save to temporary folder
         temp_dir = tempfile.TemporaryDirectory()
         temp_file = os.path.join(temp_dir.name, "test.tif")
-        dem_reproj.save(temp_file)
+        dem_reproj.to_file(temp_file)
 
         # Check opening a DEM with a 3D CRS sets the vcrs
         dem_3d = DEM(temp_file)
