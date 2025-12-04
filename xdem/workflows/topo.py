@@ -183,15 +183,18 @@ class Topo(Workflows):
             "Transform": self.dem.transform,
             "Bounds": self.dem.bounds,
         }
+        self.dico_to_show.append(("Elevation information", dem_informations))
 
         # Statistics
         list_metrics = self.config["statistics"]
         if list_metrics is not None:
             stats_dem = self.dem.get_stats(list_metrics)
             self.save_stat_as_csv(stats_dem, "stats_elev")
+            self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
             stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
             if self.inlier_mask is not None:
                 self.save_stat_as_csv(stats_dem_mask, "stats_elev_mask")
+                self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
             logging.info(f"Computing metrics on reference elevation: {list_metrics}")
 
         # Terrain attributes
@@ -201,13 +204,6 @@ class Topo(Workflows):
                 self.generate_terrain_attributes_tiff()
         else:
             logging.info("Computing terrain attributes: None")
-
-        # Generate HTML
-        self.dico_to_show.append(("Elevation information", dem_informations))
-        if list_metrics is not None:
-            self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
-        if self.inlier_mask is not None:
-            self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
 
         self.create_html(self.dico_to_show)
 
@@ -233,7 +229,7 @@ class Topo(Workflows):
 
         if self.inlier_mask is not None:
             html += "<h2>Masked elevation Model</h2>\n"
-            html += "<img src='plots/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+            html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         for title, dictionary in list_dict:
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"  # type: ignore

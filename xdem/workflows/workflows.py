@@ -70,6 +70,7 @@ class Workflows(ABC):
         self.level = self.config["outputs"]["level"]
 
         self.outputs_folder = Path(self.config["outputs"]["path"])
+        logging.info(f"Outputs folder: {self.outputs_folder.absolute()}")
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
 
         for folder in ["plots", "rasters", "tables"]:
@@ -161,7 +162,7 @@ class Workflows(ABC):
                 if from_vcrs != to_vcrs:
                     dem.to_vcrs(to_vcrs)
             if config_dem.get("force_source_nodata") is not None:
-                dem.set_nodata(config_dem["force_source_nodata"])
+                dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
             if config_dem.get("path_to_mask") is not None:
                 mask_path = config_dem["path_to_mask"]
                 mask = gu.Vector(mask_path)
@@ -174,17 +175,29 @@ class Workflows(ABC):
 
     def remove_none(self, dico: Union[Dict[str, Any], List[Any]]) -> Union[Dict[str, Any], List[Any]]:
         """
-        Recursively remove all keys whose values are None from a dictionary.
+        Recursively remove all keys whose values are None from a dictionary,
+        except for the key 'statistics'.
         :param dico: dictionary to clean
         :return: cleaned dictionary
         """
         if isinstance(dico, dict):
-            return {
-                k: self.remove_none(v) for k, v in dico.items() if v is not None and self.remove_none(v) is not None
-            }
+            cleaned_dict = {}
+            for k, v in dico.items():
+
+                if k == "statistics":
+                    cleaned_dict[k] = v
+                    continue
+
+                cleaned_value = self.remove_none(v) if v is not None else None
+                if cleaned_value is not None:
+                    cleaned_dict[k] = cleaned_value
+
+            return cleaned_dict
+
         elif isinstance(dico, list):
             cleaned_list = [self.remove_none(v) for v in dico if v is not None]
             return [v for v in cleaned_list if v is not None]
+
         else:
             return dico
 

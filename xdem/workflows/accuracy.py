@@ -55,7 +55,6 @@ class Accuracy(Workflows):
             self.reference_elev = self._get_reference_elevation()
         self.generate_plot(self.reference_elev, "reference_elev_map")
         self.generate_plot(self.to_be_aligned_elev, "to_be_aligned_elev_map")
-
         self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
             self.inlier_mask = tba_mask
@@ -63,7 +62,6 @@ class Accuracy(Workflows):
         else:
             self.inlier_mask = ref_mask or tba_mask
             path_mask = ref_mask_path or tba_path_mask
-
         if self.inlier_mask is not None:
             self.generate_plot(
                 self.to_be_aligned_elev,
@@ -140,33 +138,42 @@ class Accuracy(Workflows):
 
         return aligned_elev
 
-    def _compute_reproj(self, test_dem: str) -> None:
+    def _prepare_datas_for_coreg(self) -> None:
         """
         Compute reprojection
-        :param test_dem: str value for testing the target dem
         """
-        # Reproject data
+        sampling_source = self.config["coregistration"]["sampling_grid"]
 
-        sampling = self.config["coregistration"]["sampling_grid"]
-        if sampling == test_dem:
-            return  # No reprojection needed
+        # Reprojection
+        if sampling_source == "reference_elev":
+            crs_utm = self.reference_elev.get_metric_crs()
+        else:
+            crs_utm = self.to_be_aligned_elev.get_metric_crs()
 
-        logging.info(f"Computing reprojection on {test_dem}")
+        logging.info("Computing reprojection")
+        if not crs_utm.is_geographic:
+            logging.info(f"CRS not geographic: data reprojection with {crs_utm}")
+            self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(crs=crs_utm)
+            self.reference_elev = self.reference_elev.reproject(crs=crs_utm)
 
-        if sampling == "reference_elev":
-            src, target = self.to_be_aligned_elev, self.reference_elev
-            name = "to_be_aligned_elev"
-            reprojected = src.reproject(target, silent=True)
-            self.to_be_aligned_elev = reprojected
-        elif sampling == "to_be_aligned_elev":
-            src, target = self.reference_elev, self.to_be_aligned_elev
-            name = "reference_elevation"
-            reprojected = src.reproject(target, silent=True)
-            self.reference_elev = reprojected
+        if sampling_source == "reference_elev":
+            self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(self.reference_elev, silent=True)
+        elif sampling_source == "to_be_aligned_elev":
+            self.reference_elev = self.reference_elev.reproject(self.to_be_aligned_elev, silent=True)
+
+        # Intersection
+        logging.info("Computing intersection")
+        coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
+        if sampling_source == "reference_elev":
+            self.reference_elev = self.reference_elev.crop(coord_intersection)
+            self.generate_plot(self.to_be_aligned_elev, "cropped_reference_elev_map")
+        else:
+            self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
+            self.generate_plot(self.to_be_aligned_elev, "cropped_to_be_aligned_elev_map")
 
         if self.level > 1:
-            output_path = self.outputs_folder / "rasters" / f"{name}_reprojected.tif"
-            reprojected.save(output_path)
+            self.reference_elev.save(self.outputs_folder / "rasters" / "reference_elev_reprojected.tif")
+            self.to_be_aligned_elev.save(self.outputs_folder / "rasters" / "to_be_aligned_elev_reprojected.tif")
 
     def _get_stats(self, dem: RasterType, name_of_data: str = "") -> floating[Any] | dict[str, floating[Any]]:
         """
@@ -244,9 +251,7 @@ class Accuracy(Workflows):
 
         if self.compute_coreg:
             # Reprojection step
-            self._compute_reproj("reference_elev")
-            self._compute_reproj("to_be_aligned_elev")
-
+            self._prepare_datas_for_coreg()
             # Coregistration step
             aligned_elev = self._compute_coregistration()
         else:
@@ -277,7 +282,7 @@ class Accuracy(Workflows):
                 self.diff = diff
                 vmin, vmax = stats["min"], stats["max"]
 
-            suffix = f"_elev_{label}_coreg" if label else "_elev"
+            suffix = f"_elev_{label}_coreg_map" if label else "_elev"
             self.generate_plot(diff, f"diff{suffix}", vmin=vmin, vmax=vmax, cmap="RdBu")
 
         if self.compute_coreg:
@@ -291,7 +296,12 @@ class Accuracy(Workflows):
                     "Statistics on altitude difference before coregistration",
                     1,
                 ),
-                (self.diff_after, "diff_elev_after_coreg", "Statistics on altitude difference after coregistration", 1),
+                (
+                    self.diff_after,
+                    "diff_elev_after_coreg",
+                    "Statistics on altitude difference after coregistration",
+                    1,
+                ),
             ]
         else:
             stat_items = [
@@ -309,8 +319,8 @@ class Accuracy(Workflows):
         if self.compute_coreg:
             self._compute_histogram()
             if self.level > 1:
-                self.diff_before.save(self.outputs_folder / "rasters" / "diff_elev_before_coreg.tif")
-                self.diff_after.save(self.outputs_folder / "rasters" / "diff_elev_after_coreg.tif")
+                self.diff_before.save(self.outputs_folder / "rasters" / "diff_elev_before_coreg_map.tif")
+                self.diff_after.save(self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
 
         self.create_html(self.dico_to_show)
 
@@ -356,11 +366,11 @@ class Accuracy(Workflows):
             html += "<h2>Altitude differences</h2>\n"
             html += "<div style='display: flex; gap: 10px;'>\n"
             html += (
-                "  <img src='plots/diff_elev_before_coreg.png' alt='Image PNG' style='max-width: "
+                "  <img src='plots/diff_elev_before_coreg_map.png' alt='Image PNG' style='max-width: "
                 "40%; height: auto; width: 50%;'>\n"
             )
             html += (
-                "  <img src='plots/diff_elev_after_coreg.png' alt='Image PNG' style='max-width: "
+                "  <img src='plots/diff_elev_after_coreg_map.png' alt='Image PNG' style='max-width: "
                 "40%; height: auto; width: 50%;'>\n"
             )
             html += "</div>\n"
