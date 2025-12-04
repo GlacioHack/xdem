@@ -181,7 +181,7 @@ class dDEM(Raster):  # type: ignore
             error=error,
         )
 
-    @Profiler.profile("ddem.interpolate", memprof=True)  # type: ignore
+    @Profiler.profile("xdem.ddem.interpolate", memprof=True)  # type: ignore
     def interpolate(
         self,
         method: Literal["idw", "local_hypsometric", "regional_hypsometric"] = "idw",
