@@ -146,10 +146,12 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
     DEM.slope
     DEM.aspect
     DEM.hillshade
-    DEM.curvature
     DEM.profile_curvature
+    DEM.tangential_curvature
     DEM.planform_curvature
-    DEM.maximum_curvature
+    DEM.flowline_curvature
+    DEM.max_curvature
+    DEM.min_curvature
     DEM.topographic_position_index
     DEM.terrain_ruggedness_index
     DEM.roughness

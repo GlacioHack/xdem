@@ -11,13 +11,14 @@ on:
 
 jobs:
   test:
-    name: ${{ matrix.os }}, python ${{ matrix.python-version }}
+    name: ${{ matrix.os }}, python ${{ matrix.python-version }}, ${{ matrix.dep-level }}
     runs-on: ${{ matrix.os }}
 
     strategy:
       matrix:
         os: ["ubuntu-latest", "macos-latest"]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        dep-level: ["base", "opt"]
 
     # Run all shells using bash (including Windows)
     defaults:
@@ -25,7 +26,7 @@ jobs:
         shell: bash -l {0}
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
 
     # We initiate the environment empty, and check if a key for this environment doesn't already exist in the cache
     - name: Initiate empty environment
@@ -48,7 +49,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ${{ env.CONDA }}/envs
-        key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ env.cache_date }}-${{ hashFiles('dev-environment.yml') }}-${{ env.CACHE_NUMBER }}
+        key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ matrix.dep-level }}-${{ env.cache_date }}-${{ hashFiles('dev-environment.yml') }}-${{ env.CACHE_NUMBER }}
       env:
         CACHE_NUMBER: 0 # Increase this value to reset cache if environment.yml has not changed
       id: cache
@@ -61,33 +62,22 @@ jobs:
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         mamba install pyyaml python=${{ matrix.python-version }}
-        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "graphviz,pytransform3d" "environment.yml"
+        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} "environment.yml"
         mamba env update -n xdem-dev -f environment-ci-py${{ matrix.python-version }}.yml
 
-    - name: Install project
-      run: pip install -e . --no-dependencies
+    # If/else equivalent to install base environment, or base+optional
+    - name: Install project environment (base)
+      if: ${{ matrix.dep-level == 'base' }}
+      run: pip install -e .[test]
+
+    - name: Install project environment (optional)
+      if: ${{ matrix.dep-level != 'base' }}
+      run: pip install -e .[test,${{ matrix.dep-level }}]
 
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
     - name: Check import works with base environment
-      run: |
-        # We unset the PROJ_DATA environment variable to make PROJ work on Windows
-        unset PROJ_DATA
-        python -c "import xdem"
-
-    # This time, the trick below is necessary because: 1/ "conda update" does not support a file -f as argument
-    # and also 2/ "conda env update" does not support --freeze-installed or --no-update-deps
-    - name: Update environment with development packages if cache does not exist
-      if: steps.cache.outputs.cache-hit != 'true'
-      run: |
-        # We unset the PROJ_DATA environment variable to make PROJ work on Windows
-        unset PROJ_DATA
-        pkgs_conda_dev=`python -c "import xdem.misc; xdem.misc.diff_environment_yml('environment.yml', 'dev-environment.yml', 'conda')"`
-        pkgs_pip_dev=`python -c "import xdem.misc; xdem.misc.diff_environment_yml('environment.yml', 'dev-environment.yml', 'pip')"`
-        mamba install $pkgs_conda_dev --freeze-installed
-        if [[ "$pkgs_pip_dev" != "None" ]]; then
-          pip install $pkgs_pip_dev
-        fi
+      run: python -c "import xdem"
 
     - name: Lint with flake8
       run: |
@@ -96,22 +86,17 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-    - name: Setup pip dependencies
-      run: pip install pytest-cov coveralls
-
     - name: Print conda environment (for debugging)
       run: |
         conda info
         conda list
 
     - name: Test with pytest
-      run: |
-        # We unset the PROJ_DATA environment variable to make PROJ work on Windows
-        unset PROJ_DATA
-        pytest -ra --cov=xdem/ --cov-report=lcov
+      run: pytest -ra --cov=xdem/ --cov-report=lcov
 
     - name: Upload coverage to Coveralls
       uses: coverallsapp/github-action@v2
+      continue-on-error: true
       with:
         github-token: ${{ secrets.github_token }}
         flag-name: run-${{ join(matrix.*, '-') }}

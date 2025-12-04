@@ -1,0 +1,22 @@
+name: documentation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install project with documentation dependencies
+        run: python -m pip install .[doc,opt] -vv
+      - name: Sphinx build
+        run: |
+          cd doc
+          sphinx-build -b html source/ build/

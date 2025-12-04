@@ -11,6 +11,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools_scm]
 version_file = "xdem/_version.py"
 fallback_version = "0.0.1"
+# Use no-local-version by default for CI builds
+local_scheme = "no-local-version"
 
 [tool.black]
 target_version = ['py310']

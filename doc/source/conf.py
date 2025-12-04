@@ -26,7 +26,7 @@ import xdem
 # -- Project information -----------------------------------------------------
 
 project = "xDEM"
-copyright = "2024, xDEM developers"
+copyright = "2025, xDEM developers"
 author = "Romain Hugonnet, Erik Mannerfelt, Amaury Dehecq and others"
 
 # The full version, including alpha/beta/rc tags

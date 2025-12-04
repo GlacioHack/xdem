@@ -10,17 +10,12 @@ import geoutils as gu
 import numpy as np
 import pandas as pd
 import pytest
-import skgstat
 from geoutils import Raster, Vector
 
 import xdem
 from xdem import examples
 from xdem._typing import NDArrayf
 from xdem.spatialstats import EmpiricalVariogramKArgs, neff_hugonnet_approx
-
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
-    from skgstat import models
 
 PLOT = False
 
@@ -43,15 +38,14 @@ class TestBinning:
     ref, diff, mask, outlines = load_ref_and_diff()
 
     # Derive terrain attributes
-    slope, aspect, maximum_curv = xdem.terrain.get_terrain_attribute(
-        ref, attribute=["slope", "aspect", "maximum_curvature"]
-    )
+    slope, aspect = xdem.terrain.get_terrain_attribute(ref, attribute=["slope", "aspect"], surface_fit="Horn")
+    max_curv = xdem.terrain.get_terrain_attribute(ref, attribute=["max_curvature"], surface_fit="ZevenbergThorne")
 
     def test_nd_binning(self) -> None:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
         # Subsampler
-        indices = gu.raster.subsample_array(
+        indices = gu.stats.sampling.subsample_array(
             self.diff.data.flatten(), subsample=10000, return_indices=True, random_state=42
         )
 
@@ -380,7 +374,7 @@ class TestBinning:
         # Reproduce the first steps of binning
         df_binning = xdem.spatialstats.nd_binning(
             values=self.diff[~self.mask],
-            list_var=[self.slope[~self.mask], self.maximum_curv[~self.mask]],
+            list_var=[self.slope[~self.mask], self.max_curv[~self.mask]],
             list_var_names=["var1", "var2"],
             statistics=[gu.stats.nmad],
         )
@@ -388,7 +382,7 @@ class TestBinning:
             df_binning, list_var_names=["var1", "var2"], statistic="nmad"
         )
         # The zscore spread should not be one right after binning
-        zscores = self.diff[~self.mask] / unscaled_fun((self.slope[~self.mask], self.maximum_curv[~self.mask]))
+        zscores = self.diff[~self.mask] / unscaled_fun((self.slope[~self.mask], self.max_curv[~self.mask]))
         scale_fac = gu.stats.nmad(zscores)
         assert scale_fac != 1
 
@@ -399,7 +393,7 @@ class TestBinning:
         zscores /= scale_fac_std
         zscores_2, final_func = xdem.spatialstats.two_step_standardization(
             dvalues=self.diff[~self.mask],
-            list_var=[self.slope[~self.mask], self.maximum_curv[~self.mask]],
+            list_var=[self.slope[~self.mask], self.max_curv[~self.mask]],
             unscaled_error_fun=unscaled_fun,
             spread_statistic=np.nanstd,
             fac_spread_outliers=3,
@@ -418,12 +412,12 @@ class TestBinning:
 
         # Test infer function
         errors_1, df_binning_1, err_fun_1 = xdem.spatialstats.infer_heteroscedasticity_from_stable(
-            dvalues=self.diff, list_var=[self.slope, self.maximum_curv], unstable_mask=self.outlines
+            dvalues=self.diff, list_var=[self.slope, self.max_curv], unstable_mask=self.outlines
         )
 
         df_binning_2, err_fun_2 = xdem.spatialstats._estimate_model_heteroscedasticity(
             dvalues=self.diff[~self.mask],
-            list_var=[self.slope[~self.mask], self.maximum_curv[~self.mask]],
+            list_var=[self.slope[~self.mask], self.max_curv[~self.mask]],
             list_var_names=["var1", "var2"],
         )
 
@@ -433,7 +427,7 @@ class TestBinning:
         assert np.array_equal(err_fun_1((test_slopes, test_max_curvs)), err_fun_2((test_slopes, test_max_curvs)))
 
         # Test the error map is consistent as well
-        errors_2_arr = err_fun_2((self.slope.get_nanarray(), self.maximum_curv.get_nanarray()))
+        errors_2_arr = err_fun_2((self.slope.get_nanarray(), self.max_curv.get_nanarray()))
         errors_1_arr = gu.raster.get_array_and_mask(errors_1)[0]
         assert np.array_equal(errors_1_arr, errors_2_arr, equal_nan=True)
 
@@ -489,6 +483,9 @@ class TestBinning:
 
 class TestVariogram:
 
+    # Import optional skgstat or skip test
+    pytest.importorskip("skgstat")
+
     ref, diff, mask, outlines = load_ref_and_diff()
 
     def test_sample_multirange_variogram_default(self) -> None:
@@ -527,6 +524,8 @@ class TestVariogram:
 
     def test_sample_empirical_variogram_speed(self) -> None:
         """Verify that no speed is lost outside of routines on variogram sampling by comparing manually to skgstat"""
+
+        import skgstat
 
         values = self.diff
         subsample = 10
@@ -733,6 +732,10 @@ class TestVariogram:
 
     def test_multirange_fit_performance(self) -> None:
         """Verify that the fitting works with artificial dataset"""
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            from skgstat import models
 
         # First, generate a sum of modelled variograms: ranges and  partial sills for three models
         params_real = (100, 0.7, 1000, 0.2, 10000, 0.1)
@@ -965,6 +968,9 @@ class TestVariogram:
 
 class TestNeffEstimation:
 
+    # Import optional skgstat or skip test
+    pytest.importorskip("skgstat")
+
     ref, diff, _, outlines = load_ref_and_diff()
 
     @pytest.mark.parametrize("range1", [10**i for i in range(3)])  # type: ignore
@@ -1122,7 +1128,7 @@ class TestNeffEstimation:
             subsample=10,
         )
         # Second, get coordinates manually and compute with the neff_approx_hugonnet function
-        mask = outlines_brom.create_mask(xres=res, as_array=True)
+        mask = outlines_brom.create_mask(res=res, as_array=True)
         x = res * np.arange(0, mask.shape[0])
         y = res * np.arange(0, mask.shape[1])
         coords = np.array(np.meshgrid(y, x))

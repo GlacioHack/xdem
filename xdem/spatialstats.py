@@ -37,8 +37,8 @@ import numpy as np
 import pandas as pd
 import scipy.ndimage
 from geoutils.raster import Raster, RasterType
-from geoutils.stats.sampling import subsample_array
 from geoutils.raster.array import get_array_and_mask
+from geoutils.stats.sampling import subsample_array
 from geoutils.vector.vector import Vector, VectorType
 from numba import prange
 from numpy.typing import ArrayLike
@@ -2359,7 +2359,7 @@ def number_effective_samples(
         if isinstance(rasterize_resolution, (float, int, np.floating, np.integer)):
 
             # We only need relative mask and coordinates, not absolute
-            mask = V.create_mask(xres=rasterize_resolution, as_array=True)
+            mask = V.create_mask(res=rasterize_resolution, as_array=True)
             x = rasterize_resolution * np.arange(0, mask.shape[0])
             y = rasterize_resolution * np.arange(0, mask.shape[1])
             coords = np.array(np.meshgrid(y, x))
@@ -2368,7 +2368,7 @@ def number_effective_samples(
         elif isinstance(rasterize_resolution, Raster):
 
             # With a Raster we can get the coordinates directly
-            mask = V.create_mask(raster=rasterize_resolution, as_array=True).squeeze()
+            mask = V.create_mask(ref=rasterize_resolution, as_array=True).squeeze()
             coords = np.array(rasterize_resolution.coords())
             coords_on_mask = coords[:, mask].T
 

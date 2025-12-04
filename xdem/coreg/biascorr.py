@@ -470,7 +470,7 @@ class TerrainBias(BiasCorr):
 
     def __init__(
         self,
-        terrain_attribute: str = "maximum_curvature",
+        terrain_attribute: str = "max_curvature",
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin",
         fit_func: (
             Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
