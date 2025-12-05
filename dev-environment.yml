@@ -30,14 +30,17 @@ dependencies:
   # Test dependencies
   - pytest
   - pytest-xdist
+  - pytest-instafail
+  - pytest-socket
+  - pytest-cov
+  - coveralls
   - flake8
   - pylint
   - pre-commit
 
   # Doc dependencies
   - sphinx
-  - pydata-sphinx-theme
-  - sphinx-book-theme>=1.0
+  - sphinx-book-theme
   - sphinxcontrib-programoutput
   - sphinx-design
   - sphinx-autodoc-typehints
