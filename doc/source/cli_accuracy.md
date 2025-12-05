@@ -50,6 +50,7 @@ xdem accuracy --display_template_config
                "to_vcrs", "Destination vcrs", "str, int", None, "No"
 
             .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
+            .. note:: Take care that the path_to_elev and path_to_mask point to existing data.
 
         .. tab:: to_be_aligned_elev
 
@@ -64,6 +65,7 @@ xdem accuracy --display_template_config
                "to_vcrs", "Destination vcrs", "int, str", None, "No"
 
             .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
+            .. note:: Take care that the path_to_elev and path_to_mask point to existing data.
 
       .. code-block:: yaml
 

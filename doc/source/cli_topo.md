@@ -49,6 +49,7 @@ xdem topo --display_template_config
         "to_vcrs", "Destination vcrs", "int, str", None, "No"
 
      .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
+     .. note:: Take care that the path_to_elev points to existing data.
 
      .. code-block:: yaml
 
