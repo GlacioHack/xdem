@@ -398,7 +398,7 @@ class TestDEM:
         dem_infos_array = dem.info(verbose=False).split("\n")
         vcrs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith("VCRS")]
         assert len(vcrs_line) == 1
-        assert dem_infos_array[vcrs_line[0]].split(":")[1].strip() == dem.vcrs_name
+        assert ":".join(dem_infos_array[vcrs_line[0]].split(":")[1:]).strip() == dem.vcrs
 
     @staticmethod
     @pytest.mark.parametrize(  # type: ignore

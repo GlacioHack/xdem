@@ -188,7 +188,7 @@ class DEM(Raster):  # type: ignore
         raster_info_split = raster_info.split("\n")
 
         # VCRS info
-        vcrs_str = f"VCRS:                 {self.vcrs_name}"
+        vcrs_str = f"VCRS:                 {self.vcrs}"
         vcrs_after_stat = "Coordinate system:"
 
         # Dynamic Insertion
