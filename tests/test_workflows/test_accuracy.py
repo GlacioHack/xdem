@@ -275,9 +275,3 @@ def test_mask_init(tmp_path, get_accuracy_inputs_config):
     inlier_mask = ~mask.create_mask(dem)
     assert workflows.inlier_mask == inlier_mask
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
-
-
-def test_prepare_datas_for_coreg():
-    """
-    Test prepare_datas_for_coreg function
-    """
