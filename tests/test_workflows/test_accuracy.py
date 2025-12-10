@@ -75,22 +75,6 @@ def test__compute_coregistration():
     """
 
 
-def test__compute_reproj(get_accuracy_inputs_config, tmp_path):
-    """
-    Test _compute_reproj function
-    """
-    user_config = get_accuracy_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
-    user_config["coregistration"] = {"process": False}
-    user_config["coregistration"]["sampling_grid"] = "to_be_aligned_elev"
-    workflows = Accuracy(user_config)
-    workflows.run()
-    src, target = workflows.reference_elev, workflows.to_be_aligned_elev
-    gt_reprojected = src.reproject(target, silent=True)
-
-    assert workflows.reference_elev == gt_reprojected
-
-
 def test__get_stats(get_accuracy_inputs_config, tmp_path):
     """
     Test _get_stats function
@@ -169,8 +153,8 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
 
     assert Path(tmp_path / "tables").joinpath("aligned_elev_stats.csv").exists()
 
-    assert Path(tmp_path / "plots").joinpath("diff_elev_after_coreg.png").exists()
-    assert Path(tmp_path / "plots").joinpath("diff_elev_before_coreg.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_after_coreg_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_before_coreg_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
@@ -193,7 +177,12 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
         "to_be_aligned_elev_stats.csv",
     ]
 
-    raster_files = ["diff_elev_after_coreg.tif", "diff_elev_before_coreg.tif", "to_be_aligned_elev_reprojected.tif"]
+    raster_files = [
+        "diff_elev_after_coreg_map.tif",
+        "diff_elev_before_coreg_map.tif",
+        "to_be_aligned_elev_reprojected.tif",
+        "reference_elev_reprojected.tif",
+    ]
 
     if level == 1:
         for file in csv_files_level_1:
