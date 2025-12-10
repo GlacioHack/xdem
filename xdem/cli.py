@@ -20,6 +20,7 @@
 import argparse
 import ctypes.util
 import logging
+import sys
 
 import yaml  # type: ignore
 
@@ -49,7 +50,11 @@ def main() -> None:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Set the logging level",
     )
-    subparsers = parser.add_subparsers(dest="command", help="Available workflows as subcommand")
+    subparsers = parser.add_subparsers(
+        dest="command",
+        help="Available workflows as subcommand (see xdem [workflow] -h"
+        " for more information on the specific workflow)",
+    )
 
     # Subcommand: info
     topo_parser = subparsers.add_parser(
@@ -76,7 +81,7 @@ def main() -> None:
     diff_group.add_argument("--config", help="Path to YAML configuration file")
     diff_group.add_argument("--display_template_config", action="store_true", help="Show configuration template")
 
-    args = parser.parse_args()
+    args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
 
     # Instance logger
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)

@@ -151,6 +151,7 @@ class Workflows(ABC):
         :return: DEM
         """
         mask_path = None
+        print(config_dem)
         if config_dem is not None:
             dem = xdem.DEM(config_dem["path_to_elev"])
             inlier_mask = None
@@ -160,7 +161,7 @@ class Workflows(ABC):
                 dem.set_vcrs(from_vcrs)
             if to_vcrs:
                 if from_vcrs != to_vcrs:
-                    dem.to_vcrs(to_vcrs)
+                    dem.to_vcrs(to_vcrs, inplace=True)
             if config_dem.get("force_source_nodata") is not None:
                 dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
             if config_dem.get("path_to_mask") is not None:
