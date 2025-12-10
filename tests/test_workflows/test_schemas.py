@@ -84,8 +84,20 @@ def test_wrong_path(get_topo_inputs_config):
                     }
                 }
             },
-            "must be of integer type",
-            id="statistics_dict_in",
+            r"must be of \['integer', 'float'\] type",
+            id="downsample as string",
+        ),
+        pytest.param(
+            {
+                "inputs": {
+                    "reference_elev": {
+                        "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
+                        "downsample": 0,
+                    }
+                }
+            },
+            "min value is 1",
+            id="downsample error <1",
         ),
     ],
 )

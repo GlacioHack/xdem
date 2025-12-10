@@ -48,9 +48,12 @@ xdem accuracy --display_template_config
                "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
                "from_vcrs", "Original vcrs", "str, int", None, "No"
                "to_vcrs", "Destination vcrs", "str, int", None, "No"
-               "downsample", "Downsampling elevation", "int", 1, "No"
+               "downsample", "Downsampling elevation factor >= 1", "int, float", 1, "No"
 
             .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
+
+            .. note:: The downsample parameter allows the user to resample the elevation by a round factor.
+                      The default value of 1 means no downsampling.
 
         .. tab:: to_be_aligned_elev
 
@@ -63,9 +66,12 @@ xdem accuracy --display_template_config
                "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
                "from_vcrs", "Original vcrs", "int, str", None, "No"
                "to_vcrs", "Destination vcrs", "int, str", None, "No"
-               "downsample", "Downsampling elevation", "int", 1, "No"
+               "downsample", "Downsampling elevation factor >= 1", "int, float", 1, "No"
 
             .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
+
+            .. note:: The downsample parameter allows the user to resample the elevation by a round factor.
+                      The default value of 1 means no downsampling.
 
       .. code-block:: yaml
 

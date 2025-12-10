@@ -61,7 +61,7 @@ INPUTS_DEM = {
     "path_to_mask": {"type": "string", "required": False, "path_exists": True, "nullable": True},
     "from_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
     "to_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
-    "downsample": {"type": "integer", "required": False, "default": 1},
+    "downsample": {"type": ["integer", "float"], "required": False, "default": 1, "min": 1},
 }
 
 COREG_METHODS = ["NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD", None]
