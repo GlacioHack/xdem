@@ -204,7 +204,7 @@ xdem topo --display_template_config
         <table border='1' cellspacing='0' cellpadding='5'>
         <tr><th>Information</th><th>Value</th></tr>
         <tr><td>Driver</td><td>GTiff</td></tr>
-        <tr><td>Filename</td><td>/xdem/examples/data/Longyearbyen/data/DEM_1990.tif</td></tr>
+        <tr><td>Filename</td><td>examples/data/Longyearbyen/data/DEM_1990.tif</td></tr>
         <tr><td>Grid size</td><td>us_nga_egm96_15.tif</td></tr>
         <tr><td>Number of band</td><td>(1,)</td></tr>
         <tr><td>Data types</td><td>float32</td></tr>
@@ -216,6 +216,7 @@ xdem topo --display_template_config
         <tr><td>Transform</td><td>| 20.00, 0.00, 502810.00|
         | 0.00,-20.00, 8674030.00|
         | 0.00, 0.00, 1.00|</td></tr>
+        <tr><td>Bounds</td><td>BoundingBox(left=502810.0, bottom=8654330.0, right=529450.0, top=8674030.0)</td></tr>
         </table>
         </div>
         <div style='clear: both; margin-bottom: 30px;'>
@@ -226,8 +227,8 @@ xdem topo --display_template_config
         <tr><td>median</td><td>365.23</td></tr>
         <tr><td>max</td><td>1022.29</td></tr>
         <tr><td>min</td><td>8.38</td></tr>
-        <tr><td>sum</td><td>500301600.0</td></tr>
-        <tr><td>sumofsquares</td><td>268858540032.0</td></tr>
+        <tr><td>sum</td><td>500301504.0</td></tr>
+        <tr><td>sumofsquares</td><td>268858638336.0</td></tr>
         <tr><td>90thpercentile</td><td>727.55</td></tr>
         <tr><td>le90</td><td>766.79</td></tr>
         <tr><td>nmad</td><td>291.27</td></tr>
@@ -243,18 +244,19 @@ xdem topo --display_template_config
         <h2>Mask statistics</h2>
         <table border='1' cellspacing='0' cellpadding='5'>
         <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>mean</td><td>592.41</td></tr>
-        <tr><td>median</td><td>591.89</td></tr>
-        <tr><td>max</td><td>1011.9</td></tr>
-        <tr><td>min</td><td>139.9</td></tr>
-        <tr><td>sum</td><td>98813536.0</td></tr>
-        <tr><td>sumofsquares</td><td>62425526272.0</td></tr>
-        <tr><td>90thpercentile</td><td>788.29</td></tr>
-        <tr><td>le90</td><td>498.87</td></tr>
-        <tr><td>nmad</td><td>163.87</td></tr>
-        <tr><td>rmse</td><td>611.76</td></tr>
-        <tr><td>std</td><td>152.66</td></tr>
-        <tr><td>standarddeviation</td><td>152.66</td></tr>
+        <tr><th>Information</th><th>Value</th></tr>
+        <tr><td>mean</td><td>350.58</td></tr>
+        <tr><td>median</td><td>320.89</td></tr>
+        <tr><td>max</td><td>1022.29</td></tr>
+        <tr><td>min</td><td>8.38</td></tr>
+        <tr><td>sum</td><td>401488000.0</td></tr>
+        <tr><td>sumofsquares</td><td>206433107968.0</td></tr>
+        <tr><td>90thpercentile</td><td>705.21</td></tr>
+        <tr><td>le90</td><td>758.1</td></tr>
+        <tr><td>nmad</td><td>277.61</td></tr>
+        <tr><td>rmse</td><td>424.57</td></tr>
+        <tr><td>std</td><td>239.48</td></tr>
+        <tr><td>standarddeviation</td><td>239.48</td></tr>
         <tr><td>validcount</td><td>1312020</td></tr>
         <tr><td>totalcount</td><td>1312020</td></tr>
         <tr><td>percentagevalidpoints</td><td>100.0</td></tr>

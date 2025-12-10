@@ -272,8 +272,8 @@ xdem accuracy --display_template_config
         <h2>NuthKaab outputs</h2>
         <table border='1' cellspacing='0' cellpadding='5'>
         <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>affine</td><td>{'shift_x': 9.19, 'shift_y': 2.79, 'shift_z': -1.99}</td></tr>
-        <tr><td>random</td><td>{'subsample_final': 500000}</td></tr>
+        <tr><td>affine</td><td>{'shift_x': 9.2, 'shift_y': 2.75, 'shift_z': -1.98}</td></tr>
+        <tr><td>random</td><td>{'subsample_final': np.int64(500000)}</td></tr>
         </table>
         </div>
         <div style='clear: both; margin-bottom: 30px;'>
@@ -284,8 +284,8 @@ xdem accuracy --display_template_config
         <tr><td>Median</td><td>360.65</td></tr>
         <tr><td>Maximum</td><td>1022.21</td></tr>
         <tr><td>Minimum</td><td>8.05</td></tr>
-        <tr><td>Sum</td><td>496010624.0</td></tr>
-        <tr><td>Sum of square</td><td>265449963520.0</td></tr>
+        <tr><td>Sum</td><td>496010560.0</td></tr>
+        <tr><td>Sum of squares</td><td>265449996288.0</td></tr>
         <tr><td>90th percentile</td><td>724.54</td></tr>
         <tr><td>LE90</td><td>766.59</td></tr>
         <tr><td>NMAD</td><td>290.22</td></tr>
@@ -303,10 +303,10 @@ xdem accuracy --display_template_config
         <tr><th>Information</th><th>Value</th></tr>
         <tr><td>Mean</td><td>381.32</td></tr>
         <tr><td>Median</td><td>365.23</td></tr>
-        <tr><td>max</td><td>1022.29</td></tr>
+        <tr><td>Maximum</td><td>1022.29</td></tr>
         <tr><td>Minimum</td><td>8.38</td></tr>
-        <tr><td>SUM</td><td>500301600.0</td></tr>
-        <tr><td>Sum of squares</td><td>268858540032.0</td></tr>
+        <tr><td>Sum</td><td>500301504.0</td></tr>
+        <tr><td>Sum of squares</td><td>268858638336.0</td></tr>
         <tr><td>90th percentile</td><td>727.55</td></tr>
         <tr><td>LE90</td><td>766.79</td></tr>
         <tr><td>NMAD</td><td>291.27</td></tr>
@@ -319,17 +319,38 @@ xdem accuracy --display_template_config
         </table>
         </div>
         <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on alti diff before coregistration</h2>
+        <h2>Statistics on aligned elevation</h2>
+        <table border='1' cellspacing='0' cellpadding='5'>
+        <tr><th>Information</th><th>Value</th></tr>
+        <tr><td>Mean</td><td>379.24</td></tr>
+        <tr><td>Median</td><td>363.1</td></tr>
+        <tr><td>Maximum</td><td>1019.35</td></tr>
+        <tr><td>Minimum</td><td>6.42</td></tr>
+        <tr><td>Sum</td><td>497567904.0</td></tr>
+        <tr><td>Sum of squares</td><td>266749788160.0</td></tr>
+        <tr><td>90th percentile</td><td>725.53</td></tr>
+        <tr><td>LE90</td><td>766.76</td></tr>
+        <tr><td>NMAD</td><td>291.19</td></tr>
+        <tr><td>RMSE</td><td>450.9</td></tr>
+        <tr><td>STD</td><td>243.91</td></tr>
+        <tr><td>Standard deviation</td><td>243.91</td></tr>
+        <tr><td>Valid count</td><td>1312020</td></tr>
+        <tr><td>Total count</td><td>1312020</td></tr>
+        <tr><td>Percentage valid points</td><td>100.0</td></tr>
+        </table>
+        </div>
+        <div style='clear: both; margin-bottom: 30px;'>
+        <h2>Statistics on altitude difference before coregistration</h2>
         <table border='1' cellspacing='0' cellpadding='5'>
         <tr><th>Information</th><th>Value</th></tr>
         <tr><td>Mean</td><td>3.27</td></tr>
         <tr><td>Median</td><td>2.77</td></tr>
         <tr><td>Maximum</td><td>51.44</td></tr>
         <tr><td>Minimum</td><td>-54.51</td></tr>
-        <tr><td>Sum</td><td>4290968.0</td></tr>
-        <tr><td>Sum of squares</td><td>62515040.0</td></tr>
+        <tr><td>Sum</td><td>4290967.0</td></tr>
+        <tr><td>Sum of squares</td><td>62515056.0</td></tr>
         <tr><td>90th percentile</td><td>9.18</td></tr>
-        <tr><td>LE 90</td><td>18.37</td></tr>
+        <tr><td>LE90</td><td>18.37</td></tr>
         <tr><td>NMAD</td><td>3.81</td></tr>
         <tr><td>RMSE</td><td>6.9</td></tr>
         <tr><td>STD</td><td>6.08</td></tr>
@@ -340,42 +361,21 @@ xdem accuracy --display_template_config
         </table>
         </div>
         <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on alti diff after coregistration</h2>
+        <h2>Statistics on altitude difference after coregistration</h2>
         <table border='1' cellspacing='0' cellpadding='5'>
         <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>1.18</td></tr>
-        <tr><td>Median</td><td>0.36</td></tr>
-        <tr><td>max</td><td>50.31</td></tr>
-        <tr><td>Minimum</td><td>-49.91</td></tr>
-        <tr><td>Sum</td><td>1546964.0</td></tr>
-        <tr><td>Sum of squares</td><td>42468744.0</td></tr>
+        <tr><td>Mean</td><td>1.19</td></tr>
+        <tr><td>Median</td><td>0.37</td></tr>
+        <tr><td>Maximum</td><td>50.32</td></tr>
+        <tr><td>Minimum</td><td>-49.9</td></tr>
+        <tr><td>Sum</td><td>1557355.0</td></tr>
+        <tr><td>Sum of squares</td><td>42474288.0</td></tr>
         <tr><td>90th percentile</td><td>6.03</td></tr>
-        <tr><td>LE90</td><td>16.12</td></tr>
+        <tr><td>LE90</td><td>16.11</td></tr>
         <tr><td>NMAD</td><td>2.83</td></tr>
         <tr><td>RMSE</td><td>5.69</td></tr>
-        <tr><td>STD</td><td>5.57</td></tr>
-        <tr><td>Standard deviation</td><td>5.57</td></tr>
-        <tr><td>Valid count</td><td>1312020</td></tr>
-        <tr><td>Total count</td><td>1312020</td></tr>
-        <tr><td>Percentage valid points</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics aligned elevation</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>379.33</td></tr>
-        <tr><td>Median</td><td>363.24</td></tr>
-        <tr><td>max</td><td>1020.3</td></tr>
-        <tr><td>Minimum</td><td>6.38</td></tr>
-        <tr><td>Sum</td><td>497688448.0</td></tr>
-        <tr><td>Sum of squares</td><td>266870931456.0</td></tr>
-        <tr><td>90th percentile</td><td>725.56</td></tr>
-        <tr><td>LE90</td><td>766.79</td></tr>
-        <tr><td>NMAD</td><td>291.27</td></tr>
-        <tr><td>RMSE</td><td>451.0</td></tr>
-        <tr><td>STD</td><td>243.95</td></tr>
-        <tr><td>Standard deviation</td><td>243.95</td></tr>
+        <tr><td>STD</td><td>5.56</td></tr>
+        <tr><td>Standard deviation</td><td>5.56</td></tr>
         <tr><td>Valid count</td><td>1312020</td></tr>
         <tr><td>Total count</td><td>1312020</td></tr>
         <tr><td>Percentage valid points</td><td>100.0</td></tr>
