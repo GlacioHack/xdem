@@ -166,6 +166,41 @@ class DEM(Raster):  # type: ignore
         if vcrs is not None:
             self.set_vcrs(vcrs)
 
+    @overload
+    def info(self, stats: bool = False, *, verbose: Literal[True] = ...) -> None: ...
+
+    @overload
+    def info(self, stats: bool = False, *, verbose: Literal[False]) -> str: ...
+
+    def info(self, stats: bool = False, verbose: bool = True) -> None | str:
+        """
+        Print summary information about the DEM.
+
+        :param stats: Add statistics for each band of the dataset (max, min, median, mean, std. dev.). Default is to
+            not calculate statistics.
+        :param verbose: If set to True (default) will directly print to screen and return None
+
+        :returns: Summary string or None.
+        """
+
+        # Get super.infos()
+        raster_info = super().info(stats=stats, verbose=False)  # type: ignore
+        raster_info_split = raster_info.split("\n")
+
+        # VCRS info
+        vcrs_str = f"VCRS:                 {self.vcrs}"
+        vcrs_after_stat = "Coordinate system:"
+
+        # Dynamic Insertion
+        start = [raster_info_split.index(line) for line in raster_info_split if line.startswith(vcrs_after_stat)]
+        raster_info_split.insert(start[0] + 1, vcrs_str)
+
+        if verbose:
+            print("\n".join(raster_info_split))
+            return None
+        else:
+            return "\n".join(raster_info_split)
+
     def copy(self, new_array: NDArrayf | None = None) -> DEM:
         """
         Copy the DEM, possibly updating the data array.

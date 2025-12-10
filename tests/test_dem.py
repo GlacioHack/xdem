@@ -369,6 +369,37 @@ class TestDEM:
 
         assert dem_class_attr.raster_equal(terrain_module_attr)
 
+    def test_info(self) -> None:
+        """Tests info function."""
+        dem_path = xdem.examples.get_path("longyearbyen_ref_dem")
+        raster = gu.Raster(dem_path)
+        dem = xdem.dem.DEM(dem_path)
+
+        # Test addition of the VCRS line after Coordinate System
+
+        # with stats
+        dem_infos_array = dem.info(stats=True, verbose=False).split("\n")
+        assert len(dem_infos_array) == len(raster.info(stats=True, verbose=False).split("\n")) + 1
+        vcrs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith("VCRS")]
+        assert len(vcrs_line) == 1
+        assert dem_infos_array[vcrs_line[0] - 1].startswith("Coordinate system:")
+        assert dem_infos_array[vcrs_line[0]].split(":")[1].strip() == "None"
+
+        # with no stats
+        dem_infos_array = dem.info(verbose=False).split("\n")
+        assert len(dem_infos_array) == len(raster.info(verbose=False).split("\n")) + 1
+        vcrs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith("VCRS")]
+        assert len(vcrs_line) == 1
+        assert dem_infos_array[vcrs_line[0] - 1].startswith("Coordinate system:")
+        assert dem_infos_array[vcrs_line[0]].split(":")[1].strip() == "None"
+
+        # test other vcrs value
+        dem.set_vcrs(new_vcrs="EGM96")
+        dem_infos_array = dem.info(verbose=False).split("\n")
+        vcrs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith("VCRS")]
+        assert len(vcrs_line) == 1
+        assert ":".join(dem_infos_array[vcrs_line[0]].split(":")[1:]).strip() == dem.vcrs
+
     @staticmethod
     @pytest.mark.parametrize(  # type: ignore
         "coreg_method, expected_pipeline_types",
