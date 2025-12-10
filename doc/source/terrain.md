@@ -23,7 +23,7 @@ and tested for consistency against [gdaldem](https://gdal.org/programs/gdaldem.h
 
 ## Quick use
 
-Terrain attribute methods can be derived directly from a {class}`~xdem.DEM`, using for instance {func}`xdem.DEM.slope`.
+Terrain attribute methods can be derived either directly from a {class}`~xdem.DEM` using for instance {func}`~xdem.DEM.slope`, or from the {func}`xdem.terrain` module using an array input.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -65,7 +65,8 @@ compilation is cached and can later be re-used in the same Python environment.
 
 ## Summary of supported methods
 
-Curvatures follow the recommended system of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). Where no direct DOI can be linked, consult this paper for the full citation.
+xDEM currently supports two types of terrain attributes: **surface fit attributes** that rely on estimating local derivatives (e.g. slope, aspect, curvatures) and **windowed index attributes** that rely on estimating local indexes that are often independent of window size (e.g., TPI, roughness).
+Note that curvatures follow the recommended system of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). Where no direct DOI can be linked, consult this paper for the full citation.
 
 ```{list-table}
    :widths: 1 1 1
@@ -123,10 +124,13 @@ Curvatures follow the recommended system of [Minár et al. (2020)](https://doi.o
 ```
 
 ```{note}
-Only grids with **equal pixel size in X and Y** are currently supported. Transform into such a grid with {func}`xdem.DEM.reproject`.
+Only grids with **equal pixel size in X and Y** are currently supported. Transform into such a grid with {func}`~xdem.DEM.reproject`.
 ```
+
+## Surface fits
+
 (primer)=
-## Primer on partial derivatives of elevation
+### Primer on partial derivatives of elevation
 
 Most of the terrain attributes below are calculated from partial derivatives of elevation. Our terminology follows that of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414), whereby the surface elevation $z$ can be expressed as the function
 
@@ -151,56 +155,12 @@ xDEM offers multiple methods of calculating these partial derivatives, which can
 
 By default, `"Florinsky"` is used, as this provides opportunities for higher-order derivatives and the 5 $\times$ 5 pixel fit is theoretically more robust to noise than a 3 $\times$ 3 pixel fit. Note that `"Horn"` only calculates $z_{x}$ and $z_{y}$ derivatives, and as such cannot be used for advanced terrain attributes such as curvatures.
 
-<!-- For [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918):
-
-$$
-z_{x}^{\textrm{Horn}}=\frac{(h_{++} + 2h_{+0} + h_{+-}) - (h_{-+} + 2h_{-0} + h_{--})}{8 \Delta x},\\
-z_{y}^{\textrm{Horn}}=\frac{(h_{++} + 2h_{0+} + h_{-+}) - (h_{+-} + 2h_{0-} + h_{--})}{8 \Delta y},
-$$
-
-and for [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107):
-
-$$
-z_{x}^{\textrm{ZevTho}} = \frac{h_{+0} - h_{-0}}{2 \Delta x},\\
-z_{y}^{\textrm{ZevTho}} = \frac{h_{0+} - h_{0-}}{2 \Delta y},
-$$
-
-where $h_{ij}$ is the elevation at pixel $ij$, where indexes $i$ and $j$ correspond to east-west and north-south directions respectively,
-and take values of either the center ($0$), west or south ($-$), or east or north ($+$):
-
-```{list-table}
-   :widths: 1 1 1 1
-   :header-rows: 1
-   :stub-columns: 1
-
-   * -
-     - West
-     - Center
-     - East
-   * - North
-     - $h_{-+}$
-     - $h_{0+}$
-     - $h_{++}$
-   * - Center
-     - $h_{-0}$
-     - $h_{00}$
-     - $h_{+0}$
-   * - South
-     - $h_{--}$
-     - $h_{0-}$
-     - $h_{+-}$
-```
-
-
-Finally, $\Delta x$
-and $\Delta y$ correspond to the pixel resolution west-east and south-north, respectively. -->
-
 The differences between methods are illustrated in the {ref}`sphx_glr_advanced_examples_plot_slope_methods.py`
 example.
 
 
 (slope)=
-## Slope
+### Slope
 
 {func}`xdem.DEM.slope`
 
@@ -214,15 +174,15 @@ $$
 \arctan \left( \sqrt{ z_x^2 + z_y^2 } \right),
 $$
 
-and the surface derivatives can be computed either by the method of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499). By default, `"Florisnky"` is used.
+and the surface derivatives can be computed either by the method of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default).
 
 ```{code-cell} ipython3
-slope = dem.slope(surface_fit = "Florinsky")  # "Florisnky" is default
+slope = dem.slope(surface_fit="Florinsky")  # "Florinsky" is default
 slope.plot(cmap="Reds", cbar_title="Slope (°)")
 ```
 
 (aspect)=
-## Aspect
+### Aspect
 
 {func}`xdem.DEM.aspect`
 
@@ -236,7 +196,7 @@ $$
 \theta = -\arctan\left( \frac{-z_x}{z_y} \right) \bmod (2\pi).
 $$
 
-Like with slope, the surface derivatives can be calculated following the methods of of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499). By default, `"Florinsky"` is used.
+Like with slope, the surface derivatives can be calculated following the methods of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default).
 
 ```{warning}
 A north aspect represents the upper direction of the Y axis in the coordinate reference system of the
@@ -248,48 +208,23 @@ aspect = dem.aspect()
 aspect.plot(cmap="twilight", cbar_title="Aspect (°)")
 ```
 
-(hillshade)=
-## Hillshade
-
-{func}`xdem.DEM.hillshade`
-
-The hillshade is a slope map, shaded by the aspect of the slope.
-With a westerly azimuth (a simulated sun coming from the west), all eastern slopes are slightly darker.
-This mode of shading the slopes often generates a map that is much more easily interpreted than the slope.
-
-The hillshade $hs$ is directly based on the slope $\alpha$ and aspect $\theta$, and thus also varies between the methods of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499). By default, `"Florinsky"` is used. It is often scaled between 1 and 255:
-
-$$
-hs = 1 + 254 \left[ \sin(alt) \cos(\alpha) + \cos(alt) \sin(\alpha) \sin(2\pi - azim - \theta) \right],
-$$
-
-where $alt$ is the shading altitude (90° = from above) and $azim$ is the shading azimuth (0° = north).
-
-Note, however, that the hillshade is not a shadow map; no occlusion is taken into account so it does not represent "true" shading.
-It therefore has little analytic purpose, but it still constitutes a great visualization tool.
-
-```{code-cell} ipython3
-hillshade = dem.hillshade()
-hillshade.plot(cmap="Greys_r", cbar_title="Hillshade")
-```
-
 (curvs)=
-## Curvatures
+### Curvatures
 
 Curvatures are the second derivative of elevation, aiming to describe the convexity or concavity of a terrain. If a surface is convex (like a mountain peak), it will have positive curvature. If a surface is concave (like a through or a valley bottom), it will have negative curvature.
 
-There are countless possible curvatures to calculate, the most common of which we provide functions for. Terminology can be confused in the literature, which the same word (e.g. 'horizontal curvature') often refer to very different mathematical definitions. For consistency, we name and define our curvatures following the work of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). We provide the functions for six basic curvatures (profile, tangential, planform, flowline, maximal/maximum, and minimal/minimum) which should suffice for many users. For more advanced users, these form the basis from which others (e.g. mean, unsphericity) may be calculated.
+There are countless possible curvatures to calculate, the most common of which we provide functions for. Terminology in the literature are confusing, with the same terms (e.g. "horizontal curvature") often refering to different mathematical definitions. For consistency, we follow the terminology of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). We provide the six basic curvatures (profile, tangential, planform, flowline, maximal/maximum, and minimal/minimum). These form the basis from which several others (e.g. mean, unsphericity) may be calculated easily (sum, difference).
 
-There are two parallel systems of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field). For more information on this, [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414) provides a comprehensive review. The choice of system be be set in xDEM via the `curv_method` parameter. This defaults to the `"geometric"` method, which should be suitable for most users, although `"directional"` is also available for those interested.
+There are two parallel systems of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field). For more information on this, [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414) provides a comprehensive review. The choice of system can be set in xDEM via the `curv_method` parameter. This defaults to the `"geometric"` method, which should be suitable for most users, although `"directional"` is also available for those interested.
 
-All curvatures require $z_{xx}$, $z_{xy}$, and/or $z_{yy}$ partial derivatives to calculate: as a result, only [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) surface fit methods can be used. By default, `"Florinsky"` is used.
+All curvatures require $z_{xx}$, $z_{xy}$, and/or $z_{yy}$ partial derivatives: as a result, only [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) surface fit methods can be used. By default, `"Florinsky"` is used.
 
 The curvature values in units of m{sup}`-1` are quite small, so they are by convention multiplied by 100.
 
 We are grateful to [Ian Evans](https://www.durham.ac.uk/staff/i-s-evans/) and [Josef Minár](https://fns.uniba.sk/en/minar) for their guidance and recommendations in providing a consistent and sensible set of curvature options.
 
 (profcurv)=
-### Profile curvature
+#### Profile curvature
 
 {func}`xdem.DEM.profile_curvature`
 
@@ -301,7 +236,7 @@ $$
 - \frac{z_{xx} z_x^2 + 2 z_{xy} z_x z_y + z_{yy} z_y^2}{(z_x^2 + z_y^2)\,\sqrt{(1 + z_x^2 + z_y^2)^3}},
 $$
 
-while the directional derivative method follows [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107).
+while the directional derivative method follows [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107):
 
 $$
 - \frac{z_{xx} z_x^2 + 2 z_{xy} z_x z_y + z_{yy} z_y^2}{(z_x^2 + z_y^2)}.
@@ -313,7 +248,7 @@ profile_curvature.plot(cmap="RdGy_r", cbar_title="Profile curvature (100 / m)", 
 ```
 
 (tangcurv)=
-### Tangential curvature
+#### Tangential curvature
 
 {func}`xdem.DEM.tangential_curvature`
 
@@ -326,7 +261,7 @@ $$
 {(z_x^2 + z_y^2)\,\sqrt{1 + z_x^2 + z_y^2}},
 $$
 
-while the directional derivative method follows the 'plan curvature' of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) (although in the Minár terminology, this should not be called the plan or planform curvature).
+while the directional derivative method follows the 'plan curvature' of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) (although in the Minár terminology, this should not be called the plan or planform curvature):
 
 $$
 - \frac{z_{xx} z_y^2 - 2 z_{xy} z_x z_y + z_{yy} z_x^2}
@@ -340,7 +275,7 @@ tangential_curvature.plot(cmap="RdGy_r", cbar_title="Tangential curvature (100 /
 
 
 (plancurv)=
-### Planform curvature
+#### Planform curvature
 
 {func}`xdem.DEM.planform_curvature`
 
@@ -359,7 +294,7 @@ planform_curvature.plot(cmap="RdGy_r", cbar_title="Planform curvature (100 / m)"
 ```
 
 (flowcurv)=
-### Flowline curvature
+#### Flowline curvature
 
 {func}`xdem.DEM.flowline_curvature`
 
@@ -385,7 +320,7 @@ flowline_curvature.plot(cmap="RdGy_r", cbar_title="Flowline curvature (100 / m)"
 ```
 
 (maxcurv)=
-### Maximal/maximum curvature
+#### Maximal/maximum curvature
 
 {func}`xdem.DEM.max_curvature`
 
@@ -421,7 +356,7 @@ max_curvature.plot(cmap="RdGy_r", cbar_title="Maximal curvature (100 / m)", vmin
 ```
 
 (mincurv)=
-### Minimal/minimum curvature
+#### Minimal/minimum curvature
 
 {func}`xdem.DEM.min_curvature`
 
@@ -456,8 +391,40 @@ min_curvature = dem.min_curvature()
 min_curvature.plot(cmap="RdGy_r", cbar_title="Minimal curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
 ```
 
+## Windowed indexes
+
+xDEM supports a wide range of **windowed index attributes**, for which the calculations are based solely on the distribution of pixels within a window.
+
+In the following, we describe these attributes using the annotation $z_{ij}$ for pixels, centered on $z_{00}$, with a pixel resolution west-east of $\Delta x$ and south-north of $\Delta y$.
+For example, for a 3x3 window:
+
+```{list-table}
+   :widths: 1 1 1 1
+   :header-rows: 1
+   :stub-columns: 1
+
+   * -
+     - West
+     - Center
+     - East
+   * - North
+     - $z_{-+}$
+     - $z_{0+}$
+     - $z_{++}$
+   * - Center
+     - $z_{-0}$
+     - $z_{00}$
+     - $z_{+0}$
+   * - South
+     - $z_{--}$
+     - $z_{0-}$
+     - $z_{+-}$
+```
+
+The default window size in 3x3 pixels for all attributes, except for fractal roughness for which it is too small, that instead defaults to 11x11 pixels.
+
 (tpi)=
-## Topographic position index
+### Topographic position index
 
 {func}`xdem.DEM.topographic_position_index`
 
@@ -475,7 +442,7 @@ tpi.plot(cmap="Spectral", cbar_title="Topographic position index (m)", vmin=-5, 
 ```
 
 (tri)=
-## Terrain ruggedness index
+### Terrain ruggedness index
 
 {func}`xdem.DEM.terrain_ruggedness_index`
 
@@ -494,7 +461,7 @@ For bathymetry, the method of [Wilson et al. (2007)](http://dx.doi.org/10.1080/0
 where the TRI is defined by the mean absolute difference with neighbouring pixels:
 
 $$
-tri_{\textrm{Wilson}} = \textrm{mean}_{ij} (|h_{00} - h{ij}|) .
+tri_{\textrm{Wilson}} = \textrm{mean}_{ij} (|h_{00} - h_{ij}|) .
 $$
 
 ```{code-cell} ipython3
@@ -503,7 +470,7 @@ tri.plot(cmap="Purples", cbar_title="Terrain ruggedness index (m)")
 ```
 
 (roughness)=
-## Roughness
+### Roughness
 
 {func}`xdem.DEM.roughness`
 
@@ -511,7 +478,7 @@ The roughness is a metric of terrain ruggedness, based on the maximum difference
 described in [Dartnell (2000)](https://environment.sfsu.edu/node/11292). Its unit is that of the DEM (typically meters) and it can be computed for any window size (default 3x3 pixels).
 
 $$
-r_{\textrm{D}} = \textrm{max}_{ij} (h{ij}) -  \textrm{min}_{ij} (h{ij}) .
+r_{\textrm{D}} = \textrm{max}_{ij} (h_{ij}) -  \textrm{min}_{ij} (h_{ij}) .
 $$
 
 ```{code-cell} ipython3
@@ -520,7 +487,7 @@ roughness.plot(cmap="Oranges", cbar_title="Roughness (m)")
 ```
 
 (rugosity)=
-## Rugosity
+### Rugosity
 
 {func}`xdem.DEM.rugosity`
 
@@ -541,7 +508,7 @@ rugosity.plot(cmap="YlOrRd", cbar_title="Rugosity")
 ```
 
 (fractrough)=
-## Fractal roughness
+### Fractal roughness
 
 {func}`xdem.DEM.fractal_roughness`
 
@@ -556,8 +523,35 @@ fractal_roughness = dem.fractal_roughness()
 fractal_roughness.plot(cmap="Reds", cbar_title="Fractal roughness (dimensions)")
 ```
 
+## Visualization
+
+(hillshade)=
+### Hillshade
+
+{func}`xdem.DEM.hillshade`
+
+The hillshade is a slope map, shaded by the aspect of the slope.
+With a westerly azimuth (a simulated sun coming from the west), all eastern slopes are slightly darker.
+This mode of shading the slopes often generates a map that is much more easily interpreted than the slope.
+
+The hillshade $hs$ is directly based on the slope $\alpha$ and aspect $\theta$, and thus also varies between the methods of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default). It is often scaled between 1 and 255:
+
+$$
+hs = 1 + 254 \left[ \sin(alt) \cos(\alpha) + \cos(alt) \sin(\alpha) \sin(2\pi - azim - \theta) \right],
+$$
+
+where $alt$ is the shading altitude (90° = from above) and $azim$ is the shading azimuth (0° = north).
+
+Note, however, that the hillshade is not a shadow map; no occlusion is taken into account so it does not represent "true" shading.
+It therefore has little analytic purpose, but it still constitutes a great visualization tool.
+
+```{code-cell} ipython3
+hillshade = dem.hillshade()
+hillshade.plot(cmap="Greys_r", cbar_title="Hillshade")
+```
+
 (texture-shading)=
-## Texture shading
+### Texture shading
 
 {func}`xdem.DEM.texture_shading`
 
@@ -567,11 +561,11 @@ Texture shading is computed by applying a fractional Laplacian operator to the e
 
 The fractional Laplacian operator L^α is based on [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf) and computed in the frequency domain as:
 
-L^α(f_x, f_y) = (2π)^α (f_x² + f_y²)^(α/2)
+$L^{\alpha}(f_x, f_y) = (2\pi)^{\alpha} (f_x^2 + f_y^2)^(\alpha/2)$
 
-where f_x and f_y are spatial frequencies, and α is the fractional order parameter.
+where $f_x$ and $f_y$ are spatial frequencies, and $\alpha$ is the fractional order parameter.
 
-Unlike hillshading, texture shading maintains visual hierarchy across different scales - smaller terrain features automatically have lower contrast relative to larger features, creating a "self-generalizing" effect. This makes texture shading particularly valuable for displaying terrain at multiple zoom levels or for combining with traditional hillshading to enhance the visibility of drainage networks.
+Unlike hillshading, texture shading maintains visual hierarchy across different scales—smaller terrain features automatically have lower contrast relative to larger features, creating a "self-generalizing" effect. This makes texture shading particularly valuable for displaying terrain at multiple zoom levels or for combining with traditional hillshading to enhance the visibility of drainage networks.
 
 Unlike curvature, which highlights local convexity and concavity based on the second derivative of elevation, texture shading emphasizes the multi-scale drainage network structure through a fractional Laplacian that preserves relationships across different spatial frequencies. While curvature is optimal for identifying specific geomorphological features like ridges and valley bottoms at a single scale, texture shading provides a scale-invariant visualization that simultaneously reveals both fine-scale terrain details and broad landscape patterns.
 
@@ -583,6 +577,7 @@ texture_shading.plot(cmap="Greys_r", cbar_title="Texture shading")
 ```
 
 ## Generating attributes in multiprocessing
+
 Computing terrain attributes over large digital elevation models can be computationally expensive,
 especially for high-resolution datasets. To improve performance and reduce memory usage,
 xDEM supports multiprocessing for out-of-memory attribute calculations using the `mp_config` parameter.
