@@ -31,9 +31,9 @@ from geoutils.raster.distributed_computing import (
 )
 
 from xdem._typing import DTypeLike, MArrayf, NDArrayf
+from xdem.terrain.freqidx import _texture_shading_fft
 from xdem.terrain.surfit import _get_surface_attributes
 from xdem.terrain.windidx import _get_windowed_indexes
-from xdem.terrain.freqidx import _texture_shading_fft
 
 # List available attributes
 available_attributes = [
@@ -54,6 +54,7 @@ available_attributes = [
     "fractal_roughness",
     "texture_shading",
 ]
+
 
 @overload
 def get_terrain_attribute(
@@ -1623,6 +1624,7 @@ def fractal_roughness(
         window_size=window_size,
         mp_config=mp_config,
     )
+
 
 @overload
 def texture_shading(

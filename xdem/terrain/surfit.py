@@ -24,6 +24,7 @@ from typing import Any, Literal
 
 import numba
 import numpy as np
+
 from xdem._typing import DTypeLike, NDArrayf
 
 ###########################################################################

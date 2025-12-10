@@ -26,11 +26,12 @@ import numba
 import numpy as np
 from scipy.ndimage import generic_filter
 
-from xdem._typing import DTypeLike, MArrayf, NDArrayf
+from xdem._typing import DTypeLike, NDArrayf
 
 #################################################################################
 # WINDOWED INDEXES: INDEPENDENT OF EACH OTHER WITH VARYING WINDOW SIZE (=FILTERS)
 #################################################################################
+
 
 def _tri_riley_func(arr: NDArrayf) -> float:
     """
