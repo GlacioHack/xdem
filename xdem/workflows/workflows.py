@@ -72,6 +72,7 @@ class Workflows(ABC):
         self.outputs_folder = Path(self.config["outputs"]["path"])
         logging.info(f"Outputs folder: {self.outputs_folder.absolute()}")
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
+        logging.info(f"Outputs will be saved at {self.outputs_folder}")
 
         for folder in ["plots", "rasters", "tables"]:
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
@@ -152,7 +153,7 @@ class Workflows(ABC):
         """
         mask_path = None
         if config_dem is not None:
-            dem = xdem.DEM(config_dem["path_to_elev"])
+            dem = xdem.DEM(config_dem["path_to_elev"], downsample=config_dem["downsample"])
             inlier_mask = None
             from_vcrs = config_dem["from_vcrs"]
             to_vcrs = config_dem["to_vcrs"]

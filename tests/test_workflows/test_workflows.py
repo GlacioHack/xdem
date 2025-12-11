@@ -70,6 +70,7 @@ def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
                     "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
                     "from_vcrs": None,
                     "to_vcrs": None,
+                    "downsample": 1,
                 }
             },
         )
