@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml  # type: ignore
 from geoutils import Raster
-from geoutils.raster import RasterType
+from geoutils.raster import ClusterGenerator, MultiprocConfig, RasterType
 from yaml.dumper import SafeDumper  # type: ignore
 
 import xdem
@@ -79,6 +79,18 @@ class Workflows(ABC):
         self.dico_to_show = [
             ("Information about inputs", self.config["inputs"]),
         ]
+
+        self.memory_careful = "memory_careful" in self.config
+        self.multiproc_config = None
+        # memory careful
+        if self.memory_careful:
+            logging.info("Everything will be process on disk")
+            config_cluster = self.config["memory_careful"]
+            cluster = ClusterGenerator(config_cluster["engine"], nb_workers=config_cluster["nb_workers"])
+            # Create a configuration without multiprocessing cluster
+            self.multiproc_config = MultiprocConfig(
+                chunk_size=config_cluster["chunk_size"], outfile=str(self.outputs_folder), cluster=cluster
+            )
 
     class NoAliasDumper(SafeDumper):  # type: ignore
         """

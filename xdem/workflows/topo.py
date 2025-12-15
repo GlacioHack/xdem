@@ -48,16 +48,18 @@ class Topo(Workflows):
         super().__init__(config_dem)
 
         self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
-        self.generate_plot(self.dem, "elev_map", cmap="terrain", cbar_title="Elevation (m)")
 
-        if self.inlier_mask is not None:
-            self.generate_plot(
-                self.dem,
-                "masked_elev_map",
-                mask_path=path_to_mask,
-                cmap="terrain",
-                cbar_title="Elevation (m)",
-            )
+        if not self.memory_careful:
+            self.generate_plot(self.dem, "elev_map", cmap="terrain", cbar_title="Elevation (m)")
+
+            if self.inlier_mask is not None:
+                self.generate_plot(
+                    self.dem,
+                    "masked_elev_map",
+                    mask_path=path_to_mask,
+                    cmap="terrain",
+                    cbar_title="Elevation (m)",
+                )
 
         self.config_attributes = self.config["terrain_attributes"]
         if isinstance(self.config_attributes, dict):
@@ -96,9 +98,17 @@ class Topo(Workflows):
         for attr in self.list_attributes:
             if isinstance(self.config_attributes, dict):
                 attribute_extra = self.config_attributes.get(attr).get("extra_information", {})  # type: ignore
-            attribute = from_str_to_fun[attr]()
-            logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
-            attribute.save(self.outputs_folder / "rasters" / f"{attr}.tif")
+
+            path_to_save = self.outputs_folder / "rasters" / f"{attr}.tif"
+            compute_attribute = from_str_to_fun[attr]
+
+            if self.memory_careful:
+                self.multiproc_config.outfile = path_to_save  # type: ignore
+                attribute_extra["mp_config"] = self.multiproc_config
+                compute_attribute()
+            else:
+                attribute = compute_attribute()
+                attribute.save(path_to_save)
 
     def generate_terrain_attributes_png(self) -> None:
         """
@@ -186,26 +196,29 @@ class Topo(Workflows):
         self.dico_to_show.append(("Elevation information", dem_informations))
 
         # Statistics
-        list_metrics = self.config["statistics"]
-        if list_metrics is not None:
-            stats_dem = self.dem.get_stats(list_metrics)
-            self.save_stat_as_csv(stats_dem, "stats_elev")
-            self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
-            stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
-            if self.inlier_mask is not None:
-                self.save_stat_as_csv(stats_dem_mask, "stats_elev_mask")
-                self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
-            logging.info(f"Computing metrics on reference elevation: {list_metrics}")
+        if not self.memory_careful:
+            list_metrics = self.config["statistics"]
+            if list_metrics is not None:
+                stats_dem = self.dem.get_stats(list_metrics)
+                self.save_stat_as_csv(stats_dem, "stats_elev")
+                self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
+                stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
+                if self.inlier_mask is not None:
+                    self.save_stat_as_csv(stats_dem_mask, "stats_elev_mask")
+                    self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
+                logging.info(f"Computing metrics on reference elevation: {list_metrics}")
 
         # Terrain attributes
         if self.list_attributes is not None:
-            self.generate_terrain_attributes_png()
+            if not self.memory_careful:
+                self.generate_terrain_attributes_png()
             if self.level > 1:
                 self.generate_terrain_attributes_tiff()
         else:
             logging.info("Computing terrain attributes: None")
 
-        self.create_html(self.dico_to_show)
+        if not self.memory_careful:
+            self.create_html(self.dico_to_show)
 
         # Remove empty folder
         for folder in self.outputs_folder.rglob("*"):
