@@ -108,9 +108,11 @@ def main() -> None:
         raise ValueError(f"{args.command} doesn't exist, valid command are 'accuracy', 'topo'")
 
     if args.config and _has_libgobject:
-        logger.info("Generating HTML and PDF report")
-        HTML(workflow.outputs_folder / "report.html").write_pdf(workflow.outputs_folder / "report.pdf")
-
+        try:
+            HTML(workflow.outputs_folder / "report.html").write_pdf(workflow.outputs_folder / "report.pdf")
+            logger.info("Generating HTML and PDF report")
+        except FileNotFoundError:
+            logging.info("No HTML report found so no PDF report created")
     logger.info("End of execution")
 
 
