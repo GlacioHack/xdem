@@ -150,7 +150,6 @@ class Workflows(ABC):
         :return: DEM
         """
         mask_path = None
-        print(config_dem)
         if config_dem is not None:
             dem = xdem.DEM(config_dem["path_to_elev"])
             inlier_mask = None

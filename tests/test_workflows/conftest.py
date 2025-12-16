@@ -48,7 +48,7 @@ def get_dem_config():
     Return minimal configuration for inputs in topo
     """
     return {
-        "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
+        "path_to_elev": xdem.examples.get_path("longyearbyen_ref_dem"),
         "force_source_nodata": -9999,
         "from_vcrs": "Ellipsoid",
         "to_vcrs": "EGM96",
