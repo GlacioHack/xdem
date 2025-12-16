@@ -183,17 +183,21 @@ class DEM(Raster):  # type: ignore
         :returns: Summary string or None.
         """
 
-        # Get super.infos()
+        # Get raster.info()
         raster_info = super().info(stats=stats, verbose=False)  # type: ignore
         raster_info_split = raster_info.split("\n")
 
-        # VCRS info
-        vcrs_str = f"VCRS:                 {self.vcrs}"
-        vcrs_after_stat = "Coordinate system:"
+        # Change crs values if not 3D
+        if CRS(self.crs).is_vertical:
+            new_crs = self.crs
+        else:
+            new_crs = [self.crs.to_string() if self.crs is not None else None, str(self.vcrs)]
+        crs_str = f"Coordinate reference system (CRS):                 {new_crs}"
 
-        # Dynamic Insertion
-        start = [raster_info_split.index(line) for line in raster_info_split if line.startswith(vcrs_after_stat)]
-        raster_info_split.insert(start[0] + 1, vcrs_str)
+        # Replace coordinate system line
+        cs_key_to_replace = "Coordinate system:"
+        start = [raster_info_split.index(line) for line in raster_info_split if line.startswith(cs_key_to_replace)]
+        raster_info_split[start[0]] = crs_str
 
         if verbose:
             print("\n".join(raster_info_split))

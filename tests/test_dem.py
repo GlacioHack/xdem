@@ -370,35 +370,52 @@ class TestDEM:
         assert dem_class_attr.raster_equal(terrain_module_attr)
 
     def test_info(self) -> None:
-        """Tests info function."""
+        """Tests info function with the new Coordinate reference system line"""
+
+        # Test dem with 2D CRS
         dem_path = xdem.examples.get_path("longyearbyen_ref_dem")
         raster = gu.Raster(dem_path)
         dem = xdem.dem.DEM(dem_path)
+        crs_key = "Coordinate reference system (CRS):"
 
-        # Test addition of the VCRS line after Coordinate System
+        # Test infos() with stats or not
+        for stats in [True, False]:
+            raster_infos_arrays = raster.info(stats=stats, verbose=False).split("\n")
+            dem_infos_array = dem.info(stats=stats, verbose=False).split("\n")
 
-        # with stats
-        dem_infos_array = dem.info(stats=True, verbose=False).split("\n")
-        assert len(dem_infos_array) == len(raster.info(stats=True, verbose=False).split("\n")) + 1
-        vcrs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith("VCRS")]
-        assert len(vcrs_line) == 1
-        assert dem_infos_array[vcrs_line[0] - 1].startswith("Coordinate system:")
-        assert dem_infos_array[vcrs_line[0]].split(":")[1].strip() == "None"
+            # Same number of lines
+            assert len(dem_infos_array) == len(raster_infos_arrays)
 
-        # with no stats
-        dem_infos_array = dem.info(verbose=False).split("\n")
-        assert len(dem_infos_array) == len(raster.info(verbose=False).split("\n")) + 1
-        vcrs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith("VCRS")]
-        assert len(vcrs_line) == 1
-        assert dem_infos_array[vcrs_line[0] - 1].startswith("Coordinate system:")
-        assert dem_infos_array[vcrs_line[0]].split(":")[1].strip() == "None"
+            # Extract Coordinate reference system line
+            crs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith(crs_key)]
+            assert len(crs_line) == 1
+            complete_line = dem_infos_array[crs_line[0]]
 
-        # test other vcrs value
+            # Verify infos except Coordinate reference system
+            del raster_infos_arrays[crs_line[0]]
+            del dem_infos_array[crs_line[0]]
+            for line in range(len(raster_infos_arrays)):
+                assert raster_infos_arrays[line] == dem_infos_array[line]
+
+            # Verify Coordinate reference system value
+            assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'None']"
+
+        # Verify new VCRS value with this 2D CRS DEM
         dem.set_vcrs(new_vcrs="EGM96")
         dem_infos_array = dem.info(verbose=False).split("\n")
-        vcrs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith("VCRS")]
-        assert len(vcrs_line) == 1
-        assert ":".join(dem_infos_array[vcrs_line[0]].split(":")[1:]).strip() == dem.vcrs
+        complete_line = dem_infos_array[crs_line[0]]
+        assert complete_line.startswith(crs_key)
+        assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'EPSG:5773']"
+
+        # Test dem with 3D CRS
+        """
+        dem_path = xdem.examples.get_path("pyramids_cars_ref_dem")
+        dem = xdem.dem.DEM(dem_path)
+        dem_infos_array = dem.info(verbose=False).split("\n")
+        complete_line = dem_infos_array[crs_line[0]]
+        assert complete_line.startswith(crs_key)
+        assert complete_line[len(crs_key) :].strip() == dem.crs
+        """
 
     @staticmethod
     @pytest.mark.parametrize(  # type: ignore
