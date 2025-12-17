@@ -24,10 +24,10 @@ import warnings
 from typing import Any, Callable, Literal, overload
 
 import geopandas as gpd
-import geoutils.profiler as profiler
 import numpy as np
 import rasterio as rio
 from affine import Affine
+from geoutils import profiler
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad

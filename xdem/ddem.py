@@ -23,11 +23,11 @@ import warnings
 from typing import Any, Literal
 
 import geoutils as gu
-import geoutils.profiler as profiler
 import numpy as np
 import pyogrio
 import rasterio as rio
 import shapely
+from geoutils import profiler
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
 from rasterio.crs import CRS

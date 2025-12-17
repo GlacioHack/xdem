@@ -23,10 +23,10 @@ import warnings
 from typing import Any, Literal, Sized, overload
 
 import geoutils as gu
-import geoutils.profiler as profiler
 import numba
 import numpy as np
 import scipy.fft as fft
+from geoutils import profiler
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import (
     MultiprocConfig,

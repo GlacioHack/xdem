@@ -39,7 +39,6 @@ from typing import (
 import affine
 import geopandas as gpd
 import geoutils as gu
-import geoutils.profiler as profiler
 import numpy as np
 import pandas as pd
 import rasterio as rio
@@ -48,6 +47,7 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
+from geoutils import profiler
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolate import _interp_points
 from geoutils.raster import Raster, RasterType, raster
