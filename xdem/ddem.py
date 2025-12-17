@@ -23,7 +23,7 @@ import warnings
 from typing import Any, Literal
 
 import geoutils as gu
-import geoutils.profiler as Profiler
+import geoutils.profiler as profiler
 import numpy as np
 import pyogrio
 import rasterio as rio
@@ -181,7 +181,7 @@ class dDEM(Raster):  # type: ignore
             error=error,
         )
 
-    @Profiler.profile("xdem.ddem.interpolate", memprof=True)  # type: ignore
+    @profiler.profile("xdem.ddem.interpolate", memprof=True)  # type: ignore
     def interpolate(
         self,
         method: Literal["idw", "local_hypsometric", "regional_hypsometric"] = "idw",

@@ -39,7 +39,7 @@ from typing import (
 import affine
 import geopandas as gpd
 import geoutils as gu
-import geoutils.profiler as Profiler
+import geoutils.profiler as profiler
 import numpy as np
 import pandas as pd
 import rasterio as rio
@@ -2328,7 +2328,7 @@ class Coreg:
         apply_kwargs: dict[str, Any] | None = None,
     ) -> RasterType | gpd.GeoDataFrame: ...
 
-    @Profiler.profile("xdem.coreg.base.fit_and_apply", memprof=True)  # type: ignore
+    @profiler.profile("xdem.coreg.base.fit_and_apply", memprof=True)  # type: ignore
     def fit_and_apply(
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
