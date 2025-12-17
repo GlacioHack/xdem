@@ -188,7 +188,7 @@ class DEM(Raster):  # type: ignore
         raster_info_split = raster_info.split("\n")
 
         # Change crs values if not 3D
-        if CRS(self.crs).is_vertical:
+        if len(CRS(self.crs).axis_info) > 2:
             new_crs = self.crs
         else:
             new_crs = [self.crs.to_string() if self.crs is not None else None, str(self.vcrs)]
