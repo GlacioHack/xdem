@@ -192,12 +192,11 @@ class DEM(Raster):  # type: ignore
             new_crs = self.crs
         else:
             new_crs = [self.crs.to_string() if self.crs is not None else None, str(self.vcrs)]
-        crs_str = f"Coordinate reference system (CRS):                 {new_crs}"
 
         # Replace coordinate system line
         cs_key_to_replace = "Coordinate system:"
-        start = [raster_info_split.index(line) for line in raster_info_split if line.startswith(cs_key_to_replace)]
-        raster_info_split[start[0]] = crs_str
+        line_cs = [raster_info_split.index(line) for line in raster_info_split if line.startswith(cs_key_to_replace)]
+        raster_info_split[line_cs[0]] = f"Coordinate system:    {new_crs}"
 
         if verbose:
             print("\n".join(raster_info_split))
