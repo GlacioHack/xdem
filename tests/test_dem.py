@@ -239,7 +239,7 @@ class TestDEM:
 
         # -- Test 2: we check with grids --
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         dem.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
         assert dem.vcrs_name == "unknown using geoidgrids=us_nga_egm96_15.tif"
@@ -253,13 +253,13 @@ class TestDEM:
         dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
 
         # Check that non-existing grids raise errors
-        with pytest.warns(UserWarning, match="Grid not found in*"):
+        with pytest.warns(UserWarning, match="Grid 'grid.tif' not found in*"):
             with pytest.raises(
                 ValueError,
-                match="The provided grid 'the best grid' does not exist at https://cdn.proj.org/. "
+                match="The provided grid 'grid.tif' does not exist at https://cdn.proj.org/. "
                 "Provide an existing grid.",
             ):
-                dem.set_vcrs(new_vcrs="the best grid")
+                dem.set_vcrs(new_vcrs="grid.tif")
 
     def test_to_vcrs(self) -> None:
         """Tests the conversion of vertical CRS."""
@@ -336,7 +336,7 @@ class TestDEM:
         """Tests grids to convert vertical CRS."""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         # Using an arbitrary elevation of 100 m (no influence on the transformation)
         dem = DEM.from_array(

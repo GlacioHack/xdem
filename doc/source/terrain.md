@@ -65,6 +65,8 @@ compilation is cached and can later be re-used in the same Python environment.
 
 ## Summary of supported methods
 
+Curvatures follow the recommended system of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). Where no direct DOI can be linked, consult this paper for the full citation.
+
 ```{list-table}
    :widths: 1 1 1
    :header-rows: 1
@@ -82,15 +84,24 @@ compilation is cached and can later be re-used in the same Python environment.
    * - {ref}`hillshade`
      - Unitless
      - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-   * - {ref}`curv`
-     - Meters{sup}`-1` * 100
-     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) and [Moore et al. (1991)](https://doi.org/10.1002/hyp.3360050103)
-   * - {ref}`plancurv`
-     - Meters{sup}`-1` * 100
-     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
    * - {ref}`profcurv`
      - Meters{sup}`-1` * 100
-     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
+     - Krcho (1973) and Evans (1979) (geometric) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) (directional)
+   * - {ref}`tangcurv`
+     - Meters{sup}`-1` * 100
+     - Krcho (1983) (geometric) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) (directional)
+   * - {ref}`plancurv`
+     - Meters{sup}`-1` * 100
+     - Sobolevsky (1932) (geometric and directional)
+   * - {ref}`flowcurv`
+     - Meters{sup}`-1` * 100
+     - [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414) (geometric) or Shary (1991) (directional)
+   * - {ref}`maxcurv`
+     - Meters{sup}`-1` * 100
+     - [Shary (1995)](https://doi.org/10.1007/BF02084608) (geometric) or [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503) (directional)
+   * - {ref}`mincurv`
+     - Meters{sup}`-1` * 100
+     - [Shary (1995)](https://doi.org/10.1007/BF02084608) (geometric) or [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503) (directional)
    * - {ref}`tpi`
      - Meters
      - [Weiss (2001)](http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf)
@@ -114,32 +125,44 @@ compilation is cached and can later be re-used in the same Python environment.
 ```{note}
 Only grids with **equal pixel size in X and Y** are currently supported. Transform into such a grid with {func}`xdem.DEM.reproject`.
 ```
+(primer)=
+## Primer on partial derivatives of elevation
 
-(slope)=
-## Slope
-
-{func}`xdem.DEM.slope`
-
-The slope of a DEM describes the tilt, or gradient, of each pixel in relation to its neighbours.
-It is most often described in degrees, where a flat surface is 0° and a vertical cliff is 90°.
-No tilt direction is stored in the slope map; a 45° tilt westward is identical to a 45° tilt eastward.
-
-The slope $\alpha$ can be computed either by the method of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) (default)
-based on a refined gradient formulation on a 3x3 pixel window, or by the method of
-[Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) based on a plane fit on a 3x3 pixel window.
-
-For both methods, $\alpha = arctan(\sqrt{p^{2} + q^{2}})$ where $p$ and $q$ are the gradient components west-to-east and south-to-north, respectively, with for [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918):
+Most of the terrain attributes below are calculated from partial derivatives of elevation. Our terminology follows that of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414), whereby the surface elevation $z$ can be expressed as the function
 
 $$
-p_{\textrm{Horn}}=\frac{(h_{++} + 2h_{+0} + h_{+-}) - (h_{-+} + 2h_{-0} + h_{--})}{8 \Delta x},\\
-q_{\textrm{Horn}}=\frac{(h_{++} + 2h_{0+} + h_{-+}) - (h_{+-} + 2h_{0-} + h_{--})}{8 \Delta y},
+z = z(x,y),
+$$
+
+where $x$ and $y$ are Cartesian coordinates. First- and second-order partial derivatives of elevation are defined as follows:
+
+$$
+\begin{align*}
+z_{x} &= \frac{\partial z}{\partial x}, & z_{y} &= \frac{\partial z}{\partial y}, \\
+z_{xx} &= \frac{\partial^2 z}{\partial x^2}, & z_{yy} &= \frac{\partial^2 z}{\partial y^2}, & z_{xy} &= \frac{\partial^2 z}{\partial x \, \partial y}.
+\end{align*}
+$$
+
+xDEM offers multiple methods of calculating these partial derivatives, which can be set using the `surface_fit` parameter:
+
+ - `"Horn"`: Derivatives are calculated based on a refined gradient formulation of a 3 $\times$ 3 pixel window following [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918),
+ - `"ZevenbergThorne"`: Derivatives are calculated based on a partial quartic polynomial fit to a 3 $\times$ 3 pixel window following [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107),
+ - `"Florinsky"`: Derivatives are calculated based on a third-order polynomial fit to a 5 $\times$ 5 pixel window following [Florinsky (2009)](https://doi.org/10.1080/13658810802527499).
+
+By default, `"Florinsky"` is used, as this provides opportunities for higher-order derivatives and the 5 $\times$ 5 pixel fit is theoretically more robust to noise than a 3 $\times$ 3 pixel fit. Note that `"Horn"` only calculates $z_{x}$ and $z_{y}$ derivatives, and as such cannot be used for advanced terrain attributes such as curvatures.
+
+<!-- For [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918):
+
+$$
+z_{x}^{\textrm{Horn}}=\frac{(h_{++} + 2h_{+0} + h_{+-}) - (h_{-+} + 2h_{-0} + h_{--})}{8 \Delta x},\\
+z_{y}^{\textrm{Horn}}=\frac{(h_{++} + 2h_{0+} + h_{-+}) - (h_{+-} + 2h_{0-} + h_{--})}{8 \Delta y},
 $$
 
 and for [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107):
 
 $$
-p_{\textrm{ZevTho}} = \frac{h_{+0} - h_{-0}}{2 \Delta x},\\
-q_{\textrm{ZevTho}} = \frac{h_{0+} - h_{0-}}{2 \Delta y},
+z_{x}^{\textrm{ZevTho}} = \frac{h_{+0} - h_{-0}}{2 \Delta x},\\
+z_{y}^{\textrm{ZevTho}} = \frac{h_{0+} - h_{0-}}{2 \Delta y},
 $$
 
 where $h_{ij}$ is the elevation at pixel $ij$, where indexes $i$ and $j$ correspond to east-west and north-south directions respectively,
@@ -170,13 +193,31 @@ and take values of either the center ($0$), west or south ($-$), or east or nort
 
 
 Finally, $\Delta x$
-and $\Delta y$ correspond to the pixel resolution west-east and south-north, respectively.
+and $\Delta y$ correspond to the pixel resolution west-east and south-north, respectively. -->
 
 The differences between methods are illustrated in the {ref}`sphx_glr_advanced_examples_plot_slope_methods.py`
 example.
 
+
+(slope)=
+## Slope
+
+{func}`xdem.DEM.slope`
+
+The slope of a DEM describes the tilt, or gradient, of each pixel in relation to its neighbours.
+It is most often described in degrees, where a flat surface is 0° and a vertical cliff is 90°.
+No tilt direction is stored in the slope map; a 45° tilt westward is identical to a 45° tilt eastward.
+
+The slope $\alpha$ is defined as
+
+$$
+\arctan \left( \sqrt{ z_x^2 + z_y^2 } \right),
+$$
+
+and the surface derivatives can be computed either by the method of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499). By default, `"Florisnky"` is used.
+
 ```{code-cell} ipython3
-slope = dem.slope()
+slope = dem.slope(surface_fit = "Florinsky")  # "Florisnky" is default
 slope.plot(cmap="Reds", cbar_title="Slope (°)")
 ```
 
@@ -189,15 +230,13 @@ The aspect describes the orientation of strongest slope.
 It is often reported in degrees, where a slope tilting straight north corresponds to an aspect of 0°, and an eastern
 aspect is 90°, south is 180° and west is 270°. By default, a flat slope is given an arbitrary aspect of 180°.
 
-The aspect $\theta$ is based on the same variables as the slope, and thus varies similarly between the method of
-[Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) (default) and that of
-[Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107):
+The aspect $\theta$ is defined as
 
 $$
-\theta = arctan(\frac{p}{q}),
+\theta = -\arctan\left( \frac{-z_x}{z_y} \right) \bmod (2\pi).
 $$
 
-with $p$ and $q$ defined in the slope section.
+Like with slope, the surface derivatives can be calculated following the methods of of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499). By default, `"Florinsky"` is used.
 
 ```{warning}
 A north aspect represents the upper direction of the Y axis in the coordinate reference system of the
@@ -218,11 +257,10 @@ The hillshade is a slope map, shaded by the aspect of the slope.
 With a westerly azimuth (a simulated sun coming from the west), all eastern slopes are slightly darker.
 This mode of shading the slopes often generates a map that is much more easily interpreted than the slope.
 
-The hillshade $hs$ is directly based on the slope $\alpha$ and aspect $\theta$, and thus also varies between the method of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) (default) and that of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and
-is often scaled between 1 and 255:
+The hillshade $hs$ is directly based on the slope $\alpha$ and aspect $\theta$, and thus also varies between the methods of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499). By default, `"Florinsky"` is used. It is often scaled between 1 and 255:
 
 $$
-hs = 1 + 254 \left[ sin(alt) cos(\alpha) + cos(alt) sin(\alpha) sin(2\pi - azim - \theta) \right],
+hs = 1 + 254 \left[ \sin(alt) \cos(\alpha) + \cos(alt) \sin(\alpha) \sin(2\pi - azim - \theta) \right],
 $$
 
 where $alt$ is the shading altitude (90° = from above) and $azim$ is the shading azimuth (0° = north).
@@ -235,54 +273,84 @@ hillshade = dem.hillshade()
 hillshade.plot(cmap="Greys_r", cbar_title="Hillshade")
 ```
 
-(curv)=
-## Curvature
+(curvs)=
+## Curvatures
 
-{func}`xdem.DEM.curvature`
+Curvatures are the second derivative of elevation, aiming to describe the convexity or concavity of a terrain. If a surface is convex (like a mountain peak), it will have positive curvature. If a surface is concave (like a through or a valley bottom), it will have negative curvature.
 
-The curvature is the second derivative of elevation, which highlights the convexity or concavity of the terrain.
-If a surface is convex (like a mountain peak), it will have positive curvature.
-If a surface is concave (like a through or a valley bottom), it will have negative curvature.
+There are countless possible curvatures to calculate, the most common of which we provide functions for. Terminology can be confused in the literature, which the same word (e.g. 'horizontal curvature') often refer to very different mathematical definitions. For consistency, we name and define our curvatures following the work of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). We provide the functions for six basic curvatures (profile, tangential, planform, flowline, maximal/maximum, and minimal/minimum) which should suffice for many users. For more advanced users, these form the basis from which others (e.g. mean, unsphericity) may be calculated.
+
+There are two parallel systems of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field). For more information on this, [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414) provides a comprehensive review. The choice of system be be set in xDEM via the `curv_method` parameter. This defaults to the `"geometric"` method, which should be suitable for most users, although `"directional"` is also available for those interested.
+
+All curvatures require $z_{xx}$, $z_{xy}$, and/or $z_{yy}$ partial derivatives to calculate: as a result, only [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) surface fit methods can be used. By default, `"Florinsky"` is used.
+
 The curvature values in units of m{sup}`-1` are quite small, so they are by convention multiplied by 100.
 
-The curvature $c$ is based on the method of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-expanded to compute the surface laplacian in [Moore et al. (1991)](https://doi.org/10.1002/hyp.3360050103).
+We are grateful to [Ian Evans](https://www.durham.ac.uk/staff/i-s-evans/) and [Josef Minár](https://fns.uniba.sk/en/minar) for their guidance and recommendations in providing a consistent and sensible set of curvature options.
+
+(profcurv)=
+### Profile curvature
+
+{func}`xdem.DEM.profile_curvature`
+
+The profile curvature is the curvature of a normal section of slope that is tangential to the slope line (i.e. the curvature along the direction of steepest slope at a point).
+
+The geometric (default) method follows Krcho (1973) and Evans (1979) as outlined in [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414):
 
 $$
+- \frac{z_{xx} z_x^2 + 2 z_{xy} z_x z_y + z_{yy} z_y^2}{(z_x^2 + z_y^2)\,\sqrt{(1 + z_x^2 + z_y^2)^3}},
+$$
 
-c = - 100 \frac{(h_{+0} + h_{-0} + h_{0+} + h_{0-}) - 4 h_{00}}{\Delta x \Delta y}.
+while the directional derivative method follows [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107).
 
+$$
+- \frac{z_{xx} z_x^2 + 2 z_{xy} z_x z_y + z_{yy} z_y^2}{(z_x^2 + z_y^2)}.
 $$
 
 ```{code-cell} ipython3
-curvature = dem.curvature()
-curvature.plot(cmap="RdGy_r", cbar_title="Curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
+profile_curvature = dem.profile_curvature()
+profile_curvature.plot(cmap="RdGy_r", cbar_title="Profile curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
 ```
 
+(tangcurv)=
+### Tangential curvature
+
+{func}`xdem.DEM.tangential_curvature`
+
+The tangential curvature is defined as the curvature of a normal section of slope that is tangential to the contour line. It is sometimes known as the principal, normal contour, or horizontal curvature, although the latter terminology has been shared with planform curvature.
+
+The geometric (default) method follows Krcho (1983) as described in [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414):
+
+$$
+- \frac{z_{xx} z_y^2 - 2 z_{xy} z_x z_y + z_{yy} z_x^2}
+{(z_x^2 + z_y^2)\,\sqrt{1 + z_x^2 + z_y^2}},
+$$
+
+while the directional derivative method follows the 'plan curvature' of [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) (although in the Minár terminology, this should not be called the plan or planform curvature).
+
+$$
+- \frac{z_{xx} z_y^2 - 2 z_{xy} z_x z_y + z_{yy} z_x^2}
+{(z_x^2 + z_y^2)}.
+$$
+
+```{code-cell} ipython3
+tangential_curvature = dem.tangential_curvature()
+tangential_curvature.plot(cmap="RdGy_r", cbar_title="Tangential curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
+```
+
+
 (plancurv)=
-## Planform curvature
+### Planform curvature
 
 {func}`xdem.DEM.planform_curvature`
 
-The planform curvature is the curvature perpendicular to the direction of slope, reported in 100 m{sup}`-1`, also based
-on [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107):
+The planform (or plan) curvature is defined as the curvature of a projection of the contour line onto a horizontal plane. Sometimes known as the horizontal curvature, although this terminology has been shared with tangential curvature.
+
+This curvature is the same in both the geometric and directional derivative system, and follows Sobolevsky (1932) in [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414):
 
 $$
-
-planc = -2\frac{DH² + EG² -FGH}{G²+H²}
-
-$$
-
-with:
-
-$$
-
-D &= \frac{h_{0+} + h_{0-} - 2h_{00}} {2\Delta y^{2}}, \\
-E &= \frac{h_{+0} + h_{-0} - 2h_{00}} {2\Delta x^{2}},  \\
-F &= \frac{h_{--} + h_{++} - h_{-+} - h_{+-}} {4 \Delta x \Delta y}, \\
-G &= \frac{h_{0-} - h_{0+}}{2\Delta y}, \\
-H &= \frac{h_{-0} - h_{+0}}{2\Delta x}.
-
+- \frac{z_{xx} z_y^2 - 2 z_{xy} z_x z_y + z_{yy} z_x^2}
+{\sqrt{(z_x^2 + z_y^2)^3}}.
 $$
 
 ```{code-cell} ipython3
@@ -290,25 +358,102 @@ planform_curvature = dem.planform_curvature()
 planform_curvature.plot(cmap="RdGy_r", cbar_title="Planform curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
 ```
 
-(profcurv)=
-## Profile curvature
+(flowcurv)=
+### Flowline curvature
 
-{func}`xdem.DEM.profile_curvature`
+{func}`xdem.DEM.flowline_curvature`
 
-The profile curvature is the curvature parallel to the direction of slope, reported in 100 m{sup}`-1`, also based on
-[Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107):
+Flowline curvature is defined as the curvature of a projection of the slope line onto a horizontal plane. It is sometimes known as the rotor or stream line curvature.
 
-$$
-
-profc = 2\frac{DG² + EH² + FGH}{G²+H²}
+The geometric (default) flowline curvature follows the "contour torsion" described by [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414):
 
 $$
+\frac{z_x z_y (z_{xx} - z_{yy}) - z_{xy} (z_x^2 - z_y^2)}
+{\sqrt{(z_x^2 + z_y^2)^3}\,\sqrt{1 + z_x^2 + z_y^2}},
+$$
 
-based on the equations in the planform curvature section for $D$, $E$, $F$, $G$ and $H$.
+while the directional derivative flowline curvature follows that of Shary (1991) in [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414):
+
+$$
+\frac{z_x z_y (z_{xx} - z_{yy}) - z_{xy} (z_x^2 - z_y^2)}
+{\sqrt{(z_x^2 + z_y^2)^3}}.
+$$
 
 ```{code-cell} ipython3
-profile_curvature = dem.profile_curvature()
-profile_curvature.plot(cmap="RdGy_r", cbar_title="Profile curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
+flowline_curvature = dem.flowline_curvature()
+flowline_curvature.plot(cmap="RdGy_r", cbar_title="Flowline curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
+```
+
+(maxcurv)=
+### Maximal/maximum curvature
+
+{func}`xdem.DEM.max_curvature`
+
+The maximal (geometric) or maximum (directional derivative) curvature is defined as curvature of the normal section of slope with the greatest curvature value.
+
+The geometric (default) maximal curvature is calculated following [Shary (1995)](https://doi.org/10.1007/BF02084608), which is equal to the minimal curvature of [Euler (1767)](https://scholarlycommons.pacific.edu/cgi/viewcontent.cgi?article=1332&context=euler-works) (!), and is defined in terms of the mean curvature $k_{mean}$ and the unsphericity $k_u$:
+
+$$
+
+k_{mean} + k_u = -\frac{(1 + z_y^2) z_{xx} - 2 z_x z_y z_{xy} + (1 + z_x^2) z_{yy}}{2\,\sqrt{(1 + z_x^2 + z_y^2)^3}} + \sqrt{ \left(
+\frac{(1 + z_y^2) z_{xx} - 2 z_x z_y z_{xy} + (1 + z_x^2) z_{yy}}
+{2\,\sqrt{(1 + z_x^2 + z_y^2)^3}}
+\right)^2
+-
+\frac{z_{xx} z_{yy} - z_{xy}^2}
+{\sqrt{(1 + z_x^2 + z_y^2)^2}} },
+$$
+
+while the directional derivative maximum curvature is the minimum second derivative following [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503):
+
+$$
+-
+\left(
+\frac{z_{xx} + z_{yy}}{2}
+-
+\sqrt{\left(\frac{z_{xx} - z_{yy}}{2}\right)^2 + z_{xy}^2}
+\right).
+$$
+
+```{code-cell} ipython3
+max_curvature = dem.max_curvature()
+max_curvature.plot(cmap="RdGy_r", cbar_title="Maximal curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
+```
+
+(mincurv)=
+### Minimal/minimum curvature
+
+{func}`xdem.DEM.min_curvature`
+
+The minimal (geometric) or minimum (directional derivative) curvature is defined as curvature of the normal section of slope with the lowest curvature value.
+
+The geometric (default) minimal curvature is calculated following [Shary (1995)](https://doi.org/10.1007/BF02084608), which is equal to the maximal curvature of [Euler (1767)](https://scholarlycommons.pacific.edu/cgi/viewcontent.cgi?article=1332&context=euler-works) (!), and is defined in terms of the mean curvature $k_{mean}$ and the unsphericity $k_u$:
+
+$$
+
+k_{mean} - k_u = -\frac{(1 + z_y^2) z_{xx} - 2 z_x z_y z_{xy} + (1 + z_x^2) z_{yy}}{2\,\sqrt{(1 + z_x^2 + z_y^2)^3}} - \sqrt{ \left(
+\frac{(1 + z_y^2) z_{xx} - 2 z_x z_y z_{xy} + (1 + z_x^2) z_{yy}}
+{2\,\sqrt{(1 + z_x^2 + z_y^2)^3}}
+\right)^2
+-
+\frac{z_{xx} z_{yy} - z_{xy}^2}
+{\sqrt{(1 + z_x^2 + z_y^2)^2}} },
+$$
+
+while the directional derivative minimum curvature is the maximum second derivative following [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503):
+
+$$
+-
+\left(
+\frac{z_{xx} + z_{yy}}{2}
++
+\sqrt{\left(\frac{z_{xx} - z_{yy}}{2}\right)^2 + z_{xy}^2}
+\right).
+$$
+
+```{code-cell} ipython3
+min_curvature = dem.min_curvature()
+min_curvature.plot(cmap="RdGy_r", cbar_title="Minimal curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
 ```
 
 (tpi)=
@@ -321,7 +466,7 @@ pixel with the average of that of neighbouring pixels. Its unit is that of the D
 computed for any window size (default 3x3 pixels).
 
 $$
-tpi = h_{00} - \textrm{mean}_{i\neq 0, j\neq 0} (h_{ij}) .
+tpi = h_{00} - \textrm{mean}_{i\neq 0, j\neq 0} (h_{ij}).
 $$
 
 ```{code-cell} ipython3
@@ -445,7 +590,7 @@ The resulting attribute is saved directly to disk under the filename specified i
 
 ### Example
 ```{code-cell} ipython3
-from geoutils.raster.distributed_computing import MultiprocConfig
+from geoutils.raster import MultiprocConfig
 
 mp_config = MultiprocConfig(chunk_size=200, outfile="hillshade.tif")
 hillshade = dem.hillshade(mp_config=mp_config)

@@ -47,9 +47,9 @@ class CustomValidator(Validator):  # type: ignore
             try:
                 _vcrs_from_user_input(value)
                 return True
-            except (ValueError, TypeError, ConnectionResetError, HTTPError, URLError):
+            except (ValueError, TypeError, ConnectionResetError, HTTPError, URLError) as e:
                 logging.error(
-                    f"'{field}' field is not valid. See: https://xdem.readthedocs.io/en/stable/vertical_ref.html"
+                    f"'{field}' field is not valid. {e} See: https://xdem.readthedocs.io/en/stable/vertical_ref.html"
                 )
                 return False
         return True
@@ -83,16 +83,18 @@ STATS_METHODS = [
     "percentagevalidpoints",
 ]
 
-TERRAIN_ATTRIBUTES_DEFAULT = ["slope", "aspect", "curvature"]
+TERRAIN_ATTRIBUTES_DEFAULT = ["slope", "aspect", "max_curvature"]
 
 TERRAIN_ATTRIBUTES = [
     "slope",
     "aspect",
     "hillshade",
-    "curvature",
-    "planform_curvature",
     "profile_curvature",
-    "maximum_curvature",
+    "tangential_curvature",
+    "planform_curvature",
+    "flowline_curvature",
+    "max_curvature",
+    "min_curvature",
     "terrain_ruggedness_index",
     "topographic_position_index",
     "roughness",
@@ -316,5 +318,5 @@ COMPLETE_CONFIG_TOPO = {
         "totalcount",
         "percentagevalidpoints",
     ],
-    "terrain_attributes": ["slope", "aspect", "curvature"],
+    "terrain_attributes": ["slope", "aspect", "max_curvature"],
 }

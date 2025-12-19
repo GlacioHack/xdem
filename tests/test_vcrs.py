@@ -69,7 +69,7 @@ class TestVCRS:
         """Tests the function _vcrs_from_user_input for varying user inputs, for which it will return a CRS."""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         # Get user input
         vcrs = xdem.dem._vcrs_from_user_input(vcrs_input)
@@ -115,6 +115,10 @@ class TestVCRS:
         ):
             xdem.vcrs._vcrs_from_user_input(CRS("EPSG:4326+5773"))
 
+        # Check that an error is raised for impossible strings (not in key strings and doesn't end with .tif/.json/pol)
+        with pytest.raises(ValueError, match="String vcrs input 'EGM2008' is not recognized.*"):
+            xdem.vcrs._vcrs_from_user_input("EGM2008")
+
     @pytest.mark.parametrize(
         "grid", ["us_noaa_geoid06_ak.tif", "is_lmi_Icegeoid_ISN93.tif", "us_nga_egm08_25.tif", "us_nga_egm96_15.tif"]
     )  # type: ignore
@@ -122,7 +126,7 @@ class TestVCRS:
         """Test that vertical CRS are correctly built from grid"""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         # Build vertical CRS
         vcrs = xdem.vcrs._build_vcrs_from_grid(grid=grid)
@@ -131,6 +135,13 @@ class TestVCRS:
         # Check that the explicit construction yields the same CRS as "the old init way" (see function description)
         vcrs_oldway = xdem.vcrs._build_vcrs_from_grid(grid=grid, old_way=True)
         assert vcrs.equals(vcrs_oldway)
+
+    def test_build_vcrs_from_grid__errors(self) -> None:
+        """Check errors for non-existing grids."""
+
+        with pytest.warns(UserWarning, match="Grid 'not_a_grid.tif' not found in .*"):
+            with pytest.raises(ValueError, match="The provided grid 'not_a_grid.tif' does not exist.*"):
+                xdem.vcrs._build_vcrs_from_grid(grid="not_a_grid.tif")
 
     # Test for WGS84 in 2D and 3D, UTM, CompoundCRS, everything should work
     @pytest.mark.parametrize(
@@ -141,7 +152,7 @@ class TestVCRS:
         """Test the function build_ccrs_from_crs_and_vcrs."""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         # Get the vertical CRS from user input
         vcrs = xdem.vcrs._vcrs_from_user_input(vcrs_input=vcrs_input)
@@ -192,7 +203,7 @@ class TestVCRS:
         """Tests grids to convert vertical CRS."""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         # Using an arbitrary elevation of 100 m (no influence on the transformation)
         zz = 100
