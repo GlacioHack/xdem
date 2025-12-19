@@ -189,9 +189,9 @@ def test_save_stat_as_csv(get_topo_inputs_config, tmp_path):
     "from_vcrs, to_vcrs",
     [
         [None, None],
-        # [None, "EGM96"],
+        [None, "EGM96"],
         ["EGM96", None],
-        # [None, "Ellipsoid"],
+        [None, "Ellipsoid"],
         ["Ellipsoid", None],
         ["EGM96", "EGM96"],
         ["Ellipsoid", "Ellipsoid"],
@@ -208,29 +208,36 @@ def test_load_dem(get_dem_config, from_vcrs, to_vcrs):
     config_dem["to_vcrs"] = to_vcrs
     input_dem = xdem.DEM(config_dem["path_to_elev"])
     mean_before = np.nanmean(input_dem)
-    output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
-    mean_after = np.nanmean(output_dem)
 
-    # Check output_dem vcrs reference
-    if to_vcrs == "EGM96" or (to_vcrs is None and from_vcrs == "EGM96"):
-        assert output_dem.vcrs_name == "EGM96 height"
-    elif to_vcrs == "Ellipsoid" or (to_vcrs is None and from_vcrs == "Ellipsoid"):
-        assert output_dem.vcrs == "Ellipsoid"
+    if from_vcrs is None and from_vcrs != to_vcrs:
+        # if no input VRCS but a to_vcrs is given
+        with pytest.raises(ValueError, match="corresponding DEM does not have a current VCRS"):
+            Workflows.load_dem(config_dem)
+
     else:
-        assert output_dem.vcrs is None
+        output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+        mean_after = np.nanmean(output_dem)
 
-    # Check output_dem
-    if from_vcrs == to_vcrs:
-        assert output_dem.raster_equal(input_dem)
+        # Check output_dem vcrs reference
+        if to_vcrs == "EGM96" or (to_vcrs is None and from_vcrs == "EGM96"):
+            assert output_dem.vcrs_name == "EGM96 height"
+        elif to_vcrs == "Ellipsoid" or (to_vcrs is None and from_vcrs == "Ellipsoid"):
+            assert output_dem.vcrs == "Ellipsoid"
+        else:
+            assert output_dem.vcrs is None
 
-    # About 32 meters of difference in Svalbard between EGM96 geoid and ellipsoid
-    if to_vcrs == "Ellipsoid" and from_vcrs == "EGM96":
-        assert mean_after - mean_before == pytest.approx(32, rel=0.1)
+        # Check output_dem
+        if from_vcrs == to_vcrs:
+            assert output_dem.raster_equal(input_dem)
 
-    if to_vcrs == "EGM96" and from_vcrs == "Ellipsoid":
-        assert mean_after - mean_before == pytest.approx(-32, rel=0.1)
+        # About 32 meters of difference in Svalbard between EGM96 geoid and ellipsoid
+        if to_vcrs == "Ellipsoid" and from_vcrs == "EGM96":
+            assert mean_after - mean_before == pytest.approx(32, rel=0.1)
 
-    # Other outputs
-    assert mask_path == config_dem["path_to_mask"]
-    mask = gu.Vector(mask_path)
-    assert inlier_mask == ~mask.create_mask(input_dem)
+        if to_vcrs == "EGM96" and from_vcrs == "Ellipsoid":
+            assert mean_after - mean_before == pytest.approx(-32, rel=0.1)
+
+        # Other outputs
+        assert mask_path == config_dem["path_to_mask"]
+        mask = gu.Vector(mask_path)
+        assert inlier_mask == ~mask.create_mask(input_dem)

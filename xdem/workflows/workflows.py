@@ -158,6 +158,11 @@ class Workflows(ABC):
             if from_vcrs:
                 dem.set_vcrs(from_vcrs)
             if to_vcrs:
+                if dem.vcrs is None and from_vcrs is None:
+                    raise ValueError(
+                        "You provided a 'to_vcrs' value, but the corresponding DEM does not have a current VCRS "
+                        "(either in the metadata or entered via the 'from_vcrs' value)."
+                    )
                 if from_vcrs != to_vcrs:
                     dem.to_vcrs(to_vcrs, inplace=True)
             if config_dem.get("force_source_nodata") is not None:
