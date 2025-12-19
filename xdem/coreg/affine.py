@@ -1760,8 +1760,92 @@ def _lzd_fit_func(
 
     return res
 
-def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, var_h_other, corr_h_other,
-                          var_h_grid=None, corr_h_grid=None):
+def _convert_lengthscale_gstools_gpytorch(correlation_range: float):
+
+    # Divide by 2 because I used rescale=2 in GSTools (to get effective range)
+    gp_lengthscale = correlation_range / 2 / np.sqrt(2)
+
+    return gp_lengthscale
+
+def _gls_lazy_gpytorch(
+    xcoord: NDArrayf,
+    ycoord: NDArrayf,
+    X: NDArrayf,
+    Y: NDArrayf,
+    sig_Y: NDArrayf,
+    lengthscale=0.2,
+    outputscale=1.0,
+    cg_tol=1e-3,
+    max_preconditioner_size=100,
+    jitter=1e-3):
+    """
+    Perform generalized least squares (GLS) using GPyTorch lazy covariances based on kernels to scale efficiently
+    with a large number of points.
+
+    This workflow has the benefit of never having to invert the full NxN covariance like for traditional GLS,
+    but instead solves for covariance * vector, as usually done in Gaussian Processes.
+    It also has a more stable inversion than Cholesky methods for kernel-type covariances through conjugate gradients.
+    """
+
+    import torch
+    import gpytorch
+    # Dependency of GPyTorch (used to live in GPyTorch directly)
+    from linear_operator.operators import (
+        DiagLinearOperator,
+        MatmulLinearOperator,
+    )
+
+    # Convert with from_numpy() to ensure it shares memory with the NumPy array
+    Xt = torch.from_numpy(X)
+    Yt = torch.from_numpy(Y)
+
+    # 1/ Create lazy covariance from kernel
+    coords = torch.stack([torch.from_numpy(xcoord), torch.from_numpy(ycoord)], dim=1)  # N x 2
+    dtype = coords.dtype
+
+    # Exponential kernel = RBF
+    base = gpytorch.kernels.RBFKernel(ard_num_dims=2)
+    base.lengthscale = torch.tensor(lengthscale, dtype=dtype)
+    base.raw_lengthscale.requires_grad_(False)
+
+    scale = gpytorch.kernels.ScaleKernel(base)
+    scale.outputscale = torch.tensor(outputscale, dtype=dtype)
+    scale.raw_outputscale.requires_grad_(False)
+
+    # This returns a LazyEvaluatedKernelTensor (not a full NxN covariance matrix)
+    K_lazy = scale(coords, coords)
+
+    # Add jitter (for numerical stability)
+    if jitter != 0:
+        K_lazy = gpytorch.add_jitter(K_lazy, jitter)
+
+    # Multiply the covariance by heteroscedastic noise in an outer product
+    sigma_noise = torch.from_numpy(sig_Y)
+    D = DiagLinearOperator(sigma_noise)  # diag(sigma)
+    DK = MatmulLinearOperator(D, K_lazy)
+    K_lazy = MatmulLinearOperator(DK, D)
+
+    # 2/ Use conjugate-gradient settings for solving inversion
+    with gpytorch.settings.cg_tolerance(cg_tol), \
+         gpytorch.settings.max_preconditioner_size(max_preconditioner_size):
+
+        Sinv_y = gpytorch.functions.solve(K_lazy, Yt)    # n×1
+        Sinv_X = gpytorch.functions.solve(K_lazy, Xt)    # n×p
+
+    # We compute the terms required for the GLS
+    XtSinvX = Xt.T @ Sinv_X
+    XtSinvY = Xt.T @ Sinv_y
+    # We ensure full symmetry before final solve
+    XtSinvX = (XtSinvX + XtSinvX.T) * 0.5
+    # Derive coefficients, their covariance, and standard errors
+    beta_hat = torch.linalg.solve(XtSinvX, XtSinvY)
+    cov_beta = torch.linalg.inv(XtSinvX)
+    se_beta = torch.sqrt(torch.diag(cov_beta))
+
+    return beta_hat.numpy(), se_beta.numpy(), cov_beta.numpy()
+
+def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, sig_h_other, corr_h_other,
+                          sig_h_grid=None, corr_h_grid=None, force_opti: Literal["gls", "tls"] | None = None):
     """
     Error-aware LZD using either generalized least-squares (GLS) or total least-squares (TLS), depending on
     the error structure of the inputs.
@@ -1810,12 +1894,12 @@ def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, var_h_other, corr_h_o
     # Dependent variable
     Y = dh
 
-    logging.info(X.dtype)
-    logging.info(Y.dtype)
-
-    # 1/ GENERALIZED LEAST SQUARES: No errors in the independent variable X
+    # 1/ GENERALIZED LEAST SQUARES: Only error in dependent variable Y, no errors in the independent variable X
     # In our case, if only the secondary (not necessarily gridded) elevation has significant errors
-    if var_h_grid is None:
+    if force_opti == "gls" or (force_opti is None and sig_h_grid is None):
+
+        if force_opti == "gls":
+            logging.info("Forcing method optimization method 'gls' for LZD.")
         import statsmodels.api as sm
         from scipy.spatial.distance import pdist, squareform
 
@@ -1825,52 +1909,90 @@ def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, var_h_other, corr_h_o
         X2 = sm.add_constant(X.T)
 
         # Known error covariance matrix accounting for autocorrelation and heteroscedasticity
-        pdists = squareform(pdist(np.stack([x, y]).T))
-
-        logging.info(f"Max distance: {np.max(pdists)}")
-
-        if corr_h_other is not None:
-            logging.info("Using correlation function to estimate square covariance matrix.")
-            logging.info(f"Mean correlation: {np.mean(corr_h_other(pdists))}")
-
-            covar = corr_h_other(pdists) * np.outer(np.sqrt(var_h_other), np.sqrt(var_h_other))
-            covar += 10e-6 * np.mean(var_h_other) * np.eye(len(x))
-        else:
-            logging.info("No correlation, using diagonal variance.")
-            covar = 1 / var_h_other
+        # pdists = squareform(pdist(np.stack([x, y]).T))
+        #
+        # logging.info(f"Max distance: {np.max(pdists)}")
+        #
+        # if corr_h_other is not None:
+        #
+        #     corr_func = corr_h_other[0]
+        #     logging.info("Using correlation function to estimate square covariance matrix.")
+        #     logging.info(f"Mean correlation: {np.mean(corr_func(pdists))}")
+        #
+        #     covar = corr_func(pdists) * np.outer(np.sqrt(var_h_other), np.sqrt(var_h_other))
+        #     covar += 10e-6 * np.mean(var_h_other) * np.eye(len(x))
+        #
+        #     # def clip_eigenvalues(Sigma, min_eig_frac=1e-6):
+        #     #     Sigma = (Sigma + Sigma.T) / 2
+        #     #     eigvals, eigvecs = np.linalg.eigh(Sigma)
+        #     #     floor = max(eigvals.max() * min_eig_frac, 1e-12)
+        #     #     eigvals_clipped = np.clip(eigvals, floor, None)
+        #     #     return eigvecs @ np.diag(eigvals_clipped) @ eigvecs.T
+        #     # covar = clip_eigenvalues(covar)
+        # else:
+        #     logging.info("No correlation, using diagonal variance.")
+        #     covar = 1 / var_h_other
 
         # print(f"Cholesky: {np.linalg.cholesky(covar)}\n")
         # print(f"Cond: {np.linalg.cond(covar)}")
-
         # Z = np.linalg.solve(covar, X)
         # print(np.linalg.cond(X.T @ Z))
 
+        # K is a LazyTensor (from scale(coords)) instead of a dense matrix
+
         # Instantiate and fit the GLS model
-        gls_model = sm.GLS(Y, X2, sigma=covar)
-        gls_results = gls_model.fit()
+        # gls_model = sm.GLS(Y, X2, sigma=covar)
+        # gls_results = gls_model.fit()
 
         # Print the summary of the results
         # logging.info("GLS summary from statsmodels:")
         # gls_results.summary()
 
         # Extract results
-        beta = gls_results.params
-        sd_beta = gls_results.bse
-        cov_beta = gls_results.cov_params()
+        # beta = gls_results.params
+        # sd_beta = gls_results.bse
+        # cov_beta = gls_results.cov_params()
+        #
+        # logging.info(f"Statsmodel GLS beta: {beta}")
+        # logging.info(f"Statsmodel GLS SE: {sd_beta}")
+
+        if corr_h_other is not None:
+            gp_ls = _convert_lengthscale_gstools_gpytorch(corr_h_other[1])
+        else:
+            gp_ls = _convert_lengthscale_gstools_gpytorch(corr_h_grid[1])
+
+        # We pass sigma for Y = dh, which can depend on both inputs
+        sig_h_o = sig_h_other if sig_h_other is not None else 0
+        sig_h_g = sig_h_grid if sig_h_grid is not None else 0
+        sig_dh = np.sqrt(sig_h_o ** 2 + sig_h_g ** 2)
+        # Perform GLS with GPyTorch
+        beta, sd_beta, cov_beta = _gls_lazy_gpytorch(xcoord=x, ycoord=y, X=X2, Y=Y, sig_Y=sig_dh, lengthscale=gp_ls)
+
+        logging.info(f"GPyTorch-based GLS beta: {beta}")
+        logging.info(f"GPyTorch-based GLS SE: {sd_beta}")
+
 
     # 2/ TOTAL LEAST SQUARES: Errors in both dependent variable Y and independent variable X
     # In our case, if the gridded elevation and its gradient have significant errors
     else:
 
+        if force_opti == "tls":
+            logging.info("Forcing method optimization method 'tls' for LZD.")
+
         logging.info("Error passed for gridded elevation, using TLS for LZD error propagation.")
 
+        # Transform sigma in variance to simplify writing below
+        # If sig_h_grid is not defined, we simply apply a fraction of sig_h_other
+        var_h_grid = sig_h_grid ** 2 if sig_h_grid is not None else np.mean(sig_h_other ** 2) / 1000 * np.ones(len(x))
+
         # Get amplitude of gradient errors from elevation errors and their correlations
-        corr_grad_spacing = corr_h_grid(2 * pixel_size) if corr_h_grid is not None else 0
+        corr_func = corr_h_grid[0] if corr_h_grid is not None else None
+        corr_grad_spacing = corr_func(2 * pixel_size) if corr_func is not None else 0
 
         logging.info("Correlation at gradient spacing: {:.2f}".format(corr_grad_spacing))
         var_gx = var_h_grid / 2 * (1 - corr_grad_spacing) / (pixel_size ** 2)
         var_gy = var_h_grid / 2 * (1 - corr_grad_spacing) / (pixel_size ** 2)
-        var_dh = var_h_grid + var_h_other if var_h_other is not None else var_h_grid
+        var_dh = var_h_grid + sig_h_other**2 if sig_h_other is not None else var_h_grid
         var_z = var_h_grid / 10000
         var_x = var_h_grid / 10000
         var_y = var_h_grid / 10000
@@ -1899,6 +2021,12 @@ def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, var_h_other, corr_h_o
             z**2 * var_gx + var_z * gx**2 + var_x,
             y**2 * var_gx + x**2 * var_gy + var_x * gy**2 + var_y * gx**2
         ])
+
+        ratio_X = np.mean(cov_Y) / np.var(Y)
+        logging.info(f"Y error/variance ratio: {ratio_X}")
+        ratio_X = np.mean(var_X, axis=1) / np.var(X, axis=1)
+        logging.info(f"X error/variance ratio: {ratio_X}")
+
         # For zeros
         zeros = np.zeros(len(z))
         # Deactivate black formatting for readibility of the matrix
@@ -1968,6 +2096,7 @@ def _lzd_fit(
     only_translation: bool,
     pixel_size: float,
     errors: tuple[NDArrayf, Callable, NDArrayf, Callable] = None,
+    force_opti: Literal["ols", "gls", "tls"] = None,
     **kwargs: Any,
 ) -> tuple[NDArrayf, NDArrayf]:
     """
@@ -2047,15 +2176,18 @@ def _lzd_fit(
         init_offsets = np.zeros(3)
 
     # Run optimizer on function
-    # TODO: Add parameter to force method (OLS, WLS, GLS, TLS?)
-    if errors is None:
+    if force_opti == "ols" or (force_opti is None and errors is None):
+
+        if force_opti == "ols":
+            logging.info("Forcing method optimization method 'ols' for LZD.")
         results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, loss=loss_func, **kwargs)
         beta = results.x
         err_beta = None
     else:
         beta, err_beta, _ = _lzd_fit_error_propag(x=x, y=y, z=z, dh=dh, gx=gradx, gy=grady, pixel_size=pixel_size,
-                                                var_h_other=errors[0], corr_h_other=errors[1],
-                                                var_h_grid=errors[2], corr_h_grid=errors[3])
+                                                  sig_h_other=errors[0], corr_h_other=errors[1],
+                                                  sig_h_grid=errors[2], corr_h_grid=errors[3],
+                                                  force_opti=force_opti)
 
     # Mypy: having beta as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert beta is not None
@@ -2077,6 +2209,7 @@ def _lzd_iteration_step(
     only_translation: bool,
     sub_errors: tuple[Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf], Callable, Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf], Callable],
     pixel_size: float,
+    force_opti: Literal["ols", "gls", "tls"] = None,
 ) -> tuple[NDArrayf, dict[str, float], NDArrayf | None]:
     """
     Iteration step of Least Z-difference coregistration from Rosenholm and Torlegård (1988).
@@ -2096,7 +2229,7 @@ def _lzd_iteration_step(
     :param params_fit_or_bin: Dictionary of fitting and binning parameters.
     :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
         rotation as default.
-    :param sub_errors: (TO REFINE LATER) Input errors.
+    :param sub_errors: Input errors.
     :param pixel_size: Pixel size in meters.
 
     :return Affine matrix, Iteration statistics to compare to tolerances, Error outputs.
@@ -2166,6 +2299,7 @@ def _lzd_iteration_step(
         only_translation=only_translation,
         errors=errors,
         pixel_size=pixel_size,
+        force_opti=force_opti,
     )
 
     # Increment transformation matrix by step
@@ -2202,6 +2336,7 @@ def lzd(
     sig_tba: NDArrayf | gpd.GeoDataFrame = None,
     corr_ref: Callable[[NDArrayf, NDArrayf], NDArrayf] = None,
     corr_tba: Callable[[NDArrayf, NDArrayf], NDArrayf] = None,
+    force_opti: Literal["ols", "gls", "tls"] | None = None,
 ) -> tuple[NDArrayf, tuple[float, float, float], int, OutIterativeDict, NDArrayf | None]:
     """
     Least Z-differences coregistration.
@@ -2300,6 +2435,7 @@ def lzd(
         only_translation,
         sub_errors,
         pixel_size,
+        force_opti
     )
     final_matrix, _, output_iterative, err_beta = _iterate_method(
         method=_lzd_iteration_step,
@@ -3233,7 +3369,8 @@ class LZD(AffineCoreg):
             sig_tba=kwargs.get("sig_tba"),
             sig_ref=kwargs.get("sig_ref"),
             corr_ref=kwargs.get("corr_ref"),
-            corr_tba=kwargs.get("corr_tba")
+            corr_tba=kwargs.get("corr_tba"),
+            force_opti=kwargs.get("force_opti"),
         )
 
         # Write output to class
