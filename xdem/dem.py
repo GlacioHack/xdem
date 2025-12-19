@@ -189,7 +189,7 @@ class DEM(Raster):  # type: ignore
 
         # Change crs values if not 3D
         if len(CRS(self.crs).axis_info) > 2:
-            new_crs = self.crs
+            new_crs = [CRS(self.crs).name]
         else:
             new_crs = [self.crs.to_string() if self.crs is not None else None, str(self.vcrs)]
 

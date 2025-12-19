@@ -369,10 +369,9 @@ class TestDEM:
 
         assert dem_class_attr.raster_equal(terrain_module_attr)
 
-    def test_info(self) -> None:
-        """Tests info function with the new Coordinate system line"""
+    def test_info_2Dcrs(self) -> None:
+        """Tests info function with the new Coordinate system line on dem with 2D CRS"""
 
-        # Test dem with 2D CRS
         dem_path = xdem.examples.get_path("longyearbyen_ref_dem")
         raster = gu.Raster(dem_path)
         dem = xdem.dem.DEM(dem_path)
@@ -407,15 +406,20 @@ class TestDEM:
         assert complete_line.startswith(crs_key)
         assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'EPSG:5773']"
 
-        """
-        # Test dem with 3D CRS
-        dem_path = xdem.examples.get_path("pyramids_cars_ref_dem")
+    @pytest.mark.skip()  # type: ignore
+    def test_info_3Dcrs(self) -> None:
+        """Tests info function with the new Coordinate system line on dem with 3D CRS"""
+
+        dem_path = xdem.examples.get_path("gizeh")
         dem = xdem.dem.DEM(dem_path)
         dem_infos_array = dem.info(verbose=False).split("\n")
+
+        crs_key = "Coordinate system:"
+        crs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith(crs_key)]
+
         complete_line = dem_infos_array[crs_line[0]]
         assert complete_line.startswith(crs_key)
-        assert complete_line[len(crs_key) :].strip() == dem.crs
-        """
+        assert complete_line[len(crs_key) :].strip() == "['WGS 84 / UTM zone 36N + EGM96 height']"
 
     @staticmethod
     @pytest.mark.parametrize(  # type: ignore
