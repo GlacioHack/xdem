@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Terrain submodule on windowed index attributes: independent calculations in a varying window size."""
+"""Terrain submodule on windowed attributes: independent calculations in a varying window size."""
 from __future__ import annotations
 
 import warnings
@@ -28,9 +28,9 @@ from scipy.ndimage import generic_filter
 
 from xdem._typing import DTypeLike, NDArrayf
 
-#################################################################################
-# WINDOWED INDEXES: INDEPENDENT OF EACH OTHER WITH VARYING WINDOW SIZE (=FILTERS)
-#################################################################################
+#########################################################################
+# WINDOWED ATTRIBUTES: INDEPENDENT OF EACH OTHER WITH VARYING WINDOW SIZE
+#########################################################################
 
 
 def _tri_riley_func(arr: NDArrayf) -> float:

@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Terrain submodule on frequency-based indexes that related to the full array, such as texture shading."""
+"""Terrain submodule on frequency attributes computed on the full array, such as texture shading."""
 from __future__ import annotations
 
 import numpy as np
@@ -24,9 +24,9 @@ import scipy.fft as fft
 
 from xdem._typing import NDArrayf
 
-#####################################################
-# FREQUENCY-BASED INDEXES: RELATIVE TO THE FULL ARRAY
-#####################################################
+############################
+# FREQUENCY-BASED ATTRIBUTES
+############################
 
 
 def _nextprod_fft(n: int) -> int:

@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Terrain submodule on surface fit attributes: deriving and combining fit coefficients in a fixed window size."""
+"""Terrain submodule on surface fit attributes: deriving and combining co-dependent fit coefficients."""
 from __future__ import annotations
 
 import warnings
