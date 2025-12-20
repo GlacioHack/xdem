@@ -19,11 +19,11 @@ kernelspec:
 xDEM can derive a wide range of **terrain attributes** from a DEM.
 
 Attributes are derived in pure Python for modularity (e.g., varying window size) and other uses (e.g., uncertainty),
-and tested for consistency against [gdaldem](https://gdal.org/programs/gdaldem.html) and [RichDEM](https://richdem.readthedocs.io/).
+and tested for consistency against [gdaldem](https://gdal.org/programs/gdaldem.html) where relevant.
 
 ## Quick use
 
-Terrain attribute methods can be derived either directly from a {class}`~xdem.DEM` using for instance {func}`~xdem.DEM.slope`, or from the {func}`xdem.terrain` module using an array input.
+Terrain attribute methods can be derived either directly from a {class}`~xdem.DEM` using {func}`~xdem.DEM.slope`, or from an array using the module function {func}`xdem.terrain.slope`.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -56,16 +56,17 @@ slope = xdem.terrain.slope(dem.data, resolution=dem.res)
 
 ```{tip}
 All attributes can be derived using either SciPy or Numba as computing engine. Both engines perform similarly for attributes
-based on a surface fit (e.g., slope, aspect, curvatures), while Numba is much faster for windowed indexes (e.g., TPI, roughness).
+based on a surface fit attributes (e.g., slope, aspect, curvatures), while Numba is much faster for windowed attributes (e.g., TPI, roughness).
 
 Note that Numba requires a [just-in-time compilation](https://numba.readthedocs.io/en/stable/reference/jit-compilation.html)
 at the first execution of an attribute (usually lasting about 5 seconds). This
-compilation is cached and can later be re-used in the same Python environment.
+compilation is [cached](https://numba.readthedocs.io/en/stable/developer/caching.html) and can later be re-used.
 ```
 
 ## Summary of supported methods
 
-xDEM currently supports several types of terrain attributes: **surface fit attributes** that rely on estimating local derivatives (e.g. slope, aspect, curvatures), **windowed attributes** that rely on estimating local indexes often applicable to any window size (e.g., TPI, roughness), and **frequency attributes** that rely on estimating frequency in the elevation data (e.g. texture shading).
+xDEM currently supports three types of terrain attributes: **surface fit attributes** that rely on estimating local derivatives (e.g. slope, aspect, curvatures), **windowed attributes** that rely on estimating local indexes often applicable to any window size (e.g., TPI, roughness), and **frequency attributes** that rely on estimating relative frequency over the whole DEM (e.g. texture shading).
+
 Note that curvatures follow the recommended system of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). Where no direct DOI can be linked, consult this paper for the full citation.
 
 ```{list-table}
