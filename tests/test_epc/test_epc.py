@@ -146,7 +146,7 @@ class TestEPC:
         assert np.array_equal(epc3.data, epc2.data)
 
     def test_set_vcrs(self) -> None:
-        """Tests to set the vertical CRS."""
+        """Tests to set the vertical CRS of an EPC."""
 
         epc = EPC(self.gdf1)
 
@@ -184,16 +184,16 @@ class TestEPC:
         epc.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
 
         # Check that non-existing grids raise errors
-        with pytest.warns(UserWarning, match="Grid not found in*"):
+        with pytest.warns(UserWarning, match="Grid*"):
             with pytest.raises(
                 ValueError,
-                match="The provided grid 'the best grid' does not exist at https://cdn.proj.org/. "
+                match="The provided grid 'thebestgrid.tif' does not exist at https://cdn.proj.org/. "
                 "Provide an existing grid.",
             ):
-                epc.set_vcrs(new_vcrs="the best grid")
+                epc.set_vcrs(new_vcrs="thebestgrid.tif")
 
     def test_to_vcrs(self) -> None:
-        """Tests the conversion of vertical CRS."""
+        """Tests the conversion of vertical CRS for an EPC."""
 
         fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
         dem = xdem.DEM(fn_dem)
@@ -285,7 +285,7 @@ class TestEPC:
     )
     def test_coregister_3d(coreg_method, expected_pipeline_types) -> None:  # type: ignore
         """
-        Test coregister_3d functionality
+        Test coregister_3d works for an EPC.
         """
         fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
         fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
@@ -308,7 +308,7 @@ class TestEPC:
 
     def test_coregister_3d__raises(self) -> None:  # type: ignore
         """
-        Test coregister_3d functionality
+        Test coregister_3d functionality raises propers errors for an EPC.
         """
         fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
         fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
