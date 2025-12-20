@@ -65,7 +65,7 @@ compilation is cached and can later be re-used in the same Python environment.
 
 ## Summary of supported methods
 
-xDEM currently supports two types of terrain attributes: **surface fit attributes** that rely on estimating local derivatives (e.g. slope, aspect, curvatures) and **windowed index attributes** that rely on estimating local indexes that are often independent of window size (e.g., TPI, roughness).
+xDEM currently supports several types of terrain attributes: **surface fit attributes** that rely on estimating local derivatives (e.g. slope, aspect, curvatures), **windowed attributes** that rely on estimating local indexes often applicable to any window size (e.g., TPI, roughness), and **frequency attributes** that rely on estimating frequency in the elevation data (e.g. texture shading).
 Note that curvatures follow the recommended system of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). Where no direct DOI can be linked, consult this paper for the full citation.
 
 ```{list-table}
@@ -127,7 +127,7 @@ Note that curvatures follow the recommended system of [Minár et al. (2020)](htt
 Only grids with **equal pixel size in X and Y** are currently supported. Transform into such a grid with {func}`~xdem.DEM.reproject`.
 ```
 
-## Surface fits
+## Surface fit attributes
 
 (primer)=
 ### Primer on partial derivatives of elevation
@@ -206,6 +206,31 @@ input, {attr}`xdem.DEM.crs`, which might not represent the true north.
 ```{code-cell} ipython3
 aspect = dem.aspect()
 aspect.plot(cmap="twilight", cbar_title="Aspect (°)")
+```
+
+(hillshade)=
+### Hillshade
+
+{func}`xdem.DEM.hillshade`
+
+The hillshade is a slope map, shaded by the aspect of the slope.
+With a westerly azimuth (a simulated sun coming from the west), all eastern slopes are slightly darker.
+This mode of shading the slopes often generates a map that is much more easily interpreted than the slope.
+
+The hillshade $hs$ is directly based on the slope $\alpha$ and aspect $\theta$, and thus also varies between the methods of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default). It is often scaled between 1 and 255:
+
+$$
+hs = 1 + 254 \left[ \sin(alt) \cos(\alpha) + \cos(alt) \sin(\alpha) \sin(2\pi - azim - \theta) \right],
+$$
+
+where $alt$ is the shading altitude (90° = from above) and $azim$ is the shading azimuth (0° = north).
+
+Note, however, that the hillshade is not a shadow map; no occlusion is taken into account so it does not represent "true" shading.
+It therefore has little analytic purpose, but it still constitutes a great visualization tool.
+
+```{code-cell} ipython3
+hillshade = dem.hillshade()
+hillshade.plot(cmap="Greys_r", cbar_title="Hillshade")
 ```
 
 (curvs)=
@@ -391,12 +416,12 @@ min_curvature = dem.min_curvature()
 min_curvature.plot(cmap="RdGy_r", cbar_title="Minimal curvature (100 / m)", vmin=-1, vmax=1, interpolation="antialiased")
 ```
 
-## Windowed indexes
+## Windowed attributes
 
-xDEM supports a wide range of **windowed index attributes**, for which the calculations are based solely on the distribution of pixels within a window.
+xDEM supports a wide range of **windowed attributes**, for which the calculations are based solely on the distribution of pixels within a window.
 
 In the following, we describe these attributes using the annotation $z_{ij}$ for pixels, centered on $z_{00}$, with a pixel resolution west-east of $\Delta x$ and south-north of $\Delta y$.
-For example, for a 3x3 window:
+For example, for a 3x3 window could be annotated:
 
 ```{list-table}
    :widths: 1 1 1 1
@@ -421,7 +446,7 @@ For example, for a 3x3 window:
      - $z_{+-}$
 ```
 
-The default window size in 3x3 pixels for all attributes, except for fractal roughness for which it is too small, that instead defaults to 11x11 pixels.
+The default window size in 3x3 pixels for all attributes, except for fractal roughness that defaults to 11x11 pixels.
 
 (tpi)=
 ### Topographic position index
@@ -523,32 +548,7 @@ fractal_roughness = dem.fractal_roughness()
 fractal_roughness.plot(cmap="Reds", cbar_title="Fractal roughness (dimensions)")
 ```
 
-## Visualization
-
-(hillshade)=
-### Hillshade
-
-{func}`xdem.DEM.hillshade`
-
-The hillshade is a slope map, shaded by the aspect of the slope.
-With a westerly azimuth (a simulated sun coming from the west), all eastern slopes are slightly darker.
-This mode of shading the slopes often generates a map that is much more easily interpreted than the slope.
-
-The hillshade $hs$ is directly based on the slope $\alpha$ and aspect $\theta$, and thus also varies between the methods of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918), [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107), and [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default). It is often scaled between 1 and 255:
-
-$$
-hs = 1 + 254 \left[ \sin(alt) \cos(\alpha) + \cos(alt) \sin(\alpha) \sin(2\pi - azim - \theta) \right],
-$$
-
-where $alt$ is the shading altitude (90° = from above) and $azim$ is the shading azimuth (0° = north).
-
-Note, however, that the hillshade is not a shadow map; no occlusion is taken into account so it does not represent "true" shading.
-It therefore has little analytic purpose, but it still constitutes a great visualization tool.
-
-```{code-cell} ipython3
-hillshade = dem.hillshade()
-hillshade.plot(cmap="Greys_r", cbar_title="Hillshade")
-```
+## Frequency attributes
 
 (texture-shading)=
 ### Texture shading
@@ -557,11 +557,11 @@ hillshade.plot(cmap="Greys_r", cbar_title="Hillshade")
 
 The texture shading technique produces an isotropic relief visualization that emphasizes the drainage network structure of terrain, including ridges and canyons. Unlike traditional hillshading, texture shading exhibits scale invariance and orientation independence, making it particularly effective for revealing the hierarchical structure of mountainous topography without directional bias.
 
-Texture shading is computed by applying a fractional Laplacian operator to the elevation data, which acts as a scale-independent high-pass filter. The technique produces relative elevation values where positive values correspond to ridges and peaks (higher than surrounding terrain) and negative values correspond to valleys and canyons (lower than surrounding terrain). The method includes a detail parameter α (typically 0.5-1.0) that controls the emphasis given to fine terrain features versus major landscape structure.
+Texture shading is computed by applying a fractional Laplacian operator to the elevation data, which acts as a scale-independent high-pass filter. The technique produces relative elevation values where positive values correspond to ridges and peaks (higher than surrounding terrain) and negative values correspond to valleys and canyons (lower than surrounding terrain). The method includes a detail parameter α (typically 0.5–1.0) that controls the emphasis given to fine terrain features versus major landscape structure.
 
-The fractional Laplacian operator L^α is based on [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf) and computed in the frequency domain as:
+The fractional Laplacian operator $L^{\alpha}$ is based on [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf) and computed in the frequency domain as:
 
-$L^{\alpha}(f_x, f_y) = (2\pi)^{\alpha} (f_x^2 + f_y^2)^(\alpha/2)$
+$L^{\alpha}(f_x, f_y) = (2\pi)^{\alpha} \left( f_x^2 + f_y^2 \right)^\frac{\alpha}{2}$
 
 where $f_x$ and $f_y$ are spatial frequencies, and $\alpha$ is the fractional order parameter.
 
@@ -600,8 +600,8 @@ os.remove("hillshade.tif")
 ## Generating multiple attributes at once
 
 Often, one may seek more terrain attributes than one, e.g. both the slope and the aspect.
-Since both are dependent on the gradient of the DEM, calculating them separately is computationally repetitive.
-Multiple terrain attributes can be calculated from the same gradient using the {func}`xdem.DEM.get_terrain_attribute` function.
+Since both are dependent on the derivatives of the DEM, calculating them separately is computationally repetitive.
+Multiple terrain attributes can be calculated from the same derivatives using the {func}`xdem.DEM.get_terrain_attribute` function.
 
 ```{eval-rst}
 .. minigallery:: xdem.terrain.get_terrain_attribute
