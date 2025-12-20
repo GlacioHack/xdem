@@ -486,6 +486,7 @@ class TestTerrainAttribute:
         # We check the two masks are indeed the same
         assert np.array_equal(eroded_mask_dem, mask_nan_attr)
 
+
 class TestConvolution:
 
     # Get all coefficients
