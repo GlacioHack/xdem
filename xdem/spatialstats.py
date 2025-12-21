@@ -543,17 +543,20 @@ def two_step_standardization(
     :return: Standardized values array of size (N,), Function to destandardize
     """
 
-    # Ensure array is NaN
-    if np.ma.isMaskedArray(dvalues):
-        dvalues = dvalues.filled(np.nan)
-
     # Standardize a first time with the function
     zscores = dvalues / unscaled_error_fun(tuple(list_var))
+
+    print(spread_statistic(zscores))
 
     # Set large outliers that might have been created by the standardization to NaN, central tendency should already be
     # around zero so only need to take the absolute value
     if fac_spread_outliers is not None:
-        zscores[np.abs(zscores) > fac_spread_outliers * spread_statistic(zscores)] = np.nan
+        if np.ma.isMaskedArray(zscores):
+            zscores[np.abs(zscores) > fac_spread_outliers * spread_statistic(zscores)] = np.ma.masked
+        else:
+            zscores[np.abs(zscores) > fac_spread_outliers * spread_statistic(zscores)] = np.nan
+
+    print(spread_statistic(zscores))
 
     # Re-compute the spread statistic to re-standardize, as dividing by the function will not necessarily bring the
     # z-score exactly equal to one due to approximations of N-D binning, interpolating and due to the outlier filtering
