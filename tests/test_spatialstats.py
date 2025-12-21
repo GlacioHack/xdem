@@ -388,7 +388,7 @@ class TestBinning:
 
         # Filter with a factor of 3 and the standard deviation (not default values) and check the function outputs
         # the exact same array
-        zscores[np.abs(zscores) > 3 * np.nanstd(zscores)] = np.nan
+        zscores[np.abs(zscores) > 3 * np.nanstd(zscores)] = np.ma.masked
         scale_fac_std = np.nanstd(zscores)
         zscores /= scale_fac_std
         zscores_2, final_func = xdem.spatialstats.two_step_standardization(
