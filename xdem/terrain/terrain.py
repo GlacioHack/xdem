@@ -280,6 +280,43 @@ def get_terrain_attribute(
             )
 
     if mp_config is not None:
+
+        list_requiring_surface_fit = [
+            "slope",
+            "aspect",
+            "hillshade",
+            "curvature",
+            "profile_curvature",
+            "tangential_curvature",
+            "planform_curvature",
+            "flowline_curvature",
+            "max_curvature",
+            "min_curvature",
+        ]
+        list_requiring_windowed_index = [
+            "terrain_ruggedness_index",
+            "topographic_position_index",
+            "roughness",
+            "rugosity",
+            "fractal_roughness",
+        ]
+        # Derive depth argument from method or window size,
+        # This is the overlap between tiles (1 for 3x3, 2 for 5x5, etc).
+        if any((attr in list_requiring_windowed_index) for attr in attribute):
+            window_depth = window_size // 2
+        else:
+            window_depth = 0
+        if any((attr in list_requiring_surface_fit) for attr in attribute):
+            if surface_fit.lower() == "florinsky":
+                surface_fit_depth = 2
+            else:
+                surface_fit_depth = 1
+        else:
+            surface_fit_depth = 0
+
+        # We take the maximum required depth
+        depth = max(window_depth, surface_fit_depth)
+
         if not isinstance(dem, Raster):
             raise TypeError("The DEM must be a Raster")
         if isinstance(attribute, str):
@@ -308,7 +345,7 @@ def get_terrain_attribute(
                     engine,
                     texture_alpha,
                     out_dtype,
-                    depth=1,
+                    depth=depth,
                 )
             )
         if len(list_raster) == 1:
