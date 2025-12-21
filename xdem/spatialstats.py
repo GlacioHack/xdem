@@ -543,6 +543,10 @@ def two_step_standardization(
     :return: Standardized values array of size (N,), Function to destandardize
     """
 
+    # Ensure array is NaN
+    if np.ma.isMaskedArray(dvalues):
+        dvalues = dvalues.filled(np.nan)
+
     # Standardize a first time with the function
     zscores = dvalues / unscaled_error_fun(tuple(list_var))
 
