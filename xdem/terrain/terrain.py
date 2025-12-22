@@ -327,10 +327,13 @@ def get_terrain_attribute(
 
     # Warn if default window size for fractal roughness
     if "fractal_roughness" in attribute and window_size == 3:
-        warnings.warn(category=UserWarning, stacklevel=2,
-                      message="Fractal roughness results with window size of less than 13 can be inaccurate."
-                              "Consider deriving it separately from other attributes that use a default window size of "
-                              "3.")
+        warnings.warn(
+            category=UserWarning,
+            stacklevel=2,
+            message="Fractal roughness results with window size of less than 13 can be inaccurate."
+            "Consider deriving it separately from other attributes that use a default window size of "
+            "3.",
+        )
 
     attributes_requiring_resolution = attributes_requiring_surface_fit + (
         ["rugosity"] if "rugosity" in attribute else []
@@ -461,7 +464,7 @@ def get_terrain_attribute(
 def _get_terrain_attribute(
     dem: NDArrayf,
     attribute: list[str],
-    resolution: tuple[float, float] | float | None = None,
+    resolution: float,
     degrees: bool = True,
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
@@ -480,7 +483,7 @@ def _get_terrain_attribute(
 def _get_terrain_attribute(
     dem: RasterType,
     attribute: list[str],
-    resolution: tuple[float, float] | float | None = None,
+    resolution: float,
     degrees: bool = True,
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,
@@ -494,10 +497,11 @@ def _get_terrain_attribute(
     out_dtype: DTypeLike | None = None,
 ) -> list[RasterType]: ...
 
+
 def _get_terrain_attribute(
     dem: NDArrayf | RasterType,
     attribute: list[str],
-    resolution: tuple[float, float] | float | None = None,
+    resolution: float,
     degrees: bool = True,
     hillshade_altitude: float = 45.0,
     hillshade_azimuth: float = 315.0,

@@ -233,7 +233,7 @@ class TestTerrainAttribute:
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
-    @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])
+    @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])  # type: ignore
     @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)  # type: ignore
     def test_attributes__multiproc(self, attribute, surfit_windowsize) -> None:
         """
@@ -319,7 +319,6 @@ class TestTerrainAttribute:
         hillshade_classic = self.dem.hillshade()
         assert np.allclose(slope.data, slope_classic.data, rtol=1e-7)
         assert np.allclose(hillshade.data, hillshade_classic.data, rtol=1e-7)
-
 
     def test_get_terrain_attribute__errors(self) -> None:
         """Test the get_terrain_attribute function raises appropriate errors."""
