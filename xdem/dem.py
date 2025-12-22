@@ -27,6 +27,7 @@ import geopandas as gpd
 import numpy as np
 import rasterio as rio
 from affine import Affine
+from geoutils import profiler
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad
@@ -83,6 +84,7 @@ class DEM(Raster):  # type: ignore
     See the API for more details.
     """
 
+    @profiler.profile("xdem.dem.__init__", memprof=True)  # type: ignore
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
@@ -574,6 +576,7 @@ class DEM(Raster):  # type: ignore
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
+    @profiler.profile("xdem.dem.coregister_3d", memprof=True)  # type: ignore
     def coregister_3d(  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,
