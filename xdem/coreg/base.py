@@ -73,7 +73,6 @@ try:
 except ImportError:
     _HAS_P3D = False
 
-
 # Map each workflow name to a function and optimizer
 fit_workflows = {
     "norder_polynomial": {"func": polynomial_1d, "optimizer": robust_norder_polynomial_fit},
@@ -121,6 +120,8 @@ dict_key_to_str = {
     "icp_picky": "Picky closest pair selection",
     "cpd_weight": "Weight of CPD outlier removal",
 }
+
+
 #####################################
 # Generic functions for preprocessing
 ###########################################
@@ -142,6 +143,19 @@ def _preprocess_coreg_fit_raster_raster(
             "Both DEMs need to be array-like (implement a numpy array interface)."
             f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
         )
+
+    if inlier_mask is not None:
+        # If inlier_mask has not the same shape of the input dem, reproject it
+        if reference_dem.shape != inlier_mask.shape:
+            if isinstance(inlier_mask, gu.Raster):
+                if isinstance(reference_dem, gu.Raster):
+                    inlier_mask = inlier_mask.reproject(reference_dem, resampling=rio.warp.Resampling.nearest)
+                else:
+                    ref = Raster.from_array(data=reference_dem, transform=transform, crs=crs)
+                    inlier_mask = inlier_mask.reproject(ref, resampling=rio.warp.Resampling.nearest)
+            # in case of mask is a array
+            else:
+                raise ValueError("Input mask array can't be a different size array as input elevation.")
 
     # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
     if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
@@ -240,6 +254,20 @@ def _preprocess_coreg_fit_raster_point(
     area_or_point: Literal["Area", "Point"] | None = None,
 ) -> tuple[NDArrayf, gpd.GeoDataFrame, NDArrayb, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit for raster-point input."""
+
+    if inlier_mask is not None:
+        # If inlier_mask has not the same shape of the input dem, reproject it
+        if raster_elev.shape != inlier_mask.shape:
+            if isinstance(inlier_mask, gu.Raster):
+                if isinstance(raster_elev, gu.Raster):
+                    inlier_mask = inlier_mask.reproject(raster_elev, resampling=rio.warp.Resampling.nearest)
+                else:
+                    raster_rst = Raster.from_array(data=raster_elev, transform=transform, crs=crs)
+                    inlier_mask = inlier_mask.reproject(raster_rst, resampling=rio.warp.Resampling.nearest)
+
+            # If inlier_mask is an array, it is not possible to reproject it
+            else:
+                raise ValueError("Input mask array can't be a different size array as input elevation.")
 
     # TODO: Convert to point cloud once class is done
     # TODO: Raise warnings consistently with raster-raster function, see Amelie's Dask PR? #525
@@ -1704,7 +1732,6 @@ class OutAffineDict(TypedDict, total=False):
 
 
 class InputCoregDict(TypedDict, total=False):
-
     random: InRandomDict
     fitorbin: InFitOrBinDict
     iterative: InIterativeDict
@@ -2695,7 +2722,6 @@ class CoregPipeline(Coreg):
         # Get the pipeline information for each step as a string
         final_str = []
         for i, step in enumerate(self.pipeline):
-
             final_str.append(f"Pipeline step {i}:\n" f"################\n")
             step_str = step.info(as_str=True)
             final_str.append(step_str)

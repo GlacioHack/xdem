@@ -81,10 +81,12 @@ class Topo(Workflows):
             "slope": lambda: self.dem.slope(**attribute_extra),
             "aspect": lambda: self.dem.aspect(**attribute_extra),
             "hillshade": lambda: self.dem.hillshade(**attribute_extra),
-            "curvature": lambda: self.dem.curvature(**attribute_extra),
-            "planform_curvature": lambda: self.dem.planform_curvature(**attribute_extra),
             "profile_curvature": lambda: self.dem.profile_curvature(**attribute_extra),
-            "maximum_curvature": lambda: self.dem.maximum_curvature(**attribute_extra),
+            "tangential_curvature": lambda: self.dem.tangential_curvature(**attribute_extra),
+            "planform_curvature": lambda: self.dem.planform_curvature(**attribute_extra),
+            "flowline_curvature": lambda: self.dem.flowline_curvature(**attribute_extra),
+            "max_curvature": lambda: self.dem.max_curvature(**attribute_extra),
+            "min_curvature": lambda: self.dem.min_curvature(**attribute_extra),
             "topographic_position_index": lambda: self.dem.topographic_position_index(**attribute_extra),
             "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(**attribute_extra),
             "roughness": lambda: self.dem.roughness(**attribute_extra),
@@ -125,9 +127,12 @@ class Topo(Workflows):
             "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (None, None)},
             "slope": {"label": "Slope (°)", "cmap": "Reds", "vlim": (None, None)},
             "aspect": {"label": "Aspect (°)", "cmap": "twilight", "vlim": (None, None)},
-            "curvature": {"label": "Curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "planform_curvature": {"label": "Planform curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
             "profile_curvature": {"label": "Profile curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "tangential_curvature": {"label": "Tangential curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "planform_curvature": {"label": "Planform curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "flowline_curvature": {"label": "Flowline curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "max_curvature": {"label": "Max. curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "min_curvature": {"label": "Min. curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
             "terrain_ruggedness_index": {"label": "Terrain Ruggedness Index", "cmap": "Purples", "vlim": (None, None)},
             "rugosity": {"label": "Rugosity", "cmap": "YlOrRd", "vlim": (None, None)},
             "topographic_position_index": {
@@ -178,15 +183,18 @@ class Topo(Workflows):
             "Transform": self.dem.transform,
             "Bounds": self.dem.bounds,
         }
+        self.dico_to_show.append(("Elevation information", dem_informations))
 
         # Statistics
         list_metrics = self.config["statistics"]
         if list_metrics is not None:
             stats_dem = self.dem.get_stats(list_metrics)
             self.save_stat_as_csv(stats_dem, "stats_elev")
+            self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
             stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
             if self.inlier_mask is not None:
                 self.save_stat_as_csv(stats_dem_mask, "stats_elev_mask")
+                self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
             logging.info(f"Computing metrics on reference elevation: {list_metrics}")
 
         # Terrain attributes
@@ -196,13 +204,6 @@ class Topo(Workflows):
                 self.generate_terrain_attributes_tiff()
         else:
             logging.info("Computing terrain attributes: None")
-
-        # Generate HTML
-        self.dico_to_show.append(("Elevation information", dem_informations))
-        if list_metrics is not None:
-            self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
-        if self.inlier_mask is not None:
-            self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
 
         self.create_html(self.dico_to_show)
 
@@ -228,7 +229,7 @@ class Topo(Workflows):
 
         if self.inlier_mask is not None:
             html += "<h2>Masked elevation Model</h2>\n"
-            html += "<img src='plots/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+            html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         for title, dictionary in list_dict:
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"  # type: ignore

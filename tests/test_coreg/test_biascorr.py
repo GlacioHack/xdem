@@ -560,17 +560,17 @@ class TestBiasCorr:
         assert tb.meta["inputs"]["fitorbin"]["fit_or_bin"] == "bin"
         assert tb.meta["inputs"]["fitorbin"]["bin_sizes"] == 100
         assert tb.meta["inputs"]["fitorbin"]["bin_statistic"] == np.nanmedian
-        assert tb.meta["inputs"]["specific"]["terrain_attribute"] == "maximum_curvature"
+        assert tb.meta["inputs"]["specific"]["terrain_attribute"] == "max_curvature"
         assert tb._needs_vars is False
 
-        assert tb.meta["inputs"]["fitorbin"]["bias_var_names"] == ["maximum_curvature"]
+        assert tb.meta["inputs"]["fitorbin"]["bias_var_names"] == ["max_curvature"]
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     def test_terrainbias__synthetic(self, fit_args) -> None:
         """Test the subclass TerrainBias."""
 
         # Get maximum curvature
-        maxc = xdem.terrain.get_terrain_attribute(self.ref, attribute="maximum_curvature")
+        maxc = xdem.terrain.get_terrain_attribute(self.ref, attribute="max_curvature")
 
         # Create a bias depending on bins
         synthetic_bias = np.zeros(np.shape(self.ref.data))
@@ -586,8 +586,8 @@ class TestBiasCorr:
 
         # Run the binning
         tb = biascorr.TerrainBias(
-            terrain_attribute="maximum_curvature",
-            bin_sizes={"maximum_curvature": bin_edges},
+            terrain_attribute="max_curvature",
+            bin_sizes={"max_curvature": bin_edges},
             bin_apply_method="per_bin",
         )
         elev_fit_args = fit_args.copy()
@@ -600,18 +600,18 @@ class TestBiasCorr:
             to_be_aligned_elev=bias_elev,
             subsample=10000,
             random_state=42,
-            bias_vars={"maximum_curvature": maxc},
+            bias_vars={"max_curvature": maxc},
         )
 
         # Check high-order parameters are the same within 10%
         bin_df = tb.meta["outputs"]["fitorbin"]["bin_dataframe"]
-        assert [interval.left for interval in bin_df["maximum_curvature"].values] == pytest.approx(list(bin_edges[:-1]))
-        assert [interval.right for interval in bin_df["maximum_curvature"].values] == pytest.approx(list(bin_edges[1:]))
+        assert [interval.left for interval in bin_df["max_curvature"].values] == pytest.approx(list(bin_edges[:-1]))
+        assert [interval.right for interval in bin_df["max_curvature"].values] == pytest.approx(list(bin_edges[1:]))
         # assert np.allclose(bin_df["nanmedian"], bias_per_bin, rtol=0.1)
 
         # Run apply and check that 99% of the variance was corrected
         # (we override the bias_var "max_curv" with that of the ref_dem to have a 1 on 1 match with the synthetic bias,
         # otherwise it is derived from the bias_dem which gives slightly different results than with ref_dem)
-        corrected_dem = tb.apply(bias_dem, bias_vars={"maximum_curvature": maxc})
+        corrected_dem = tb.apply(bias_dem, bias_vars={"max_curvature": maxc})
         # Need to standardize by the synthetic bias spread to avoid huge/small values close to infinity
         assert np.nanvar((corrected_dem - self.ref) / np.nanstd(synthetic_bias)) < 0.01

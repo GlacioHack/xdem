@@ -24,13 +24,13 @@ ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 
 # %%
-# We derive the terrain slope and maximum curvature from the reference DEM.
-slope, maximum_curvature = xdem.terrain.get_terrain_attribute(ref_dem, attribute=["slope", "maximum_curvature"])
+# We derive the terrain slope and max curvature from the reference DEM.
+slope, max_curvature = xdem.terrain.get_terrain_attribute(ref_dem, attribute=["slope", "max_curvature"])
 
 # %%
 # Then, we run the pipeline for inference of elevation heteroscedasticity from stable terrain:
 errors, df_binning, error_function = xdem.spatialstats.infer_heteroscedasticity_from_stable(
-    dvalues=dh, list_var=[slope, maximum_curvature], list_var_names=["slope", "maxc"], unstable_mask=glacier_outlines
+    dvalues=dh, list_var=[slope, max_curvature], list_var_names=["slope", "maxc"], unstable_mask=glacier_outlines
 )
 
 # %%
@@ -38,12 +38,12 @@ errors, df_binning, error_function = xdem.spatialstats.infer_heteroscedasticity_
 errors.plot(vmin=2, vmax=7, cmap="Reds", cbar_title=r"Elevation error (1$\sigma$, m)")
 
 # %%
-# The second output is the dataframe of 2D binning with slope and maximum curvature:
+# The second output is the dataframe of 2D binning with slope and max curvature:
 df_binning
 
 # %%
-# The third output is the 2D binning interpolant, i.e. an error function with the slope and maximum curvature
-# (*Note: below we divide the maximum curvature by 100 to convert it in* m\ :sup:`-1` ):
+# The third output is the 2D binning interpolant, i.e. an error function with the slope and max curvature
+# (*Note: below we divide the max curvature by 100 to convert it in* m\ :sup:`-1` ):
 for slope, maxc in [(0, 0), (40, 0), (0, 5), (40, 5)]:
     print(
         "Error for a slope of {:.0f} degrees and"
