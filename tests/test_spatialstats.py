@@ -388,7 +388,7 @@ class TestBinning:
 
         # Filter with a factor of 3 and the standard deviation (not default values) and check the function outputs
         # the exact same array
-        zscores[np.abs(zscores) > 3 * np.nanstd(zscores)] = np.nan
+        zscores[np.abs(zscores) > 3 * np.nanstd(zscores)] = np.ma.masked
         scale_fac_std = np.nanstd(zscores)
         zscores /= scale_fac_std
         zscores_2, final_func = xdem.spatialstats.two_step_standardization(
@@ -432,7 +432,7 @@ class TestBinning:
         assert np.array_equal(errors_1_arr, errors_2_arr, equal_nan=True)
 
         # Save for use in TestVariogram
-        errors_1.save(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors_1.to_file(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif"))
 
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match="The values must be a Raster or NumPy array, or a list of those."):

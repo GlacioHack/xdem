@@ -55,6 +55,7 @@ class Accuracy(Workflows):
             self.reference_elev = self._get_reference_elevation()
         self.generate_plot(self.reference_elev, "reference_elev_map")
         self.generate_plot(self.to_be_aligned_elev, "to_be_aligned_elev_map")
+
         self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
             self.inlier_mask = tba_mask
@@ -62,6 +63,7 @@ class Accuracy(Workflows):
         else:
             self.inlier_mask = ref_mask or tba_mask
             path_mask = ref_mask_path or tba_path_mask
+
         if self.inlier_mask is not None:
             self.generate_plot(
                 self.to_be_aligned_elev,
@@ -121,7 +123,7 @@ class Accuracy(Workflows):
 
         # Coregister
         aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, self.inlier_mask)
-        aligned_elev.save(self.outputs_folder / "rasters" / "aligned_elev.tif")
+        aligned_elev.to_file(self.outputs_folder / "rasters" / "aligned_elev.tif")
 
         self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
 
@@ -172,8 +174,8 @@ class Accuracy(Workflows):
             self.generate_plot(self.to_be_aligned_elev, "cropped_to_be_aligned_elev_map")
 
         if self.level > 1:
-            self.reference_elev.save(self.outputs_folder / "rasters" / "reference_elev_reprojected.tif")
-            self.to_be_aligned_elev.save(self.outputs_folder / "rasters" / "to_be_aligned_elev_reprojected.tif")
+            self.reference_elev.to_file(self.outputs_folder / "rasters" / "reference_elev_reprojected.tif")
+            self.to_be_aligned_elev.to_file(self.outputs_folder / "rasters" / "to_be_aligned_elev_reprojected.tif")
 
     def _get_stats(self, dem: RasterType, name_of_data: str = "") -> floating[Any] | dict[str, floating[Any]]:
         """
@@ -319,8 +321,8 @@ class Accuracy(Workflows):
         if self.compute_coreg:
             self._compute_histogram()
             if self.level > 1:
-                self.diff_before.save(self.outputs_folder / "rasters" / "diff_elev_before_coreg_map.tif")
-                self.diff_after.save(self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
+                self.diff_before.to_file(self.outputs_folder / "rasters" / "diff_elev_before_coreg_map.tif")
+                self.diff_after.to_file(self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
 
         self.create_html(self.dico_to_show)
 
