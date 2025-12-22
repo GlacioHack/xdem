@@ -98,7 +98,7 @@ class Topo(Workflows):
                 attribute_extra = self.config_attributes.get(attr).get("extra_information", {})  # type: ignore
             attribute = from_str_to_fun[attr]()
             logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
-            attribute.save(self.outputs_folder / "rasters" / f"{attr}.tif")
+            attribute.to_file(self.outputs_folder / "rasters" / f"{attr}.tif")
 
     def generate_terrain_attributes_png(self) -> None:
         """

@@ -58,4 +58,4 @@ glacier_outlines.plot(ref_crs=ddem, fc="none", ec="k")
 # %%
 # And we save the output to file.
 
-ddem.save("temp.tif")
+ddem.to_file("temp.tif")

@@ -31,7 +31,7 @@ Below, we only repeat some core attributes and methods of GeoUtils, see
     :toctree: gen_modules/
 
     DEM
-    DEM.save
+    DEM.to_file
 ```
 
 ### Plotting or summarize info
