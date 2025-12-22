@@ -233,8 +233,51 @@ class TestTerrainAttribute:
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
-    def test_get_terrain_attribute__multiproc(self) -> None:
-        """Test the get_terrain attribute function in multiprocessing."""
+    @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])
+    @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)  # type: ignore
+    def test_attributes__multiproc(self, attribute, surfit_windowsize) -> None:
+        """
+        Test that terrain attributes are exactly equal in multiprocessing or in normal processing, and for varying
+        window sizes/surface fit methods, to verify that the depth (overlap) of the map_overlap is properly defined."""
+
+        # Fractal roughness with tested window sizes of less than 13 will expectedly raise a warning
+        warnings.filterwarnings("ignore", category=UserWarning, message="Fractal roughness results.*")
+
+        # Attributes based on frequency will not match exactly
+        if attribute == "texture_shading":
+            return
+
+        # Define multiproc config
+        outfile = "tmp_mp_output.tif"
+        mp_config = MultiprocConfig(
+            chunk_size=50,
+            outfile=outfile,
+        )
+
+        # Unpack argument of surface fit/window size
+        surface_fit, window_size = surfit_windowsize
+        if attribute in xdem.terrain.list_requiring_surface_fit:
+            kwargs = {"surface_fit": surface_fit}
+        elif attribute in xdem.terrain.list_requiring_windowed_index and attribute != "rugosity":
+            kwargs = {"window_size": window_size}
+        # Rugosity is an exception: window size is not variable
+        else:
+            kwargs = {}
+
+        # Derive with "DEM.attribute()" function, with and without multiproc
+        attr_mp = getattr(self.dem, attribute)(mp_config=mp_config, **kwargs)
+        attr_nomp = getattr(self.dem, attribute)(**kwargs)
+
+        # Check equality
+        assert attr_mp.georeferenced_grid_equal(attr_nomp)
+        assert np.allclose(attr_mp.data.filled(), attr_nomp.data.filled())
+        assert np.array_equal(attr_mp.data.mask, attr_nomp.data.mask)
+
+        # Clean up outfile
+        os.remove(outfile)
+
+    def test_get_terrain_attribute__multiproc_inputs(self) -> None:
+        """Test the get_terrain attribute function in multiprocessing returns the right input number/type."""
         outfile = "mp_output.tif"
         outfile_multi = ["mp_output_slope.tif", "mp_output_aspect.tif", "mp_output_hillshade.tif"]
 
@@ -277,11 +320,6 @@ class TestTerrainAttribute:
         assert np.allclose(slope.data, slope_classic.data, rtol=1e-7)
         assert np.allclose(hillshade.data, hillshade_classic.data, rtol=1e-7)
 
-        # A slope map with a lower resolution (higher value) should have gentler slopes.
-        xdem.terrain.get_terrain_attribute(self.dem, "slope", mp_config=mp_config, resolution=self.dem.res[0] * 2)
-        slope_lowres = gu.Raster(outfile, load_data=True)
-        os.remove(outfile)
-        assert slope.get_stats("mean") > slope_lowres.get_stats("mean")
 
     def test_get_terrain_attribute__errors(self) -> None:
         """Test the get_terrain_attribute function raises appropriate errors."""
