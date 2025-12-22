@@ -67,15 +67,15 @@ These changes will then apply to all your operations in xDEM, such as coregistra
 
 ## Profiling
 
-Geoutils has a built-in profiling tool, that can be used to provide more insight on the memory and time use of
+GeoUtils has a built-in profiling tool, that can be used to provide more insight on the memory and time use of
 a function if needed. It can be use, as explained here
 [GeoUtils' profiling](https://geoutils.readthedocs.io/en/stable/profiling.html), on every xDem function with a simple decorator like:
 
 
 ```{code-cell} ipython3
-from geoutils.profiler import profile_tool
+from geoutils import profiler
 
-@profile_tool("my profiled function name", memprof=True, interval=0.5)  # type: ignore
+@profiler.profile("my profiled function name", memprof=True, interval=0.5)  # type: ignore
 def my_xdem_function():
 ```
 
