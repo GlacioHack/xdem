@@ -55,6 +55,30 @@ available_attributes = [
     "fractal_roughness",
     "texture_shading",
 ]
+# Attributes per category
+# 1/ Requiring surface fit
+list_requiring_surface_fit = [
+    "slope",
+    "aspect",
+    "hillshade",
+    "curvature",
+    "profile_curvature",
+    "tangential_curvature",
+    "planform_curvature",
+    "flowline_curvature",
+    "max_curvature",
+    "min_curvature",
+]
+# 2/ Requiring windowed index
+list_requiring_windowed_index = [
+    "terrain_ruggedness_index",
+    "topographic_position_index",
+    "roughness",
+    "rugosity",
+    "fractal_roughness",
+]
+# 3/ Requiring fractal domain
+list_requiring_frequency_domain = ["texture_shading"]
 
 
 @overload
@@ -223,7 +247,7 @@ def get_terrain_attribute(
         "ZevenbergThorne" or "Florinsky".
     :param curv_method: Method to calculate the curvatures: "geometric" or "directional".
     :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
-    :param window_size: Window size for windowed ruggedness and roughness indexes.
+    :param window_size: Window size for windowed attributes (TPI, TRI, roughnesses, rugosity).
     :param engine: Engine to use for computing the attributes with convolution or other windowed calculations, currently
         supports "scipy" or "numba".
     :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
@@ -247,7 +271,7 @@ def get_terrain_attribute(
     :returns: One or multiple arrays of the requested attribute(s)
     """
 
-    # Deprecating slope method
+    # 0/ Deprecating slope method
     if slope_method is not None:
         warnings.warn(
             "'slope_method' is deprecated, use 'surface_fit' instead.",
@@ -256,6 +280,8 @@ def get_terrain_attribute(
         )
         surface_fit = slope_method  # override
         slope_method = None
+
+    # 1/ Input check
 
     # Check that we're not using Horn for curvatures
     if surface_fit == "Horn":
@@ -281,156 +307,6 @@ def get_terrain_attribute(
                 "Use 'ZevenbergThorne' or 'Florinsky' instead."
             )
 
-    if mp_config is not None:
-        if not isinstance(dem, Raster):
-            raise TypeError("The DEM must be a Raster")
-        if isinstance(attribute, str):
-            attribute = [attribute]
-
-        list_raster = []
-        for attr in attribute:
-            mp_config_copy = mp_config.copy()
-            if mp_config.outfile is not None and len(attribute) > 1:
-                mp_config_copy.outfile = mp_config_copy.outfile.split(".")[0] + "_" + attr + ".tif"
-            list_raster.append(
-                map_overlap_multiproc_save(
-                    _get_terrain_attribute,
-                    dem,
-                    mp_config_copy,
-                    attr,
-                    resolution,
-                    degrees,
-                    hillshade_altitude,
-                    hillshade_azimuth,
-                    hillshade_z_factor,
-                    surface_fit,
-                    curv_method,
-                    tri_method,
-                    window_size,
-                    engine,
-                    texture_alpha,
-                    out_dtype,
-                    depth=1,
-                )
-            )
-        if len(list_raster) == 1:
-            return list_raster[0]
-        return list_raster
-    else:
-        return _get_terrain_attribute(  # type: ignore
-            dem,
-            attribute,  # type: ignore
-            resolution,
-            degrees,
-            hillshade_altitude,
-            hillshade_azimuth,
-            hillshade_z_factor,
-            surface_fit,
-            curv_method,
-            tri_method,
-            window_size,
-            engine,
-            texture_alpha,
-            out_dtype,
-        )
-
-
-@overload
-def _get_terrain_attribute(
-    dem: NDArrayf | MArrayf,
-    attribute: str,
-    resolution: tuple[float, float] | float | None = None,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
-    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
-    curv_method: Literal["geometric", "directional"] = "geometric",
-    tri_method: Literal["Riley", "Wilson"] = "Riley",
-    window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
-    texture_alpha: float = 0.8,
-    out_dtype: DTypeLike | None = None,
-) -> NDArrayf: ...
-
-
-@overload
-def _get_terrain_attribute(
-    dem: NDArrayf | MArrayf,
-    attribute: list[str],
-    resolution: tuple[float, float] | float | None = None,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
-    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
-    curv_method: Literal["geometric", "directional"] = "geometric",
-    tri_method: Literal["Riley", "Wilson"] = "Riley",
-    window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
-    texture_alpha: float = 0.8,
-    out_dtype: DTypeLike | None = None,
-) -> list[NDArrayf]: ...
-
-
-@overload
-def _get_terrain_attribute(
-    dem: RasterType,
-    attribute: list[str],
-    resolution: tuple[float, float] | float | None = None,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
-    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
-    curv_method: Literal["geometric", "directional"] = "geometric",
-    tri_method: Literal["Riley", "Wilson"] = "Riley",
-    window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
-    texture_alpha: float = 0.8,
-    out_dtype: DTypeLike | None = None,
-) -> list[RasterType]: ...
-
-
-@overload
-def _get_terrain_attribute(
-    dem: RasterType,
-    attribute: str,
-    resolution: tuple[float, float] | float | None = None,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
-    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
-    curv_method: Literal["geometric", "directional"] = "geometric",
-    tri_method: Literal["Riley", "Wilson"] = "Riley",
-    window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
-    texture_alpha: float = 0.8,
-    out_dtype: DTypeLike | None = None,
-) -> RasterType: ...
-
-
-def _get_terrain_attribute(
-    dem: NDArrayf | MArrayf | RasterType,
-    attribute: str | list[str],
-    resolution: tuple[float, float] | float | None = None,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
-    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
-    curv_method: Literal["geometric", "directional"] = "geometric",
-    tri_method: Literal["Riley", "Wilson"] = "Riley",
-    window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
-    texture_alpha: float = 0.8,
-    out_dtype: DTypeLike | None = None,
-) -> NDArrayf | list[NDArrayf] | RasterType | list[RasterType]:
-    """
-    See description of get_terrain_attribute().
-    """
-
     if isinstance(dem, gu.Raster):
         if resolution is None:
             resolution = dem.res
@@ -446,33 +322,18 @@ def _get_terrain_attribute(
         else:
             out_dtype = np.dtype(dem.dtype)
 
-    # These require the get_quadric_coefficients() function, which require the same X/Y resolution.
-    list_requiring_surface_fit = [
-        "slope",
-        "aspect",
-        "hillshade",
-        "curvature",
-        "profile_curvature",
-        "tangential_curvature",
-        "planform_curvature",
-        "flowline_curvature",
-        "max_curvature",
-        "min_curvature",
-    ]
+    # Get list of attributes for each type
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
 
-    list_requiring_windowed_index = [
-        "terrain_ruggedness_index",
-        "topographic_position_index",
-        "roughness",
-        "rugosity",
-        "fractal_roughness",
-    ]
-    attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
-
-    # Frequency domain attributes (texture shading)
-    list_requiring_frequency_domain = ["texture_shading"]
-    attributes_requiring_frequency_domain = [attr for attr in attribute if attr in list_requiring_frequency_domain]
+    # Warn if default window size for fractal roughness
+    if "fractal_roughness" in attribute and window_size == 3:
+        warnings.warn(
+            category=UserWarning,
+            stacklevel=2,
+            message="Fractal roughness results with window size of less than 13 can be inaccurate."
+            "Consider deriving it separately from other attributes that use a default window size of "
+            "3.",
+        )
 
     attributes_requiring_resolution = attributes_requiring_surface_fit + (
         ["rugosity"] if "rugosity" in attribute else []
@@ -527,6 +388,140 @@ def _get_terrain_attribute(
             f"wrong: {list_requiring_surface_fit}."
             f"Use DEM.reproject(crs=DEM.get_metric_crs()) to reproject in a projected CRS.",
         )
+
+    # 2/ Processing: chunked or normal depending on input
+    if mp_config is not None:
+
+        # Derive depth argument from method or window size,
+        # This is the overlap between tiles (1 for 3x3, 2 for 5x5, etc).
+        if any((attr in list_requiring_windowed_index) for attr in attribute):
+            window_depth = window_size // 2
+        else:
+            window_depth = 0
+        if any((attr in list_requiring_surface_fit) for attr in attribute):
+            if surface_fit.lower() == "florinsky":
+                surface_fit_depth = 2
+            else:
+                surface_fit_depth = 1
+        else:
+            surface_fit_depth = 0
+
+        # We take the maximum required depth
+        depth = max(window_depth, surface_fit_depth)
+
+        if not isinstance(dem, Raster):
+            raise TypeError("The DEM must be a Raster to use multiprocessing.")
+
+        list_raster = []
+        for attr in attribute:
+            mp_config_copy = mp_config.copy()
+            if mp_config.outfile is not None and len(attribute) > 1:
+                mp_config_copy.outfile = mp_config_copy.outfile.split(".")[0] + "_" + attr + ".tif"
+            list_raster.append(
+                map_overlap_multiproc_save(
+                    _get_terrain_attribute,
+                    dem,
+                    mp_config_copy,
+                    [attr],
+                    resolution,
+                    degrees,
+                    hillshade_altitude,
+                    hillshade_azimuth,
+                    hillshade_z_factor,
+                    surface_fit,
+                    curv_method,
+                    tri_method,
+                    window_size,
+                    engine,
+                    texture_alpha,
+                    out_dtype,
+                    depth=depth,
+                )
+            )
+        if len(list_raster) == 1:
+            return list_raster[0]
+        return list_raster
+    else:
+        return _get_terrain_attribute(  # type: ignore
+            dem,
+            attribute,  # type: ignore
+            resolution,
+            degrees,
+            hillshade_altitude,
+            hillshade_azimuth,
+            hillshade_z_factor,
+            surface_fit,
+            curv_method,
+            tri_method,
+            window_size,
+            engine,
+            texture_alpha,
+            out_dtype,
+        )
+
+
+@overload
+def _get_terrain_attribute(
+    dem: NDArrayf,
+    attribute: list[str],
+    resolution: float,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    tri_method: Literal["Riley", "Wilson"] = "Riley",
+    window_size: int = 3,
+    engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
+    out_dtype: DTypeLike | None = None,
+) -> list[NDArrayf]: ...
+
+
+@overload
+def _get_terrain_attribute(
+    dem: RasterType,
+    attribute: list[str],
+    resolution: float,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    tri_method: Literal["Riley", "Wilson"] = "Riley",
+    window_size: int = 3,
+    engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
+    out_dtype: DTypeLike | None = None,
+) -> list[RasterType]: ...
+
+
+def _get_terrain_attribute(
+    dem: NDArrayf | RasterType,
+    attribute: list[str],
+    resolution: float,
+    degrees: bool = True,
+    hillshade_altitude: float = 45.0,
+    hillshade_azimuth: float = 315.0,
+    hillshade_z_factor: float = 1.0,
+    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+    curv_method: Literal["geometric", "directional"] = "geometric",
+    tri_method: Literal["Riley", "Wilson"] = "Riley",
+    window_size: int = 3,
+    engine: Literal["scipy", "numba"] = "numba",
+    texture_alpha: float = 0.8,
+    out_dtype: DTypeLike | None = None,
+) -> list[NDArrayf] | list[RasterType]:
+    """
+    See description of get_terrain_attribute().
+    """
+
+    # Create list of required for each type
+    attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
+    attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
+    attributes_requiring_frequency_domain = [attr for attr in attribute if attr in list_requiring_frequency_domain]
 
     # Get array of DEM
     dem_arr = gu.raster.get_array_and_mask(dem)[0]
