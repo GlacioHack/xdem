@@ -43,6 +43,20 @@ def get_topo_inputs_config():
 
 
 @pytest.fixture()
+def get_dem_config():
+    """
+    Return minimal configuration for inputs in topo
+    """
+    return {
+        "path_to_elev": xdem.examples.get_path("longyearbyen_ref_dem"),
+        "force_source_nodata": -9999,
+        "from_vcrs": "Ellipsoid",
+        "to_vcrs": "EGM96",
+        "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+    }
+
+
+@pytest.fixture()
 def get_accuracy_inputs_config():
     """
     Return minimal configuration for inputs in accuracy

@@ -41,6 +41,7 @@ Please note: pip installation is currently only possible under python3.10.
 
 ```bash
 git clone https://github.com/GlacioHack/xdem.git
+cd xdem
 make install
 ```
 

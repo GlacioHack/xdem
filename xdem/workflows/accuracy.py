@@ -234,7 +234,7 @@ class Accuracy(Workflows):
             color="blue",
             fontsize=12,
         )
-        plt.title("Differences histograms", fontsize=14)
+        plt.title("Histogram of elevation differences before and after coregistration", fontsize=14)
         plt.xlabel("Elev. Diff. (m)")
         plt.ylabel("Count (px)")
         plt.legend()
