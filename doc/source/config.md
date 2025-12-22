@@ -77,9 +77,10 @@ from geoutils import profiler
 
 @profiler.profile("my profiled function name", memprof=True, interval=0.5)  # type: ignore
 def my_xdem_function():
+  ...
 ```
 
 Currently, some processes are already profiled with a memory consumption report each 0.05 seconds.
 - dem initialization
 - all the terrain attributes computation {class}`xdem.DEM` attributes computations
-- all the co-registration processing through the {class}`xdem.Coreg.fit_and_apply` {class}`xdem.DEM.coregister_3d` functions
+- all the co-registration processing through the {function}`xdem.Coreg.fit_and_apply` and {function}`xdem.DEM.coregister_3d` functions
