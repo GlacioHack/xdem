@@ -53,6 +53,7 @@ def get_dem_config():
         "from_vcrs": "Ellipsoid",
         "to_vcrs": "EGM96",
         "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+        "downsample": 1,
     }
 
 
