@@ -1,30 +1,118 @@
+---
+file_format: mystnb
+mystnb:
+  execution_timeout: 150
+jupytext:
+  formats: md:myst
+  text_representation:
+    extension: .md
+    format_name: myst
+kernelspec:
+  display_name: xdem-env
+  language: python
+  name: xdem
+---
 (cli-accuracy)=
 
 # Accuracy workflow
 
 ## Summary
 
-The accuracy workflow is designed to help users analyze differences between two elevation datasets by
-generating various outputs. It also includes optional coregistration for improved alignment.
+The `accuracy` workflow of xDEM performs an **accuracy assessment of an elevation dataset**.
+
+This assessment relies on analyzing the elevation differences to a secondary elevation dataset on static surfaces, as an error proxy 
+to perform coregistration and bias-correction (systematic errors) and to perform uncertainty quantification (structured random errors).
+
+:::{admonition} More reading
+:class: tip
+
+For scientific background on this workflow, we recommend reading the **{ref}`static-surfaces`**, **{ref}`accuracy-precision`** and **{ref}`spatial-stats` guide pages**.
+
+:::
+
+```{caution}
+This workflow is still in development, and currently includes only co-registration. We are adding support for uncertainty quantification.
+```
+
+## Basic usage
+
+### Configuration file
+
+We use the following example configuration file:
+
+```{code-cell} bash
+:tags: [remove-cell]
+cd _workflows/
+```
+
+```{literalinclude} _workflows/accuracy_config.yaml
+:language: yaml
+```
+
+```{tip}
+
+To display a template of all available configuration options for the YAML file, use the `--display_template_config` argument
+```
+
+And run the workflow:
+
+```{code-cell} python
+:tags: [hide-output]
+:mystnb:
+:  code_prompt_show: "Show logging output"
+:  code_prompt_hide: "Hide logging output"
+
+!xdem accuracy --config accuracy_config.yaml
+
+print("lol31")
+```
+
+```{code-cell} python
+:tags: [remove-cell]
+
+# Copy output folder to build directory to be able to embed HMTL directly below
+import os
+import shutil
+from pathlib import Path
+
+# Source + destination
+src = Path("outputs_accuracy")
+dst = Path("../../build/_workflows/outputs_accuracy")
+
+# Ensure clean copy (important for incremental builds)
+if dst.exists():
+    shutil.rmtree(dst)
+dst.parent.mkdir(parents=True, exist_ok=True)
+
+# Copy entire directory tree
+shutil.copytree(src, dst)
+```
+
+### Generated report
+
+```{raw} html
+<iframe src="_workflows/outputs_accuracy/report.html" width="100%" height="600"></iframe>
+```
+
+## Workflow description
+
+### Chart of steps
+
+Here is a chart summarizing of the accuracy worfklow:
 
 :::{figure} imgs/accuracy_workflow_pipeline.png
 :width: 100%
 :::
 
-## Available command line
+### Configuration parameters
 
-Run the workflow:
+The paramaters to pass to the `accuracy` workflow are divided into four categories:
+- The `inputs` define file opening and pre-processing,
+- The `outputs` define file writing and report generation,
+- The `coregistration` define steps for coregistration,
+- The `statistics` define steps for computing statistics before/after coregistration.
 
-```{code}
-xdem accuracy --config config_file.yaml
-```
-To display a template of all available configuration options for the YAML file, use the following command:
-
-```{code}
-xdem accuracy --display_template_config
-```
-
-## Detailed description of input parameters
+These parameters are detailed below:
 
 ```{eval-rst}
 .. tabs::
@@ -50,7 +138,7 @@ xdem accuracy --display_template_config
                "to_vcrs", "Destination vcrs", "str, int", None, "No"
                "downsample", "Downsampling elevation factor >= 1", "int, float", 1, "No"
 
-            .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
+            .. note:: For setting the vcrs please refer to :doc:`vertical_ref`.
             .. note:: Take care that the path_to_elev and path_to_mask point to existing data.
 
             .. note:: The downsample parameter allows the user to resample the elevation by a round factor.
@@ -235,166 +323,4 @@ xdem accuracy --display_template_config
         ├─ report.html
         ├─ report.pdf
         └─ used_config.yaml
-```
-
-## Report example
-
-```{eval-rst}
-    .. raw:: html
-
-        <meta charset='UTF-8'><title>Qualify elevation results</title></head>
-        <h2>Digital Elevation Model</h2>
-        <div style='display: flex; gap: 10px;'>
-          <img src='_static/reference_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto; width: 40%;'>
-          <img src='_static/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto; width: 40%;'>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Information about inputs</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>reference_elev</td><td>{'path_to_elev': '/xdem/examples/data/Longyearbyen/data/DEM_2009_ref.tif', 'from_vcrs': 'EGM96', 'to_vcrs': 'EGM96'}</td></tr>
-        <tr><td>to_be_aligned_elev</td><td>{'path_to_elev': '/xdem/examples/data/Longyearbyen/data/DEM_1990.tif', 'path_to_mask': '/xdem/examples/data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp', 'from_vcrs': 'EGM96', 'to_vcrs': 'EGM96'}</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Coregistration user configuration</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>step_one</td><td>{'method': 'NuthKaab'}</td></tr>
-        <tr><td>sampling_grid</td><td>reference_elev</td></tr>
-        <tr><td>process</td><td>True</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>NuthKaab inputs</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>random</td><td>{'subsample': 500000.0, 'random_state': None}</td></tr>
-        <tr><td>fitorbin</td><td>{'fit_or_bin': 'bin_and_fit', 'fit_func': <function _nuth_kaab_fit_func at 0x72164be14f70>, 'fit_optimizer': <function curve_fit at 0x721659466170>, 'bin_sizes': 72, 'bin_statistic': <function nanmedian at 0x72168b9c20f0>, 'nd': 1, 'bias_var_names': ['aspect']}</td></tr>
-        <tr><td>iterative</td><td>{'max_iterations': 10, 'tolerance': 0.0}</td></tr>
-        <tr><td>specific</td><td>{}</td></tr>
-        <tr><td>affine</td><td>{'apply_vshift': True}</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>NuthKaab outputs</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>affine</td><td>{'shift_x': 9.2, 'shift_y': 2.75, 'shift_z': -1.98}</td></tr>
-        <tr><td>random</td><td>{'subsample_final': np.int64(500000)}</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on reference elevation</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>378.05</td></tr>
-        <tr><td>Median</td><td>360.65</td></tr>
-        <tr><td>Maximum</td><td>1022.21</td></tr>
-        <tr><td>Minimum</td><td>8.05</td></tr>
-        <tr><td>Sum</td><td>496010560.0</td></tr>
-        <tr><td>Sum of squares</td><td>265449996288.0</td></tr>
-        <tr><td>90th percentile</td><td>724.54</td></tr>
-        <tr><td>LE90</td><td>766.59</td></tr>
-        <tr><td>NMAD</td><td>290.22</td></tr>
-        <tr><td>RMSE</td><td>449.8</td></tr>
-        <tr><td>STD</td><td>243.72</td></tr>
-        <tr><td>Standard deviation</td><td>243.72</td></tr>
-        <tr><td>Valid count</td><td>1312020</td></tr>
-        <tr><td>Total count</td><td>1312020</td></tr>
-        <tr><td>Percentage valid points</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on to be aligned elevation</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>381.32</td></tr>
-        <tr><td>Median</td><td>365.23</td></tr>
-        <tr><td>Maximum</td><td>1022.29</td></tr>
-        <tr><td>Minimum</td><td>8.38</td></tr>
-        <tr><td>Sum</td><td>500301504.0</td></tr>
-        <tr><td>Sum of squares</td><td>268858638336.0</td></tr>
-        <tr><td>90th percentile</td><td>727.55</td></tr>
-        <tr><td>LE90</td><td>766.79</td></tr>
-        <tr><td>NMAD</td><td>291.27</td></tr>
-        <tr><td>RMSE</td><td>452.68</td></tr>
-        <tr><td>STD</td><td>243.95</td></tr>
-        <tr><td>Standard deviation</td><td>243.95</td></tr>
-        <tr><td>Valid count</td><td>1312020</td></tr>
-        <tr><td>Total count</td><td>1312020</td></tr>
-        <tr><td>Percentage valid points</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on aligned elevation</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>379.24</td></tr>
-        <tr><td>Median</td><td>363.1</td></tr>
-        <tr><td>Maximum</td><td>1019.35</td></tr>
-        <tr><td>Minimum</td><td>6.42</td></tr>
-        <tr><td>Sum</td><td>497567904.0</td></tr>
-        <tr><td>Sum of squares</td><td>266749788160.0</td></tr>
-        <tr><td>90th percentile</td><td>725.53</td></tr>
-        <tr><td>LE90</td><td>766.76</td></tr>
-        <tr><td>NMAD</td><td>291.19</td></tr>
-        <tr><td>RMSE</td><td>450.9</td></tr>
-        <tr><td>STD</td><td>243.91</td></tr>
-        <tr><td>Standard deviation</td><td>243.91</td></tr>
-        <tr><td>Valid count</td><td>1312020</td></tr>
-        <tr><td>Total count</td><td>1312020</td></tr>
-        <tr><td>Percentage valid points</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on altitude difference before coregistration</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>3.27</td></tr>
-        <tr><td>Median</td><td>2.77</td></tr>
-        <tr><td>Maximum</td><td>51.44</td></tr>
-        <tr><td>Minimum</td><td>-54.51</td></tr>
-        <tr><td>Sum</td><td>4290967.0</td></tr>
-        <tr><td>Sum of squares</td><td>62515056.0</td></tr>
-        <tr><td>90th percentile</td><td>9.18</td></tr>
-        <tr><td>LE90</td><td>18.37</td></tr>
-        <tr><td>NMAD</td><td>3.81</td></tr>
-        <tr><td>RMSE</td><td>6.9</td></tr>
-        <tr><td>STD</td><td>6.08</td></tr>
-        <tr><td>Standard deviation</td><td>6.08</td></tr>
-        <tr><td>Valid count</td><td>1312020</td></tr>
-        <tr><td>Total count</td><td>1312020</td></tr>
-        <tr><td>Percentage valid points</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on altitude difference after coregistration</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>1.19</td></tr>
-        <tr><td>Median</td><td>0.37</td></tr>
-        <tr><td>Maximum</td><td>50.32</td></tr>
-        <tr><td>Minimum</td><td>-49.9</td></tr>
-        <tr><td>Sum</td><td>1557355.0</td></tr>
-        <tr><td>Sum of squares</td><td>42474288.0</td></tr>
-        <tr><td>90th percentile</td><td>6.03</td></tr>
-        <tr><td>LE90</td><td>16.11</td></tr>
-        <tr><td>NMAD</td><td>2.83</td></tr>
-        <tr><td>RMSE</td><td>5.69</td></tr>
-        <tr><td>STD</td><td>5.56</td></tr>
-        <tr><td>Standard deviation</td><td>5.56</td></tr>
-        <tr><td>Valid count</td><td>1312020</td></tr>
-        <tr><td>Total count</td><td>1312020</td></tr>
-        <tr><td>Percentage valid points</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <h2>Altitude differences</h2>
-        <div style='display: flex; gap: 10px;'>
-          <img src='_static/diff_elev_before_coreg.png' alt='Image PNG' style='max-width: 40%; height: auto; width: 50%;'>
-          <img src='_static/diff_elev_after_coreg.png' alt='Image PNG' style='max-width: 40%; height: auto; width: 50%;'>
-        </div>
-        <h2>Differences histogram</h2>
-        <img src='_static/elev_diff_histo.png' alt='Image PNG' style='max-width: 40%; height: auto;'>
-        </div>
 ```
