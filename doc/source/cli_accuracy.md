@@ -81,6 +81,11 @@ Now that we have this configuration file, we run the workflow.
 
 !ls
 
+!ls ../../../examples
+!ls ../../../examples/data
+!ls ../../../examples/data/Longyearbyen
+!ls ../../../examples/data/Longyearbyen/data
+
 assert False
 ```
 
