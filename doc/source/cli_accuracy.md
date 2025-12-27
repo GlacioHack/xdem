@@ -77,6 +77,8 @@ Now that we have this configuration file, we run the workflow.
 
 !xdem accuracy --config accuracy_config.yaml
 
+print(xdem.examples.get_path("longyearbyen_ref_dem"))
+
 !pwd
 
 !ls
@@ -85,6 +87,7 @@ Now that we have this configuration file, we run the workflow.
 !ls ../../../examples/data
 !ls ../../../examples/data/Longyearbyen
 !ls ../../../examples/data/Longyearbyen/data
+
 
 assert False
 ```
