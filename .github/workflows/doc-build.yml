@@ -16,7 +16,7 @@ jobs:
           python-version: '3.12'
       - name: Install project with documentation dependencies
         run: python -m pip install .[doc,opt] -vv
-      - name: Sphinx build
+      - name: Sphinx build with full traceback
         run: |
           cd doc
-          sphinx-build -b html source/ build/
+          sphinx-build -T -b html source/ build/

@@ -68,8 +68,6 @@ Now that we have this configuration file, we run the workflow.
 :  code_prompt_hide: "Hide logging output"
 
 !xdem topo --config topo_config.yaml
-
-print("lol8")
 ```
 
 The logging output is printed in the terminal, showing the different steps.
