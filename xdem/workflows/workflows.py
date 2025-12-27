@@ -56,7 +56,7 @@ class Workflows(ABC):
         """
 
         # Default parameters for plots
-        mpl.rcParams['font.size'] = '16'
+        mpl.rcParams['font.size'] = '10'
 
         # Load configuration
         if isinstance(user_config, str):

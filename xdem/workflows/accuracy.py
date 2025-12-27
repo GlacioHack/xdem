@@ -343,6 +343,8 @@ class Accuracy(Workflows):
             if (level > self.level and self.compute_coreg) or self.config["statistics"] is None:
                 continue
             stats = self._get_stats(data, fname)
+            self.save_stat_as_csv(stats, fname)
+
             df = pd.DataFrame(data=stats, index=[i])
             df.insert(loc=0, column="Data", value=[title])
             list_df_var.append(df)
@@ -351,8 +353,6 @@ class Accuracy(Workflows):
             df_stats = pd.concat(list_df_var)
         else:
             df_stats = None
-        # TODO: Adjust save stats
-        # self.save_stat_as_csv(df)
 
         if self.compute_coreg:
             self._compute_histogram()

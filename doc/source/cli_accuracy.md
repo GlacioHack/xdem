@@ -16,8 +16,6 @@ kernelspec:
 
 # Accuracy workflow
 
-## Summary
-
 The `accuracy` workflow of xDEM performs an **accuracy assessment of an elevation dataset**.
 
 This assessment relies on analyzing the elevation differences to a secondary elevation dataset on static surfaces, as an error proxy 
@@ -31,14 +29,26 @@ For scientific background on this workflow, we recommend reading the **{ref}`sta
 :::
 
 ```{caution}
-This workflow is still in development, and currently includes only co-registration. We are adding support for uncertainty quantification.
+This workflow is still in development and its interface may thus change rapidly. It currently includes only co-registration, and we are adding support for uncertainty quantification.
 ```
 
 ## Basic usage
 
+Below is an example of basic usage for the `accuracy` workflow, including how to build your **configuration file**, and how to run `xdem accuracy` and interpret its **logging output and report**.
+
 ### Configuration file
 
-We use the following example configuration file:
+The configuration file of the `accuracy` workflow contains four categories: `inputs`, `outputs`, `coregistration` and `statistics`.
+Only the **paths to the two elevation datasets** in the `inputs` section are **required** parameters. All others can be left out, in which case they default to pre-defined parameters.
+
+By default, the `accuracy` workflow **reprojects on the reference elevation dataset**, performs a **{ref}`nuthkaab` coregistration (horizontal and vertical translations) on all terrain**, computes **15 different statistics**, and saves **level-1 (intermediate) outputs in `./outputs`** .
+
+In the example of configuration file below, we define:
+- The **paths to the two elevation datasets** which are **required**,
+- The **path to a mask of unstable surfaces**, to exclude terrain during the analysis,
+- The **path to an output directory** where the results will be written,
+- The **name of the coregistration** method to run, and the subsample size to use,
+- The **specific list of statistics** to compute after/before coregistration.
 
 ```{code-cell} bash
 :tags: [remove-cell]
@@ -49,12 +59,15 @@ cd _workflows/
 :language: yaml
 ```
 
-```{tip}
+For details on the individual parameters, see {ref}`params-accuracy` further below. For generic information on the YAML configuration file, see the {ref}`cli` page. 
 
-To display a template of all available configuration options for the YAML file, use the `--display_template_config` argument
+```{tip}
+To display a template of all available configuration options for the YAML file, use the `--display_template_config` argument.
 ```
 
-And run the workflow:
+### Running the workflow
+
+Now that we have this configuration file, we run the workflow. 
 
 ```{code-cell} python
 :tags: [hide-output]
@@ -63,9 +76,9 @@ And run the workflow:
 :  code_prompt_hide: "Hide logging output"
 
 !xdem accuracy --config accuracy_config.yaml
-
-print("lol31")
 ```
+
+The logging output is printed in the terminal, showing the different steps. For instance, we can see that the coregistration converged in three iterations.
 
 ```{code-cell} python
 :tags: [remove-cell]
@@ -88,80 +101,81 @@ dst.parent.mkdir(parents=True, exist_ok=True)
 shutil.copytree(src, dst)
 ```
 
-### Generated report
+Finally, a report is created (both in HTML and PDF formats) in the output directory.
+
+We can visualize the report of our workflow above:
 
 ```{raw} html
-<iframe src="_workflows/outputs_accuracy/report.html" width="100%" height="600"></iframe>
+<iframe src="_workflows/outputs_accuracy/report.html" width="100%" height="800"></iframe>
 ```
 
-## Workflow description
+## Workflow details
+
+This section describes in detail the steps for the `accuracy` workflow, including a summary chart and all parameters of its CLI interface.
 
 ### Chart of steps
 
-Here is a chart summarizing of the accuracy worfklow:
+The `accuracy` worfklow is described by the following chart:
 
 :::{figure} imgs/accuracy_workflow_pipeline.png
 :width: 100%
 :::
 
+(params-accuracy)=
 ### Configuration parameters
 
-The paramaters to pass to the `accuracy` workflow are divided into four categories:
-- The `inputs` define file opening and pre-processing,
-- The `outputs` define file writing and report generation,
-- The `coregistration` define steps for coregistration,
-- The `statistics` define steps for computing statistics before/after coregistration.
+The parameters to pass to the `accuracy` workflow are divided into four categories:
+- The `inputs` define file opening and pre-processing, including **two required paths to elevation data**, but also optional masking, CRS and nodata over-riding, and downsampling factor,
+- The `outputs` define file writing and report generation, with various **levels** of detail for the produced outputs,
+- The `coregistration` define steps for coregistration, directly **interfacing with the {ref}`coregistration` module** of xDEM,
+- The `statistics` define steps for computing statistics before/after coregistration, directly **interfacing with the [Statistics](https://geoutils.readthedocs.io/en/stable/stats.html) module** of GeoUtils.
 
-These parameters are detailed below:
+These categories and detailed parameter values are further detailed below:
 
 ```{eval-rst}
 .. tabs::
 
-   .. tab:: inputs
+   .. tab:: ``inputs``
 
       **Required:** Yes
 
-      Elevation input information.
+      Elevation input information, split between reference and to-be-aligned elevation data.
 
       .. tabs::
 
-        .. tab:: reference_elev
+        .. tab:: ``reference_elev``
 
-            .. csv-table:: Inputs parameters for reference_elev
+            .. csv-table:: Inputs parameters for ``reference_elev``
                :header: "Name", "Description", "Type", "Default value", "Required"
                :widths: 20, 40, 20, 10, 10
 
-               "path_to_elev", "Path to reference elevation", "str", "", "Yes"
-               "force_source_nodata", "No data elevation", "int", "", "No"
-               "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-               "from_vcrs", "Original vcrs", "str, int", None, "No"
-               "to_vcrs", "Destination vcrs", "str, int", None, "No"
-               "downsample", "Downsampling elevation factor >= 1", "int, float", 1, "No"
+               "``path_to_elev``", "Path to reference elevation", "str", "", "Yes"
+               "``force_source_nodata``", "No data elevation", "int", "", "No"
+               "``path_to_mask``", "Path to mask associated to the elevation", "str", "", "No"
+               "``from_vcrs``", "Original vcrs", "int, str", None, "No"
+               "``to_vcrs``", "Destination vcrs", "int, str", None, "No"
+               "``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
 
-            .. note:: For setting the vcrs please refer to :doc:`vertical_ref`.
-            .. note:: Take care that the path_to_elev and path_to_mask point to existing data.
+            .. note:: 
+              For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
+              The ``downsample`` parameter allows the user to resample the elevation by a round factor. The default value of 1 means no downsampling.
 
-            .. note:: The downsample parameter allows the user to resample the elevation by a round factor.
-                      The default value of 1 means no downsampling.
+        .. tab:: ``to_be_aligned_elev``
 
-        .. tab:: to_be_aligned_elev
-
-            .. csv-table:: Inputs parameters for to_be_aligned_elev
+            .. csv-table:: Inputs parameters for ``to_be_aligned_elev``
                :header: "Name", "Description", "Type", "Default value", "Required"
                :widths: 20, 40, 20, 10, 10
 
-               "path_to_elev", "Path to to_be_aligned elevation", "str", "", "Yes"
-               "force_source_nodata", "No data elevation", "int", "", "No"
-               "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-               "from_vcrs", "Original vcrs", "int, str", None, "No"
-               "to_vcrs", "Destination vcrs", "int, str", None, "No"
-               "downsample", "Downsampling elevation factor >= 1", "int, float", 1, "No"
+               "``path_to_elev``", "Path to to-be-aligned elevation", "str", "", "Yes"
+               "``force_source_nodata``", "No data elevation", "int", "", "No"
+               "``path_to_mask``", "Path to mask associated to the elevation", "str", "", "No"
+               "``from_vcrs``", "Original vcrs", "int, str", None, "No"
+               "``to_vcrs``", "Destination vcrs", "int, str", None, "No"
+               "``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
 
-            .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
-            .. note:: Take care that the path_to_elev and path_to_mask point to existing data.
-
-            .. note:: The downsample parameter allows the user to resample the elevation by a round factor.
-                      The default value of 1 means no downsampling.
+            .. note:: 
+              For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
+              The ``downsample`` parameter allows the user to resample the elevation by a round factor. The default value of 1 means no downsampling.
 
       .. code-block:: yaml
 
@@ -175,7 +189,7 @@ These parameters are detailed below:
                 path_to_elev: "path_to/to_be_aligned_elev.tif"
                 path_to_mask: "path_to/mask.tif"
 
-   .. tab:: coregistration
+   .. tab:: ``coregistration``
 
       **Required:** No
 
@@ -187,8 +201,8 @@ These parameters are detailed below:
       Available coregistration method see : :ref:`coregistration`
 
       .. note::
-        By default, coregistration is carried out using the Nuth and Kääb method.
-        To disable coregistration, set `process: False` in the configuration file.
+        By default, coregistration is carried out using the :ref:`nuthkaab` method.
+        To disable coregistration, set ``process: False`` in the configuration file.
 
       .. tabs::
 
@@ -196,15 +210,13 @@ These parameters are detailed below:
            :header: "Parameter namer", "Subparameter name", "Description", "Type", "Default value", "Available Value", "Required"
            :widths: 30, 20, 10, 10, 10, 10, 10
 
-           "step_[one | two | three]", "method", "Name of coregistration method", "str", "NuthKaab", "Every available coregistration method", "No"
-           "", "extra_information", "Extra parameters fitting with the method", "dict", "", "", "No"
-           "sampling_grid", "", "Destination elevation for reprojection", "str", "reference_elev", "reference_elev or to_be_aligned_elev", "No"
-           "process", "", "Activate the coregistration", "bool", "True", "True or False", "No"
+           "``step_[one | two | three]``", "``method``", "Name of coregistration method", "str", "NuthKaab", "Every available coregistration method", "No"
+           "", "``extra_information``", "Extra parameters fitting with the method", "dict", "", "", "No"
+           "``sampling_grid``", "", "Destination elevation for reprojection", "str", "reference_elev", "reference_elev or to_be_aligned_elev", "No"
+           "``process``", "", "Activate the coregistration", "bool", "True", "True or False", "No"
 
         .. note::
-
-            The data provided in extra_information is not checked for errors before executing the code.
-            Its use is entirely the responsibility of the user.
+            The data provided in ``extra_information`` is not checked for errors before executing the code. Its use is entirely the responsibility of the user.
 
       .. code-block:: yaml
 
@@ -227,7 +239,7 @@ These parameters are detailed below:
           sampling_grid: "reference_elev"
           process: True
 
-   .. tab:: statistics
+   .. tab:: ``statistics``
 
       **Required:** No
 
@@ -252,7 +264,7 @@ These parameters are detailed below:
 
       If a mask is provided, the statistics are also computed inside the mask.
 
-   .. tab:: outputs
+   .. tab:: ``outputs``
 
      **Required:** No
 
@@ -266,15 +278,15 @@ These parameters are detailed below:
        :header: "Name", "Description", "Type", "Default value", "Available Value", "Required"
        :widths: 20, 40, 10, 10, 10, 10
 
-       "path", "Path for outputs", "str", "outputs", "", "No"
-       "level", "Level for detailed outputs", "int", "1", "1 or 2", "No"
-       "output_grid", "Grid for outputs resampling", "str", "reference_elev", "reference_elev or to_be_aligned_elev", "No"
+       "``path``", "Path for outputs", "str", "outputs", "", "No"
+       "``level``", "Level for detailed outputs", "int", "1", "1 or 2", "No"
+       "``output_grid``", "Grid for outputs resampling", "str", "reference_elev", "reference_elev or to_be_aligned_elev", "No"
 
      .. code-block:: yaml
 
        outputs:
-           level : 1
-           path : "path_to/outputs"
+           level: 1
+           path: "path_to/outputs"
            output_grid: "reference_elev"
 
      Tree of outputs for level 1 (including coregistration step)
