@@ -21,10 +21,10 @@ Topo class from workflows.
 """
 import logging
 import math
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
-from datetime import datetime
-import time
 
 import matplotlib.pyplot as plt
 import yaml  # type: ignore
