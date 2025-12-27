@@ -155,6 +155,8 @@ doc/source/gen_modules/
 doc/source/sg_execution_times.rst
 examples/basic/temp.tif
 examples/advanced/aligned_dem.tif
+doc/source/_workflows/outputs_accuracy
+doc/source/_workflows/outputs_topo
 
 # Directory where myst_nb executes jupyter code and cache
 doc/jupyter_execute/

@@ -1,79 +1,181 @@
+---
+file_format: mystnb
+mystnb:
+  execution_timeout: 150
+jupytext:
+  formats: md:myst
+  text_representation:
+    extension: .md
+    format_name: myst
+kernelspec:
+  display_name: xdem-env
+  language: python
+  name: xdem
+---
 (cli-accuracy)=
 
 # Accuracy workflow
 
-## Summary
+The `accuracy` workflow of xDEM performs an **accuracy assessment of an elevation dataset**.
 
-The accuracy workflow is designed to help users analyze differences between two elevation datasets by
-generating various outputs. It also includes optional coregistration for improved alignment.
+This assessment relies on analyzing the elevation differences to a secondary elevation dataset on static surfaces, as an error proxy
+to perform coregistration and bias-correction (systematic errors) and to perform uncertainty quantification (structured random errors).
+
+:::{admonition} More reading
+:class: tip
+
+For scientific background on this workflow, we recommend reading the **{ref}`static-surfaces`**, **{ref}`accuracy-precision`** and **{ref}`spatial-stats` guide pages**.
+
+:::
+
+```{caution}
+This workflow is still in development and its interface may thus change rapidly. It currently includes only co-registration, and we are adding support for uncertainty quantification.
+```
+
+## Basic usage
+
+Below is an example of basic usage for the `accuracy` workflow, including how to build your **configuration file**, and how to run `xdem accuracy` and interpret its **logging output and report**.
+
+### Configuration file
+
+The configuration file of the `accuracy` workflow contains four categories: `inputs`, `outputs`, `coregistration` and `statistics`.
+Only the **paths to the two elevation datasets** in the `inputs` section are **required** parameters. All others can be left out, in which case they default to pre-defined parameters.
+
+By default, the `accuracy` workflow **reprojects on the reference elevation dataset**, performs a **{ref}`nuthkaab` coregistration (horizontal and vertical translations) on all terrain**, computes **15 different statistics**, and saves **level-1 (intermediate) outputs in `./outputs`** .
+
+In the example of configuration file below, we define:
+- The **paths to the two elevation datasets** which are **required**,
+- The **path to a mask of unstable surfaces**, to exclude terrain during the analysis,
+- The **path to an output directory** where the results will be written,
+- The **name of the coregistration** method to run, and the subsample size to use,
+- The **specific list of statistics** to compute after/before coregistration.
+
+```{code-cell} bash
+:tags: [remove-cell]
+cd _workflows/
+```
+
+```{literalinclude} _workflows/accuracy_config.yaml
+:language: yaml
+```
+
+For details on the individual parameters, see {ref}`params-accuracy` further below. For generic information on the YAML configuration file, see the {ref}`cli` page.
+
+```{tip}
+To display a template of all available configuration options for the YAML file, use the `--display_template_config` argument.
+```
+
+### Running the workflow
+
+Now that we have this configuration file, we run the workflow.
+
+```{code-cell} python
+:tags: [hide-output]
+:mystnb:
+:  code_prompt_show: "Show logging output"
+:  code_prompt_hide: "Hide logging output"
+
+!xdem accuracy --config accuracy_config.yaml
+```
+
+The logging output is printed in the terminal, showing the different steps. For instance, we can see that the coregistration converged in three iterations.
+
+```{code-cell} python
+:tags: [remove-cell]
+
+# Copy output folder to build directory to be able to embed HTML directly below
+import os
+import shutil
+from pathlib import Path
+
+# Source + destination
+src = Path("outputs_accuracy")
+dst = Path("../../build/_workflows/outputs_accuracy")
+
+# Ensure clean copy (important for incremental builds)
+if dst.exists():
+    shutil.rmtree(dst)
+dst.parent.mkdir(parents=True, exist_ok=True)
+
+# Copy entire directory tree
+shutil.copytree(src, dst)
+```
+
+Finally, a report is created (both in HTML and PDF formats) in the output directory.
+
+We can visualize the report of our workflow above:
+
+```{raw} html
+<iframe src="_workflows/outputs_accuracy/report.html" width="100%" height="800"></iframe>
+```
+
+## Workflow details
+
+This section describes in detail the steps for the `accuracy` workflow, including a summary chart and all parameters of its CLI interface.
+
+### Chart of steps
+
+The `accuracy` workflow is described by the following chart:
 
 :::{figure} imgs/accuracy_workflow_pipeline.png
 :width: 100%
 :::
 
-## Available command line
+(params-accuracy)=
+### Configuration parameters
 
-Run the workflow:
+The parameters to pass to the `accuracy` workflow are divided into four categories:
+- The `inputs` define file opening and pre-processing, including **two required paths to elevation data**, but also optional masking, CRS and nodata over-riding, and downsampling factor,
+- The `outputs` define file writing and report generation, with various **levels** of detail for the produced outputs,
+- The `coregistration` define steps for coregistration, directly **interfacing with the {ref}`coregistration` module** of xDEM,
+- The `statistics` define steps for computing statistics before/after coregistration, directly **interfacing with the [Statistics](https://geoutils.readthedocs.io/en/stable/stats.html) module** of GeoUtils.
 
-```{code}
-xdem accuracy --config config_file.yaml
-```
-To display a template of all available configuration options for the YAML file, use the following command:
-
-```{code}
-xdem accuracy --display_template_config
-```
-
-## Detailed description of input parameters
+These categories and detailed parameter values are further detailed below:
 
 ```{eval-rst}
 .. tabs::
 
-   .. tab:: inputs
+   .. tab:: ``inputs``
 
       **Required:** Yes
 
-      Elevation input information.
+      Elevation input information, split between reference and to-be-aligned elevation data.
 
       .. tabs::
 
-        .. tab:: reference_elev
+        .. tab:: ``reference_elev``
 
-            .. csv-table:: Inputs parameters for reference_elev
+            .. csv-table:: Inputs parameters for ``reference_elev``
                :header: "Name", "Description", "Type", "Default value", "Required"
                :widths: 20, 40, 20, 10, 10
 
-               "path_to_elev", "Path to reference elevation", "str", "", "Yes"
-               "force_source_nodata", "No data elevation", "int", "", "No"
-               "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-               "from_vcrs", "Original vcrs", "str, int", None, "No"
-               "to_vcrs", "Destination vcrs", "str, int", None, "No"
-               "downsample", "Downsampling elevation factor >= 1", "int, float", 1, "No"
+               "``path_to_elev``", "Path to reference elevation", "str", "", "Yes"
+               "``force_source_nodata``", "No data elevation", "int", "", "No"
+               "``path_to_mask``", "Path to mask associated to the elevation", "str", "", "No"
+               "``from_vcrs``", "Original vcrs", "int, str", None, "No"
+               "``to_vcrs``", "Destination vcrs", "int, str", None, "No"
+               "``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
 
-            .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
-            .. note:: Take care that the path_to_elev and path_to_mask point to existing data.
+            .. note::
+              For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
+              The ``downsample`` parameter allows the user to resample the elevation by a round factor. The default value of 1 means no downsampling.
 
-            .. note:: The downsample parameter allows the user to resample the elevation by a round factor.
-                      The default value of 1 means no downsampling.
+        .. tab:: ``to_be_aligned_elev``
 
-        .. tab:: to_be_aligned_elev
-
-            .. csv-table:: Inputs parameters for to_be_aligned_elev
+            .. csv-table:: Inputs parameters for ``to_be_aligned_elev``
                :header: "Name", "Description", "Type", "Default value", "Required"
                :widths: 20, 40, 20, 10, 10
 
-               "path_to_elev", "Path to to_be_aligned elevation", "str", "", "Yes"
-               "force_source_nodata", "No data elevation", "int", "", "No"
-               "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-               "from_vcrs", "Original vcrs", "int, str", None, "No"
-               "to_vcrs", "Destination vcrs", "int, str", None, "No"
-               "downsample", "Downsampling elevation factor >= 1", "int, float", 1, "No"
+               "``path_to_elev``", "Path to to-be-aligned elevation", "str", "", "Yes"
+               "``force_source_nodata``", "No data elevation", "int", "", "No"
+               "``path_to_mask``", "Path to mask associated to the elevation", "str", "", "No"
+               "``from_vcrs``", "Original vcrs", "int, str", None, "No"
+               "``to_vcrs``", "Destination vcrs", "int, str", None, "No"
+               "``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
 
-            .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
-            .. note:: Take care that the path_to_elev and path_to_mask point to existing data.
-
-            .. note:: The downsample parameter allows the user to resample the elevation by a round factor.
-                      The default value of 1 means no downsampling.
+            .. note::
+              For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
+              The ``downsample`` parameter allows the user to resample the elevation by a round factor. The default value of 1 means no downsampling.
 
       .. code-block:: yaml
 
@@ -87,7 +189,7 @@ xdem accuracy --display_template_config
                 path_to_elev: "path_to/to_be_aligned_elev.tif"
                 path_to_mask: "path_to/mask.tif"
 
-   .. tab:: coregistration
+   .. tab:: ``coregistration``
 
       **Required:** No
 
@@ -99,8 +201,8 @@ xdem accuracy --display_template_config
       Available coregistration method see : :ref:`coregistration`
 
       .. note::
-        By default, coregistration is carried out using the Nuth and Kääb method.
-        To disable coregistration, set `process: False` in the configuration file.
+        By default, coregistration is carried out using the :ref:`nuthkaab` method.
+        To disable coregistration, set ``process: False`` in the configuration file.
 
       .. tabs::
 
@@ -108,15 +210,13 @@ xdem accuracy --display_template_config
            :header: "Parameter namer", "Subparameter name", "Description", "Type", "Default value", "Available Value", "Required"
            :widths: 30, 20, 10, 10, 10, 10, 10
 
-           "step_[one | two | three]", "method", "Name of coregistration method", "str", "NuthKaab", "Every available coregistration method", "No"
-           "", "extra_information", "Extra parameters fitting with the method", "dict", "", "", "No"
-           "sampling_grid", "", "Destination elevation for reprojection", "str", "reference_elev", "reference_elev or to_be_aligned_elev", "No"
-           "process", "", "Activate the coregistration", "bool", "True", "True or False", "No"
+           "``step_[one | two | three]``", "``method``", "Name of coregistration method", "str", "NuthKaab", "Every available coregistration method", "No"
+           "", "``extra_information``", "Extra parameters fitting with the method", "dict", "", "", "No"
+           "``sampling_grid``", "", "Destination elevation for reprojection", "str", "reference_elev", "reference_elev or to_be_aligned_elev", "No"
+           "``process``", "", "Activate the coregistration", "bool", "True", "True or False", "No"
 
         .. note::
-
-            The data provided in extra_information is not checked for errors before executing the code.
-            Its use is entirely the responsibility of the user.
+            The data provided in ``extra_information`` is not checked for errors before executing the code. Its use is entirely the responsibility of the user.
 
       .. code-block:: yaml
 
@@ -139,7 +239,7 @@ xdem accuracy --display_template_config
           sampling_grid: "reference_elev"
           process: True
 
-   .. tab:: statistics
+   .. tab:: ``statistics``
 
       **Required:** No
 
@@ -164,7 +264,7 @@ xdem accuracy --display_template_config
 
       If a mask is provided, the statistics are also computed inside the mask.
 
-   .. tab:: outputs
+   .. tab:: ``outputs``
 
      **Required:** No
 
@@ -178,15 +278,15 @@ xdem accuracy --display_template_config
        :header: "Name", "Description", "Type", "Default value", "Available Value", "Required"
        :widths: 20, 40, 10, 10, 10, 10
 
-       "path", "Path for outputs", "str", "outputs", "", "No"
-       "level", "Level for detailed outputs", "int", "1", "1 or 2", "No"
-       "output_grid", "Grid for outputs resampling", "str", "reference_elev", "reference_elev or to_be_aligned_elev", "No"
+       "``path``", "Path for outputs", "str", "outputs", "", "No"
+       "``level``", "Level for detailed outputs", "int", "1", "1 or 2", "No"
+       "``output_grid``", "Grid for outputs resampling", "str", "reference_elev", "reference_elev or to_be_aligned_elev", "No"
 
      .. code-block:: yaml
 
        outputs:
-           level : 1
-           path : "path_to/outputs"
+           level: 1
+           path: "path_to/outputs"
            output_grid: "reference_elev"
 
      Tree of outputs for level 1 (including coregistration step)
@@ -235,166 +335,4 @@ xdem accuracy --display_template_config
         ├─ report.html
         ├─ report.pdf
         └─ used_config.yaml
-```
-
-## Report example
-
-```{eval-rst}
-    .. raw:: html
-
-        <meta charset='UTF-8'><title>Qualify elevation results</title></head>
-        <h2>Digital Elevation Model</h2>
-        <div style='display: flex; gap: 10px;'>
-          <img src='_static/reference_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto; width: 40%;'>
-          <img src='_static/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto; width: 40%;'>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Information about inputs</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>reference_elev</td><td>{'path_to_elev': '/xdem/examples/data/Longyearbyen/data/DEM_2009_ref.tif', 'from_vcrs': 'EGM96', 'to_vcrs': 'EGM96'}</td></tr>
-        <tr><td>to_be_aligned_elev</td><td>{'path_to_elev': '/xdem/examples/data/Longyearbyen/data/DEM_1990.tif', 'path_to_mask': '/xdem/examples/data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp', 'from_vcrs': 'EGM96', 'to_vcrs': 'EGM96'}</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Coregistration user configuration</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>step_one</td><td>{'method': 'NuthKaab'}</td></tr>
-        <tr><td>sampling_grid</td><td>reference_elev</td></tr>
-        <tr><td>process</td><td>True</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>NuthKaab inputs</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>random</td><td>{'subsample': 500000.0, 'random_state': None}</td></tr>
-        <tr><td>fitorbin</td><td>{'fit_or_bin': 'bin_and_fit', 'fit_func': <function _nuth_kaab_fit_func at 0x72164be14f70>, 'fit_optimizer': <function curve_fit at 0x721659466170>, 'bin_sizes': 72, 'bin_statistic': <function nanmedian at 0x72168b9c20f0>, 'nd': 1, 'bias_var_names': ['aspect']}</td></tr>
-        <tr><td>iterative</td><td>{'max_iterations': 10, 'tolerance': 0.0}</td></tr>
-        <tr><td>specific</td><td>{}</td></tr>
-        <tr><td>affine</td><td>{'apply_vshift': True}</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>NuthKaab outputs</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>affine</td><td>{'shift_x': 9.2, 'shift_y': 2.75, 'shift_z': -1.98}</td></tr>
-        <tr><td>random</td><td>{'subsample_final': np.int64(500000)}</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on reference elevation</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>378.05</td></tr>
-        <tr><td>Median</td><td>360.65</td></tr>
-        <tr><td>Maximum</td><td>1022.21</td></tr>
-        <tr><td>Minimum</td><td>8.05</td></tr>
-        <tr><td>Sum</td><td>496010560.0</td></tr>
-        <tr><td>Sum of squares</td><td>265449996288.0</td></tr>
-        <tr><td>90th percentile</td><td>724.54</td></tr>
-        <tr><td>LE90</td><td>766.59</td></tr>
-        <tr><td>NMAD</td><td>290.22</td></tr>
-        <tr><td>RMSE</td><td>449.8</td></tr>
-        <tr><td>STD</td><td>243.72</td></tr>
-        <tr><td>Standard deviation</td><td>243.72</td></tr>
-        <tr><td>Valid count</td><td>1312020</td></tr>
-        <tr><td>Total count</td><td>1312020</td></tr>
-        <tr><td>Percentage valid points</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on to be aligned elevation</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>381.32</td></tr>
-        <tr><td>Median</td><td>365.23</td></tr>
-        <tr><td>Maximum</td><td>1022.29</td></tr>
-        <tr><td>Minimum</td><td>8.38</td></tr>
-        <tr><td>Sum</td><td>500301504.0</td></tr>
-        <tr><td>Sum of squares</td><td>268858638336.0</td></tr>
-        <tr><td>90th percentile</td><td>727.55</td></tr>
-        <tr><td>LE90</td><td>766.79</td></tr>
-        <tr><td>NMAD</td><td>291.27</td></tr>
-        <tr><td>RMSE</td><td>452.68</td></tr>
-        <tr><td>STD</td><td>243.95</td></tr>
-        <tr><td>Standard deviation</td><td>243.95</td></tr>
-        <tr><td>Valid count</td><td>1312020</td></tr>
-        <tr><td>Total count</td><td>1312020</td></tr>
-        <tr><td>Percentage valid points</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on aligned elevation</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>379.24</td></tr>
-        <tr><td>Median</td><td>363.1</td></tr>
-        <tr><td>Maximum</td><td>1019.35</td></tr>
-        <tr><td>Minimum</td><td>6.42</td></tr>
-        <tr><td>Sum</td><td>497567904.0</td></tr>
-        <tr><td>Sum of squares</td><td>266749788160.0</td></tr>
-        <tr><td>90th percentile</td><td>725.53</td></tr>
-        <tr><td>LE90</td><td>766.76</td></tr>
-        <tr><td>NMAD</td><td>291.19</td></tr>
-        <tr><td>RMSE</td><td>450.9</td></tr>
-        <tr><td>STD</td><td>243.91</td></tr>
-        <tr><td>Standard deviation</td><td>243.91</td></tr>
-        <tr><td>Valid count</td><td>1312020</td></tr>
-        <tr><td>Total count</td><td>1312020</td></tr>
-        <tr><td>Percentage valid points</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on altitude difference before coregistration</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>3.27</td></tr>
-        <tr><td>Median</td><td>2.77</td></tr>
-        <tr><td>Maximum</td><td>51.44</td></tr>
-        <tr><td>Minimum</td><td>-54.51</td></tr>
-        <tr><td>Sum</td><td>4290967.0</td></tr>
-        <tr><td>Sum of squares</td><td>62515056.0</td></tr>
-        <tr><td>90th percentile</td><td>9.18</td></tr>
-        <tr><td>LE90</td><td>18.37</td></tr>
-        <tr><td>NMAD</td><td>3.81</td></tr>
-        <tr><td>RMSE</td><td>6.9</td></tr>
-        <tr><td>STD</td><td>6.08</td></tr>
-        <tr><td>Standard deviation</td><td>6.08</td></tr>
-        <tr><td>Valid count</td><td>1312020</td></tr>
-        <tr><td>Total count</td><td>1312020</td></tr>
-        <tr><td>Percentage valid points</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Statistics on altitude difference after coregistration</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Mean</td><td>1.19</td></tr>
-        <tr><td>Median</td><td>0.37</td></tr>
-        <tr><td>Maximum</td><td>50.32</td></tr>
-        <tr><td>Minimum</td><td>-49.9</td></tr>
-        <tr><td>Sum</td><td>1557355.0</td></tr>
-        <tr><td>Sum of squares</td><td>42474288.0</td></tr>
-        <tr><td>90th percentile</td><td>6.03</td></tr>
-        <tr><td>LE90</td><td>16.11</td></tr>
-        <tr><td>NMAD</td><td>2.83</td></tr>
-        <tr><td>RMSE</td><td>5.69</td></tr>
-        <tr><td>STD</td><td>5.56</td></tr>
-        <tr><td>Standard deviation</td><td>5.56</td></tr>
-        <tr><td>Valid count</td><td>1312020</td></tr>
-        <tr><td>Total count</td><td>1312020</td></tr>
-        <tr><td>Percentage valid points</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <h2>Altitude differences</h2>
-        <div style='display: flex; gap: 10px;'>
-          <img src='_static/diff_elev_before_coreg.png' alt='Image PNG' style='max-width: 40%; height: auto; width: 50%;'>
-          <img src='_static/diff_elev_after_coreg.png' alt='Image PNG' style='max-width: 40%; height: auto; width: 50%;'>
-        </div>
-        <h2>Differences histogram</h2>
-        <img src='_static/elev_diff_histo.png' alt='Image PNG' style='max-width: 40%; height: auto;'>
-        </div>
 ```
