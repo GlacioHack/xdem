@@ -77,6 +77,7 @@ Now that we have this configuration file, we run the workflow.
 
 !xdem accuracy --config accuracy_config.yaml
 
+import xdem
 print(xdem.examples.get_path("longyearbyen_ref_dem"))
 
 !pwd
