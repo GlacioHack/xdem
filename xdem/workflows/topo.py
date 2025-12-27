@@ -23,6 +23,8 @@ import logging
 import math
 from pathlib import Path
 from typing import Any, Dict
+from datetime import datetime
+import time
 
 import matplotlib.pyplot as plt
 import yaml  # type: ignore
@@ -43,6 +45,7 @@ class Topo(Workflows):
         :param config_dem: Path to a user configuration file
         """
 
+        self.elapsed: float | None = None
         self.schema = TOPO_SCHEMA
 
         super().__init__(config_dem)
@@ -162,9 +165,11 @@ class Topo(Workflows):
 
     def run(self) -> None:
         """
-        Run function for the coregistration workflow
+        Run function for the topography workflow.
         :return: None
         """
+
+        t0 = time.time()
 
         # Global information
         dem_informations = {
@@ -203,6 +208,9 @@ class Topo(Workflows):
         else:
             logging.info("Computing terrain attributes: None")
 
+        t1 = time.time()
+        self.elapsed = t1 - t0
+
         self.create_html(self.dico_to_show)
 
         # Remove empty folder
@@ -221,6 +229,13 @@ class Topo(Workflows):
         """
 
         html = "<html>\n<head><meta charset='UTF-8'><title>Topographic summary results</title></head>\n<body>\n"
+
+        # Title and version/date/time summary
+        html += "<h1>Topography summary report — xDEM</h1>\n"
+
+        html += f"<p>xDEM version: {xdem.__version__}</p>"
+        html += f"<p>Date: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</p>"
+        html += f"<p>Computing time: {self.elapsed:.2f} seconds</p>"
 
         html += "<h2>Elevation data</h2>\n"
         html += "<img src='plots/elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"

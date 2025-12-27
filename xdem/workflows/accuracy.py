@@ -404,13 +404,14 @@ class Accuracy(Workflows):
         """
         html = "<html>\n<head><meta charset='UTF-8'><title>Qualify elevation results</title></head>\n<body>\n"
 
-        # Plot input elevation data
+        # Title and version/date/time summary
         html += "<h1>Accuracy assessment report — xDEM</h1>\n"
 
         html += f"<p>xDEM version: {xdem.__version__}</p>"
-        html += f"<p>Date: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}</p>"
+        html += f"<p>Date: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</p>"
         html += f"<p>Computing time: {self.elapsed:.2f} seconds</p>"
 
+        # Plot input elevation data
         html += "<h2>Elevation datasets</h2>\n"
         html += "<div style='display: flex; gap: 10px;'>\n"
         html += (
