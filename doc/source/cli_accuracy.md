@@ -83,6 +83,10 @@ The logging output is printed in the terminal, showing the different steps. For 
 ```{code-cell} python
 :tags: [remove-cell]
 
+!pwd
+
+!ls
+
 # Copy output folder to build directory to be able to embed HTML directly below
 import os
 import shutil
