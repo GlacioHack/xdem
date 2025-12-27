@@ -76,16 +76,18 @@ Now that we have this configuration file, we run the workflow.
 :  code_prompt_hide: "Hide logging output"
 
 !xdem accuracy --config accuracy_config.yaml
+
+!pwd
+
+!ls
+
+assert False
 ```
 
 The logging output is printed in the terminal, showing the different steps. For instance, we can see that the coregistration converged in three iterations.
 
 ```{code-cell} python
 :tags: [remove-cell]
-
-!pwd
-
-!ls
 
 # Copy output folder to build directory to be able to embed HTML directly below
 import os
