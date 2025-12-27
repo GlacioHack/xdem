@@ -20,11 +20,11 @@
 Accuracy class from workflow
 """
 import logging
+import time
+from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict
-from datetime import datetime
-import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -51,7 +51,8 @@ class Accuracy(Workflows):
         """
 
         self.schema = ACCURACY_SCHEMA
-        self.elapsed = None
+        self.elapsed: float | None = None
+        self.df_stats: pd.DataFrame | None = None
 
         super().__init__(config_dem)
 
@@ -59,10 +60,20 @@ class Accuracy(Workflows):
         self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"]["reference_elev"])
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
-        self.generate_plot(self.reference_elev, title="Reference DEM", filename="reference_elev_map",
-                           cmap="terrain", cbar_title="Elevation (m)")
-        self.generate_plot(self.to_be_aligned_elev, title="To-be-aligned DEM", filename="to_be_aligned_elev_map",
-                           cmap="terrain", cbar_title="Elevation (m)")
+        self.generate_plot(
+            self.reference_elev,
+            title="Reference DEM",
+            filename="reference_elev_map",
+            cmap="terrain",
+            cbar_title="Elevation (m)",
+        )
+        self.generate_plot(
+            self.to_be_aligned_elev,
+            title="To-be-aligned DEM",
+            filename="to_be_aligned_elev_map",
+            cmap="terrain",
+            cbar_title="Elevation (m)",
+        )
 
         self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
@@ -174,18 +185,22 @@ class Accuracy(Workflows):
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
         if sampling_source == "reference_elev":
             self.reference_elev = self.reference_elev.crop(coord_intersection)
-            self.generate_plot(self.to_be_aligned_elev,
-                               title="Cropped reference DEM",
-                               filename="cropped_reference_elev_map",
-                               cmap="terrain",
-                               cbar_title="Elevation (m)",)
+            self.generate_plot(
+                self.to_be_aligned_elev,
+                title="Cropped reference DEM",
+                filename="cropped_reference_elev_map",
+                cmap="terrain",
+                cbar_title="Elevation (m)",
+            )
         else:
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
-            self.generate_plot(self.to_be_aligned_elev,
-                               title="Cropped to-be-aligned DEM",
-                               filename="cropped_to_be_aligned_elev_map",
-                               cmap="terrain",
-                               cbar_title="Elevation (m)")
+            self.generate_plot(
+                self.to_be_aligned_elev,
+                title="Cropped to-be-aligned DEM",
+                filename="cropped_to_be_aligned_elev_map",
+                cmap="terrain",
+                cbar_title="Elevation (m)",
+            )
 
         if self.level > 1:
             self.reference_elev.to_file(self.outputs_folder / "rasters" / "reference_elev_reprojected.tif")
@@ -308,10 +323,15 @@ class Accuracy(Workflows):
                 vmin, vmax = -(stats["median"] + 3 * stats["nmad"]), (stats["median"] + 3 * stats["nmad"])
 
             suffix = f"_elev_{label}_coreg_map" if label else "_elev"
-            self.generate_plot(diff, title=f"Difference\n{label} coregistration",
-                               filename=f"diff{suffix}",
-                               vmin=vmin, vmax=vmax,
-                               cmap="RdBu", cbar_title="Elevation differences (m)")
+            self.generate_plot(
+                diff,
+                title=f"Difference\n{label} coregistration",
+                filename=f"diff{suffix}",
+                vmin=vmin,
+                vmax=vmax,
+                cmap="RdBu",
+                cbar_title="Elevation differences (m)",
+            )
 
         if self.compute_coreg:
             stat_items = [
@@ -353,6 +373,7 @@ class Accuracy(Workflows):
             df_stats = pd.concat(list_df_var)
         else:
             df_stats = None
+        self.df_stats = df_stats
 
         if self.compute_coreg:
             self._compute_histogram()
@@ -363,7 +384,7 @@ class Accuracy(Workflows):
         t1 = time.time()
         self.elapsed = t1 - t0
 
-        self.create_html(self.dico_to_show, df_stats=df_stats)
+        self.create_html(self.dico_to_show)
 
         # Remove empty folder
         for folder in self.outputs_folder.rglob("*"):
@@ -373,23 +394,22 @@ class Accuracy(Workflows):
                 except OSError:
                     pass
 
-    def create_html(self, list_dict: list[tuple[str, dict[str, Any]]], df_stats: pd.DataFrame | None) -> None:
+    def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
         """
         Create HTML page from png files and table.
 
         :param list_dict: List containing tuples of title and various dictionaries.
-        :param df_stats: Dataframe containing the statistics.
 
         :return: None
         """
         html = "<html>\n<head><meta charset='UTF-8'><title>Qualify elevation results</title></head>\n<body>\n"
 
         # Plot input elevation data
-        html += f"<h1>Accuracy assessment report — xDEM</h1>\n"
+        html += "<h1>Accuracy assessment report — xDEM</h1>\n"
 
         html += f"<p>xDEM version: {xdem.__version__}</p>"
         html += f"<p>Date: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}</p>"
-        html += "<p>Computing time: {:.2f} seconds</p>".format(self.elapsed)
+        html += f"<p>Computing time: {self.elapsed:.2f} seconds</p>"
 
         html += "<h2>Elevation datasets</h2>\n"
         html += "<div style='display: flex; gap: 10px;'>\n"
@@ -415,8 +435,9 @@ class Accuracy(Workflows):
             html += "</div>\n"
 
         # Statistics table:
-        html += "<h2>Statistics</h2>\n"
-        html += df_stats.to_html(index=False)
+        if self.df_stats is not None:
+            html += "<h2>Statistics</h2>\n"
+            html += self.df_stats.to_html(index=False)
 
         # Coregistration: Add elevation difference plot and histograms before/after
         if self.compute_coreg:

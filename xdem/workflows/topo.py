@@ -120,7 +120,7 @@ class Topo(Workflows):
         ncols = 2
         nrows = math.ceil(n / ncols)
 
-        attribute_params = {
+        attribute_params: dict[str, dict[str, Any]] = {
             "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (0, 255)},
             "texture_shading": {"label": "Texture shading", "cmap": "Greys_r", "vlim": (-20, 20)},
             "slope": {"label": "Slope (°)", "cmap": "Reds", "vlim": (0, 90)},

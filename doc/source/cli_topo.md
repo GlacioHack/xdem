@@ -16,7 +16,7 @@ kernelspec:
 (cli-topo)=
 # Topography workflow
 
-The `topo` workflow of xDEM performs a **topographical summary of an elevation dataset**. 
+The `topo` workflow of xDEM performs a **topographical summary of an elevation dataset**.
 
 This summary derives a series of terrain attributes (e.g. slope, hillshade, aspect, etc.) with statistics (e.g. mean, max, min, etc.).
 
@@ -50,7 +50,7 @@ cd _workflows/
 ```{literalinclude} _workflows/topo_config.yaml
 :language: yaml
 ```
-For details on the individual parameters, see {ref}`params-topo` further below. For generic information on the YAML configuration file, see the {ref}`cli` page. 
+For details on the individual parameters, see {ref}`params-topo` further below. For generic information on the YAML configuration file, see the {ref}`cli` page.
 
 
 ```{tip}
@@ -59,7 +59,7 @@ To display a template of all available configuration options for the YAML file, 
 
 ### Running the workflow
 
-Now that we have this configuration file, we run the workflow. 
+Now that we have this configuration file, we run the workflow.
 
 ```{code-cell} python
 :tags: [hide-output]
@@ -77,7 +77,7 @@ The logging output is printed in the terminal, showing the different steps.
 ```{code-cell} python
 :tags: [remove-cell]
 
-# Copy output folder to build directory to be able to embed HMTL directly below
+# Copy output folder to build directory to be able to embed HTML directly below
 import os
 import shutil
 from pathlib import Path
@@ -109,7 +109,7 @@ This section describes in detail the steps for the `topo` workflow, including a 
 
 ### Chart of steps
 
-The `topo` worfklow is described by the following chart:
+The `topo` workflow is described by the following chart:
 
 :::{figure} imgs/topo_workflow_pipeline.png
 :width: 100%

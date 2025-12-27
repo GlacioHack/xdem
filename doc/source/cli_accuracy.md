@@ -18,7 +18,7 @@ kernelspec:
 
 The `accuracy` workflow of xDEM performs an **accuracy assessment of an elevation dataset**.
 
-This assessment relies on analyzing the elevation differences to a secondary elevation dataset on static surfaces, as an error proxy 
+This assessment relies on analyzing the elevation differences to a secondary elevation dataset on static surfaces, as an error proxy
 to perform coregistration and bias-correction (systematic errors) and to perform uncertainty quantification (structured random errors).
 
 :::{admonition} More reading
@@ -59,7 +59,7 @@ cd _workflows/
 :language: yaml
 ```
 
-For details on the individual parameters, see {ref}`params-accuracy` further below. For generic information on the YAML configuration file, see the {ref}`cli` page. 
+For details on the individual parameters, see {ref}`params-accuracy` further below. For generic information on the YAML configuration file, see the {ref}`cli` page.
 
 ```{tip}
 To display a template of all available configuration options for the YAML file, use the `--display_template_config` argument.
@@ -67,7 +67,7 @@ To display a template of all available configuration options for the YAML file, 
 
 ### Running the workflow
 
-Now that we have this configuration file, we run the workflow. 
+Now that we have this configuration file, we run the workflow.
 
 ```{code-cell} python
 :tags: [hide-output]
@@ -83,7 +83,7 @@ The logging output is printed in the terminal, showing the different steps. For 
 ```{code-cell} python
 :tags: [remove-cell]
 
-# Copy output folder to build directory to be able to embed HMTL directly below
+# Copy output folder to build directory to be able to embed HTML directly below
 import os
 import shutil
 from pathlib import Path
@@ -115,7 +115,7 @@ This section describes in detail the steps for the `accuracy` workflow, includin
 
 ### Chart of steps
 
-The `accuracy` worfklow is described by the following chart:
+The `accuracy` workflow is described by the following chart:
 
 :::{figure} imgs/accuracy_workflow_pipeline.png
 :width: 100%
@@ -156,7 +156,7 @@ These categories and detailed parameter values are further detailed below:
                "``to_vcrs``", "Destination vcrs", "int, str", None, "No"
                "``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
 
-            .. note:: 
+            .. note::
               For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
               The ``downsample`` parameter allows the user to resample the elevation by a round factor. The default value of 1 means no downsampling.
 
@@ -173,7 +173,7 @@ These categories and detailed parameter values are further detailed below:
                "``to_vcrs``", "Destination vcrs", "int, str", None, "No"
                "``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
 
-            .. note:: 
+            .. note::
               For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
               The ``downsample`` parameter allows the user to resample the elevation by a round factor. The default value of 1 means no downsampling.
 
