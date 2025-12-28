@@ -76,21 +76,6 @@ Now that we have this configuration file, we run the workflow.
 :  code_prompt_hide: "Hide logging output"
 
 !xdem accuracy --config accuracy_config.yaml
-
-import xdem
-print(xdem.examples.get_path("longyearbyen_ref_dem"))
-
-!pwd
-
-!ls
-
-!ls ../../../examples
-!ls ../../../examples/data
-!ls ../../../examples/data/Longyearbyen
-!ls ../../../examples/data/Longyearbyen/data
-
-
-assert False
 ```
 
 The logging output is printed in the terminal, showing the different steps. For instance, we can see that the coregistration converged in three iterations.

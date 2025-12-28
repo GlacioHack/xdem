@@ -145,9 +145,10 @@ dmypy.json
 # Version file
 xdem/_version.py
 
-# Example data downloaded/produced during tests
-examples/data/
+# Example and test data downloaded or produced during tests
+xdem/example_data/
 tests/test_data/
+tests/test_output/
 
 doc/source/basic_examples/
 doc/source/advanced_examples/
