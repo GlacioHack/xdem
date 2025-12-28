@@ -31,7 +31,9 @@ import xdem
 _DATA_REPO_URL = "https://github.com/GlacioHack/xdem-data/tarball/main"
 _COMMIT_HASH = "98004a09f84def4c78b253d41b212baca2b3cccb"
 
-_EXAMPLES_DIRECTORY = files("xdem").joinpath("examples").joinpath("examples")
+# This directory needs to be created within xdem/ so that it works for an installed package as well
+# importlib.resources.files helps take care of the relative path, no matter if package is dev-local or installed
+_EXAMPLES_DIRECTORY = files("xdem").joinpath("example_data")
 
 # Absolute filepaths to the example files.
 _FILEPATHS_DATA = {

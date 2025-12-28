@@ -1,9 +1,9 @@
 inputs:
   reference_elev:
-    path_to_elev: "../../../examples/data/Longyearbyen/data/DEM_2009_ref.tif"
+    path_to_elev: "../../../xdem/example_data/Longyearbyen/data/DEM_2009_ref.tif"
   to_be_aligned_elev:
-    path_to_elev: "../../../examples/data/Longyearbyen/data/DEM_1990.tif"
-    path_to_mask: "../../../examples/data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp"
+    path_to_elev: "../../../xdem/example_data/Longyearbyen/data/DEM_1990.tif"
+    path_to_mask: "../../../xdem/example_data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp"
 outputs:
   path: "outputs_accuracy"
 coregistration:
