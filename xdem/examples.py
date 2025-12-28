@@ -31,7 +31,7 @@ import xdem
 _DATA_REPO_URL = "https://github.com/GlacioHack/xdem-data/tarball/main"
 _COMMIT_HASH = "98004a09f84def4c78b253d41b212baca2b3cccb"
 
-_EXAMPLES_DIRECTORY = files("examples").joinpath("data")
+_EXAMPLES_DIRECTORY = files("xdem").joinpath("examples").joinpath("examples")
 
 # Absolute filepaths to the example files.
 _FILEPATHS_DATA = {
