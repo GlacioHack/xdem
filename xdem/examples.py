@@ -22,6 +22,7 @@ import shutil
 import tarfile
 import tempfile
 import urllib.request
+from importlib.resources import files
 
 import geoutils as gu
 
@@ -30,8 +31,8 @@ import xdem
 _DATA_REPO_URL = "https://github.com/GlacioHack/xdem-data/tarball/main"
 _COMMIT_HASH = "98004a09f84def4c78b253d41b212baca2b3cccb"
 
-_EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "examples", 
-                                                   "data"))
+_EXAMPLES_DIRECTORY = files("examples").joinpath("data")
+
 # Absolute filepaths to the example files.
 _FILEPATHS_DATA = {
     "longyearbyen_ref_dem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_2009_ref.tif"),
