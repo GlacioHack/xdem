@@ -22,7 +22,7 @@ import shutil
 import tarfile
 import tempfile
 import urllib.request
-from importlib.resources import files
+from importlib.resources import as_file, files
 
 import geoutils as gu
 
@@ -35,22 +35,25 @@ _COMMIT_HASH = "98004a09f84def4c78b253d41b212baca2b3cccb"
 # importlib.resources.files helps take care of the relative path, no matter if package is dev-local or installed
 _EXAMPLES_DIRECTORY = files("xdem").joinpath("example_data")
 
-# Absolute filepaths to the example files.
-_FILEPATHS_DATA = {
-    "longyearbyen_ref_dem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_2009_ref.tif"),
-    "longyearbyen_tba_dem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_1990.tif"),
-    "longyearbyen_glacier_outlines": os.path.join(
-        _EXAMPLES_DIRECTORY, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_1990.shp"
-    ),
-    "longyearbyen_glacier_outlines_2010": os.path.join(
-        _EXAMPLES_DIRECTORY, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_2010.shp"
-    ),
-}
+# Absolute filepaths to the example files, need to convert the Trasversable above to Path with as_file context manager
+with as_file(_EXAMPLES_DIRECTORY) as examples_directory:
+    _FILEPATHS_DATA = {
+        "longyearbyen_ref_dem": os.path.join(examples_directory, "Longyearbyen", "data", "DEM_2009_ref.tif"),
+        "longyearbyen_tba_dem": os.path.join(examples_directory, "Longyearbyen", "data", "DEM_1990.tif"),
+        "longyearbyen_glacier_outlines": os.path.join(
+            examples_directory, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_1990.shp"
+        ),
+        "longyearbyen_glacier_outlines_2010": os.path.join(
+            examples_directory, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_2010.shp"
+        ),
+    }
 
-_FILEPATHS_PROCESSED = {
-    "longyearbyen_ddem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "processed", "dDEM_2009_minus_1990.tif"),
-    "longyearbyen_tba_dem_coreg": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "processed", "DEM_1990_coreg.tif"),
-}
+    _FILEPATHS_PROCESSED = {
+        "longyearbyen_ddem": os.path.join(examples_directory, "Longyearbyen", "processed", "dDEM_2009_minus_1990.tif"),
+        "longyearbyen_tba_dem_coreg": os.path.join(
+            examples_directory, "Longyearbyen", "processed", "DEM_1990_coreg.tif"
+        ),
+    }
 
 available = list(_FILEPATHS_DATA.keys()) + list(_FILEPATHS_PROCESSED.keys())
 
@@ -108,7 +111,8 @@ def download_longyearbyen_examples(overwrite: bool = False) -> None:
 
     :param overwrite: Do not download the files again if they already exist.
     """
-    target_dir = os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data")
+    with as_file(_EXAMPLES_DIRECTORY) as ed:
+        target_dir = os.path.join(ed, "Longyearbyen", "data")
     download_and_extract_tarball(dir="data/Longyearbyen", target_dir=target_dir, overwrite=overwrite)
 
 

@@ -6,6 +6,13 @@ import pytest
 from xdem.examples import download_and_extract_tarball
 
 _TESTDATA_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tests", "test_data"))
+_TESTOUTPUT_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tests", "test_output"))
+
+
+@pytest.fixture(scope="session")  # type: ignore
+def test_output_dir() -> str:
+    """Return the path to the test output directory."""
+    return _TESTOUTPUT_DIRECTORY
 
 
 @pytest.fixture(scope="session")  # type: ignore
