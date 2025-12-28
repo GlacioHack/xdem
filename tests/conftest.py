@@ -11,6 +11,9 @@ _TESTOUTPUT_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), 
 
 @pytest.fixture(scope="session")  # type: ignore
 def test_output_dir() -> str:
+
+    os.makedirs(_TESTOUTPUT_DIRECTORY, exist_ok=True)
+
     """Return the path to the test output directory."""
     return _TESTOUTPUT_DIRECTORY
 
