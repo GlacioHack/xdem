@@ -41,7 +41,7 @@ class TestBinning:
     slope, aspect = xdem.terrain.get_terrain_attribute(ref, attribute=["slope", "aspect"], surface_fit="Horn")
     max_curv = xdem.terrain.get_terrain_attribute(ref, attribute=["max_curvature"], surface_fit="ZevenbergThorne")
 
-    def test_nd_binning(self) -> None:
+    def test_nd_binning(self, test_output_dir: str) -> None:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
         # Subsampler
@@ -116,9 +116,9 @@ class TestBinning:
         assert df.shape[0] == (4**3 + 3 * 4**2 + 3 * 4)
 
         # Save for later use
-        df.to_csv(os.path.join(examples._EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index=False)
+        df.to_csv(os.path.join(test_output_dir, "df_3d_binning_slope_elevation_aspect.csv"), index=False)
 
-    def test_interp_nd_binning_artificial_data(self) -> None:
+    def test_interp_nd_binning_artificial_data(self, test_output_dir: str) -> None:
         """Check that the N-dimensional interpolation works correctly using artificial data"""
 
         # Check the function works with a classic input (see example)
@@ -259,13 +259,11 @@ class TestBinning:
         # Check it is now positive or equal to zero
         assert fun((5, 100)) >= 0
 
-    def test_interp_nd_binning_realdata(self) -> None:
+    def test_interp_nd_binning_realdata(self, test_output_dir: str) -> None:
         """Check that the function works well with outputs from the nd_binning function"""
 
         # Read nd_binning output
-        df = pd.read_csv(
-            os.path.join(examples._EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None
-        )
+        df = pd.read_csv(os.path.join(test_output_dir, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None)
 
         # First, in 1D
         fun = xdem.spatialstats.interp_nd_binning(df, list_var_names="slope")
@@ -300,13 +298,11 @@ class TestBinning:
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500, 3000], [-2 * np.pi, 4 * np.pi]))))
 
-    def test_get_perbin_nd_binning(self) -> None:
+    def test_get_perbin_nd_binning(self, test_output_dir: str) -> None:
         """Test the get per-bin function."""
 
         # Read nd_binning output
-        df = pd.read_csv(
-            os.path.join(examples._EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None
-        )
+        df = pd.read_csv(os.path.join(test_output_dir, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None)
 
         # Get values for arrays from the above 3D binning
         perbin_values = xdem.spatialstats.get_perbin_nd_binning(
@@ -407,7 +403,7 @@ class TestBinning:
             unscaled_fun((test_slopes, test_max_curvs)) * scale_fac_std, final_func((test_slopes, test_max_curvs))
         )
 
-    def test_estimate_model_heteroscedasticity_and_infer_from_stable(self) -> None:
+    def test_estimate_model_heteroscedasticity_and_infer_from_stable(self, test_output_dir: str) -> None:
         """Test consistency of outputs and errors in wrapper functions for estimation of heteroscedasticity"""
 
         # Test infer function
@@ -432,7 +428,7 @@ class TestBinning:
         assert np.array_equal(errors_1_arr, errors_2_arr, equal_nan=True)
 
         # Save for use in TestVariogram
-        errors_1.to_file(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors_1.to_file(os.path.join(test_output_dir, "dh_error.tif"))
 
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match="The values must be a Raster or NumPy array, or a list of those."):
@@ -837,7 +833,7 @@ class TestVariogram:
                 pd.DataFrame(data={"model": ["stable"], "range": [100], "psill": [1], "smooth": [-1]})
             )
 
-    def test_estimate_model_spatial_correlation_and_infer_from_stable(self) -> None:
+    def test_estimate_model_spatial_correlation_and_infer_from_stable(self, test_output_dir: str) -> None:
         """Test consistency of outputs and errors in wrapper functions for estimation of spatial correlation"""
 
         warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
@@ -847,7 +843,7 @@ class TestVariogram:
         diff_on_stable.set_mask(self.mask)
 
         # Load the error map from TestBinning
-        errors = Raster(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors = Raster(os.path.join(test_output_dir, "dh_error.tif"))
 
         # Standardize the differences
         zscores = diff_on_stable / errors
@@ -897,9 +893,7 @@ class TestVariogram:
             random_state=42,
         )
         # Save the modelled variogram for later used in TestNeffEstimation
-        params_model_vgm_5.to_csv(
-            os.path.join(examples._EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index=False
-        )
+        params_model_vgm_5.to_csv(os.path.join(test_output_dir, "df_variogram_model_params.csv"), index=False)
 
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match="The values must be a Raster or NumPy array, or a list of those."):
@@ -1183,15 +1177,15 @@ class TestNeffEstimation:
                 area=outlines_brom, params_variogram_model=params_variogram_model, rasterize_resolution=(10, 10)
             )
 
-    def test_spatial_error_propagation(self) -> None:
+    def test_spatial_error_propagation(self, test_output_dir: str) -> None:
         """Test that the spatial error propagation wrapper function runs properly"""
 
         # Load the error map from TestBinning
-        errors = Raster(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors = Raster(os.path.join(test_output_dir, "dh_error.tif"))
 
         # Load the spatial correlation from TestVariogram
         params_variogram_model = pd.read_csv(
-            os.path.join(examples._EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index_col=None
+            os.path.join(test_output_dir, "df_variogram_model_params.csv"), index_col=None
         )
 
         # Run the function with vector areas

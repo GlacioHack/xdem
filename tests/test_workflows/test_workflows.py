@@ -128,14 +128,15 @@ def test_generate_graph(get_topo_inputs_config, tmp_path):
     Test generate_plot function
     """
     dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
-    title = "test_generate_graph"
+    filename = "test_generate_graph"
+    title = "Test graph"
 
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Topo(user_config)
 
-    workflows.generate_plot(dem, title)
-    out = tmp_path / "plots" / f"{title}.png"
+    workflows.generate_plot(dem, filename=filename, title=title)
+    out = tmp_path / "plots" / f"{filename}.png"
     assert out.exists()
 
 

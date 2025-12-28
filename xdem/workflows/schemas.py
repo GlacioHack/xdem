@@ -101,6 +101,7 @@ TERRAIN_ATTRIBUTES = [
     "roughness",
     "rugosity",
     "fractal_roughness",
+    "texture_shading",
 ]
 
 

@@ -1,33 +1,120 @@
+---
+file_format: mystnb
+mystnb:
+  execution_timeout: 150
+jupytext:
+  formats: md:myst
+  text_representation:
+    extension: .md
+    format_name: myst
+kernelspec:
+  display_name: xdem-env
+  language: python
+  name: xdem
+---
+
 (cli-topo)=
+# Topography workflow
 
-# Topo workflow
+The `topo` workflow of xDEM performs a **topographical summary of an elevation dataset**.
 
-## Summary
-
-The topo workflow is designed to provide users with comprehensive information about their elevation model,
-including terrain attributes (i.e. slope, hillshade, aspect, etc.) and statistical analyses (i.e. mean, max, min, etc.)
+This summary derives a series of terrain attributes (e.g. slope, hillshade, aspect, etc.) with statistics (e.g. mean, max, min, etc.).
 
 
+```{caution}
+This workflow is still in development and its interface may thus change rapidly. It currently includes only classical terrain attributes.
+```
+
+## Basic usage
+
+Below is an example of basic usage for the `topo` workflow, including how to build your **configuration file**, and how to run `xdem topo` and interpret its **logging output and report**.
+
+### Configuration file
+
+The configuration file of the `topo` workflow contains four categories: `inputs`, `outputs`, `statistics` and `terrain_attributes`.
+Only the **path to the elevation dataset** in the `inputs` section is a **required** parameter. All others can be left out, in which case they default to pre-defined parameters.
+
+By default, the `topo` workflow derives **slope, aspect and max. curvature**, computes **15 different statistics**, and saves **level-1 (intermediate) outputs in `./outputs`** .
+
+In the example of configuration file below, we define:
+- The **path to the elevation dataset** which is **required**,
+- The **path to a mask**, to exclude terrain during the analysis,
+- The **path to an output directory** where the results will be written,
+- The **specific list of terrain attributes** to derive,
+- The **specific list of statistics** to compute after/before coregistration.
+
+```{code-cell} bash
+:tags: [remove-cell]
+cd _workflows/
+```
+```{literalinclude} _workflows/topo_config.yaml
+:language: yaml
+```
+For details on the individual parameters, see {ref}`params-topo` further below. For generic information on the YAML configuration file, see the {ref}`cli` page.
+
+
+```{tip}
+To display a template of all available configuration options for the YAML file, use the `--display_template_config` argument
+```
+
+### Running the workflow
+
+Now that we have this configuration file, we run the workflow.
+
+```{code-cell} python
+:tags: [hide-output]
+:mystnb:
+:  code_prompt_show: "Show logging output"
+:  code_prompt_hide: "Hide logging output"
+
+!xdem topo --config topo_config.yaml
+```
+
+The logging output is printed in the terminal, showing the different steps.
+
+```{code-cell} python
+:tags: [remove-cell]
+
+# Copy output folder to build directory to be able to embed HTML directly below
+import os
+import shutil
+from pathlib import Path
+
+# Source + destination
+src = Path("outputs_topo")
+dst = Path("../../build/_workflows/outputs_topo")
+
+# Ensure clean copy (important for incremental builds)
+if dst.exists():
+    shutil.rmtree(dst)
+dst.parent.mkdir(parents=True, exist_ok=True)
+
+# Copy entire directory tree
+shutil.copytree(src, dst)
+```
+
+Finally, a report is created (both in HTML and PDF formats) in the output directory.
+
+We can visualize the report of our workflow above:
+
+```{raw} html
+<iframe src="_workflows/outputs_topo/report.html" width="100%" height="800"></iframe>
+```
+
+## Workflow details
+
+This section describes in detail the steps for the `topo` workflow, including a summary chart and all parameters of its CLI interface.
+
+### Chart of steps
+
+The `topo` workflow is described by the following chart:
 
 :::{figure} imgs/topo_workflow_pipeline.png
 :width: 100%
 :::
 
-## Available command line
-
-Run the workflow :
-
-```{code}
-xdem topo --config config_file.yaml
-```
-
-To display a template of all available configuration options for the YAML file, use the following command:
-
-```{code}
-xdem topo --display_template_config
-```
-
-## Detailed description of input parameters
+(params-topo)=
+### Configuration parameters
 
 ```{eval-rst}
 .. tabs::
@@ -42,18 +129,16 @@ xdem topo --display_template_config
         :header: "Name", "Description", "Type", "Default value", "Required"
         :widths: 20, 40, 20, 10, 10
 
-        "path_to_elev", "Path to reference elevation", "str", "", "Yes"
-        "force_source_nodata", "No data elevation", "int", "", "No"
-        "path_to_mask", "Path to mask associated to the elevation", "str", "", "No"
-        "from_vcrs", "Original vcrs", "int, str", None, "No"
-        "to_vcrs", "Destination vcrs", "int, str", None, "No"
-        "downsample", "Downsampling elevation factor >= 1", "int, float", 1, "No"
+        "``path_to_elev``", "Path to reference elevation", "str", "", "Yes"
+        "``force_source_nodata``", "No data elevation", "int", "", "No"
+        "``path_to_mask``", "Path to mask associated to the elevation", "str", "", "No"
+        "``from_vcrs``", "Original vcrs", "int, str", None, "No"
+        "``to_vcrs``", "Destination vcrs", "int, str", None, "No"
+        "``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
 
-     .. note:: For setting the vcrs please refer to :doc:`vertical_ref`
-     .. note:: Take care that the path_to_elev and path_to_mask point to existing data.
-
-     .. note:: The downsample parameter allows the user to resample the elevation by a round factor.
-               The default value of 1 means no downsampling.
+     .. note::
+        For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
+        The ``downsample`` parameter allows the user to resample the elevation by a round factor. The default value of 1 means no downsampling.
 
 
      .. code-block:: yaml
@@ -135,8 +220,8 @@ xdem topo --display_template_config
        :header: "Name", "Description", "Type", "Default value", "Available Value", "Required"
        :widths: 20, 40, 10, 10, 10, 10
 
-       "path", "Path for outputs", "str", "outputs", "", "No"
-       "level", "Level for detailed outputs", "int", "1", "1 or 2", "No"
+       "``path``", "Path for outputs", "str", "outputs", "", "No"
+       "``level``", "Level for detailed outputs", "int", "1", "1 or 2", "No"
 
     .. code-block:: yaml
 
@@ -184,89 +269,4 @@ xdem topo --display_template_config
         ├─ report.html
         ├─ report.pdf
         └─ used_config.yaml
-```
-
-## Report example
-
-```{eval-rst}
-    .. raw:: html
-
-        <meta charset='UTF-8'><title>Topographic summary results</title></head>
-
-        <h2>Elevation Model</h2>
-        <img src='_static/elevation (m).png' alt='Image PNG' style='max-width: 100%; height: auto;'>
-        <h2>Masked elevation Model</h2>
-        <img src='_static/masked_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Information about inputs</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>reference_elev</td><td>{'path_to_elev': '/xdem/examples/data/Longyearbyen/data/DEM_1990.tif', 'path_to_mask': '/xdem/examples/data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp', 'force_source_nodata': -9999, 'from_vcrs': 'EGM96', 'to_vcrs': 'EGM96'}</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>elevation information</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>Driver</td><td>GTiff</td></tr>
-        <tr><td>Filename</td><td>examples/data/Longyearbyen/data/DEM_1990.tif</td></tr>
-        <tr><td>Grid size</td><td>us_nga_egm96_15.tif</td></tr>
-        <tr><td>Number of band</td><td>(1,)</td></tr>
-        <tr><td>Data types</td><td>float32</td></tr>
-        <tr><td>Nodata Value</td><td>-9999</td></tr>
-        <tr><td>Pixel interpretation</td><td>Area</td></tr>
-        <tr><td>Pixel size</td><td>(20.0, 20.0)</td></tr>
-        <tr><td>Width</td><td>1332</td></tr>
-        <tr><td>Height</td><td>985</td></tr>
-        <tr><td>Transform</td><td>| 20.00, 0.00, 502810.00|
-        | 0.00,-20.00, 8674030.00|
-        | 0.00, 0.00, 1.00|</td></tr>
-        <tr><td>Bounds</td><td>BoundingBox(left=502810.0, bottom=8654330.0, right=529450.0, top=8674030.0)</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Global statistics</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>mean</td><td>381.32</td></tr>
-        <tr><td>median</td><td>365.23</td></tr>
-        <tr><td>max</td><td>1022.29</td></tr>
-        <tr><td>min</td><td>8.38</td></tr>
-        <tr><td>sum</td><td>500301504.0</td></tr>
-        <tr><td>sumofsquares</td><td>268858638336.0</td></tr>
-        <tr><td>90thpercentile</td><td>727.55</td></tr>
-        <tr><td>le90</td><td>766.79</td></tr>
-        <tr><td>nmad</td><td>291.27</td></tr>
-        <tr><td>rmse</td><td>452.68</td></tr>
-        <tr><td>std</td><td>243.95</td></tr>
-        <tr><td>standarddeviation</td><td>243.95</td></tr>
-        <tr><td>validcount</td><td>1312020</td></tr>
-        <tr><td>totalcount</td><td>1312020</td></tr>
-        <tr><td>percentagevalidpoints</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <div style='clear: both; margin-bottom: 30px;'>
-        <h2>Mask statistics</h2>
-        <table border='1' cellspacing='0' cellpadding='5'>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><th>Information</th><th>Value</th></tr>
-        <tr><td>mean</td><td>350.58</td></tr>
-        <tr><td>median</td><td>320.89</td></tr>
-        <tr><td>max</td><td>1022.29</td></tr>
-        <tr><td>min</td><td>8.38</td></tr>
-        <tr><td>sum</td><td>401488000.0</td></tr>
-        <tr><td>sumofsquares</td><td>206433107968.0</td></tr>
-        <tr><td>90thpercentile</td><td>705.21</td></tr>
-        <tr><td>le90</td><td>758.1</td></tr>
-        <tr><td>nmad</td><td>277.61</td></tr>
-        <tr><td>rmse</td><td>424.57</td></tr>
-        <tr><td>std</td><td>239.48</td></tr>
-        <tr><td>standarddeviation</td><td>239.48</td></tr>
-        <tr><td>validcount</td><td>1312020</td></tr>
-        <tr><td>totalcount</td><td>1312020</td></tr>
-        <tr><td>percentagevalidpoints</td><td>100.0</td></tr>
-        </table>
-        </div>
-        <h2>Terrain attributes</h2>
-        <img src='_static/terrain_attributes.png' alt='Image PNG' style='max-width: 100%; height: auto;'>
 ```
