@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 
 import geoutils as gu
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml  # type: ignore
@@ -48,9 +49,14 @@ class Workflows(ABC):
     def __init__(self, user_config: str | Dict[str, Any]) -> None:
         """
         Initialize the workflows class
-        :param user_config: str path to a config file or dict as config
+
+        :param user_config: Path to a config file or dict as config.
+
         :return: None
         """
+
+        # Default parameters for plots
+        mpl.rcParams["font.size"] = "10"
 
         # Load configuration
         if isinstance(user_config, str):
@@ -72,6 +78,7 @@ class Workflows(ABC):
         self.outputs_folder = Path(self.config["outputs"]["path"])
         logging.info(f"Outputs folder: {self.outputs_folder.absolute()}")
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
+        logging.info(f"Outputs will be saved at {self.outputs_folder}")
 
         for folder in ["plots", "rasters", "tables"]:
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
@@ -87,7 +94,7 @@ class Workflows(ABC):
 
         def ignore_aliases(self, data: Any) -> bool:
             """
-            avoid id in YAML file
+            Avoid id in YAML file
             """
             return True
 
@@ -101,27 +108,30 @@ class Workflows(ABC):
         with open(self.config_path) as f:
             return yaml.safe_load(f)
 
-    def generate_plot(self, dem: RasterType, title: str, mask_path: str = None, **kwargs: Any) -> None:
+    def generate_plot(self, dem: RasterType, title: str, filename: str, mask_path: str = None, **kwargs: Any) -> None:
         """
-        Generate plot from a DEM
-        :param dem: Digital Elevation model
-        :param title: title of graph
-        :param mask_path: Path to mask
+        Generate plot from a DEM.
+
+        :param dem: Input digital elevation model.
+        :param title: Title of figure.
+        :param filename: Filename of figure.
+        :param mask_path: Path to mask file.
+
         :return: None
         """
 
-        plot_title = title.replace("_", " ")
-
         if mask_path is None:
-            dem.plot(title=plot_title, **kwargs)
-            plt.savefig(self.outputs_folder / "plots" / f"{title}.png")
+            dem.plot(**kwargs)
+            plt.title(title)
+            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300)
             plt.close()
         else:
             mask = gu.Vector(mask_path)
             mask = mask.crop(dem)
-            dem.plot(title=plot_title, **kwargs)
+            dem.plot(**kwargs)
             mask.plot(dem, ec="k", fc="none")
-            plt.savefig(self.outputs_folder / "plots" / f"{title}.png")
+            plt.title(title)
+            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300)
             plt.close()
 
     def floats_process(
@@ -146,21 +156,28 @@ class Workflows(ABC):
     @staticmethod
     def load_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Raster, str | None]:
         """
-        Generate DEM from user configuration dictionary
-        :param config_dem: Configuration dictionary
-        :return: DEM
+        Generate DEM from user configuration dictionary.
+
+        :param config_dem: Configuration dictionary.
+
+        :return: DEM.
         """
         mask_path = None
         if config_dem is not None:
-            dem = xdem.DEM(config_dem["path_to_elev"])
+            dem = xdem.DEM(config_dem["path_to_elev"], downsample=config_dem["downsample"])
             inlier_mask = None
             from_vcrs = config_dem["from_vcrs"]
             to_vcrs = config_dem["to_vcrs"]
             if from_vcrs:
                 dem.set_vcrs(from_vcrs)
             if to_vcrs:
+                if dem.vcrs is None and from_vcrs is None:
+                    raise ValueError(
+                        "You provided a 'to_vcrs' value, but the corresponding DEM does not have a current VCRS "
+                        "(either in the metadata or entered via the 'from_vcrs' value)."
+                    )
                 if from_vcrs != to_vcrs:
-                    dem.to_vcrs(to_vcrs)
+                    dem.to_vcrs(to_vcrs, inplace=True)
             if config_dem.get("force_source_nodata") is not None:
                 dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
             if config_dem.get("path_to_mask") is not None:
@@ -175,10 +192,11 @@ class Workflows(ABC):
 
     def remove_none(self, dico: Union[Dict[str, Any], List[Any]]) -> Union[Dict[str, Any], List[Any]]:
         """
-        Recursively remove all keys whose values are None from a dictionary,
-        except for the key 'statistics'.
-        :param dico: dictionary to clean
-        :return: cleaned dictionary
+        Recursively remove all keys whose values are None from a dictionary, except for the key 'statistics'.
+
+        :param dico: Dictionary to clean.
+
+        :return: Cleaned dictionary.
         """
         if isinstance(dico, dict):
             cleaned_dict = {}
@@ -204,16 +222,18 @@ class Workflows(ABC):
     @abstractmethod
     def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
         """
-        Create HTML page from png files and table
-        :param list_dict: list containing tuples of title and various dictionaries
+        Create HTML page from png files and table.
+
+        :param list_dict: List containing tuples of title and various dictionaries.
         :return: None
         """
 
     def save_stat_as_csv(self, data: dict[str, float], file_name: str) -> None:
         """
-        Save the statistics into a CSV file
-        :param data: Statistics dictionary
-        :param file_name: Name of csv file
+        Save the statistics into a CSV file.
+
+        :param data: Statistics dictionary.
+        :param file_name: Name of csv file.
         """
         cleaned_data = {k: float(v) if isinstance(v, (np.float32, np.float64)) else v for k, v in data.items()}
 

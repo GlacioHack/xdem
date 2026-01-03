@@ -31,6 +31,7 @@ import rasterio as rio
 from affine import Affine
 
 from geoutils._typing import NDArrayNum
+from geoutils import profiler
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad
@@ -88,6 +89,7 @@ class DEM(Raster):  # type: ignore
     See the API for more details.
     """
 
+    @profiler.profile("xdem.dem.__init__", memprof=True)  # type: ignore
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
@@ -170,6 +172,44 @@ class DEM(Raster):  # type: ignore
         # If a vertical reference was parsed or provided by user
         if vcrs is not None:
             self.set_vcrs(vcrs)
+
+    @overload
+    def info(self, stats: bool = False, *, verbose: Literal[True] = ...) -> None: ...
+
+    @overload
+    def info(self, stats: bool = False, *, verbose: Literal[False]) -> str: ...
+
+    def info(self, stats: bool = False, verbose: bool = True) -> None | str:
+        """
+        Print summary information about the DEM.
+
+        :param stats: Add statistics for each band of the dataset (max, min, median, mean, std. dev.). Default is to
+            not calculate statistics.
+        :param verbose: If set to True (default) will directly print to screen and return None
+
+        :returns: Summary string or None.
+        """
+
+        # Get raster.info()
+        raster_info = super().info(stats=stats, verbose=False)  # type: ignore
+        raster_info_split = raster_info.split("\n")
+
+        # Change crs values if not 3D
+        if len(CRS(self.crs).axis_info) > 2:
+            new_crs = [CRS(self.crs).name]
+        else:
+            new_crs = [self.crs.to_string() if self.crs is not None else None, str(self.vcrs)]
+
+        # Replace coordinate system line
+        cs_key_to_replace = "Coordinate system:"
+        line_cs = [raster_info_split.index(line) for line in raster_info_split if line.startswith(cs_key_to_replace)]
+        raster_info_split[line_cs[0]] = f"Coordinate system:    {new_crs}"
+
+        if verbose:
+            print("\n".join(raster_info_split))
+            return None
+        else:
+            return "\n".join(raster_info_split)
 
     def copy(self, new_array: NDArrayf | None = None) -> DEM:
         """
@@ -579,6 +619,7 @@ class DEM(Raster):  # type: ignore
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
+    @profiler.profile("xdem.dem.coregister_3d", memprof=True)  # type: ignore
     def coregister_3d(  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame,

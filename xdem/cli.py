@@ -20,6 +20,7 @@
 import argparse
 import ctypes.util
 import logging
+import sys
 
 import yaml  # type: ignore
 
@@ -49,14 +50,18 @@ def main() -> None:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Set the logging level",
     )
-    subparsers = parser.add_subparsers(dest="command", help="Available workflows as subcommand")
+    subparsers = parser.add_subparsers(
+        dest="command",
+        help="Available workflows as subcommand (see xdem [workflow] -h"
+        " for more information on the specific workflow)",
+    )
 
     # Subcommand: info
     topo_parser = subparsers.add_parser(
         "topo",
         help="Run DEM qualification workflow",
         description="Run a DEM information workflow using a YAML configuration file.",
-        epilog="Example: xdem topo config.yaml",
+        epilog="Example: xdem topo --config config.yaml",
     )
     topo_group = topo_parser.add_mutually_exclusive_group(required=True)
     topo_group.add_argument(
@@ -70,13 +75,13 @@ def main() -> None:
         "accuracy",
         help="Run DEM comparison workflow",
         description="Run a DEM comparison workflow using a YAML configuration file.",
-        epilog="Example: xdem accuracy config.yaml",
+        epilog="Example: xdem accuracy --config config.yaml",
     )
     diff_group = diff_parser.add_mutually_exclusive_group(required=True)
     diff_group.add_argument("--config", help="Path to YAML configuration file")
     diff_group.add_argument("--display_template_config", action="store_true", help="Show configuration template")
 
-    args = parser.parse_args()
+    args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
 
     # Instance logger
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)

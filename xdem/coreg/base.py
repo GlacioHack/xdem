@@ -47,6 +47,7 @@ import scipy
 import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
+from geoutils import profiler
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolate import _interp_points
 from geoutils.raster import Raster, RasterType, raster
@@ -2379,6 +2380,7 @@ class Coreg:
         apply_kwargs: dict[str, Any] | None = None,
     ) -> RasterType | gpd.GeoDataFrame: ...
 
+    @profiler.profile("xdem.coreg.base.fit_and_apply", memprof=True)  # type: ignore
     def fit_and_apply(
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,

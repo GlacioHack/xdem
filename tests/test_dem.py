@@ -95,7 +95,7 @@ class TestDEM:
         # Save to temporary folder
         temp_dir = tempfile.TemporaryDirectory()
         temp_file = os.path.join(temp_dir.name, "test.tif")
-        dem_reproj.save(temp_file)
+        dem_reproj.to_file(temp_file)
 
         # Check opening a DEM with a 3D CRS sets the vcrs
         dem_3d = DEM(temp_file)
@@ -369,6 +369,58 @@ class TestDEM:
         terrain_module_attr = getattr(xdem.terrain, terrain_attribute)(dem)
 
         assert dem_class_attr.raster_equal(terrain_module_attr)
+
+    def test_info_2Dcrs(self) -> None:
+        """Tests info function with the new Coordinate system line on dem with 2D CRS"""
+
+        dem_path = xdem.examples.get_path("longyearbyen_ref_dem")
+        raster = gu.Raster(dem_path)
+        dem = xdem.dem.DEM(dem_path)
+        crs_key = "Coordinate system:"
+
+        # Test info() with stats or not
+        for stats in [True, False]:
+            raster_infos_arrays = raster.info(stats=stats, verbose=False).split("\n")
+            dem_infos_array = dem.info(stats=stats, verbose=False).split("\n")
+
+            # Same number of lines
+            assert len(dem_infos_array) == len(raster_infos_arrays)
+
+            # Find Coordinate system line
+            crs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith(crs_key)]
+            assert len(crs_line) == 1
+            complete_line = dem_infos_array[crs_line[0]]
+
+            # Verify infos except Coordinate system
+            del raster_infos_arrays[crs_line[0]]
+            del dem_infos_array[crs_line[0]]
+            for line in range(len(raster_infos_arrays)):
+                assert raster_infos_arrays[line] == dem_infos_array[line]
+
+            # Verify Coordinate system value
+            assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'None']"
+
+        # Verify new VCRS value with this 2D CRS DEM
+        dem.set_vcrs(new_vcrs="EGM96")
+        dem_infos_array = dem.info(verbose=False).split("\n")
+        complete_line = dem_infos_array[crs_line[0]]
+        assert complete_line.startswith(crs_key)
+        assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'EPSG:5773']"
+
+    @pytest.mark.skip()  # type: ignore
+    def test_info_3Dcrs(self) -> None:
+        """Tests info function with the new Coordinate system line on dem with 3D CRS"""
+
+        dem_path = xdem.examples.get_path("gizeh")
+        dem = xdem.dem.DEM(dem_path)
+        dem_infos_array = dem.info(verbose=False).split("\n")
+
+        crs_key = "Coordinate system:"
+        crs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith(crs_key)]
+
+        complete_line = dem_infos_array[crs_line[0]]
+        assert complete_line.startswith(crs_key)
+        assert complete_line[len(crs_key) :].strip() == "['WGS 84 / UTM zone 36N + EGM96 height']"
 
     @staticmethod
     @pytest.mark.parametrize(  # type: ignore

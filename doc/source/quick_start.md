@@ -19,28 +19,7 @@ kernelspec:
 Below is a short example show-casing some of the core functionalities of xDEM.
 To find an example about a specific functionality, jump directly to {ref}`quick-gallery`.
 
-## Command line interface
-
-1. Create a configuration YAML file containing path to your elevation files.
-
-For example :
-
-```yaml
-inputs:
-  reference_elev:
-    path_to_elev: "xdem/examples/data/Longyearbyen/data/DEM_2009_ref.tif"
-  to_be_aligned_elev:
-    path_to_elev: "xdem/examples/data/Longyearbyen/data/DEM_1990.tif"
-    path_to_mask: "xdem/examples/data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp"
-```
-
-2. Execute the command line interface
-
-```shell
-xdem accuracy --config config_file.yaml
-```
-
-## Short example
+## Python example
 
 ```{note}
 :class: margin
@@ -126,13 +105,33 @@ dh_err.plot(ax="new", vmin=2, vmax=7, cmap="Reds", cbar_title=r"Elevation change
 vect_gla.plot(dh_err, fc='none', ec='k', lw=0.5)
 
 # Save to file
-dh_err.save("dh_error.tif")
+dh_err.to_file("dh_error.tif")
 ```
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
 import os
 os.remove("dh_error.tif")
+```
+
+## Command-line example
+
+xDEM also support **workflows** (series of analysis steps) through a command line interface.
+Create a configuration YAML file containing path to your elevation files:
+
+```yaml
+inputs:
+  reference_elev:
+    path_to_elev: "xdem/examples/data/Longyearbyen/data/DEM_2009_ref.tif"
+  to_be_aligned_elev:
+    path_to_elev: "xdem/examples/data/Longyearbyen/data/DEM_1990.tif"
+    path_to_mask: "xdem/examples/data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp"
+```
+
+And run the workflow, which will generate several outputs including an HTML report (by default in an `outputs` folder of your current directory).
+
+```shell
+xdem accuracy --config config_file.yaml
 ```
 
 (quick-gallery)=
