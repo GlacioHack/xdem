@@ -50,12 +50,14 @@ import scipy.optimize
 from geoutils import profiler
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolate import _interp_points
+from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
 from geoutils.raster import Raster, RasterType, raster
 from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
 from geoutils.raster.geotransformations import _translate
 
+import xdem
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.fit import (
     polynomial_1d,
@@ -321,12 +323,13 @@ def _preprocess_coreg_fit_point_point(
 
 
 def _preprocess_coreg_fit(
-    reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-    to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+    reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
+    to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
     inlier_mask: NDArrayb | Raster | None = None,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
+    z_name: str | None = None,
 ) -> tuple[
     NDArrayf | gpd.GeoDataFrame,
     NDArrayf | gpd.GeoDataFrame,
@@ -334,13 +337,15 @@ def _preprocess_coreg_fit(
     affine.Affine | None,
     rio.crs.CRS | None,
     Literal["Area", "Point"] | None,
+    str | None,
 ]:
     """Pre-processing and checks of fit for any input."""
 
-    if not all(
-        isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame)) for elev in (reference_elev, to_be_aligned_elev)
-    ):
-        raise ValueError("Input elevation data should be a raster, an array or a geodataframe.")
+    for elev in (reference_elev, to_be_aligned_elev):
+        if not isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame, gu.PointCloud)):
+            raise ValueError(
+                f"Input elevation data should be a raster, array, geodataframe or point cloud, " f"got {type(elev)}."
+            )
 
     # If both inputs are raster or arrays, reprojection on the same grid is needed for raster-raster methods
     if all(isinstance(elev, (np.ndarray, gu.Raster)) for elev in (reference_elev, to_be_aligned_elev)):
@@ -357,11 +362,21 @@ def _preprocess_coreg_fit(
     elif any(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_elev, to_be_aligned_elev)):
         if isinstance(reference_elev, (np.ndarray, gu.Raster)):
             raster_elev = reference_elev
-            point_elev = to_be_aligned_elev
+            point_elev = (
+                to_be_aligned_elev
+                if isinstance(to_be_aligned_elev, gpd.GeoDataFrame)
+                else to_be_aligned_elev.ds  # type: ignore
+            )
+            z_name = (
+                z_name
+                if isinstance(to_be_aligned_elev, gpd.GeoDataFrame)
+                else to_be_aligned_elev.data_column  # type: ignore
+            )
             ref = "raster"
         else:
             raster_elev = to_be_aligned_elev
-            point_elev = reference_elev
+            point_elev = reference_elev if isinstance(reference_elev, gpd.GeoDataFrame) else reference_elev.ds
+            z_name = z_name if isinstance(reference_elev, gpd.GeoDataFrame) else reference_elev.data_column
             ref = "point"
 
         raster_elev, point_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit_raster_point(
@@ -382,26 +397,43 @@ def _preprocess_coreg_fit(
 
     # If both inputs are points, simply reproject to the same CRS
     else:
-        ref_elev, tba_elev = _preprocess_coreg_fit_point_point(
-            reference_elev=reference_elev, to_be_aligned_elev=to_be_aligned_elev
+        ref_elev = reference_elev if isinstance(reference_elev, gpd.GeoDataFrame) else reference_elev.ds  # type: ignore
+        tba_elev = (
+            to_be_aligned_elev
+            if isinstance(to_be_aligned_elev, gpd.GeoDataFrame)
+            else to_be_aligned_elev.ds  # type: ignore
         )
+        z_name = (
+            z_name
+            if isinstance(to_be_aligned_elev, gpd.GeoDataFrame)
+            else to_be_aligned_elev.data_column  # type: ignore
+        )
+        ref_elev, tba_elev = _preprocess_coreg_fit_point_point(reference_elev=ref_elev, to_be_aligned_elev=tba_elev)
 
-    return ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point
+    return ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point, z_name
 
 
 def _preprocess_coreg_apply(
-    elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+    elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
-) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine, rio.crs.CRS]:
+    z_name: str | None = None,
+) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine, rio.crs.CRS, str | None]:
     """Pre-processing and checks of apply for any input."""
 
-    if not isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame)):
-        raise ValueError("Input elevation data should be a raster, an array or a geodataframe.")
+    if not isinstance(elev, (np.ndarray, Raster, gpd.GeoDataFrame, PointCloud)):
+        raise ValueError(
+            f"Input elevation data should be a raster, array, geodataframe or point cloud, " f"got {type(elev)}."
+        )
 
-    # If input is geodataframe
-    if isinstance(elev, gpd.GeoDataFrame):
-        elev_out = elev
+    # If input is geodataframe or point cloud
+    if isinstance(elev, (gpd.GeoDataFrame, PointCloud)):
+        if isinstance(elev, PointCloud):
+            elev_out = elev.ds
+            z_name = elev.data_column
+        else:
+            elev_out = elev
+            z_name = z_name
         new_transform = None
         new_crs = None
 
@@ -431,14 +463,19 @@ def _preprocess_coreg_apply(
         if np.all(elev_mask):
             raise ValueError("'dem' had only NaNs")
 
-    return elev_out, new_transform, new_crs
+    return elev_out, new_transform, new_crs, z_name
 
 
 def _postprocess_coreg_apply_pts(
+    elev: gpd.GeoDataFrame | PointCloudType,
     applied_elev: gpd.GeoDataFrame,
-) -> gpd.GeoDataFrame:
+) -> gpd.GeoDataFrame | PointCloudType:
     """Post-processing and checks of apply for point input."""
 
+    if isinstance(elev, PointCloud):
+        applied_elev = xdem.EPC(applied_elev, data_column=elev.data_column)
+    else:
+        applied_elev = applied_elev
     # TODO: Convert CRS back if the CRS did not match the one of the fit?
     return applied_elev
 
@@ -505,14 +542,14 @@ def _postprocess_coreg_apply_rst(
 
 
 def _postprocess_coreg_apply(
-    elev: NDArrayf | gu.Raster | gpd.GeoDataFrame,
+    elev: NDArrayf | gu.Raster | gpd.GeoDataFrame | PointCloudType,
     applied_elev: NDArrayf | gpd.GeoDataFrame,
     transform: affine.Affine,
     out_transform: affine.Affine,
     crs: rio.crs.CRS,
     resample: bool,
     resampling: rio.warp.Resampling | None = None,
-) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine]:
+) -> tuple[NDArrayf | gu.Raster | gpd.GeoDataFrame | gu.PointCloud, affine.Affine]:
     """
     Post-processing and checks of apply for any input.
 
@@ -535,7 +572,7 @@ def _postprocess_coreg_apply(
             resampling=resampling,
         )
     else:
-        applied_elev = _postprocess_coreg_apply_pts(applied_elev)
+        applied_elev = _postprocess_coreg_apply_pts(elev=elev, applied_elev=applied_elev)
 
     return applied_elev, out_transform
 
@@ -2075,8 +2112,8 @@ class Coreg:
 
     def fit(
         self: CoregType,
-        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
         inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
@@ -2084,7 +2121,7 @@ class Coreg:
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
-        z_name: str = "z",
+        z_name: str | None = None,
         random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> CoregType:  # type: ignore
@@ -2140,13 +2177,14 @@ class Coreg:
             initial_shift_apply = True
 
         # Pre-process the inputs, by reprojecting and converting to arrays
-        ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
+        ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point, z_name = _preprocess_coreg_fit(
             reference_elev=reference_elev,
             to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
             area_or_point=area_or_point,
+            z_name=z_name,
         )
 
         main_args = {
@@ -2201,7 +2239,7 @@ class Coreg:
         resampling: str | rio.warp.Resampling = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        z_name: str = "z",
+        z_name: str | None = None,
         **kwargs: Any,
     ) -> tuple[MArrayf, rio.transform.Affine]: ...
 
@@ -2214,34 +2252,40 @@ class Coreg:
         resampling: str | rio.warp.Resampling = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        z_name: str = "z",
+        z_name: str | None = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]: ...
 
     @overload
     def apply(
         self,
-        elev: RasterType | gpd.GeoDataFrame,
+        elev: RasterType | gpd.GeoDataFrame | PointCloudType,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        z_name: str = "z",
+        z_name: str | None = None,
         **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame: ...
+    ) -> RasterType | gpd.GeoDataFrame | PointCloudType: ...
 
     def apply(
         self,
-        elev: MArrayf | NDArrayf | RasterType | gpd.GeoDataFrame,
+        elev: MArrayf | NDArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        z_name: str = "z",
+        z_name: str | None = None,
         **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
+    ) -> (
+        RasterType
+        | gpd.GeoDataFrame
+        | PointCloudType
+        | tuple[NDArrayf, rio.transform.Affine]
+        | tuple[MArrayf, rio.transform.Affine]
+    ):
         """
         Apply the estimated transform to a DEM.
 
@@ -2260,7 +2304,9 @@ class Coreg:
         if not self._fit_called and self._meta["outputs"]["affine"].get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
 
-        elev_array, transform, crs = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
+        elev_array, transform, crs, z_name = _preprocess_coreg_apply(
+            elev=elev, transform=transform, crs=crs, z_name=z_name
+        )
 
         main_args = {"elev": elev_array, "transform": transform, "crs": crs, "resample": resample, "z_name": z_name}
 
@@ -2290,7 +2336,7 @@ class Coreg:
         )
 
         # Only return object if raster or geodataframe, also return transform if object was an array
-        if isinstance(applied_elev, (gu.Raster, gpd.GeoDataFrame)):
+        if isinstance(applied_elev, (Raster, gpd.GeoDataFrame, PointCloud)):
             return applied_elev
         else:
             return applied_elev, out_transform
@@ -2298,7 +2344,7 @@ class Coreg:
     @overload
     def fit_and_apply(
         self,
-        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
         to_be_aligned_elev: MArrayf,
         inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
@@ -2318,7 +2364,7 @@ class Coreg:
     @overload
     def fit_and_apply(
         self,
-        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
         to_be_aligned_elev: NDArrayf,
         inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
@@ -2338,8 +2384,8 @@ class Coreg:
     @overload
     def fit_and_apply(
         self,
-        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        to_be_aligned_elev: RasterType | gpd.GeoDataFrame,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
+        to_be_aligned_elev: RasterType | gpd.GeoDataFrame | PointCloudType,
         inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
@@ -2358,8 +2404,8 @@ class Coreg:
     @profiler.profile("xdem.coreg.base.fit_and_apply", memprof=True)  # type: ignore
     def fit_and_apply(
         self,
-        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
         inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
@@ -2788,8 +2834,8 @@ class CoregPipeline(Coreg):
     # Need to override base Coreg method to work on pipeline steps
     def fit(
         self: CoregType,
-        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
-        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame,
+        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
         inlier_mask: NDArrayb | Raster | None = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         weights: NDArrayf | None = None,
@@ -2797,7 +2843,7 @@ class CoregPipeline(Coreg):
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         area_or_point: Literal["Area", "Point"] | None = None,
-        z_name: str = "z",
+        z_name: str | None = None,
         random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> CoregType:
@@ -2820,13 +2866,14 @@ class CoregPipeline(Coreg):
             warnings.filterwarnings("ignore", message="Subsample argument passed to*", category=UserWarning)
 
         # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
-        ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit(
+        ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point, z_name = _preprocess_coreg_fit(
             reference_elev=reference_elev,
             to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
             transform=transform,
             crs=crs,
             area_or_point=area_or_point,
+            z_name=z_name,
         )
         tba_dem_mod = tba_dem.copy()
         out_transform = transform
@@ -2880,7 +2927,7 @@ class CoregPipeline(Coreg):
         resampling: str | rio.warp.Resampling = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        z_name: str = "z",
+        z_name: str | None = None,
         **kwargs: Any,
     ) -> tuple[MArrayf, rio.transform.Affine]: ...
 
@@ -2893,41 +2940,49 @@ class CoregPipeline(Coreg):
         resampling: str | rio.warp.Resampling = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        z_name: str = "z",
+        z_name: str | None = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]: ...
 
     @overload
     def apply(
         self,
-        elev: RasterType | gpd.GeoDataFrame,
+        elev: RasterType | gpd.GeoDataFrame | PointCloudType,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        z_name: str = "z",
+        z_name: str | None = None,
         **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame: ...
+    ) -> RasterType | gpd.GeoDataFrame | gu.PointCloud: ...
 
     # Need to override base Coreg method to work on pipeline steps
     def apply(
         self,
-        elev: MArrayf | NDArrayf | RasterType | gpd.GeoDataFrame,
+        elev: MArrayf | NDArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
         resampling: str | rio.warp.Resampling = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
-        z_name: str = "z",
+        z_name: str | None = None,
         **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame | tuple[NDArrayf, rio.transform.Affine] | tuple[MArrayf, rio.transform.Affine]:
+    ) -> (
+        RasterType
+        | gpd.GeoDataFrame
+        | gu.PointCloud
+        | tuple[NDArrayf, rio.transform.Affine]
+        | tuple[MArrayf, rio.transform.Affine]
+    ):
 
         # First step and preprocessing
         if not self._fit_called and self._meta["outputs"]["affine"].get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
 
-        elev_array, transform, crs = _preprocess_coreg_apply(elev=elev, transform=transform, crs=crs)
+        elev_array, transform, crs, z_name = _preprocess_coreg_apply(
+            elev=elev, transform=transform, crs=crs, z_name=z_name
+        )
 
         elev_mod = elev_array.copy()
         out_transform = copy.copy(transform)
@@ -2967,7 +3022,7 @@ class CoregPipeline(Coreg):
         )
 
         # Only return object if raster or geodataframe, also return transform if object was an array
-        if isinstance(applied_elev, (gu.Raster, gpd.GeoDataFrame)):
+        if isinstance(applied_elev, (gu.Raster, gpd.GeoDataFrame, gu.PointCloud)):
             return applied_elev
         else:
             return applied_elev, out_transform

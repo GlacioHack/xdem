@@ -49,8 +49,8 @@ class TestBiasCorr:
     fit_args_rst_rst = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
 
     # Convert DEMs to points with a bit of subsampling for speed-up
-    tba_pts = tba.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
-    ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
+    tba_pts = tba.to_pointcloud(data_column_name="z", subsample=50000, random_state=42)
+    ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42)
 
     # Raster-Point
     fit_args_rst_pts = dict(reference_elev=ref, to_be_aligned_elev=tba_pts, inlier_mask=inlier_mask)

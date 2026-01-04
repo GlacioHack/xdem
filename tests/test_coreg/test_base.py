@@ -588,7 +588,7 @@ class TestCoregClass:
                 "None",
                 "fit",
                 "error",
-                "Input elevation data should be a raster, " "an array or a geodataframe.",
+                "Input elevation data should be a raster, array, geodataframe or point cloud.*",
             ),
             ("dem1 + np.nan", "dem2", "None", "None", "fit", "error", "'reference_dem' had only NaNs"),
             ("dem1", "dem2 + np.nan", "None", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
@@ -811,10 +811,7 @@ class TestCoregPipeline:
     def test_pipeline_pts(self) -> None:
 
         pipeline = coreg.NuthKaab() + coreg.DhMinimize()
-        ref_points = self.ref.to_pointcloud(subsample=5000, random_state=42).ds
-        ref_points["E"] = ref_points.geometry.x
-        ref_points["N"] = ref_points.geometry.y
-        ref_points.rename(columns={"b1": "z"}, inplace=True)
+        ref_points = self.ref.to_pointcloud(subsample=5000, random_state=42)
 
         # Check that this runs without error
         pipeline.fit(reference_elev=ref_points, to_be_aligned_elev=self.tba)

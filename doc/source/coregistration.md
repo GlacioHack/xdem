@@ -55,7 +55,7 @@ my_coreg_pipeline = xdem.coreg.ICP() + xdem.coreg.NuthKaab()
 my_coreg_pipeline = xdem.coreg.NuthKaab()
 ```
 
-Then, coregistering a pair of elevation data can be done by calling {func}`xdem.DEM.coregister_3d` from the DEM that
+Then, coregistering a pair of elevation data can be done by calling {func}`~xdem.DEM.coregister_3d` from the {class}`xdem.DEM` or {class}`xdem.EPC` that
 should be aligned.
 
 ```{code-cell} ipython3
@@ -74,13 +74,13 @@ tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 ```
 
 ```{code-cell} ipython3
-# Coregister by calling the DEM method
+# Coregister by calling the DEM or EPC method
 aligned_dem = tba_dem.coregister_3d(ref_dem, my_coreg_pipeline)
 ```
 
 Alternatively, the coregistration can be applied by calling {func}`~xdem.coreg.Coreg.fit_and_apply`, or sequentially
 calling the {func}`~xdem.coreg.Coreg.fit` and {func}`~xdem.coreg.Coreg.apply` steps,
-which allows a broader variety of arguments at each step, and re-using the same transformation to several objects
+which allows a broader variety of arguments at each step, and re-using the same transformation on several objects
 (e.g., horizontal shift of both a stereo DEM and its ortho-image).
 
 ```{code-cell} ipython3
@@ -265,7 +265,7 @@ plt.tight_layout()
 {class}`xdem.coreg.VerticalShift`
 
 ```{caution}
-Vertical shifting simply serves to refine a vertical translation over the entire DEM for 3D rigid alignment.
+Vertical shifting simply serves to refine a vertical translation over the entire elevation data.
 For transforming the 3D CRS, see the **{ref}`vertical-ref` feature page**.
 ```
 
@@ -317,7 +317,7 @@ plt.tight_layout()
 
 - **Performs:** Rigid transformation (3D translation + 3D rotation).
 - **Does not support weights.**
-- **Pros:** Good at solving sub-pixels shifts by harnessing gridded nature of DEM.
+- **Pros:** Good at solving sub-pixels shifts.
 - **Cons:** Sensitive to elevation outliers.
 
 Least Z-difference (LZD) coregistration is an iterative point-grid registration method from [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf).
@@ -575,27 +575,19 @@ for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at
 ### The {class}`~xdem.coreg.BlockwiseCoreg` object
 
 ```{caution}
-The {class}`~xdem.coreg.BlockwiseCoreg` feature is still experimental: it might not support all coregistration
-methods, and create edge artefacts.
-:warning: This particular method relies on storing all data entirely on disk.
+The {class}`~xdem.coreg.BlockwiseCoreg` feature is still experimental. Currently, it is only tested for the Nuth and Kaab method.
 ```
 
-Sometimes, we want to split a coregistration across different spatial blocks of an elevation dataset, running that
-method independently in each subset.
-It can also happen that memory requirements exceed the capacity of the computers.
-In such cases, it may be necessary to process the data in blocks and then aggregate the results afterward.
+A {class}`~xdem.coreg.BlockwiseCoreg` splits a coregistration across different spatial blocks of an elevation dataset, running that
+method independently in each block.
+By default, these blocks are loaded sequentially to reduce the memory used during a coregistration.
 
-> **Note:**
-> The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
->
-> The `block_size_apply` parameter allows the DEM to be aligned in blocks to optimize memory usage. Smaller blocks
-> during the apply step reduce memory usage but increase computing time
->
-> These two parameters do **not** need to be the same size.
-
-
-
-A {class}`~xdem.coreg.BlockwiseCoreg` can be constructed for this:
+```{note}
+The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
+The `block_size_apply` parameter allows the DEM to be aligned in blocks to optimize memory usage.
+Smaller blocks during the apply step reduce memory usage but increase computing time.
+These two parameters do **not** need to be the same size.
+```
 
 ```{code-cell} ipython3
 blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),

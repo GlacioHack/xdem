@@ -29,6 +29,7 @@ from xdem import (  # noqa
 from xdem.ddem import dDEM  # noqa
 from xdem.dem import DEM  # noqa
 from xdem.demcollection import DEMCollection  # noqa
+from xdem.epc import EPC  # noqa
 
 try:
     from xdem._version import __version__  # noqa

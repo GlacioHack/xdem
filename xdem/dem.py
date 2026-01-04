@@ -24,16 +24,19 @@ import warnings
 from typing import Any, Callable, Literal, overload
 
 import geopandas as gpd
+import geoutils as gu
 import numpy as np
 import rasterio as rio
 from affine import Affine
 from geoutils import profiler
+from geoutils._typing import NDArrayNum
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
 
+import xdem
 from xdem import coreg, terrain
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg import Coreg
@@ -617,7 +620,7 @@ class DEM(Raster):  # type: ignore
     @profiler.profile("xdem.dem.coregister_3d", memprof=True)  # type: ignore
     def coregister_3d(  # type: ignore
         self,
-        reference_elev: DEM | gpd.GeoDataFrame,
+        reference_elev: DEM | gpd.GeoDataFrame | xdem.EPC,
         coreg_method: coreg.Coreg,
         inlier_mask: Raster | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
@@ -773,3 +776,33 @@ class DEM(Raster):  # type: ignore
         )[2]
 
         return sig_dh, corr_sig
+
+    def to_pointcloud(
+        self,
+        data_column_name: str = "b1",
+        data_band: int = 1,
+        auxiliary_data_bands: list[int] | None = None,
+        auxiliary_column_names: list[str] | None = None,
+        subsample: float | int = 1,
+        skip_nodata: bool = True,
+        as_array: bool = False,
+        random_state: int | np.random.Generator | None = None,
+        force_pixel_offset: Literal["center", "ul", "ur", "ll", "lr"] = "ul",
+    ) -> NDArrayNum | xdem.EPC:
+
+        pc = super().to_pointcloud(
+            data_column_name=data_column_name,
+            data_band=data_band,
+            auxiliary_data_bands=auxiliary_data_bands,
+            auxiliary_column_names=auxiliary_column_names,
+            subsample=subsample,
+            skip_nodata=skip_nodata,
+            as_array=as_array,
+            random_state=random_state,
+            force_pixel_offset=force_pixel_offset,
+        )
+
+        if isinstance(pc, gu.PointCloud):
+            return xdem.EPC(pc)
+        else:
+            return pc

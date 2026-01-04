@@ -16,7 +16,7 @@ There are a number of types of elevation data:
 4. **Elevation triangle irregular networks (TINs)** are a triangle mesh representing the continuous elevation surface. **They are usually not used for analysis**, instead in-memory for visualization or for conversion from an elevation point cloud to a DEM.
 
 ```{note}
-xDEM supports the two elevation data types primarily used for quantitative analysis: the {class}`~xdem.DEM` and the elevation point cloud (currently as a {class}`~geopandas.GeoDataFrame` for some operations, more soon!).
+xDEM supports the two elevation data types primarily used for quantitative analysis: the {class}`~xdem.DEM` and the {class}`~xdem.EPC`.
 
 See the **{ref}`elevation-objects` features pages** for more details.
 ```
