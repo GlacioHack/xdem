@@ -28,7 +28,6 @@ dependencies:
   - scikit-learn
   - laspy
   - lazrs-python # For LAZ files
-  - libgdal-arrow-parquet # For Parquet files
 
   # Test dependencies
   - pytest
