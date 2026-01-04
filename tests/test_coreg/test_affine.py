@@ -127,13 +127,13 @@ class TestAffineCoreg:
         matrix = np.diag(np.ones(4, dtype=float))
         matrix[2, 3] = vshift
         coreg_obj = AffineCoreg.from_matrix(matrix)
-        transformed_points = coreg_obj.apply(self.points)
+        transformed_points = coreg_obj.apply(self.points, z_name="z")
         assert all(transformed_points["z"].values == vshift)
 
         # Check that the from_translation function works as expected.
         x_offset = 5
         coreg_obj2 = AffineCoreg.from_translations(x_off=x_offset)
-        transformed_points2 = coreg_obj2.apply(self.points)
+        transformed_points2 = coreg_obj2.apply(self.points, z_name="z")
         assert np.array_equal(self.points.geometry.x.values + x_offset, transformed_points2.geometry.x.values)
 
         # Try to make a Coreg object from a nan translation (should fail).
