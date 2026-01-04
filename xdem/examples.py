@@ -29,7 +29,7 @@ import geoutils as gu
 import xdem
 
 _DATA_REPO_URL = "https://github.com/GlacioHack/xdem-data/tarball/main"
-_COMMIT_HASH = "98004a09f84def4c78b253d41b212baca2b3cccb"
+_COMMIT_HASH = "6393063b5252b9143ee16b0e31d63458ad199a79"
 
 # This directory needs to be created within xdem/ so that it works for an installed package as well
 # importlib.resources.files helps take care of the relative path, no matter if package is dev-local or installed
@@ -46,6 +46,7 @@ with as_file(_EXAMPLES_DIRECTORY) as examples_directory:
         "longyearbyen_glacier_outlines_2010": os.path.join(
             examples_directory, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_2010.shp"
         ),
+        "longyearbyen_epc": os.path.join(examples_directory, "Longyearbyen", "data", "EPC_IS2.parquet"),
     }
 
     _FILEPATHS_PROCESSED = {

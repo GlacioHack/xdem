@@ -137,6 +137,15 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
     DEM.interp_points
 ```
 
+### Statistics
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.get_stats
+```
+
 ### Terrain attributes
 
 ```{eval-rst}
@@ -157,6 +166,7 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
     DEM.roughness
     DEM.rugosity
     DEM.fractal_roughness
+    DEM.texture_shading
 ```
 
 Or to get multiple related terrain attributes at once (for performance):
@@ -206,7 +216,7 @@ Below, we only repeat some core attributes and methods of GeoUtils, see
     :toctree: gen_modules/
 
     EPC
-    EPC.save
+    EPC.to_file
 ```
 
 ### Plotting or summarize info
@@ -270,7 +280,7 @@ See the full list in [the PointCloud API of GeoUtils](https://geoutils.readthedo
 
 ### Georeferencing
 
-#### Inherited from {class}`~geoutils.Raster`
+#### Inherited from {class}`~geoutils.PointCloud`
 
 ```{eval-rst}
 .. autosummary::
@@ -279,6 +289,7 @@ See the full list in [the PointCloud API of GeoUtils](https://geoutils.readthedo
     EPC.info
     EPC.reproject
     EPC.crop
+    EPC.subsample
 ```
 
 #### Vertical referencing for {class}`~xdem.DEM`
@@ -305,6 +316,15 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
     EPC.rasterize
 ```
 
+### Statistics
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.get_stats
+```
+
 ### Coregistration and bias corrections
 
 ```{tip}
@@ -316,15 +336,6 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     :toctree: gen_modules/
 
     EPC.coregister_3d
-```
-
-### Uncertainty analysis
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    EPC.estimate_uncertainty
 ```
 
 (api-geo-handle)=

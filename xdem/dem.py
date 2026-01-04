@@ -622,7 +622,7 @@ class DEM(Raster):  # type: ignore
     @profiler.profile("xdem.dem.coregister_3d", memprof=True)  # type: ignore
     def coregister_3d(  # type: ignore
         self,
-        reference_elev: DEM | gpd.GeoDataFrame,
+        reference_elev: DEM | gpd.GeoDataFrame | EPC,
         coreg_method: coreg.Coreg,
         inlier_mask: Raster | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,

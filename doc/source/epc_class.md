@@ -1,5 +1,7 @@
 ---
 file_format: mystnb
+mystnb:
+  execution_timeout: 150
 jupytext:
   formats: md:myst
   text_representation:
@@ -10,22 +12,21 @@ kernelspec:
   language: python
   name: xdem
 ---
-(elevation-point-cloud)=
+(epc-class)=
 
 # The elevation point cloud ({class}`~xdem.EPC`)
 
-An elevation point cloud can be used with many features of xDEM (vertical referencing, coregistration and bias-corrections, uncertainty analysis) 
-but not for methods requiring continuous gridded data (terrain attributes).
-
 Below, a summary of the {class}`~xdem.EPC` object and its methods.
 
-(dem-obj-def)=
+(epc-obj-def)=
 
 ## Object definition and attributes
 
 An {class}`~xdem.EPC` is a {class}`~geoutils.PointCloud` with an additional georeferenced vertical dimension stored in the attribute {attr}`~xdem.EPC.vcrs`.
-It inherits the **main attribute** of {class}`~geoutils.PointCloud` which is a geodataframe {attr}`~xdem.EPC.ds`.
+It can be used with many features of xDEM (vertical referencing, coregistration and bias-corrections, uncertainty analysis) 
+but not for methods requiring continuous gridded data (terrain attributes).
 
+The {class}`~xdem.EPC` inherits the **main attribute** of {class}`~geoutils.PointCloud` which is a geodataframe {attr}`~xdem.EPC.ds`.
 Other useful point cloud attributes and methods are available through the {class}`~geoutils.PointCloud` object, such as
 {attr}`~xdem.EPC.point_count`, {func}`~xdem.EPC.grid` and {func}`~xdem.EPC.subsample` .
 
@@ -43,8 +44,8 @@ Support for LAS files is still preliminary and loads all data in memory during d
 
 ## Open and save
 
-An {class}`~xdem.EPC` is opened by instantiating the class with a {class}`str`, a {class}`pathlib.Path`, a {class}`geopandas.GeoDataFrame`,
-a {class}`geopandas.GeoSeries` or a {class}`shapely.Geometry`
+An {class}`~xdem.EPC` is opened by instantiating the class with a {class}`str`, a {class}`pathlib.Path`, or a {class}`geopandas.GeoDataFrame`,
+or a {class}`geopandas.GeoSeries`, containing either only 2D or only 3D point geometries.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -56,19 +57,21 @@ pyplot.rcParams['savefig.dpi'] = 400
 ```
 
 ```{code-cell} ipython3
+:tags: [hide-output]
+
 import xdem
 
-# Instantiate an EPC from a filename on disk
-filename_epc = xdem.examples.get_path("longyearbyen_ref_dem")
-dem = xdem.EPC(filename_epc)
-dem
+# Instantiate an EPC from a filename on disk, passing the relevant data column
+filename_epc = xdem.examples.get_path("longyearbyen_epc")
+epc = xdem.EPC(filename_epc, data_column="h_li")
+epc
 ```
 
-Detailed information on the {class}`~xdem.EPC` is printed using {func}`~geoutils.EPC.info`, along with basic statistics using `stats=True`:
+Detailed information on the {class}`~xdem.EPC` is printed using {func}`~xdem.EPC.info`, along with basic statistics using `stats=True`:
 
 ```{code-cell} ipython3
 # Print details of elevation point cloud
-epc.info(stats=True)
+epc.info()
 ```
 
 ```{important}
@@ -77,11 +80,11 @@ For a LAS/LAZ file, the {class}`~xdem.EPC` arrays remain implicitly unloaded unt
 The metadata ({attr}`~xdem.EPC.point_count`, {attr}`~xdem.EPC.crs`, {attr}`~xdem.EPC.bounds`), however, is always loaded. This allows to pass it effortlessly to other objects requiring it for geospatial operations (reproject-match, rasterizing a vector, etc).
 ```
 
-An {class}`~xdem.EPC` is saved to file by calling {func}`~xdem.EPC.save` with a {class}`str` or a {class}`pathlib.Path`.
+An {class}`~xdem.EPC` is saved to file by calling {func}`~xdem.EPC.to_file` with a {class}`str` or a {class}`pathlib.Path`.
 
 ```{code-cell} ipython3
 # Save elevation point cloud to disk
-epc.save("myepc.gpkg")
+epc.to_file("myepc.gpkg")
 ```
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -91,7 +94,7 @@ os.remove("myepc.gpkg")
 
 ## Plotting
 
-Plotting an EPC is done using {func}`~xdem.EPC.plot`, and can be done alongside a raster or vector file.
+Plotting an elevation point cloud is done using {func}`~xdem.EPC.plot`, and can be done alongside a raster or vector file.
 
 ```{code-cell} ipython3
 # Open a vector file of glacier outlines near the EPC
@@ -99,11 +102,14 @@ import geoutils as gu
 fn_glacier_outlines = xdem.examples.get_path("longyearbyen_glacier_outlines")
 vect_gla = gu.Vector(fn_glacier_outlines)
 
-# Crop outlines to those intersecting the DEM
+# Reproject to local projected CRS
+epc = epc.reproject(crs=epc.get_metric_crs())
+
+# Crop outlines to those intersecting the EPC
 vect_gla = vect_gla.crop(epc)
 
 # Plot the DEM and the vector file
-epc.plot(cmap="terrain", cbar_title="Elevation (m)")
+epc.plot(cmap="terrain", markersize=0.5, cbar_title="Elevation (m)")
 vect_gla.plot(epc, ec="k", fc="none")  # We pass the EPC as reference for the plot CRS
 ```
 
@@ -117,14 +123,12 @@ The vertical reference of an {class}`~xdem.EPC` is stored in {attr}`~xdem.EPC.vc
 epc.vcrs
 ```
 
-In this case, the EPC has no defined vertical CRS, which is quite common. To set the vertical CRS manually,
-use {class}`~xdem.EPC.set_vcrs`. Then, to transform into another vertical CRS, use {class}`~xdem.EPC.to_vcrs`.
+In this case, the elevation point cloud is using a 3D CRS extended from the ellipsoid. To override manually with another vertical CRS,
+{class}`~xdem.EPC.set_vcrs` is used. Then, to transform into another vertical CRS, use {class}`~xdem.EPC.to_vcrs`.
 
 ```{code-cell} ipython3
-# Define the vertical CRS as the 3D ellipsoid of the 2D CRS
-epc.set_vcrs("Ellipsoid")
 # Transform to the EGM96 geoid
-epc.to_vcrs("EGM96")
+epc = epc.to_vcrs("EGM96")
 ```
 
 ```{note}
@@ -132,33 +136,55 @@ For more details on vertical referencing, see the {ref}`vertical-ref` page.
 ```
 
 ## Statistics
-The {func}`~gu.PointCloud.get_stats` method allows to extract key statistical information from a point cloud in a dictionary.
+The {func}`~xdem.EPC.get_stats` method allows to extract statistical information from a point cloud in a dictionary.
 
 - Get all statistics in a dict:
 ```{code-cell} ipython3
 epc.get_stats()
 ```
 
-The DEM statistics functionalities in xDEM are based on those in GeoUtils.
+The point cloud statistics functionalities in xDEM are based on those in GeoUtils.
 For more information on computing statistics, please refer to [GeoUtils' documentation](https://geoutils.readthedocs.io/en/stable/stats.html).
 
 ## Coregistration
 
 3D coregistration is performed with {func}`~xdem.EPC.coregister_3d`, which aligns the
-{class}`~xdem.EPC` to another DEM or EPC using a pipeline defined with a {class}`~xdem.coreg.Coreg`
+{class}`~xdem.EPC` to a {class}`~xdem.DEM` (or vice versa) using a pipeline defined with a {class}`~xdem.coreg.Coreg`
 object (defaults to horizontal and vertical shifts).
 
+```{important}
+Coregistration in xDEM currently support only EPC–DEM or DEM–DEM inputs, because coregistering two sparse EPCs is rarely useful and 
+dense EPCs (like lidar point clouds) reach similar coregistration accuracy when converted to a DEM (e.g. using {func}`~xdem.EPC.grid`).
+```
+
 ```{code-cell} ipython3
-# Another DEM to-be-aligned to the first one
-filename_tba = xdem.examples.get_path("longyearbyen_tba_dem")
-dem_tba = xdem.DEM(filename_tba)
+# A reference DEM to the elevation point cloud
+filename_ref = xdem.examples.get_path("longyearbyen_ref_dem")
+dem_ref = xdem.DEM(filename_ref)
+epc = epc.reproject(dem_ref)
 
 # Coregister (horizontal and vertical shifts)
-dem_tba_coreg = dem_tba.coregister_3d(dem, xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift())
+epc_aligned = epc.coregister_3d(dem_ref, xdem.coreg.LZD())
 
-# Plot the elevation change of the DEM due to coregistration
-dh_tba = dem_tba - dem_tba_coreg.reproject(dem_tba, silent=True)
-dh_tba.plot(cmap="Spectral", cbar_title="Elevation change due to coreg (m)")
+# Plot the elevation change before/after coregistration over a hillshade
+hs = dem_ref.hillshade()
+dh_before = epc - dem_ref.interp_points(epc)
+dh_after = epc_aligned - dem_ref.interp_points(epc_aligned)
+
+# Remove outliers
+# dh_before[gu.stats.nmad(dh_before) < 3] = np.nan
+# dh_after[gu.stats.nmad(dh_after) < 3] = np.nan
+
+import matplotlib.pyplot as plt
+f, ax = plt.subplots(1, 2)
+ax[0].set_title("Before\ncoregistration")
+hs.plot(ax=ax[0], cmap="Greys_r", add_cbar=False)
+dh_before.plot(ax=ax[0], cmap='RdYlBu', vmin=-10, vmax=10, markersize=0.5, cbar_title="Elevation differences (m)")
+ax[1].set_title("After\ncoregistration")
+hs.plot(ax=ax[1], cmap="Greys_r", add_cbar=False)
+dh_after.plot(ax=ax[1], cmap='RdYlBu', vmin=-10, vmax=10, markersize=0.5, cbar_title="Elevation differences (m)")
+_ = ax[1].set_yticklabels([])
+plt.tight_layout()
 ```
 
 ```{note}

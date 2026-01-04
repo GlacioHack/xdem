@@ -54,7 +54,7 @@ dem = xdem.DEM(filename_dem)
 dem
 ```
 
-Detailed information on the {class}`~xdem.DEM` is printed using {func}`~geoutils.Raster.info`, along with basic statistics using `stats=True`:
+Detailed information on the {class}`~xdem.DEM` is printed using {func}`~xdem.DEM.info`, along with basic statistics using `stats=True`:
 
 ```{code-cell} ipython3
 # Print details of raster
@@ -137,7 +137,8 @@ For the full list of terrain attributes, see the {ref}`terrain-attributes` page.
 ```
 
 ## Statistics
-The {func}`~gu.Raster.get_stats` method allows to extract key statistical information from a DEM in a dictionary.
+
+The {func}`~xdem.DEM.get_stats` method allows to extract statistical information from a DEM in a dictionary.
 
 - Get all statistics in a dict:
 ```{code-cell} ipython3
@@ -146,11 +147,6 @@ dem.get_stats()
 
 The DEM statistics functionalities in xDEM are based on those in GeoUtils.
 For more information on computing statistics, please refer to [GeoUtils' documentation](https://geoutils.readthedocs.io/en/stable/stats.html).
-
-Note: as {func}`~gu.Raster.get_stats` is a raster method, it can also be used for terrain attributes:
-```{code-cell} ipython3
-slope.get_stats()
-```
 
 ## Coregistration
 

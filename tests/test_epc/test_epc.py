@@ -36,7 +36,10 @@ class TestEPC:
     # 3/ LAS file
     fn_las = gu.examples.get_path_test("coromandel_lidar")
 
-    # 4/ Non-point vector (for error raising)
+    # 4/ Parquet file
+    fn_epc = xdem.examples.get_path("longyearbyen_epc")
+
+    # 5/ Non-point vector (for error raising)
     poly = Polygon([(5, 5), (6, 5), (6, 6), (5, 6)])
     gdf3 = gpd.GeoDataFrame({"geometry": [poly]}, crs="EPSG:4326")
 
@@ -56,6 +59,15 @@ class TestEPC:
         # Assert that both the dataframe and data column name are equal
         assert epc2.data_column == "Z"
         assert_geodataframe_equal(epc2.ds, self.gdf2)
+
+        # 3/ For a multiple column point cloud from a Parquet file
+        epc3 = EPC(self.fn_epc, data_column="h_li")
+        assert epc3.data_column == "h_li"
+        assert all(epc3.ds.columns == ['gt', 'dh_fit_dx', 'cycle', 'y_atc', 'seg_azimuth', 'r_eff',
+           'sigma_geo_h', 'x_atc', 'h_li', 'segment_id', 'tide_ocean', 'bsnow_h',
+           'rgt', 'spot', 'h_robust_sprd', 'n_fit_photons', 'bsnow_conf',
+           'atl06_quality_summary', 'h_li_sigma', 'w_surface_window_final', 'time',
+           'geometry'])
 
     def test_init__las(self) -> None:
         """Test that LAS files work properly in EPC class init."""
@@ -170,7 +182,7 @@ class TestEPC:
 
         # -- Test 2: we check with grids --
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid*")
 
         epc.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
         assert epc.vcrs_name == "unknown using geoidgrids=us_nga_egm96_15.tif"
@@ -293,11 +305,18 @@ class TestEPC:
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
         epc_tba = dem_tba.to_pointcloud(subsample=5000)
+        epc_ref = dem_ref.to_pointcloud(subsample=5000)
 
-        # Run coregistration
-        dem_aligned = epc_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
+        # Run coregistration with EPC as reference
+        epc_aligned = epc_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
 
-        assert isinstance(dem_aligned, xdem.EPC)
+        assert isinstance(epc_aligned, xdem.EPC)
+        assert isinstance(coreg_method, xdem.coreg.Coreg)
+
+        # Run coregistration with EPC as to-be-aligned
+        dem_aligned = dem_tba.coregister_3d(epc_ref, coreg_method=coreg_method, random_state=42)
+
+        assert isinstance(dem_aligned, xdem.DEM)
         assert isinstance(coreg_method, xdem.coreg.Coreg)
 
         # Test pipeline
