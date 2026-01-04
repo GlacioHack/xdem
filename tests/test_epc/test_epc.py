@@ -12,10 +12,13 @@ from geopandas.testing import assert_geodataframe_equal
 from pyproj import CRS
 from pyproj.transformer import Transformer
 from shapely import Polygon
+import pyogrio
 
 import xdem
 from xdem import DEM, EPC
 
+drivers = pyogrio.list_drivers()
+is_parquet_installed = "Parquet" in drivers and "r" in drivers["Parquet"]
 
 class TestEPC:
 
@@ -85,8 +88,11 @@ class TestEPC:
             )
         )
 
+    @pytest.mark.skipif(not is_parquet_installed, reason="Parquet not installed (for base build).")
     def test_init__parquet(self) -> None:
         """Test that parquet files work properly in EPC class init."""
+
+        pytest.importorskip("parquet")
 
         # For a multiple column point cloud from a Parquet file
         epc3 = EPC(self.fn_epc, data_column="h_li")
