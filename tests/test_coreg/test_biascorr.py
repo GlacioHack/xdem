@@ -18,6 +18,7 @@ from xdem.fit import polynomial_2d, sumsin_1d
 
 PLOT = False
 
+
 def load_examples() -> tuple[gu.Raster, gu.Raster, gu.Vector]:
     """Load example files to try coregistration methods with."""
 
