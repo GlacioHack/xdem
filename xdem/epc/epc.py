@@ -32,7 +32,7 @@ from shapely.geometry.base import BaseGeometry
 
 import xdem
 from xdem import coreg
-from xdem._typing import NDArrayb, NDArrayf, MArrayf
+from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
     _grid_from_user_input,
@@ -260,7 +260,7 @@ class EPC(PointCloud):  # type: ignore
             return None
 
         # Transform elevation with new vertical CRS
-        zz = self.data
+        zz = self.data  # type: ignore
         xx, yy = self.geometry.x.values, self.geometry.y.values
         zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
         new_data = zz_trans.astype(self.data.dtype)  # type: ignore

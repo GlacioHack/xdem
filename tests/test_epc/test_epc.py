@@ -63,11 +63,33 @@ class TestEPC:
         # 3/ For a multiple column point cloud from a Parquet file
         epc3 = EPC(self.fn_epc, data_column="h_li")
         assert epc3.data_column == "h_li"
-        assert all(epc3.ds.columns == ['gt', 'dh_fit_dx', 'cycle', 'y_atc', 'seg_azimuth', 'r_eff',
-           'sigma_geo_h', 'x_atc', 'h_li', 'segment_id', 'tide_ocean', 'bsnow_h',
-           'rgt', 'spot', 'h_robust_sprd', 'n_fit_photons', 'bsnow_conf',
-           'atl06_quality_summary', 'h_li_sigma', 'w_surface_window_final', 'time',
-           'geometry'])
+        assert all(
+            epc3.ds.columns
+            == [
+                "gt",
+                "dh_fit_dx",
+                "cycle",
+                "y_atc",
+                "seg_azimuth",
+                "r_eff",
+                "sigma_geo_h",
+                "x_atc",
+                "h_li",
+                "segment_id",
+                "tide_ocean",
+                "bsnow_h",
+                "rgt",
+                "spot",
+                "h_robust_sprd",
+                "n_fit_photons",
+                "bsnow_conf",
+                "atl06_quality_summary",
+                "h_li_sigma",
+                "w_surface_window_final",
+                "time",
+                "geometry",
+            ]
+        )
 
     def test_init__las(self) -> None:
         """Test that LAS files work properly in EPC class init."""
@@ -324,7 +346,6 @@ class TestEPC:
         for i, expected_type in enumerate(expected_pipeline_types):
             assert isinstance(pipeline[i], expected_type)
 
-
     def test_coregister_3d__raises(self) -> None:  # type: ignore
         """
         Test coregister_3d functionality raises propers errors for an EPC.
@@ -340,4 +361,4 @@ class TestEPC:
 
         # Run coregistration
         with pytest.raises(ValueError, match=".* has no implemented _apply_pts."):
-            dem_aligned = epc_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
+            epc_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)

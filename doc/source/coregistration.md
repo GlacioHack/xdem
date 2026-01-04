@@ -583,8 +583,8 @@ method independently in each block.
 By default, these blocks are loaded sequentially to reduce the memory used during a coregistration.
 
 ```{note}
-The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed. 
-The `block_size_apply` parameter allows the DEM to be aligned in blocks to optimize memory usage. 
+The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
+The `block_size_apply` parameter allows the DEM to be aligned in blocks to optimize memory usage.
 Smaller blocks during the apply step reduce memory usage but increase computing time.
 These two parameters do **not** need to be the same size.
 ```

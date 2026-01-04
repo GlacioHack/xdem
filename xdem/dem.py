@@ -24,14 +24,12 @@ import warnings
 from typing import Any, Callable, Literal, overload
 
 import geopandas as gpd
-import numpy as np
-
 import geoutils as gu
+import numpy as np
 import rasterio as rio
 from affine import Affine
-
-from geoutils._typing import NDArrayNum
 from geoutils import profiler
+from geoutils._typing import NDArrayNum
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.stats import nmad
@@ -622,7 +620,7 @@ class DEM(Raster):  # type: ignore
     @profiler.profile("xdem.dem.coregister_3d", memprof=True)  # type: ignore
     def coregister_3d(  # type: ignore
         self,
-        reference_elev: DEM | gpd.GeoDataFrame | EPC,
+        reference_elev: DEM | gpd.GeoDataFrame | xdem.EPC,
         coreg_method: coreg.Coreg,
         inlier_mask: Raster | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,

@@ -23,7 +23,7 @@ Below, a summary of the {class}`~xdem.EPC` object and its methods.
 ## Object definition and attributes
 
 An {class}`~xdem.EPC` is a {class}`~geoutils.PointCloud` with an additional georeferenced vertical dimension stored in the attribute {attr}`~xdem.EPC.vcrs`.
-It can be used with many features of xDEM (vertical referencing, coregistration and bias-corrections, uncertainty analysis) 
+It can be used with many features of xDEM (vertical referencing, coregistration and bias-corrections, uncertainty analysis)
 but not for methods requiring continuous gridded data (terrain attributes).
 
 The {class}`~xdem.EPC` inherits the **main attribute** of {class}`~geoutils.PointCloud` which is a geodataframe {attr}`~xdem.EPC.ds`.
@@ -153,7 +153,7 @@ For more information on computing statistics, please refer to [GeoUtils' documen
 object (defaults to horizontal and vertical shifts).
 
 ```{important}
-Coregistration in xDEM currently support only EPC–DEM or DEM–DEM inputs, because coregistering two sparse EPCs is rarely useful and 
+Coregistration in xDEM currently support only EPC–DEM or DEM–DEM inputs, because coregistering two sparse EPCs is rarely useful and
 dense EPCs (like lidar point clouds) reach similar coregistration accuracy when converted to a DEM (e.g. using {func}`~xdem.EPC.grid`).
 ```
 
