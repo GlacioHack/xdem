@@ -55,7 +55,7 @@ my_coreg_pipeline = xdem.coreg.ICP() + xdem.coreg.NuthKaab()
 my_coreg_pipeline = xdem.coreg.NuthKaab()
 ```
 
-Then, coregistering a pair of elevation data can be done by calling {func}`xdem.DEM.coregister_3d` from the {class}`xdem.DEM` or {class}`xdem.EPC` that
+Then, coregistering a pair of elevation data can be done by calling {func}`~xdem.DEM.coregister_3d` from the {class}`xdem.DEM` or {class}`xdem.EPC` that
 should be aligned.
 
 ```{code-cell} ipython3
