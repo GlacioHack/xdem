@@ -27,6 +27,8 @@ dependencies:
   - pytransform3d
   - scikit-learn
   - laspy
+  - pyarrow # For Parquet files
+  - lazrs-python # For LAZ files
 
   # Test dependencies
   - pytest
@@ -38,8 +40,6 @@ dependencies:
   - flake8
   - pylint
   - pre-commit
-  - libgdal-arrow-parquet
-  - lazrs-python # For LAZ files
 
   # Doc dependencies
   - sphinx

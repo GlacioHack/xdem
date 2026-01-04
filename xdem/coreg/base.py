@@ -376,7 +376,7 @@ def _preprocess_coreg_fit(
         else:
             raster_elev = to_be_aligned_elev
             point_elev = reference_elev if isinstance(reference_elev, gpd.GeoDataFrame) else reference_elev.ds
-            z_name = z_name if isinstance(to_be_aligned_elev, gpd.GeoDataFrame) else reference_elev.data_column
+            z_name = z_name if isinstance(reference_elev, gpd.GeoDataFrame) else reference_elev.data_column
             ref = "point"
 
         raster_elev, point_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit_raster_point(

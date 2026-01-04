@@ -60,7 +60,35 @@ class TestEPC:
         assert epc2.data_column == "Z"
         assert_geodataframe_equal(epc2.ds, self.gdf2)
 
-        # 3/ For a multiple column point cloud from a Parquet file
+    def test_init__las(self) -> None:
+        """Test that LAS files work properly in EPC class init."""
+
+        pytest.importorskip("laspy")
+
+        # From filename
+        epc = EPC(self.fn_las)
+        assert isinstance(epc, EPC)
+
+        # From EPC
+        epc2 = EPC(epc)
+        assert isinstance(epc2, EPC)
+
+        # From PointCloud
+        r = gu.PointCloud(self.fn_las)
+        epc3 = EPC(r)
+        assert isinstance(epc3, EPC)
+
+        assert np.logical_and.reduce(
+            (
+                np.array_equal(epc.data, epc2.data, equal_nan=True),
+                np.array_equal(epc2.data, epc3.data, equal_nan=True),
+            )
+        )
+
+    def test_init__parquet(self) -> None:
+        """Test that parquet files work properly in EPC class init."""
+
+        # For a multiple column point cloud from a Parquet file
         epc3 = EPC(self.fn_epc, data_column="h_li")
         assert epc3.data_column == "h_li"
         assert all(
@@ -89,29 +117,6 @@ class TestEPC:
                 "time",
                 "geometry",
             ]
-        )
-
-    def test_init__las(self) -> None:
-        """Test that LAS files work properly in EPC class init."""
-
-        # From filename
-        epc = EPC(self.fn_las)
-        assert isinstance(epc, EPC)
-
-        # From EPC
-        epc2 = EPC(epc)
-        assert isinstance(epc2, EPC)
-
-        # From PointCloud
-        r = gu.PointCloud(self.fn_las)
-        epc3 = EPC(r)
-        assert isinstance(epc3, EPC)
-
-        assert np.logical_and.reduce(
-            (
-                np.array_equal(epc.data, epc2.data, equal_nan=True),
-                np.array_equal(epc2.data, epc3.data, equal_nan=True),
-            )
         )
 
     def test_init__vcrs(self) -> None:
@@ -274,6 +279,8 @@ class TestEPC:
     def test_to_vcrs__equal_warning(self) -> None:
         """Test that EPC.to_vcrs() does not transform if both 3D CRS are equal."""
 
+        pytest.importorskip("laspy")
+
         fn_epc = gu.examples.get_path_test("coromandel_lidar")
         epc = EPC(fn_epc)
 
@@ -326,8 +333,8 @@ class TestEPC:
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
-        epc_tba = dem_tba.to_pointcloud(subsample=5000)
-        epc_ref = dem_ref.to_pointcloud(subsample=5000)
+        epc_tba = dem_tba.to_pointcloud(subsample=5000, random_state=42)
+        epc_ref = dem_ref.to_pointcloud(subsample=5000, random_state=42)
 
         # Run coregistration with EPC as reference
         epc_aligned = epc_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
