@@ -1,3 +1,4 @@
+(release-notes)=
 # Release notes
 
 Below, the release notes for all minor versions and our roadmap to a first major version.
