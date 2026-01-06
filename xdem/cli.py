@@ -18,30 +18,19 @@
 
 
 import argparse
-import ctypes.util
 import logging
 import sys
 
-import yaml  # type: ignore
-
 from xdem.workflows import Accuracy, Topo
 from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOPO
-
-lib_gobject_name = ctypes.util.find_library("gobject-2.0")
-lib_pango_name = ctypes.util.find_library("pango-1.0")
-
-if lib_gobject_name and lib_pango_name:
-    from weasyprint import HTML
-
-    _has_libgobject = True
-else:
-    _has_libgobject = False
-
+from xdem._misc import import_optional
 
 def main() -> None:
     """
     Main function for the CLI
     """
+
+    yaml = import_optional("yaml", package_name="pyyaml")
 
     parser = argparse.ArgumentParser(prog="xdem", description="CLI tool to process DEM workflows")
     parser.add_argument(
@@ -112,7 +101,11 @@ def main() -> None:
     else:
         raise ValueError(f"{args.command} doesn't exist, valid command are 'accuracy', 'topo'")
 
-    if args.config and _has_libgobject:
+
+    if args.config:
+        import_optional("weasyprint")
+        from weasyprint import HTML
+
         logger.info("Generating HTML and PDF report")
         HTML(workflow.outputs_folder / "report.html").write_pdf(workflow.outputs_folder / "report.pdf")
 

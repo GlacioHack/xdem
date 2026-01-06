@@ -17,10 +17,6 @@ from shapely import Polygon
 import xdem
 from xdem import DEM, EPC
 
-drivers = pyogrio.list_drivers()
-is_parquet_installed = "Parquet" in drivers and "r" in drivers["Parquet"]
-
-
 class TestEPC:
 
     # 1/ Elevation point cloud with 3D points
@@ -89,11 +85,8 @@ class TestEPC:
             )
         )
 
-    @pytest.mark.skipif(not is_parquet_installed, reason="Parquet not installed (for base build).")  # type: ignore
     def test_init__parquet(self) -> None:
         """Test that parquet files work properly in EPC class init."""
-
-        pytest.importorskip("parquet")
 
         # For a multiple column point cloud from a Parquet file
         epc3 = EPC(self.fn_epc, data_column="h_li")

@@ -51,17 +51,10 @@ from xdem.coreg.base import (
     _preprocess_pts_rst_subsample,
     _reproject_horizontal_shift_samecrs,
     invert_matrix,
+    _make_matrix_valid,
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
 )
-
-try:
-    import pytransform3d.rotations
-    import pytransform3d.transformations
-
-    _HAS_P3D = True
-except ImportError:
-    _HAS_P3D = False
 
 ######################################
 # Generic functions for affine methods
@@ -1821,10 +1814,7 @@ class AffineCoreg(Coreg):
         super().__init__(meta=meta)
 
         if matrix is not None:
-            with warnings.catch_warnings():
-                # This error is fixed in the upcoming 1.8
-                warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
-                valid_matrix = pytransform3d.transformations.check_transform(matrix)
+            valid_matrix = _make_matrix_valid(matrix)
             self._meta["outputs"]["affine"] = {"matrix": valid_matrix}
 
         self._is_affine = True
@@ -1936,10 +1926,9 @@ class AffineCoreg(Coreg):
         """
         if np.any(~np.isfinite(matrix)):
             raise ValueError(f"Matrix has non-finite values:\n{matrix}")
-        with warnings.catch_warnings():
-            # This error is fixed in the upcoming 1.8
-            warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
-            valid_matrix = pytransform3d.transformations.check_transform(matrix)
+
+        valid_matrix = _make_matrix_valid(matrix)
+
         return cls(matrix=valid_matrix)
 
     @classmethod

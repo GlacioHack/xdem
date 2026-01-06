@@ -42,17 +42,10 @@ from geoutils.raster.distributed_computing import (
 )
 from geoutils.raster.tiling import compute_tiling
 
-try:
-    from sklearn.linear_model import LinearRegression, RANSACRegressor
-
-    _has_sklearn = True
-except ImportError:
-    _has_sklearn = False
-
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg.affine import NuthKaab
 from xdem.coreg.base import Coreg, CoregPipeline
-
+from xdem._misc import import_optional
 
 class BlockwiseCoreg:
     """
@@ -252,8 +245,9 @@ class BlockwiseCoreg:
         :param max_iterations: Maximum number of iterations to run the RANSAC algorithm.
         :return: Estimated transformation coefficients (a, b, c) such as shift = a * x + b * y + c.
         """
-        if not _has_sklearn:
-            raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
+
+        import_optional("sklearn", package_name="scikit-learn")
+        from sklearn.linear_model import RANSACRegressor, LinearRegression
 
         # Stack and squeeze
         points = np.dstack([x_coords, y_coords, shifts])

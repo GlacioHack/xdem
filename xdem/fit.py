@@ -24,7 +24,7 @@ from __future__ import annotations
 import inspect
 import logging
 import warnings
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
 
 import numpy as np
 import scipy
@@ -32,21 +32,10 @@ from geoutils.stats.sampling import subsample_array
 from numpy.polynomial.polynomial import polyval, polyval2d
 
 from xdem._typing import NDArrayf
+from xdem._misc import import_optional
 
-try:
-    from sklearn.linear_model import (
-        HuberRegressor,
-        LinearRegression,
-        RANSACRegressor,
-        TheilSenRegressor,
-    )
-    from sklearn.pipeline import make_pipeline
+if TYPE_CHECKING:
     from sklearn.preprocessing import PolynomialFeatures
-
-    _has_sklearn = True
-except ImportError:
-    _has_sklearn = False
-
 
 def rmse(ytrue: NDArrayf, ypred: NDArrayf) -> float:
     """
@@ -281,6 +270,16 @@ def _wrapper_sklearn_robustlinear(
     :param estimator_name: Linear estimator to use (one of "Linear", "Theil-Sen", "RANSAC" and "Huber")
     :return:
     """
+
+    import_optional("sklearn", package_name="scikit-learn")
+    from sklearn.linear_model import (
+        HuberRegressor,
+        LinearRegression,
+        RANSACRegressor,
+        TheilSenRegressor,
+    )
+    from sklearn.pipeline import make_pipeline
+
     # Select sklearn estimator
     dict_estimators = {
         "Linear": LinearRegression,
@@ -426,8 +425,8 @@ def robust_norder_polynomial_fit(
 
         else:
             # Otherwise, we use sklearn
-            if not _has_sklearn:
-                raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
+            import_optional("sklearn", package_name="scikit-learn")
+            from sklearn.preprocessing import PolynomialFeatures
 
             # Define the polynomial model to insert in the pipeline
             model = PolynomialFeatures(degree=deg)

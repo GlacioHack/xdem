@@ -3,24 +3,23 @@ channels:
   - conda-forge
 dependencies:
   - python>=3.10,<3.14
-  - geopandas>=0.12.0
+  # Core dependencies
+  - geoutils=0.2.1
+  - tqdm
   - numba=0.*
-  - numpy>=1,<3
-  - matplotlib=3.*
-  - pyproj>=3.4,<4
+  # First-order dependency on the above
+  - geopandas>=0.12.0
   - rasterio>=1.3,<2
   - scipy=1.*
-  - tqdm
-  - geoutils=0.2.1
+  # Second-order or plus dependency on the above
+  - numpy>=1,<3
+  - pyproj>=3.4,<4
   - affine
   - pandas
   - pyogrio
   - shapely
-  - pip
-  - cerberus
-  - pyyaml
-  - weasyprint
 
+#  - pip
   # To run CI against the latest GeoUtils
 #  - pip:
 #    - git+https://github.com/rhugonnet/geoutils.git

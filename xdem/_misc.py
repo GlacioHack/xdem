@@ -30,6 +30,27 @@ from packaging.version import Version
 
 import xdem
 
+def import_optional(import_name: str, package_name: str | None = None, extra_name: str = "opt") -> Any:
+    """
+    Helper function to consistently import and raise errors for an optional dependency.
+
+    :param import_name: Name of the dependency to import.
+    :param package_name: Name of the package to install (optional, only if different from import name e.g.
+        "pyyaml" package is imported as "import yaml".).
+    :param extra_name: Name of the extra tag to install the optional dependency from GeoUtils.
+    """
+
+    if package_name is None:
+        package_name = import_name
+
+    try:
+        return __import__(import_name)
+    except ImportError as e:
+        raise ImportError(
+            f"Optional dependency '{package_name}' required. "
+            f"Install it directly or through: pip install xdem[{extra_name}]."
+        ) from e
+
 
 def deprecate(removal_version: Version = None, details: str = None) -> Callable[[Any], Any]:
     """

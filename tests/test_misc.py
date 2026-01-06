@@ -10,7 +10,7 @@ import yaml  # type: ignore
 from packaging.version import Version
 
 import xdem
-import xdem.misc
+import xdem._misc
 
 
 class TestMisc:

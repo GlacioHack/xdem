@@ -50,19 +50,7 @@ from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 
 from xdem._typing import NDArrayb, NDArrayf
-from xdem.misc import deprecate
-
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-    try:
-        import skgstat as skg
-
-        _has_skgstat = True
-        if Version(skg.__version__) < Version("1.0.18"):
-            raise ImportWarning(f"scikit-gstat>=1.0.18 is recommended, current version is {skg.__version__}.")
-    except ImportError:
-        _has_skgstat = False
+from xdem._misc import deprecate, import_optional
 
 
 @deprecate(
@@ -1070,6 +1058,8 @@ def _get_pdist_empirical_variogram(values: NDArrayf, coords: NDArrayf, **kwargs:
 
     """
 
+    skg = import_optional("skgstat", package_name="scikit-gstat")
+
     # Remove random_state keyword argument that is not used
     kwargs.pop("random_state")
 
@@ -1192,6 +1182,8 @@ def _get_cdist_empirical_variogram(
     :return: Empirical variogram (variance, upper bound of lag bin, counts)
 
     """
+
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     if subsample_method == "cdist_equidistant":
 
@@ -1355,8 +1347,7 @@ def sample_empirical_variogram(
     :return: Empirical variogram (variance, upper bound of lag bin, counts)
     """
 
-    if not _has_skgstat:
-        raise ValueError("Optional dependency needed. Install 'scikit-gstat'.")
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     # First, check all that the values provided are OK
     if isinstance(values, Raster):
@@ -1545,13 +1536,12 @@ def sample_empirical_variogram(
 def _get_skgstat_variogram_model_name(model: str | Callable[[NDArrayf, float, float], NDArrayf]) -> str:
     """Function to identify a SciKit-GStat variogram model from a string or a function"""
 
-    if not _has_skgstat:
-        raise ValueError("Optional dependency needed. Install 'scikit-gstat'.")
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     list_supported_models = ["spherical", "gaussian", "exponential", "cubic", "stable", "matern"]
 
     if callable(model):
-        if inspect.getmodule(model).__name__ == "skgstat.models":  # type: ignore
+        if inspect.getmodule(model).__name__ == "skg.models":  # type: ignore
             model_name = model.__name__
         else:
             raise ValueError("Variogram models can only be passed as functions of the skgstat.models package.")
@@ -1588,6 +1578,8 @@ def get_variogram_model_func(params_variogram_model: pd.DataFrame) -> Callable[[
 
     :return: Function of sum of variogram with spatial lags.
     """
+
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     # Check input dataframe
     _check_validity_params_variogram(params_variogram_model)
@@ -1697,6 +1689,8 @@ def fit_sum_model_variogram(
 
     :return: Function of sum of variogram, Dataframe of optimized coefficients.
     """
+
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     # Define a function of a sum of variogram model forms, with undetermined arguments
     def variogram_sum(h: float, *args: list[float]) -> float:
