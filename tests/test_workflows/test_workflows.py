@@ -34,6 +34,7 @@ from xdem.workflows.workflows import Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
+pytest.importorskip("weasyprint")
 
 def test_workflows_init_wrong_config():
     """

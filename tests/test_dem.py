@@ -573,6 +573,20 @@ class TestDEM:
         assert isinstance(sig_h, gu.Raster)
         assert callable(corr_sig)
 
+    @pytest.mark.skipif(find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing.")  # type:
+    # ignore
+    def test_estimate_uncertainty__missing_dep(self) -> None:
+        """Check that proper import error is raised when skgstat is missing"""
+
+        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+
+        dem_ref = DEM(fn_ref)
+        dem_tba = DEM(fn_tba)
+
+        with pytest.raises(ImportError, match="Optional dependency 'scikit-gstat' required.*"):
+            dem_tba.estimate_uncertainty(dem_ref)
+
     def test_to_pointcloud__type_override(self) -> None:
 
         fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")

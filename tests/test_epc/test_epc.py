@@ -3,11 +3,11 @@
 import os
 import tempfile
 import warnings
+from importlib.util import find_spec
 
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
-import pyogrio
 import pytest
 from geopandas.testing import assert_geodataframe_equal
 from pyproj import CRS
@@ -60,35 +60,7 @@ class TestEPC:
         assert epc2.data_column == "Z"
         assert_geodataframe_equal(epc2.ds, self.gdf2)
 
-    def test_init__las(self) -> None:
-        """Test that LAS files work properly in EPC class init."""
-
-        pytest.importorskip("laspy")
-
-        # From filename
-        epc = EPC(self.fn_las)
-        assert isinstance(epc, EPC)
-
-        # From EPC
-        epc2 = EPC(epc)
-        assert isinstance(epc2, EPC)
-
-        # From PointCloud
-        r = gu.PointCloud(self.fn_las)
-        epc3 = EPC(r)
-        assert isinstance(epc3, EPC)
-
-        assert np.logical_and.reduce(
-            (
-                np.array_equal(epc.data, epc2.data, equal_nan=True),
-                np.array_equal(epc2.data, epc3.data, equal_nan=True),
-            )
-        )
-
-    def test_init__parquet(self) -> None:
-        """Test that parquet files work properly in EPC class init."""
-
-        # For a multiple column point cloud from a Parquet file
+        # 3/ For a multiple column point cloud from a Geopackage file
         epc3 = EPC(self.fn_epc, data_column="h_li")
         assert epc3.data_column == "h_li"
         assert all(
@@ -117,6 +89,40 @@ class TestEPC:
                 "time",
                 "geometry",
             ]
+        )
+
+
+    @pytest.mark.skipif(find_spec("laspy") is not None, reason="Only runs if laspy is missing.")  # type:
+    # ignore
+    def test_init__missing_dep(self) -> None:
+        """Check that proper import error is raised when laspy is missing"""
+
+        with pytest.raises(ImportError, match="Optional dependency 'laspy' required.*"):
+            xdem.EPC(self.fn_las)
+
+    def test_init__las(self) -> None:
+        """Test that LAS files work properly in EPC class init."""
+
+        pytest.importorskip("laspy")
+
+        # From filename
+        epc = EPC(self.fn_las)
+        assert isinstance(epc, EPC)
+
+        # From EPC
+        epc2 = EPC(epc)
+        assert isinstance(epc2, EPC)
+
+        # From PointCloud
+        r = gu.PointCloud(self.fn_las)
+        epc3 = EPC(r)
+        assert isinstance(epc3, EPC)
+
+        assert np.logical_and.reduce(
+            (
+                np.array_equal(epc.data, epc2.data, equal_nan=True),
+                np.array_equal(epc2.data, epc3.data, equal_nan=True),
+            )
         )
 
     def test_init__vcrs(self) -> None:
