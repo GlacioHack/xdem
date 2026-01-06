@@ -67,20 +67,34 @@ These changes will then apply to all your operations in xDEM, such as coregistra
 
 ## Profiling
 
-GeoUtils has a built-in profiling tool, that can be used to provide more insight on the memory and time use of
-a function if needed. It can be use, as explained here
-[GeoUtils' profiling](https://geoutils.readthedocs.io/en/stable/profiling.html), on every xDem function with a simple decorator like:
+GeoUtils has a built-in profiling tool to provide more insight on the memory and computing time of
+a function (see [GeoUtils' profiling](https://geoutils.readthedocs.io/en/stable/profiling.html) for details).
 
+The functions to monitor can be decoratored by `profile`:
 
 ```{code-cell} ipython3
-from geoutils import profiler
+from geoutils.profiler import profile
 
-@profiler.profile("my profiled function name", memprof=True, interval=0.5)  # type: ignore
+@profile("my profiled function name", memprof=True, interval=0.5)  # type: ignore
 def my_xdem_function():
   ...
 ```
 
-Currently, some processes are already profiled with a memory consumption report each 0.05 seconds.
-- dem initialization
-- all the terrain attributes computation {class}`xdem.DEM` attributes computations
-- all the co-registration processing through the {function}`xdem.Coreg.fit_and_apply` and {function}`xdem.DEM.coregister_3d` functions
+Finally, in any other script, the profiler can be activated and the output directory defined:
+
+```{code-cell} ipython3
+from geoutils.profiler import profile
+
+Profiler.enable(save_graphs=True, save_raw_data=True)
+
+# xDEM code
+
+my_output_directory="./profile_output/"
+Profiler.generate_summary(my_output_directory)
+```
+
+Some functions are already profiled automatically when the Profiler is enabled, with a memory consumption report each 0.05 seconds.
+Those are:
+- DEM loading through {class}`~xdem.DEM`,
+- All terrain attributes such as {class}`~xdem.DEM.slope`,
+- Co-registration through {function}`~xdem.Coreg.fit_and_apply` and {function}`~xdem.DEM.coregister_3d`.
