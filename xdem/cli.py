@@ -21,9 +21,10 @@ import argparse
 import logging
 import sys
 
+from xdem._misc import import_optional
 from xdem.workflows import Accuracy, Topo
 from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOPO
-from xdem._misc import import_optional
+
 
 def main() -> None:
     """
@@ -100,7 +101,6 @@ def main() -> None:
 
     else:
         raise ValueError(f"{args.command} doesn't exist, valid command are 'accuracy', 'topo'")
-
 
     if args.config:
         import_optional("weasyprint")

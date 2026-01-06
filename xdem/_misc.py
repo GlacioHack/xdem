@@ -30,6 +30,7 @@ from packaging.version import Version
 
 import xdem
 
+
 def import_optional(import_name: str, package_name: str | None = None, extra_name: str = "opt") -> Any:
     """
     Helper function to consistently import and raise errors for an optional dependency.

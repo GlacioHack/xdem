@@ -1052,6 +1052,7 @@ def _bin_or_and_fit_nd(
 # Affine matrix manipulation and transformation
 ###############################################
 
+
 def _check_matrix(matrix: NDArrayf, atol: float = 10e-8, warn_failure_reason: bool = False) -> bool:
     """
     Check affine matrix is valid.
@@ -1085,6 +1086,7 @@ def _check_matrix(matrix: NDArrayf, atol: float = 10e-8, warn_failure_reason: bo
 
     return complete_validitiy
 
+
 def _make_matrix_valid(matrix: NDArrayf) -> NDArrayf:
     """
     Make affine matrix valid given numerical imprecisions.
@@ -1110,6 +1112,7 @@ def _make_matrix_valid(matrix: NDArrayf) -> NDArrayf:
 
     return T
 
+
 def _euler_to_matrix(alpha1: float, alpha2: float, alpha3: float) -> NDArrayf:
     """
     Extrinsic Euler angles to affine matrix.
@@ -1123,29 +1126,36 @@ def _euler_to_matrix(alpha1: float, alpha2: float, alpha3: float) -> NDArrayf:
 
     def Rx(a: float) -> NDArrayf:
         ca, sa = np.cos(a), np.sin(a)
-        return np.array([
-            [1, 0, 0],
-            [0, ca, -sa],
-            [0, sa, ca],
-        ])
+        return np.array(
+            [
+                [1, 0, 0],
+                [0, ca, -sa],
+                [0, sa, ca],
+            ]
+        )
 
     def Ry(a: float) -> NDArrayf:
         ca, sa = np.cos(a), np.sin(a)
-        return np.array([
-            [ca, 0, sa],
-            [0, 1, 0],
-            [-sa, 0, ca],
-        ])
+        return np.array(
+            [
+                [ca, 0, sa],
+                [0, 1, 0],
+                [-sa, 0, ca],
+            ]
+        )
 
     def Rz(a: float) -> NDArrayf:
         ca, sa = np.cos(a), np.sin(a)
-        return np.array([
-            [ca, -sa, 0],
-            [sa, ca, 0],
-            [0, 0, 1],
-        ])
+        return np.array(
+            [
+                [ca, -sa, 0],
+                [sa, ca, 0],
+                [0, 0, 1],
+            ]
+        )
 
     return Rz(alpha3) @ Ry(alpha2) @ Rx(alpha1)
+
 
 def _matrix_to_euler(rotation_matrix: NDArrayf, atol: float = 10e-8) -> tuple[float, float, float]:
     """
@@ -1173,6 +1183,7 @@ def _matrix_to_euler(rotation_matrix: NDArrayf, atol: float = 10e-8) -> tuple[fl
         gamma = np.arctan2(-rotation_matrix[0, 1], rotation_matrix[1, 1])
 
     return float(alpha), float(beta), float(gamma)
+
 
 def matrix_from_translations_rotations(
     t1: float = 0.0,
@@ -1244,6 +1255,7 @@ def translations_rotations_from_matrix(
 
     return t1, t2, t3, alpha1, alpha2, alpha3
 
+
 def invert_matrix(matrix: NDArrayf, atol: float = 10e-8) -> NDArrayf:
     """
     Invert a transformation matrix.
@@ -1264,6 +1276,9 @@ def invert_matrix(matrix: NDArrayf, atol: float = 10e-8) -> NDArrayf:
 
     # Make valid before inversion
     valid_matrix = _make_matrix_valid(matrix)
+
+    R = valid_matrix[:3, :3]
+    t = valid_matrix[:3, 3]
 
     Tinv = np.eye(4)
     Tinv[:3, :3] = R.T
@@ -3177,7 +3192,7 @@ class CoregPipeline(Coreg):
         """Try to join the coregistration steps to a single transformation matrix."""
 
         total_transform = np.eye(4)
-        for i, coreg in enumerate(self.pipeline):
+        for coreg in self.pipeline:
             new_matrix = coreg.to_matrix()
             total_transform = new_matrix @ total_transform
 

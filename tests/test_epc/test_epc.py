@@ -17,6 +17,7 @@ from shapely import Polygon
 import xdem
 from xdem import DEM, EPC
 
+
 class TestEPC:
 
     # 1/ Elevation point cloud with 3D points
@@ -91,9 +92,7 @@ class TestEPC:
             ]
         )
 
-
-    @pytest.mark.skipif(find_spec("laspy") is not None, reason="Only runs if laspy is missing.")  # type:
-    # ignore
+    @pytest.mark.skipif(find_spec("laspy") is not None, reason="Only runs if laspy is missing.")  # type: ignore
     def test_init__missing_dep(self) -> None:
         """Check that proper import error is raised when laspy is missing"""
 

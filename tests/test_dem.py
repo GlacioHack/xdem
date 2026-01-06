@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 import warnings
+from importlib.util import find_spec
 from typing import Any
 
 import geoutils as gu
@@ -573,8 +574,9 @@ class TestDEM:
         assert isinstance(sig_h, gu.Raster)
         assert callable(corr_sig)
 
-    @pytest.mark.skipif(find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing.")  # type:
-    # ignore
+    @pytest.mark.skipif(
+        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
+    )  # type: ignore
     def test_estimate_uncertainty__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 

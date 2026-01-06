@@ -38,9 +38,9 @@ from pyproj.crs import CompoundCRS, VerticalCRS
 
 import xdem
 from xdem import coreg, terrain
+from xdem._misc import copy_doc
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg import Coreg
-from xdem._misc import copy_doc
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
     infer_spatial_correlation_from_stable,

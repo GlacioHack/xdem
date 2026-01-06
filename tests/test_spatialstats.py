@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import os
 import warnings
-from typing import Any
 from importlib.util import find_spec
+from typing import Any
 
 import geoutils as gu
 import numpy as np
@@ -478,14 +478,13 @@ class TestBinning:
             xdem.spatialstats.plot_2d_binning(df, var_name_1="var1", var_name_2="var1", statistic_name="stat")
 
 
-
 class TestVariogram:
-
 
     ref, diff, mask, outlines = load_ref_and_diff()
 
-    @pytest.mark.skipif(find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing.")  # type:
-    # ignore
+    @pytest.mark.skipif(
+        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
+    )  # type: ignore
     def test_sample_empirical_variogram__missing_dep(self):
         """Check that proper import error is raised when skgstat is missing"""
 
@@ -746,7 +745,6 @@ class TestVariogram:
         # Import optional skgstat or skip test
         pytest.importorskip("skgstat")
 
-
         keyword_arguments = {"subsample": 3, "extent": (0, 1, 0, 1), "shape": (10, 10)}
 
         with pytest.raises(ValueError, match="The number of subsamples needs to be at least 10."):
@@ -792,8 +790,9 @@ class TestVariogram:
         if PLOT:
             xdem.spatialstats.plot_variogram(df, list_fit_fun=[fun])
 
-    @pytest.mark.skipif(find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing.")  # type:
-    # ignore
+    @pytest.mark.skipif(
+        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
+    )  # type: ignore
     def test_fit_sum_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 

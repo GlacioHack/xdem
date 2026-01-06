@@ -48,10 +48,10 @@ from xdem.coreg.base import (
     _apply_matrix_pts_mat,
     _bin_or_and_fit_nd,
     _get_subsample_mask_pts_rst,
+    _make_matrix_valid,
     _preprocess_pts_rst_subsample,
     _reproject_horizontal_shift_samecrs,
     invert_matrix,
-    _make_matrix_valid,
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
 )

@@ -28,6 +28,7 @@ from xdem.workflows.schemas import TERRAIN_ATTRIBUTES_DEFAULT
 
 pytest.importorskip("weasyprint")
 
+
 @pytest.fixture()
 def get_topo_inputs_config():
     """

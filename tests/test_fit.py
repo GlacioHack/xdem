@@ -54,13 +54,14 @@ class TestRobustFitting:
         for i in range(4):
             assert coefs[i] == pytest.approx(true_coefs[i], abs=error_margins[i])
 
-    @pytest.mark.skipif(find_spec("sklearn") is not None, reason="Only runs if scikit-learn is missing.")  # type:
-    # ignore
+    @pytest.mark.skipif(
+        find_spec("sklearn") is not None, reason="Only runs if scikit-learn is missing."
+    )  # type: ignore
     def test_robust_norder_polynomial_fit__missing_dep(self) -> None:
         """Check that proper import error is raised when sklearn is missing"""
 
         with pytest.raises(ImportError, match="Optional dependency 'scikit-learn' required.*"):
-            xdem.fit.robust_norder_polynomial_fit([1], [1], linear_pkg="sklearn")
+            xdem.fit.robust_norder_polynomial_fit(np.array([1]), np.array([1]), linear_pkg="sklearn")
 
     def test_robust_norder_polynomial_fit_noise_and_outliers(self) -> None:
 

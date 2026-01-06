@@ -24,18 +24,19 @@ from __future__ import annotations
 import inspect
 import logging
 import warnings
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import scipy
 from geoutils.stats.sampling import subsample_array
 from numpy.polynomial.polynomial import polyval, polyval2d
 
-from xdem._typing import NDArrayf
 from xdem._misc import import_optional
+from xdem._typing import NDArrayf
 
 if TYPE_CHECKING:
     from sklearn.preprocessing import PolynomialFeatures
+
 
 def rmse(ytrue: NDArrayf, ypred: NDArrayf) -> float:
     """

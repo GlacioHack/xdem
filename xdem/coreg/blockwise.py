@@ -42,10 +42,11 @@ from geoutils.raster.distributed_computing import (
 )
 from geoutils.raster.tiling import compute_tiling
 
+from xdem._misc import import_optional
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg.affine import NuthKaab
 from xdem.coreg.base import Coreg, CoregPipeline
-from xdem._misc import import_optional
+
 
 class BlockwiseCoreg:
     """
@@ -247,7 +248,7 @@ class BlockwiseCoreg:
         """
 
         import_optional("sklearn", package_name="scikit-learn")
-        from sklearn.linear_model import RANSACRegressor, LinearRegression
+        from sklearn.linear_model import LinearRegression, RANSACRegressor
 
         # Stack and squeeze
         points = np.dstack([x_coords, y_coords, shifts])

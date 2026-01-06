@@ -152,7 +152,7 @@ class TestMisc:
 
         # This should raise an error because print_dep is not well defined
         with pytest.raises(ValueError, match='The argument "print_dep" can only be "conda", "pip" or "both".'):
-           diff_environment_yml(env2, devenv2, input_dict=True, print_dep="lol")
+            diff_environment_yml(env2, devenv2, input_dict=True, print_dep="lol")
 
         # When the dependencies are not defined in dev-env but in env, it should raise an error
         # For normal dependencies

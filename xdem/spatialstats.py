@@ -49,8 +49,8 @@ from scipy.optimize import curve_fit
 from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 
-from xdem._typing import NDArrayb, NDArrayf
 from xdem._misc import deprecate, import_optional
+from xdem._typing import NDArrayb, NDArrayf
 
 
 @deprecate(
@@ -1536,7 +1536,7 @@ def sample_empirical_variogram(
 def _get_skgstat_variogram_model_name(model: str | Callable[[NDArrayf, float, float], NDArrayf]) -> str:
     """Function to identify a SciKit-GStat variogram model from a string or a function"""
 
-    skg = import_optional("skgstat", package_name="scikit-gstat")
+    skg = import_optional("skgstat", package_name="scikit-gstat")  # noqa
 
     list_supported_models = ["spherical", "gaussian", "exponential", "cubic", "stable", "matern"]
 

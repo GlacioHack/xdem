@@ -921,7 +921,9 @@ class TestAffineManipulation:
     trans_y = 1
     trans_z = 1.5
     # This is a 3x3 rotation matrix
-    matrix_all = xdem.coreg.matrix_from_translations_rotations(trans_x, trans_y, trans_z, rotation_x, rotation_y, rotation_z)
+    matrix_all = xdem.coreg.matrix_from_translations_rotations(
+        trans_x, trans_y, trans_z, rotation_x, rotation_y, rotation_z
+    )
 
     list_matrices = [matrix_identity, matrix_vertical, matrix_translations, matrix_rotations, matrix_all]
 

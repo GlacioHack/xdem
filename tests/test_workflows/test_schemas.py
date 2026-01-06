@@ -31,6 +31,7 @@ from xdem.workflows import schemas
 
 pytest.importorskip("weasyprint")
 
+
 def test_validate_base_configuration(get_topo_inputs_config, get_accuracy_inputs_config):
     """
     Test validate_base_configuration function
