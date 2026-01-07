@@ -156,8 +156,9 @@ doc/source/gen_modules/
 doc/source/sg_execution_times.rst
 examples/basic/temp.tif
 examples/advanced/aligned_dem.tif
-doc/source/_workflows/outputs_accuracy
+doc/source/_workflows/outputs_accuracy/
 doc/source/_workflows/outputs_topo/
+
 !doc/source/_workflows/outputs_accuracy/report.pdf
 !doc/source/_workflows/outputs_topo/report.pdf
 
