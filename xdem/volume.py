@@ -34,11 +34,10 @@ from geoutils.raster.array import (
     get_mask_from_array,
     get_valid_extent,
 )
-from tqdm import tqdm
 
 import xdem
 from xdem._typing import MArrayf, NDArrayf
-
+from xdem._misc import get_progress
 
 def hypsometric_binning(
     ddem: NDArrayf,
@@ -597,7 +596,7 @@ def get_regional_hypsometric_signal(
     # Start a counter of glaciers that are actually processed.
     count = 0
     # Loop over each unique glacier.
-    for i in tqdm(
+    for i in get_progress(
         np.unique(glacier_index_map),
         desc="Finding regional signal",
         disable=logging.getLogger().getEffectiveLevel() > logging.INFO,
@@ -708,7 +707,7 @@ def norm_regional_hypsometric_interpolation(
     # Make a copy of the dDEM which will be filled iteratively.
     ddem_filled = ddem_arr.copy()
     # Loop over all glaciers and fill the dDEM accordingly.
-    for i in tqdm(
+    for i in get_progress(
         unique_indices, desc="Interpolating dDEM", disable=logging.getLogger().getEffectiveLevel() > logging.INFO
     ):
         if i == 0:  # i==0 is assumed to mean stable ground.

@@ -36,9 +36,9 @@ from geoutils._typing import Number
 from geoutils.interface.interpolate import _interp_points
 from geoutils.raster.georeferencing import _coords, _res
 from geoutils.stats import nmad
-from tqdm import trange
 
 from xdem._typing import NDArrayb, NDArrayf
+from xdem._misc import get_progress
 from xdem.coreg.base import (
     Coreg,
     CoregDict,
@@ -125,7 +125,10 @@ def _iterate_method(
 
     # Iteratively run the analysis until the maximum iterations or until the error gets low enough
     # If logging level <= INFO, will use progressbar and print additional statements
-    pbar = trange(max_iterations, disable=logging.getLogger().getEffectiveLevel() > logging.INFO, desc="   Progress")
+    pbar = get_progress(
+        range(max_iterations),
+        disable=logging.getLogger().getEffectiveLevel() > logging.INFO,
+        desc="   Progress")
     for i in pbar:
 
         # Apply method and get new statistic to compare to tolerance, new inputs for next iterations, and
