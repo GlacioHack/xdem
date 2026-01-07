@@ -21,19 +21,23 @@ Schema constants and validation function
 """
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 from urllib.error import HTTPError, URLError
 
 from xdem.vcrs import _vcrs_from_user_input
 from xdem._misc import import_optional
 
-# Need to define this here for inheritance
-try:
+if TYPE_CHECKING:
+    # Only used for type checking
     from cerberus import Validator
-    _HAS_CERBERUS = True
-except ImportError:
-    Validator = object
-    _HAS_CERBERUS = False
+else:
+    # Inheritance of optional dependency class
+    try:
+        from cerberus import Validator
+        _HAS_CERBERUS = True
+    except ImportError:
+        Validator = object
+        _HAS_CERBERUS = False
 
 class CustomValidator(Validator):  # type: ignore
 
