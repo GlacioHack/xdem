@@ -43,7 +43,7 @@ class Accuracy(Workflows):
     Accuracy class, inherits from the Workflow class to apply a workflow.
     """
 
-    def __init__(self, config_dem: str | Dict[str, Any]) -> None:
+    def __init__(self, config_dem: str | Dict[str, Any], output: str | None) -> None:
         """
         Initialization with configuration file.
 
@@ -54,7 +54,7 @@ class Accuracy(Workflows):
         self.elapsed: float | None = None
         self.df_stats: pd.DataFrame | None = None
 
-        super().__init__(config_dem)
+        super().__init__(config_dem, output)
 
         self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"])
         self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"]["reference_elev"])

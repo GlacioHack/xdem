@@ -46,7 +46,7 @@ class Workflows(ABC):
     Abstract Class for workflows
     """
 
-    def __init__(self, user_config: str | Dict[str, Any]) -> None:
+    def __init__(self, user_config: str | Dict[str, Any], output: str | None) -> None:
         """
         Initialize the workflows class
 
@@ -75,7 +75,11 @@ class Workflows(ABC):
         self.config = validate_configuration(config_not_verify, self.schema)
         self.level = self.config["outputs"]["level"]
 
-        self.outputs_folder = Path(self.config["outputs"]["path"])
+        if output is not None:
+            self.outputs_folder = Path(output)
+        else:
+            self.outputs_folder = Path(self.config["outputs"]["path"])
+
         logging.info(f"Outputs folder: {self.outputs_folder.absolute()}")
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
         logging.info(f"Outputs will be saved at {self.outputs_folder}")

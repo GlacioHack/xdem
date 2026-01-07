@@ -68,6 +68,10 @@ def main() -> None:
         "--config",
         help="Path to YAML configuration file",
     )
+    topo_parser.add_argument(
+        "--output",
+        help="Path to output folder (only with --config, overrides output of configuration file)",
+    )
     topo_group.add_argument("--display_template_config", action="store_true", help="Show configuration template")
 
     # Subcommand: accuracy
@@ -80,7 +84,10 @@ def main() -> None:
     diff_group = diff_parser.add_mutually_exclusive_group(required=True)
     diff_group.add_argument("--config", help="Path to YAML configuration file")
     diff_group.add_argument("--display_template_config", action="store_true", help="Show configuration template")
-
+    diff_parser.add_argument(
+        "--output",
+        help="Path to output folder (only with --config, overrides output of configuration file)",
+    )
     args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
 
     # Instance logger
@@ -91,13 +98,16 @@ def main() -> None:
     logging.getLogger("fontTools").setLevel(logging.WARNING)
     logging.getLogger("fontTools").propagate = False
 
+    if args.output and not args.config:
+        parser.error("Argument --output requires --config.")
+
     if args.command == "topo":
         if args.display_template_config:
             yaml_string = yaml.dump(COMPLETE_CONFIG_TOPO, sort_keys=False, allow_unicode=True)
             logging.info("\n" + yaml_string)
         elif args.config:
             logger.info("Running topo workflow")
-            workflow = Topo(args.config)
+            workflow = Topo(args.config, args.output)
             workflow.run()
 
     elif args.command == "accuracy":
@@ -106,7 +116,7 @@ def main() -> None:
             logging.info("\n" + yaml_string)
         elif args.config:
             logger.info("Running accuracy workflow")
-            workflow = Accuracy(args.config)  # type: ignore
+            workflow = Accuracy(args.config, args.output)  # type: ignore
             workflow.run()
 
     else:
