@@ -46,3 +46,27 @@ make install
 ```
 
 After installing, you can check that everything is working by running the tests: `pytest`.
+
+## Dependencies
+
+xDEM's required dependencies are:
+
+- [GeoUtils](https://geoutils.readthedocs.io/en/stable/) (version 0.2 and above),
+- [Numba](https://numba.pydata.org/),
+
+with themselves have dependencies on:
+
+- [Rasterio](https://rasterio.readthedocs.io/en/stable/) (version 1.3 and above),
+- [GeoPandas](https://geopandas.org/en/stable/) (version 0.12 and above),
+- [SciPy](https://scipy.org/),
+- [Xarray](https://xarray.dev/),
+- [Rioxarray](https://corteva.github.io/rioxarray/stable/).
+
+and second-order dependencies being notably [NumPy](https://numpy.org/), [pandas](https://pandas.pydata.org/), [pyproj](https://pyproj4.github.io/pyproj/stable/) and [pyogrio](https://pyogrio.readthedocs.io/en/latest/).
+
+Optional dependencies are:
+- [Matplotlib](https://matplotlib.org/) for plotting,
+- [LasPy](https://laspy.readthedocs.io/en/latest/) for reading and writing LAS/LAZ/COPC point cloud files,
+- [Dask](https://www.dask.org/) for out-of-memory operations (coming soon),
+- [tqdm](https://tqdm.github.io/) for displaying progress bars,
+- [Cerberus](https://docs.python-cerberus.org/), [Pyyaml](https://pyyaml.org/) and [Weasyprint](https://weasyprint.org/) for the command-line interface and workflows.
