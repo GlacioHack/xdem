@@ -24,12 +24,25 @@ import os
 from typing import Any, Dict
 from urllib.error import HTTPError, URLError
 
-from cerberus import Validator
-
 from xdem.vcrs import _vcrs_from_user_input
+from xdem._misc import import_optional
 
+# Need to define this here for inheritance
+try:
+    from cerberus import Validator
+    _HAS_CERBERUS = True
+except ImportError:
+    Validator = object
+    _HAS_CERBERUS = False
 
 class CustomValidator(Validator):  # type: ignore
+
+    def __init__(self, *args, **kwargs):
+        # Raise error if package does not exist
+        if not _HAS_CERBERUS:
+            import_optional("cerberus")
+        super().__init__(*args, **kwargs)
+
     def _validate_path_exists(self, path_exists: bool, field: str, value: str) -> bool:
         """
         {'type': 'boolean'}
