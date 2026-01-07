@@ -106,7 +106,7 @@ Finally, a report is created (both in HTML and PDF formats) in the output direct
 We can visualize the report of our workflow above:
 
 ```{raw} html
-<iframe src="_workflows/outputs_accuracy/report.html" width="100%" height="800"></iframe>
+<iframe src="_workflows/outputs_accuracy/report.pdf" width="100%" height="800"></iframe>
 ```
 
 ## Workflow details

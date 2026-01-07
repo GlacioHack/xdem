@@ -43,13 +43,16 @@ def main() -> None:
     Main function for the CLI
     """
 
-    parser = argparse.ArgumentParser(prog="xdem", description="CLI tool to process DEM workflows")
+    parser = argparse.ArgumentParser(prog="xdem", description="CLI tool to process DEM workflows", add_help=False)
+    parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
+                        help='Show this help message and exit')
     parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Set the logging level",
     )
+
     subparsers = parser.add_subparsers(
         dest="command",
         help="Available workflows as subcommand (see xdem [workflow] -h"
@@ -59,10 +62,16 @@ def main() -> None:
     # Subcommand: info
     topo_parser = subparsers.add_parser(
         "topo",
-        help="Run DEM qualification workflow",
-        description="Run a DEM information workflow using a YAML configuration file.",
-        epilog="Example: xdem topo --config config.yaml",
+        help="Run topography workflow",
+        description="Run the topography workflow using a YAML configuration file.",
+        epilog="examples:\n"
+               "  xdem topo --config config.yaml --output myoutputfolder\n"
+               "  xdem topo --template-config",
+        add_help=False,
+        formatter_class=argparse.RawTextHelpFormatter,
     )
+    topo_parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
+                        help='Show this help message and exit')
     topo_group = topo_parser.add_mutually_exclusive_group(required=True)
     topo_group.add_argument(
         "--config",
@@ -70,23 +79,29 @@ def main() -> None:
     )
     topo_parser.add_argument(
         "--output",
-        help="Path to output folder (only with --config, overrides output of configuration file)",
+        help="(Optional) Path to output folder (with --config, overrides configuration file)",
     )
-    topo_group.add_argument("--display_template_config", action="store_true", help="Show configuration template")
+    topo_group.add_argument("--template-config", action="store_true", help="Show template of YAML configuration file")
 
     # Subcommand: accuracy
     diff_parser = subparsers.add_parser(
         "accuracy",
-        help="Run DEM comparison workflow",
-        description="Run a DEM comparison workflow using a YAML configuration file.",
-        epilog="Example: xdem accuracy --config config.yaml",
+        help="Run accuracy workflow",
+        description="Run the accuracy assessment workflow for elevation data using a YAML configuration file.",
+        epilog="examples:\n"
+               "  xdem accuracy --config config.yaml --output myoutputfolder\n"
+               "  xdem accuracy --template-config",
+        add_help=False,
+        formatter_class=argparse.RawTextHelpFormatter,
     )
+    diff_parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
+                        help='Show this help message and exit')
     diff_group = diff_parser.add_mutually_exclusive_group(required=True)
     diff_group.add_argument("--config", help="Path to YAML configuration file")
-    diff_group.add_argument("--display_template_config", action="store_true", help="Show configuration template")
+    diff_group.add_argument("--template-config", action="store_true", help="Show template of YAML configuration file")
     diff_parser.add_argument(
         "--output",
-        help="Path to output folder (only with --config, overrides output of configuration file)",
+        help="(Optional) Path to output folder (with --config, overrides configuration file)",
     )
     args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
 
@@ -102,7 +117,7 @@ def main() -> None:
         parser.error("Argument --output requires --config.")
 
     if args.command == "topo":
-        if args.display_template_config:
+        if args.template_config:
             yaml_string = yaml.dump(COMPLETE_CONFIG_TOPO, sort_keys=False, allow_unicode=True)
             logging.info("\n" + yaml_string)
         elif args.config:
@@ -111,7 +126,7 @@ def main() -> None:
             workflow.run()
 
     elif args.command == "accuracy":
-        if args.display_template_config:
+        if args.template_config:
             yaml_string = yaml.dump(COMPLETE_CONFIG_ACCURACY, sort_keys=False, allow_unicode=True)
             logging.info("\n" + yaml_string)
         elif args.config:

@@ -12,6 +12,7 @@ jobs:
       - name: Verify reports for documentation are up to date
         shell: bash
         run: |
+          cd doc/source/_workflows
           set -euo pipefail
           
           failures=()
@@ -35,13 +36,13 @@ jobs:
           
           check_report \
             "accuracy" \
-            "xdem accuracy --config doc/source/_workflows/accuracy_config.yaml" \
-            "docs/source/_workflows/outputs_accuracy/report.pdf"
+            "xdem accuracy --config accuracy_config.yaml --output test_accuracy" \
+            "test_accuracy/report.pdf"
           
           check_report \
             "topo" \
-            "xdem topo --config doc/source/_workflows/accuracy_config.yaml" \
-            "docs/source/_workflows/outputs_topo/report.pdf"
+            "xdem topo --config topo_config.yaml --output test_topo" \
+            "test_topo/report.pdf"
           
           if (( ${#failures[@]} > 0 )); then
             echo ""
