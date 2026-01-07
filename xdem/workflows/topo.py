@@ -27,11 +27,11 @@ from pathlib import Path
 from typing import Any, Dict
 
 import matplotlib.pyplot as plt
-import yaml  # type: ignore
 
 import xdem
 from xdem.workflows.schemas import TOPO_SCHEMA
 from xdem.workflows.workflows import Workflows
+from xdem._misc import import_optional
 
 
 class Topo(Workflows):
@@ -44,6 +44,8 @@ class Topo(Workflows):
         Initialize Topo class
         :param config_dem: Path to a user configuration file
         """
+
+        yaml = import_optional("yaml", package_name="pyyaml")
 
         self.elapsed: float | None = None
         self.schema = TOPO_SCHEMA

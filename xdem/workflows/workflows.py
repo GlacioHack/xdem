@@ -30,16 +30,23 @@ import geoutils as gu
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-import yaml  # type: ignore
 from geoutils import Raster
 from geoutils.raster import RasterType
-from yaml.dumper import SafeDumper  # type: ignore
 
 import xdem
 from xdem import DEM
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
 from xdem.workflows.schemas import validate_configuration
+from xdem._misc import import_optional
 
+# Inheritance of optional dependency class
+try:
+    import yaml  # type: ignore
+    from yaml.dumper import SafeDumper
+    _HAS_YAML = True
+except ImportError:
+    SafeDumper = object
+    _HAS_YAML = False
 
 class Workflows(ABC):
     """
@@ -92,6 +99,12 @@ class Workflows(ABC):
         NoAliasDumper to avoid id in YAML file
         """
 
+        def __init__(self, *args, **kwargs):
+
+            if not _HAS_YAML:
+                import_optional("yaml", package_name="pyyaml")
+            super().__init__(*args, **kwargs)
+
         def ignore_aliases(self, data: Any) -> bool:
             """
             Avoid id in YAML file
@@ -103,6 +116,8 @@ class Workflows(ABC):
         Load a configuration file
         :return: Configuration dictionary
         """
+        yaml = import_optional("yaml", package_name="pyyaml")
+
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"File not found : {self.config_path}")
         with open(self.config_path) as f:

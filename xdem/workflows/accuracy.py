@@ -29,14 +29,13 @@ from typing import Any, Dict
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import yaml  # type: ignore
 from geoutils.raster import RasterType
 from numpy import floating
 
 import xdem
 from xdem.workflows.schemas import ACCURACY_SCHEMA
 from xdem.workflows.workflows import Workflows
-
+from xdem._misc import import_optional
 
 class Accuracy(Workflows):
     """
@@ -49,6 +48,8 @@ class Accuracy(Workflows):
 
         :param config_dem: Path to user configuration file.
         """
+
+        yaml = import_optional("yaml", package_name="pyyaml")
 
         self.schema = ACCURACY_SCHEMA
         self.elapsed: float | None = None
