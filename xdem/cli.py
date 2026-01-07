@@ -19,12 +19,20 @@
 
 import argparse
 import logging
+import ctypes.util
 import sys
 
 from xdem._misc import import_optional
 from xdem.workflows import Accuracy, Topo
 from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOPO
 
+lib_gobject_name = ctypes.util.find_library("gobject-2.0")
+lib_pango_name = ctypes.util.find_library("pango-1.0")
+if lib_gobject_name and lib_pango_name:
+    from weasyprint import HTML
+    _has_libgobject = True
+else:
+    _has_libgobject = False
 
 def main() -> None:
     """
@@ -103,8 +111,10 @@ def main() -> None:
         raise ValueError(f"{args.command} doesn't exist, valid command are 'accuracy', 'topo'")
 
     if args.config:
-        import_optional("weasyprint")
-        from weasyprint import HTML
+        if not _has_libgobject:
+            msg = ("Optional dependency 'weasyprint' required. "
+                   "Install it directly or through: pip install xdem[opt].")
+            raise ImportError(msg)
 
         logger.info("Generating HTML and PDF report")
         HTML(workflow.outputs_folder / "report.html").write_pdf(workflow.outputs_folder / "report.pdf")
