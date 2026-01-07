@@ -26,6 +26,7 @@ import xdem
 from xdem.workflows import Accuracy
 from xdem.workflows.schemas import TERRAIN_ATTRIBUTES_DEFAULT
 
+
 @pytest.fixture()
 def get_topo_inputs_config():
     """

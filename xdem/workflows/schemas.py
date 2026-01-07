@@ -19,7 +19,9 @@
 """
 Schema constants and validation function
 """
-from __future__ import annotations  # Required to have Validator=object (when cerberus missing) understood for typing
+from __future__ import (
+    annotations,  # Required to have Validator=object (when cerberus missing) understood for typing
+)
 
 import logging
 import os
@@ -150,7 +152,7 @@ def make_coreg_step(required: bool = False, default_method: str = None) -> Valid
     return step_schema
 
 
-def validate_configuration(user_config: dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+def validate_configuration(user_config: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     """
     Validate the configuration:
     :param user_config: Configuration dict or YAML string
