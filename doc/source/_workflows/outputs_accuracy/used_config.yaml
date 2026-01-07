@@ -1,0 +1,27 @@
+coregistration:
+  process: true
+  sampling_grid: reference_elev
+  step_one:
+    extra_information:
+      subsample: 10000
+    method: LZD
+inputs:
+  reference_elev:
+    downsample: 1
+    from_vcrs: null
+    path_to_elev: ../../../examples/data/Longyearbyen/data/DEM_2009_ref.tif
+    to_vcrs: null
+  to_be_aligned_elev:
+    downsample: 1
+    from_vcrs: null
+    path_to_elev: ../../../examples/data/Longyearbyen/data/DEM_1990.tif
+    path_to_mask: ../../../examples/data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp
+    to_vcrs: null
+outputs:
+  level: 1
+  output_grid: reference_elev
+  path: outputs_accuracy
+statistics:
+- median
+- nmad
+- validcount

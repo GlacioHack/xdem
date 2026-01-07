@@ -14,14 +14,15 @@
 [![Checked with mypy](http://www.mypy-lang.org/static/mypy_badge.svg)](http://mypy-lang.org/)
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 
-**xDEM** is an open source project to develop a core Python package for the analysis of digital elevation models (DEMs).
+**xDEM** is an open source project to develop a core Python package for the analysis of digital elevation models (DEMs) and elevation point clouds.
 
-It aims at **providing modular and robust tools for the most common analyses needed with DEMs**, including both geospatial
-operations specific to DEMs and a wide range of 3D alignment and correction methods from published, peer-reviewed studies.
-The core manipulation of DEMs (e.g., vertical alignment, terrain analysis) are **conveniently centered around a `DEM` class** (that, notably, re-implements all tools
+It aims at **providing modular and robust tools for the most common analyses needed with elevation data**, including specific geospatial
+operations, geomorphometry (slope, aspect, curvature) and a wide range of 3D alignment and correction methods from published, peer-reviewed studies.
+
+The core manipulation of elevation data (e.g., vertical alignment, terrain analysis) are **conveniently centered around a `DEM` and `EPC`** (that, notably, re-implements all tools
 of [gdalDEM](https://gdal.org/programs/gdaldem.html)). More complex pipelines (e.g., 3D rigid coregistration, bias corrections, filtering) are **built around
-modular `Coreg`, `BiasCorr` classes that easily interface between themselves**. Finally, xDEM includes advanced
-uncertainty analysis tools based on spatial statistics of [SciKit-GStat](https://scikit-gstat.readthedocs.io/en/latest/).
+modular `Coreg` objects that easily interface between themselves**. Finally, xDEM includes uncertainty analysis tools 
+based on spatial statistics of [SciKit-GStat](https://scikit-gstat.readthedocs.io/en/latest/).
 
 Additionally, xDEM inherits many convenient functionalities from [GeoUtils](https://github.com/GlacioHack/geoutils) such as
 **implicit loading**, **numerical interfacing** and **convenient object-based geospatial methods** to easily perform
