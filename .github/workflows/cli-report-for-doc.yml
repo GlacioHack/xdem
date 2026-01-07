@@ -1,3 +1,5 @@
+name: verify-cli-reports
+
 on: pull_request
 
 jobs:
