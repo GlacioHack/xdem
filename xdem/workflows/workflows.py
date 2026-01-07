@@ -35,18 +35,19 @@ from geoutils.raster import RasterType
 
 import xdem
 from xdem import DEM
+from xdem._misc import import_optional
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
 from xdem.workflows.schemas import validate_configuration
-from xdem._misc import import_optional
 
 # Inheritance of optional dependency class
 try:
-    import yaml  # type: ignore
-    from yaml.dumper import SafeDumper
+    from yaml.dumper import SafeDumper  # type: ignore
+
     _HAS_YAML = True
 except ImportError:
     SafeDumper = object
     _HAS_YAML = False
+
 
 class Workflows(ABC):
     """
@@ -99,7 +100,7 @@ class Workflows(ABC):
         NoAliasDumper to avoid id in YAML file
         """
 
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
 
             if not _HAS_YAML:
                 import_optional("yaml", package_name="pyyaml")

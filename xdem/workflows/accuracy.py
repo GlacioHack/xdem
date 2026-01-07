@@ -33,9 +33,10 @@ from geoutils.raster import RasterType
 from numpy import floating
 
 import xdem
+from xdem._misc import import_optional
 from xdem.workflows.schemas import ACCURACY_SCHEMA
 from xdem.workflows.workflows import Workflows
-from xdem._misc import import_optional
+
 
 class Accuracy(Workflows):
     """

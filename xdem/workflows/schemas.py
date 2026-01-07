@@ -21,11 +21,11 @@ Schema constants and validation function
 """
 import logging
 import os
-from typing import Any, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 from urllib.error import HTTPError, URLError
 
-from xdem.vcrs import _vcrs_from_user_input
 from xdem._misc import import_optional
+from xdem.vcrs import _vcrs_from_user_input
 
 if TYPE_CHECKING:
     # Only used for type checking
@@ -34,14 +34,16 @@ else:
     # Inheritance of optional dependency class
     try:
         from cerberus import Validator
+
         _HAS_CERBERUS = True
     except ImportError:
         Validator = object
         _HAS_CERBERUS = False
 
+
 class CustomValidator(Validator):  # type: ignore
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Raise error if package does not exist
         if not _HAS_CERBERUS:
             import_optional("cerberus")

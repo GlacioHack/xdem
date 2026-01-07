@@ -29,9 +29,9 @@ from typing import Any, Dict
 import matplotlib.pyplot as plt
 
 import xdem
+from xdem._misc import import_optional
 from xdem.workflows.schemas import TOPO_SCHEMA
 from xdem.workflows.workflows import Workflows
-from xdem._misc import import_optional
 
 
 class Topo(Workflows):
