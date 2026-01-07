@@ -19,7 +19,7 @@
 """
 Schema constants and validation function
 """
-from __future__ import annotations
+from __future__ import annotations  # Required to have Validator=object (when cerberus missing) understood for typing
 
 import logging
 import os
