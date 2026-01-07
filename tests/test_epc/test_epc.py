@@ -66,10 +66,30 @@ class TestEPC:
         assert epc3.data_column == "h_li"
         assert all(
             epc3.ds.columns
-            == ['time', 'h_li_sigma', 'atl06_quality_summary', 'sigma_geo_h',
-                'tide_ocean', 'bsnow_h', 'w_surface_window_final', 'gt', 'seg_azimuth',
-                'dh_fit_dx', 'n_fit_photons', 'segment_id', 'spot', 'bsnow_conf', 'rgt',
-                'h_robust_sprd', 'r_eff', 'y_atc', 'cycle', 'h_li', 'x_atc', 'geometry']
+            == [
+                "time",
+                "h_li_sigma",
+                "atl06_quality_summary",
+                "sigma_geo_h",
+                "tide_ocean",
+                "bsnow_h",
+                "w_surface_window_final",
+                "gt",
+                "seg_azimuth",
+                "dh_fit_dx",
+                "n_fit_photons",
+                "segment_id",
+                "spot",
+                "bsnow_conf",
+                "rgt",
+                "h_robust_sprd",
+                "r_eff",
+                "y_atc",
+                "cycle",
+                "h_li",
+                "x_atc",
+                "geometry",
+            ]
         )
 
     @pytest.mark.skipif(find_spec("laspy") is not None, reason="Only runs if laspy is missing.")  # type: ignore
