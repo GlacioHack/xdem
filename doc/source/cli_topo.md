@@ -76,8 +76,8 @@ Finally, a report is created (both in HTML and PDF formats) in the output direct
 
 We can visualize the report of our workflow above:
 
-```{include}
-<iframe src="_workflows/outputs_topo/report.pdf" width="100%" height="800"></iframe>
+```{raw} html
+<iframe src="_static/outputs_topo/report.pdf" width="100%" height="800"></iframe>
 ```
 
 ## Workflow details

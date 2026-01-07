@@ -83,11 +83,13 @@ def my_xdem_function():
 Finally, in any other script, the profiler can be activated and the output directory defined:
 
 ```{code-cell} ipython3
-from geoutils.profiler import profile
+from geoutils.profiler import Profiler
 
 Profiler.enable(save_graphs=True, save_raw_data=True)
 
-# xDEM code
+# ...
+# Code calling decorated functions
+# ...
 
 my_output_directory="./profile_output/"
 Profiler.generate_summary(my_output_directory)
