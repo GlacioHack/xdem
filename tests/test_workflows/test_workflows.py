@@ -33,7 +33,7 @@ from xdem.workflows.workflows import Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
-pytest.importorskip("weasyprint")
+pytest.importorskip("cerberus")
 
 import yaml  # type: ignore  # noqa
 

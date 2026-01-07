@@ -29,7 +29,7 @@ from xdem.workflows import Accuracy
 from xdem.workflows.workflows import Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
-pytest.importorskip("weasyprint")
+pytest.importorskip("cerberus")
 
 
 def test_init_diff_analysis(get_accuracy_object_with_run, tmp_path):
