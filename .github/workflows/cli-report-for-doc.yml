@@ -35,12 +35,12 @@ jobs:
           
           check_report \
             "accuracy" \
-            "xdem accuracy --config doc/source/_workflow/accuracy_config.yaml" \
+            "xdem accuracy --config doc/source/_workflows/accuracy_config.yaml" \
             "docs/source/_workflows/outputs_accuracy/report.pdf"
           
           check_report \
             "topo" \
-            "xdem topo --config doc/source/_workflow/accuracy_config.yaml" \
+            "xdem topo --config doc/source/_workflows/accuracy_config.yaml" \
             "docs/source/_workflows/outputs_topo/report.pdf"
           
           if (( ${#failures[@]} > 0 )); then
