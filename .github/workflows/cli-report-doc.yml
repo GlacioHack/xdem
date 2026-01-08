@@ -28,7 +28,7 @@ jobs:
           normalize_html() {
             # Strip volatile fields and whitespace
             sed -E '
-              s|<p>Package version:.*</p>||g
+              s|<p>xDEM version:.*</p>||g
               s|<p>Date:.*</p>||g
               s|<p>Computing time:.*</p>||g
               s/^[[:space:]]+//g
