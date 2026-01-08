@@ -12,7 +12,7 @@ jobs:
         run: pip install -e .[opt]
 
       - name: Trigger example data download
-        run: python -c "import xdem; xdem.example.get_path('longyearbyen_ref_dem')"
+        run: python -c "import xdem; xdem.examples.get_path('longyearbyen_ref_dem')"
 
       - name: Verify reports for documentation are up to date
         shell: bash
