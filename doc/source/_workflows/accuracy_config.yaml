@@ -9,7 +9,7 @@ outputs:
 coregistration:
   step_one:
     method: "LZD"
-    extra_information: {"subsample": 10000}
+    extra_information: {"subsample": 10000, "random_state": 42}
 statistics:
 - median
 - nmad

@@ -46,8 +46,10 @@ jobs:
             expected="$3"
                     
             echo "Checking report: $name"
+            echo "1/ Running workflow:"
             eval "$cmd"
-          
+            echo "2/ Analyzing differences in HTML file:"
+
             if ! diff -u \
               <(normalize_html "$expected") \
               <(normalize_html "outputs_${name}/report.html"); then
