@@ -2,7 +2,7 @@
 <head><meta charset='UTF-8'><title>Qualify elevation results</title></head>
 <body>
 <h1>Accuracy assessment report — xDEM</h1>
-<p>xDEM version: 0.1.7a4.dev47</p><p>Date: 07/01/2026 13:32:23</p><p>Computing time: 4.71 seconds</p><h2>Elevation datasets</h2>
+<p>xDEM version: 0.1.7a4.dev47</p><p>Date: 07/01/2026 19:18:06</p><p>Computing time: 4.39 seconds</p><h2>Elevation datasets</h2>
 <div style='display: flex; gap: 10px;'>
   <img src='plots/reference_elev_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
   <img src='plots/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
@@ -28,8 +28,8 @@
 <h2>LZD inputs</h2>
 <table border='1' cellspacing='0' cellpadding='5'>
 <tr><th>Information</th><th>Value</th></tr>
-<tr><td>random</td><td>{'subsample': 10000, 'random_state': None}</td></tr>
-<tr><td>fitorbin</td><td>{'fit_minimizer': <function least_squares at 0x7b297b81ade0>, 'fit_loss_func': 'linear'}</td></tr>
+<tr><td>random</td><td>{'subsample': 10000, 'random_state': 42}</td></tr>
+<tr><td>fitorbin</td><td>{'fit_minimizer': <function least_squares at 0x7d666b86ade0>, 'fit_loss_func': 'linear'}</td></tr>
 <tr><td>iterative</td><td>{'max_iterations': 200, 'tolerance': 0.01}</td></tr>
 <tr><td>specific</td><td>{}</td></tr>
 <tr><td>affine</td><td>{'only_translation': False}</td></tr>
@@ -39,14 +39,14 @@
 <h2>LZD outputs</h2>
 <table border='1' cellspacing='0' cellpadding='5'>
 <tr><th>Information</th><th>Value</th></tr>
-<tr><td>affine</td><td>{'centroid': (515721.14, 8663774.44, 351.44), 'matrix': array([[ 9.99999981e-01,  1.49613100e-04, -1.23540125e-04,
-         1.00274704e+01],
-       [-1.49627285e-04,  9.99999982e-01, -1.14817520e-04,
-         2.27014636e+00],
-       [ 1.23522944e-04,  1.14836003e-04,  9.99999986e-01,
-        -1.99366764e+00],
+<tr><td>affine</td><td>{'centroid': (515650.83, 8663888.17, 353.11), 'matrix': array([[ 9.99999985e-01,  1.17578419e-04, -1.30099078e-04,
+         1.02548967e+01],
+       [-1.17594385e-04,  9.99999986e-01, -1.22719549e-04,
+         1.90590312e+00],
+       [ 1.30084647e-04,  1.22734846e-04,  9.99999984e-01,
+        -1.93544013e+00],
        [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,
-         1.00000000e+00]]), 'shift_x': 10.03, 'shift_y': 2.27, 'shift_z': -1.99}</td></tr>
+         1.00000000e+00]]), 'shift_x': 10.25, 'shift_y': 1.91, 'shift_z': -1.94}</td></tr>
 <tr><td>random</td><td>{'subsample_final': 10000}</td></tr>
 </table>
 </div>
@@ -63,8 +63,8 @@
   <tbody>
     <tr>
       <td>Aligned elevation</td>
-      <td>363.274872</td>
-      <td>291.765869</td>
+      <td>363.338928</td>
+      <td>291.801208</td>
       <td>1309704</td>
     </tr>
     <tr>
@@ -75,8 +75,8 @@
     </tr>
     <tr>
       <td>Difference after coreg</td>
-      <td>0.186951</td>
-      <td>2.408863</td>
+      <td>0.254444</td>
+      <td>2.403943</td>
       <td>1309704</td>
     </tr>
   </tbody>
