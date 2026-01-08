@@ -24,8 +24,8 @@ References for **curvatures** are detailed further below the other terrain attri
 
    * - Method
      - Reference
-   * - Partial derivatives of slope
-     - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
+   * - Partial derivatives (slope, aspect, curvatures)
+     - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499)
    * - Slope, aspect and hillshade
      - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
    * - Topographic position index

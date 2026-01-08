@@ -95,10 +95,18 @@ The `topo` workflow is described by the following chart:
 (params-topo)=
 ### Configuration parameters
 
+The parameters to pass to the `topo` workflow are divided into four categories:
+- The `inputs` define file opening and pre-processing, including **one required path to elevation data**, but also optional masking, CRS, nodata over-riding, and downsampling factor,
+- The `outputs` define file writing and report generation, with various **levels** of detail for the produced outputs,
+- The `terrain attributes` define steps for coregistration, directly **interfacing with the {ref}`terrain` module** of xDEM,
+- The `statistics` define steps for computing statistics before/after coregistration, directly **interfacing with the [Statistics](https://geoutils.readthedocs.io/en/stable/stats.html) module** of GeoUtils.
+
+These categories and detailed parameter values are further detailed below:
+
 ```{eval-rst}
 .. tabs::
 
-   .. tab:: inputs
+   .. tab:: ``inputs``
 
      **Required:** Yes
 
@@ -129,7 +137,7 @@ The `topo` workflow is described by the following chart:
              from_vcrs: None
              to_vcrs: None
 
-   .. tab:: statistics
+   .. tab:: ``statistics``
 
       **Required:** No
 
@@ -151,7 +159,7 @@ The `topo` workflow is described by the following chart:
 
       If a mask is provided, the statistics are also computed inside the mask.
 
-   .. tab:: terrain attributes
+   .. tab:: ``terrain_attributes``
 
       **Required:** No
 
@@ -184,7 +192,7 @@ The `topo` workflow is described by the following chart:
         The data provided in extra_information is not checked for errors before executing the code.
         Its use is entirely the responsibility of the user.
 
-   .. tab:: outputs
+   .. tab:: ``outputs``
 
     **Required:** No
 
@@ -195,7 +203,7 @@ The `topo` workflow is described by the following chart:
     1. Level 1 → aligned elevation only
     2. Level 2 → more detailed output
 
-    .. csv-table:: Outputs parameters
+    .. csv-table:: Output parameters
        :header: "Name", "Description", "Type", "Default value", "Available Value", "Required"
        :widths: 20, 40, 10, 10, 10, 10
 
