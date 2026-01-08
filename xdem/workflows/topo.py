@@ -39,7 +39,7 @@ class Topo(Workflows):
     Topo class from workflows.
     """
 
-    def __init__(self, config_dem: str | Dict[str, Any], output: str | None) -> None:
+    def __init__(self, config_dem: str | Dict[str, Any], output: str | None = None) -> None:
         """
         Initialize Topo class
         :param config_dem: Path to a user configuration file

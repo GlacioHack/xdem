@@ -6,7 +6,7 @@ Below, the release notes for all minor versions and our roadmap to a first major
 ## 0.2.0
 
 xDEM version 0.2 is the **second minor release**, notably marked by the merge in efforts with [demcompare](https://github.com/CNES/demcompare) to build a unified tool!
-It is the result of months of work to consolidate several features, in particular support for **elevation point clouds**. Parallel work on scalability with Dask and Multiprocessing 
+It is the result of months of work to consolidate several features, in particular support for **elevation point clouds**. Parallel work on scalability with Dask and Multiprocessing
 is ongoing, and should soon be released in a 0.3.
 
 This new version adds:
@@ -20,7 +20,7 @@ Computationally, we started introducing parallel out-of-memory functionalities (
 - Blockwise coregistration,
 - Terrain attributes (that also benefit from a general performance improvement, and the option of using SciPy as engine instead of Numba).
 
-Internally, xDEM has now defined a governance, nearly doubled its number of tests, robustified its packaging and minimized its required dependencies. 
+Internally, xDEM has now defined a governance, nearly doubled its number of tests, robustified its packaging and minimized its required dependencies.
 
 A few changes might be required to adapt from previous versions (from deprecation warnings):
 

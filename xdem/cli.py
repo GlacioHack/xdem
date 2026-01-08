@@ -44,8 +44,9 @@ def main() -> None:
     """
 
     parser = argparse.ArgumentParser(prog="xdem", description="CLI tool to process DEM workflows", add_help=False)
-    parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
-                        help='Show this help message and exit')
+    parser.add_argument(
+        "-h", "--help", action="help", default=argparse.SUPPRESS, help="Show this help message and exit"
+    )
     parser.add_argument(
         "--log-level",
         default="INFO",
@@ -65,13 +66,14 @@ def main() -> None:
         help="Run topography workflow",
         description="Run the topography workflow using a YAML configuration file.",
         epilog="examples:\n"
-               "  xdem topo --config config.yaml --output myoutputfolder\n"
-               "  xdem topo --template-config",
+        "  xdem topo --config config.yaml --output myoutputfolder\n"
+        "  xdem topo --template-config",
         add_help=False,
         formatter_class=argparse.RawTextHelpFormatter,
     )
-    topo_parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
-                        help='Show this help message and exit')
+    topo_parser.add_argument(
+        "-h", "--help", action="help", default=argparse.SUPPRESS, help="Show this help message and exit"
+    )
     topo_group = topo_parser.add_mutually_exclusive_group(required=True)
     topo_group.add_argument(
         "--config",
@@ -89,13 +91,14 @@ def main() -> None:
         help="Run accuracy workflow",
         description="Run the accuracy assessment workflow for elevation data using a YAML configuration file.",
         epilog="examples:\n"
-               "  xdem accuracy --config config.yaml --output myoutputfolder\n"
-               "  xdem accuracy --template-config",
+        "  xdem accuracy --config config.yaml --output myoutputfolder\n"
+        "  xdem accuracy --template-config",
         add_help=False,
         formatter_class=argparse.RawTextHelpFormatter,
     )
-    diff_parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
-                        help='Show this help message and exit')
+    diff_parser.add_argument(
+        "-h", "--help", action="help", default=argparse.SUPPRESS, help="Show this help message and exit"
+    )
     diff_group = diff_parser.add_mutually_exclusive_group(required=True)
     diff_group.add_argument("--config", help="Path to YAML configuration file")
     diff_group.add_argument("--template-config", action="store_true", help="Show template of YAML configuration file")

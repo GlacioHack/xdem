@@ -135,7 +135,7 @@ Then, run the workflow using:
 xdem accuracy --config config_file.yaml
 ```
 
-The outputs are written by default in an `outputs` folder of your current directory. 
+The outputs are written by default in an `outputs` folder of your current directory.
 
 (quick-gallery)=
 ## More examples

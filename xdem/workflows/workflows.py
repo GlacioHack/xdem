@@ -46,7 +46,7 @@ class Workflows(ABC):
     Abstract Class for workflows
     """
 
-    def __init__(self, user_config: str | Dict[str, Any], output: str | None) -> None:
+    def __init__(self, user_config: str | Dict[str, Any], output: str | None = None) -> None:
         """
         Initialize the workflows class
 
@@ -75,6 +75,7 @@ class Workflows(ABC):
         self.config = validate_configuration(config_not_verify, self.schema)
         self.level = self.config["outputs"]["level"]
 
+        # If output folder was forced by user CLI argument, override the one in the config file
         if output is not None:
             self.outputs_folder = Path(output)
         else:

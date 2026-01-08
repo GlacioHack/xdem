@@ -36,7 +36,7 @@ xDEM aims at making the analysis of digital elevation models **easy**, **modular
 
 xDEM `v0.2` is released with **support for elevation point clouds**, as well as other features (see {ref}`release-notes` for details)!
 
-We are **finalizing a ``dem`` Xarray accessor**, and refining a command-line interface to perform **multi-step analysis worfklows with [demcompare](https://github.com/CNES/demcompare)**.
+We are **finalizing a ``dem`` Xarray accessor**, and refining a command-line interface to perform **multi-step analysis workflows**.
 :::
 
 xDEM is **tailored to perform quantitative analysis that implicitly understands the intricacies of elevation data**,

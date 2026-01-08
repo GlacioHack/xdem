@@ -17,10 +17,10 @@
 **xDEM** is an open source project to develop a core Python package for the analysis of digital elevation models (DEMs) and elevation point clouds.
 
 It aims at **providing modular and robust tools for the most common analyses needed with elevation data**, including geospatial
-operations (vertical referencing), terrain analysis/geomorphometry (e.g., slope, aspect, curvatures, roughness indexes), 3D coregistration, corrections 
+operations (vertical referencing), terrain analysis/geomorphometry (e.g., slope, aspect, curvatures, roughness indexes), 3D coregistration, corrections
 and uncertainty analysis from a wide range of peer-reviewed studies (see :ref:`methods` below for the full list).
 
-The core manipulation of elevation data is **conveniently centered around `DEM` and `EPC` classes**. Terrain analysis 
+The core manipulation of elevation data is **conveniently centered around `DEM` and `EPC` classes**. Terrain analysis
 is implemented in a modular way to support state-of-the art methods (and, notably, re-implements all tools
 of [gdalDEM](https://gdal.org/programs/gdaldem.html)). More complex pipelines (e.g., 3D rigid coregistration, bias corrections) are **built around
 modular `Coreg` objects that easily interface between themselves**.
@@ -62,7 +62,7 @@ Below is a summary of the methods implemented in xDEM.
 - **Terrain attributes**:
   - Partial derivatives (for slope, aspect, curvatures) of [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499) (default),
   - Slope, aspect and hillshade of either [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) (default),
-  - Profile curvature, either geometric from Krcho (1973) and Evans (1979), or directional from [Zevenbergen and Thorne, 1987](http://dx.doi.org/10.1002/esp.3290120107), 
+  - Profile curvature, either geometric from Krcho (1973) and Evans (1979), or directional from [Zevenbergen and Thorne, 1987](http://dx.doi.org/10.1002/esp.3290120107),
   - Tangential curvature, either geometric from Krcho (1983), or directional from [Zevenbergen and Thorne, 1987](http://dx.doi.org/10.1002/esp.3290120107),
   - Planform curvature, only geometric from Sobolevsky (1932),
   - Flowline curvature, either geometric from [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414), or directional from Shary (1991),
@@ -82,10 +82,10 @@ Below is a summary of the methods implemented in xDEM.
   - Along-track multi-sinusoidal noise by basin-hopping of [Girod et al. (2017)](https://doi.org/10.3390/rs9070704),
   - Curvature-based correction of [Gardelle et al. (2012)](https://doi.org/10.3189/2012JoG11J175),
   - Elevation-based correction of [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011),
-- **Uncertainty analysis**: 
+- **Uncertainty analysis**:
   - Heteroscedasticity and multi-range correlations from stable terrain of [Rolstad et al. (2009)](http://dx.doi.org/10.3189/002214309789470950) and [Hugonnet et al. (2022)](https://doi.org/10.1109/JSTARS.2022.3188922),
 
-When using a method implemented in xDEM, please cite both the package and the related study. 
+When using a method implemented in xDEM, please cite both the package and the related study.
 For xDEM, use the following DOI: [![Zenodo](https://zenodo.org/badge/doi/10.5281/zenodo.4809697.svg)](https://zenodo.org/doi/10.5281/zenodo.4809697)
 
 ## Contributing
