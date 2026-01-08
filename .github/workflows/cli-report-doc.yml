@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           cd doc/source/_workflows
-          
+
           # Function to normalize HTML before comparison
           normalize_html() {
             # Strip volatile fields and whitespace
@@ -37,14 +37,14 @@ jobs:
           }
 
           set -euo pipefail
-          
+
           failures=()
-          
+
           check_report () {
             name="$1"
             cmd="$2"
             expected="$3"
-                    
+
             echo "Checking report: $name"
             echo "1/ Running workflow:"
             eval "$cmd"
@@ -62,17 +62,17 @@ jobs:
               echo "No difference found!"
             fi
           }
-          
+
           check_report \
             "accuracy" \
             "xdem accuracy --config accuracy_config.yaml --output test_accuracy" \
             "test_accuracy/report.html"
-          
+
           check_report \
             "topo" \
             "xdem topo --config topo_config.yaml --output test_topo" \
             "test_topo/report.html"
-          
+
           if (( ${#failures[@]} > 0 )); then
             echo ""
             echo "The following reports are out of date:"
@@ -82,5 +82,5 @@ jobs:
             done
             exit 1
           fi
-          
+
           echo "All reports are up to date."
