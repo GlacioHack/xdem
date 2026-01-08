@@ -58,6 +58,8 @@ jobs:
               echo "::error::Run:"
               echo "::error::  cd doc/source/_workflows"
               echo "::error::  xdem $name --config ${name}_config.yaml"
+            else
+              echo "No difference found!"
             fi
           }
           
@@ -76,6 +78,7 @@ jobs:
             echo "The following reports are out of date:"
             for r in "${failures[@]}"; do
               echo "  - $r"
+            echo "See error output above to re-generate them."
             done
             exit 1
           fi
