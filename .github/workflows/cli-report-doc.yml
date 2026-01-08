@@ -1,4 +1,4 @@
-name: verify-cli-reports
+name: verify-report
 
 on: pull_request
 
@@ -13,11 +13,6 @@ jobs:
 
       - name: Trigger xDEM example data download
         run: python -c "import xdem; xdem.examples.get_path('longyearbyen_ref_dem')"
-
-      - name: Install PDF utilities
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y poppler-utils
 
       - name: Verify reports for documentation are up to date
         shell: bash
