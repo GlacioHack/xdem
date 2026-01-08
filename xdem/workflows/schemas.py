@@ -139,7 +139,7 @@ def validate_configuration(user_config: dict[str, Any], schema: Dict[str, Any]) 
     validator = CustomValidator(schema)
     if not validator.validate(user_config):
         for field, errors in validator.errors.items():
-            raise ValueError(f"User configuration mistakes in '{field}': {errors}")
+            raise ValueError(f"User configuration invalid for '{field}': {errors}")
 
     if "statistics" not in validator.document:
         validator.document["statistics"] = STATS_METHODS
