@@ -49,8 +49,8 @@ jobs:
             eval "$cmd"
           
             if ! diff -u \
-              <(normalize_pdf "$expected") \
-              <(normalize_pdf "outputs_${name}/report.html"); then
+              <(normalize_html "$expected") \
+              <(normalize_html "outputs_${name}/report.html"); then
               failures+=("$name")
               echo "::error::Report '$name' is out of date (ignoring version/date metadata)."
               echo "::error::Run:"
