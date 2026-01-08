@@ -159,8 +159,12 @@ examples/advanced/aligned_dem.tif
 doc/source/_workflows/outputs_accuracy/
 doc/source/_workflows/outputs_topo/
 
+# PDF to keep to display in documentation
 !doc/source/_workflows/outputs_accuracy/report.pdf
 !doc/source/_workflows/outputs_topo/report.pdf
+# HTML to keep to do a diff change for CI
+!doc/source/_workflows/outputs_accuracy/report.html
+!doc/source/_workflows/outputs_topo/report.html
 
 # Directory where myst_nb executes jupyter code and cache
 doc/jupyter_execute/

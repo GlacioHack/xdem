@@ -24,19 +24,16 @@ jobs:
         run: |
           cd doc/source/_workflows
           
-          # Function to convert PDF to text for comparison
-          normalize_pdf () {
-            pdftotext -layout "$1" - | \
-              sed -E '
-                # Remove volatile metadata
-                /^xDEM version:/d
-                /^Date:/d
-                /^Computing time:/d
-              ' | \
-              # Normalize whitespace
-              tr -s ' ' | \
-              # Remove empty lines
-              sed '/^$/d'
+          # Function to normalize HTML before comparison
+          normalize_html() {
+            # Strip volatile fields and whitespace
+            sed -E '
+              s|<p>Package version:.*</p>||g
+              s|<p>Date:.*</p>||g
+              s|<p>Computing time:.*</p>||g
+              s/^[[:space:]]+//g
+              s/[[:space:]]+$//g
+            ' "$1" | grep -v '^$'
           }
 
           set -euo pipefail
@@ -53,7 +50,7 @@ jobs:
           
             if ! diff -u \
               <(normalize_pdf "$expected") \
-              <(normalize_pdf "outputs_${name}/report.pdf"); then
+              <(normalize_pdf "outputs_${name}/report.html"); then
               failures+=("$name")
               echo "::error::Report '$name' is out of date (ignoring version/date metadata)."
               echo "::error::Run:"
@@ -65,12 +62,12 @@ jobs:
           check_report \
             "accuracy" \
             "xdem accuracy --config accuracy_config.yaml --output test_accuracy" \
-            "test_accuracy/report.pdf"
+            "test_accuracy/report.html"
           
           check_report \
             "topo" \
             "xdem topo --config topo_config.yaml --output test_topo" \
-            "test_topo/report.pdf"
+            "test_topo/report.html"
           
           if (( ${#failures[@]} > 0 )); then
             echo ""
