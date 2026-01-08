@@ -425,6 +425,15 @@ class Accuracy(Workflows):
         )
         html += "</div>\n"
 
+        def format_values(val: Any) -> Any:
+            """Format values for the dictionary."""
+            if isinstance(val, float):
+                return np.format_float_positional(val)
+            elif callable(val):
+                return val.__name__
+            else:
+                return str(val)
+
         # Metadata: Inputs, coregistration
         for title, dictionary in list_dict:  # type: ignore
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"
@@ -432,6 +441,8 @@ class Accuracy(Workflows):
             html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
             html += "<tr><th>Information</th><th>Value</th></tr>\n"
             for key, value in dictionary.items():
+                if isinstance(value, dict):
+                    value = {k: format_values(v) for k, v in value.items()}
                 html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
             html += "</table>\n"
             html += "</div>\n"
