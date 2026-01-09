@@ -54,7 +54,7 @@ For details on the individual parameters, see {ref}`params-topo` further below. 
 
 
 ```{tip}
-To display a template of all available configuration options for the YAML file, use the `--display_template_config` argument
+To display a template of all available configuration options for the YAML file, use the `--template-config` argument
 ```
 
 ### Running the workflow
@@ -72,33 +72,12 @@ Now that we have this configuration file, we run the workflow.
 
 The logging output is printed in the terminal, showing the different steps.
 
-```{code-cell} python
-:tags: [remove-cell]
-
-# Copy output folder to build directory to be able to embed HTML directly below
-import os
-import shutil
-from pathlib import Path
-
-# Source + destination
-src = Path("outputs_topo")
-dst = Path("../../build/_workflows/outputs_topo")
-
-# Ensure clean copy (important for incremental builds)
-if dst.exists():
-    shutil.rmtree(dst)
-dst.parent.mkdir(parents=True, exist_ok=True)
-
-# Copy entire directory tree
-shutil.copytree(src, dst)
-```
-
 Finally, a report is created (both in HTML and PDF formats) in the output directory.
 
 We can visualize the report of our workflow above:
 
 ```{raw} html
-<iframe src="_workflows/outputs_topo/report.html" width="100%" height="800"></iframe>
+<iframe src="_static/outputs_topo/report.pdf" width="100%" height="800"></iframe>
 ```
 
 ## Workflow details
@@ -107,7 +86,7 @@ This section describes in detail the steps for the `topo` workflow, including a 
 
 ### Chart of steps
 
-The `topo` workflow is described by the following chart:
+The `topo` workflow, including its **inputs**, **outputs**, **processing steps** and **output detail level**, are described on the following chart:
 
 :::{figure} imgs/topo_workflow_pipeline.png
 :width: 100%
@@ -116,10 +95,18 @@ The `topo` workflow is described by the following chart:
 (params-topo)=
 ### Configuration parameters
 
+The parameters to pass to the `topo` workflow are divided into four categories:
+- The `inputs` define file opening and pre-processing, including **one required path to elevation data**, but also optional masking, CRS, nodata over-riding, and downsampling factor,
+- The `outputs` define file writing and report generation, with various **levels** of detail for the produced outputs,
+- The `terrain_attributes` define steps for coregistration, directly **interfacing with the {ref}`terrain-attributes` module** of xDEM,
+- The `statistics` define steps for computing statistics before/after coregistration, directly **interfacing with the [Statistics](https://geoutils.readthedocs.io/en/stable/stats.html) module** of GeoUtils.
+
+These categories and detailed parameter values are further detailed below:
+
 ```{eval-rst}
 .. tabs::
 
-   .. tab:: inputs
+   .. tab:: ``inputs``
 
      **Required:** Yes
 
@@ -150,7 +137,7 @@ The `topo` workflow is described by the following chart:
              from_vcrs: None
              to_vcrs: None
 
-   .. tab:: statistics
+   .. tab:: ``statistics``
 
       **Required:** No
 
@@ -172,7 +159,7 @@ The `topo` workflow is described by the following chart:
 
       If a mask is provided, the statistics are also computed inside the mask.
 
-   .. tab:: terrain attributes
+   .. tab:: ``terrain_attributes``
 
       **Required:** No
 
@@ -205,7 +192,7 @@ The `topo` workflow is described by the following chart:
         The data provided in extra_information is not checked for errors before executing the code.
         Its use is entirely the responsibility of the user.
 
-   .. tab:: outputs
+   .. tab:: ``outputs``
 
     **Required:** No
 
@@ -216,7 +203,7 @@ The `topo` workflow is described by the following chart:
     1. Level 1 → aligned elevation only
     2. Level 2 → more detailed output
 
-    .. csv-table:: Outputs parameters
+    .. csv-table:: Output parameters
        :header: "Name", "Description", "Type", "Default value", "Available Value", "Required"
        :widths: 20, 40, 10, 10, 10, 10
 

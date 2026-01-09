@@ -251,16 +251,16 @@ y = np.linspace(dem.bounds.top - 5000, dem.bounds.bottom + 5000, 100)
 # (to approximate the real elevation at these coordinates,
 # which has negligible impact compared to rasterization)
 z = dem.interp_points((x,y), as_array=True)
-epc = gu.Vector(gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=x, y=y, crs=dem.crs), data={"z": z}))
+epc = xdem.EPC.from_xyz(x, y, z, crs=dem.crs)
 
 # Rasterize point cloud back on the DEM grid
 epc_rast = epc.rasterize(dem, in_value=z, out_value=np.nan)
 
 # For easier plotting, convert the valid dh values to points
 dh = dem - epc_rast
-dh_pc = dh.to_pointcloud(data_column_name="dh")
+dh_pc = dh.to_pointcloud()
 
 # Plot the elevation differences of the rasterization on top of a hillshade
 hs.plot(cmap="Greys_r", add_cbar=False)
-dh_pc.plot(column="dh", cmap='RdYlBu', vmin=-10, vmax=10, legend=True, cbar_title="Elevation differences of\npoint-raster differencing (m)")
+dh_pc.plot(cmap='RdYlBu', vmin=-10, vmax=10, legend=True, cbar_title="Elevation differences of\npoint-raster differencing (m)")
 ```

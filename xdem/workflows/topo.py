@@ -39,7 +39,7 @@ class Topo(Workflows):
     Topo class from workflows.
     """
 
-    def __init__(self, config_dem: str | Dict[str, Any]):
+    def __init__(self, config_dem: str | Dict[str, Any], output: str | None = None) -> None:
         """
         Initialize Topo class
         :param config_dem: Path to a user configuration file
@@ -48,7 +48,7 @@ class Topo(Workflows):
         self.elapsed: float | None = None
         self.schema = TOPO_SCHEMA
 
-        super().__init__(config_dem)
+        super().__init__(config_dem, output)
 
         self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
         self.generate_plot(self.dem, filename="elev_map", title="Elevation", cmap="terrain", cbar_title="Elevation (m)")

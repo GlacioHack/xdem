@@ -28,8 +28,8 @@ xDEM relies largely on [its sister-package GeoUtils](https://geoutils.readthedoc
 (NumPy interface). 🙂
 ```
 
-xDEM revolves around the {class}`~xdem.DEM` class (a subclass of {class}`~geoutils.Raster`), from
-which most methods can be called and the {class}`~xdem.coreg.Coreg` classes to build modular coregistration pipelines.
+xDEM revolves around the {class}`~xdem.DEM` class (a subclass of {class}`~geoutils.Raster`) and the {class}`~xdem.EPC` class (a subclass of {class}`~geoutils.PointCloud`), from
+which most methods can be called. The {class}`~xdem.coreg.Coreg` class is used to build modular coregistration pipelines.
 
 Below, in a few lines, we load two DEMs and a vector of glacier outlines, crop them to a common extent,
 align the DEMs using coregistration, estimate the elevation change, estimate elevation change error using stable
@@ -116,23 +116,27 @@ os.remove("dh_error.tif")
 
 ## Command-line example
 
-xDEM also support **workflows** (series of analysis steps) through a command line interface.
-Create a configuration YAML file containing path to your elevation files:
+xDEM also support several **workflows** (series of analysis steps) through a command line interface, such as the **accuracy** and **topo** workflows to perform an accuracy assessment or generate a topographical summary of your elevation data, respectively.
+These workflows use inputs on disk (elevation data files and a YAML configuration file), and generate outputs on disk (plots, tables, and HTML/PDF report).
 
-```yaml
-inputs:
-  reference_elev:
-    path_to_elev: "xdem/examples/data/Longyearbyen/data/DEM_2009_ref.tif"
-  to_be_aligned_elev:
-    path_to_elev: "xdem/examples/data/Longyearbyen/data/DEM_1990.tif"
-    path_to_mask: "xdem/examples/data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp"
+```{caution}
+The command-line interface for workflows is experimental, and its API might change rapidly.
 ```
 
-And run the workflow, which will generate several outputs including an HTML report (by default in an `outputs` folder of your current directory).
+The configuration file should contain, at minima, the path to elevation files but aims to be modular to tune the use of xDEM's features (see details in the **{ref}`cli` reference page**).
+Here is an example of configuration file for the **accuracy** workflow:
+
+```{literalinclude} _workflows/accuracy_config.yaml
+:language: yaml
+```
+
+Then, run the workflow using:
 
 ```shell
 xdem accuracy --config config_file.yaml
 ```
+
+The outputs are written by default in an `outputs` folder of the current directory.
 
 (quick-gallery)=
 ## More examples
@@ -145,5 +149,5 @@ See also the concatenated list of examples below.
 
 ```{eval-rst}
 .. minigallery:: xdem.DEM
-    :add-heading: Examples using DEMs
+    :add-heading: Examples elevation data
 ```

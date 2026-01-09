@@ -46,6 +46,7 @@ Support for LAS files is still preliminary and loads all data in memory during d
 
 An {class}`~xdem.EPC` is opened by instantiating the class with a {class}`str`, a {class}`pathlib.Path`, or a {class}`geopandas.GeoDataFrame`,
 or a {class}`geopandas.GeoSeries`, containing either only 2D or only 3D point geometries.
+In the following example, our file contains 2D geometries, and so we need to pass a **data column name** to associate to the elevation value.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -61,8 +62,9 @@ pyplot.rcParams['savefig.dpi'] = 400
 
 import xdem
 
-# Instantiate an EPC from a filename on disk, passing the relevant data column
+# Instantiate a point cloud from a filename on disk, passing the relevant data column
 filename_epc = xdem.examples.get_path("longyearbyen_epc")
+# For this ICESat-2 file, the elevation column name is "h_li"
 epc = xdem.EPC(filename_epc, data_column="h_li")
 epc
 ```
