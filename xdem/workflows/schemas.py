@@ -25,7 +25,7 @@ from __future__ import (
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError, URLError
 
 from xdem._misc import import_optional

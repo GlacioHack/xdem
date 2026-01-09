@@ -36,8 +36,9 @@ from geoutils.raster.array import (
 )
 
 import xdem
-from xdem._typing import MArrayf, NDArrayf
 from xdem._misc import get_progress
+from xdem._typing import MArrayf, NDArrayf
+
 
 def hypsometric_binning(
     ddem: NDArrayf,

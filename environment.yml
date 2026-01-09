@@ -4,7 +4,7 @@ channels:
 dependencies:
   - python>=3.10,<3.14
   # Core dependencies
-  - geoutils=0.2.1
+  - geoutils=0.2.2
   - numba=0.*
   # First-order dependency on the above
   - geopandas>=0.12.0

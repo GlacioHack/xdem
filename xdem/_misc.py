@@ -23,14 +23,15 @@ import copy
 import functools
 import sys
 import warnings
-from typing import Any, Callable, Iterable
+from typing import Any, Callable
 
 import yaml  # type: ignore
 from packaging.version import Version
 
 import xdem
 
-def get_progress(iterable: Iterable | None = None, **kwargs: Any):
+
+def get_progress(iterable: Any | None = None, **kwargs: Any) -> Any:
     """
     Helper function to return a tqdm progress bar if available, otherwise a no-op wrapper.
 
@@ -49,6 +50,7 @@ def get_progress(iterable: Iterable | None = None, **kwargs: Any):
     if iterable is None:
         return tqdm
     return tqdm(iterable, **kwargs)
+
 
 def import_optional(import_name: str, package_name: str | None = None, extra_name: str = "opt") -> Any:
     """

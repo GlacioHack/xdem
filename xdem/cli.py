@@ -18,8 +18,8 @@
 
 
 import argparse
-import logging
 import ctypes.util
+import logging
 import sys
 
 from xdem._misc import import_optional
@@ -31,12 +31,14 @@ try:
     lib_pango_name = ctypes.util.find_library("pango-1.0")
     if lib_gobject_name and lib_pango_name:
         from weasyprint import HTML
+
         _has_libgobject = True
     else:
         _has_libgobject = False
     _has_weasyprint = _has_libgobject
 except ImportError:
     _has_weasyprint = False
+
 
 def main() -> None:
     """
@@ -116,8 +118,7 @@ def main() -> None:
 
     if args.config:
         if not _has_weasyprint:
-            msg = ("Optional dependency 'weasyprint' required. "
-                   "Install it directly or through: pip install xdem[opt].")
+            msg = "Optional dependency 'weasyprint' required. " "Install it directly or through: pip install xdem[opt]."
             raise ImportError(msg)
 
         logger.info("Generating HTML and PDF report")
