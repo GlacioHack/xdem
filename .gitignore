@@ -159,6 +159,9 @@ examples/advanced/aligned_dem.tif
 doc/source/_workflows/outputs_accuracy/
 doc/source/_workflows/outputs_topo/
 
+# Should be cleaned during Sphinx execution but could be left in case of error
+doc/source/profile_output
+
 # PDF to keep to display in documentation
 !doc/source/_workflows/outputs_accuracy/report.pdf
 !doc/source/_workflows/outputs_topo/report.pdf
