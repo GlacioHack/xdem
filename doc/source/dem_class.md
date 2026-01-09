@@ -128,7 +128,7 @@ by calling the function corresponding to the attribute name such as {func}`~xdem
 
 ```{code-cell} ipython3
 # Derive slope using the Zevenberg and Thorne (1987) method
-slope = dem.slope(method="ZevenbergThorne")
+slope = dem.slope(surface_fit="ZevenbergThorne")
 slope.plot(cmap="Reds", cbar_title="Slope (°)")
 ```
 

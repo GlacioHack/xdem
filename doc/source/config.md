@@ -75,7 +75,7 @@ The functions to monitor can be decoratored by `profile`:
 ```{code-cell} ipython3
 from geoutils.profiler import profile
 
-@profile("my profiled function name", memprof=True, interval=0.5)  # type: ignore
+@profile("my profiled function name", memprof=True, interval=0.5)
 def my_xdem_function():
   ...
 ```
@@ -98,5 +98,5 @@ Profiler.generate_summary(my_output_directory)
 Some functions are already profiled automatically when the Profiler is enabled, with a memory consumption report each 0.05 seconds.
 Those are:
 - DEM loading through {class}`~xdem.DEM`,
-- All terrain attributes such as {class}`~xdem.DEM.slope`,
-- Co-registration through {function}`~xdem.Coreg.fit_and_apply` and {function}`~xdem.DEM.coregister_3d`.
+- All terrain attributes such as {func}`~xdem.DEM.slope`,
+- Co-registration through {func}`~xdem.Coreg.fit_and_apply` and {func}`~xdem.DEM.coregister_3d`.

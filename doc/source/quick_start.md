@@ -123,7 +123,8 @@ These workflows use inputs on disk (elevation data files and a YAML configuratio
 The command-line interface for workflows is experimental, and its API might change rapidly.
 ```
 
-The configuration file should contain, at minima, the path to elevation files but aims to be modular to tune the use of xDEM's features (see details in the **{ref}`cli` reference page**):
+The configuration file should contain, at minima, the path to elevation files but aims to be modular to tune the use of xDEM's features (see details in the **{ref}`cli` reference page**).
+Here is an example of configuration file for the **accuracy** workflow:
 
 ```{literalinclude} _workflows/accuracy_config.yaml
 :language: yaml
@@ -135,7 +136,7 @@ Then, run the workflow using:
 xdem accuracy --config config_file.yaml
 ```
 
-The outputs are written by default in an `outputs` folder of your current directory.
+The outputs are written by default in an `outputs` folder of the current directory.
 
 (quick-gallery)=
 ## More examples

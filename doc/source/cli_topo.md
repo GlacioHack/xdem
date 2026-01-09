@@ -54,7 +54,7 @@ For details on the individual parameters, see {ref}`params-topo` further below. 
 
 
 ```{tip}
-To display a template of all available configuration options for the YAML file, use the `--display_template_config` argument
+To display a template of all available configuration options for the YAML file, use the `--template-config` argument
 ```
 
 ### Running the workflow
@@ -86,7 +86,7 @@ This section describes in detail the steps for the `topo` workflow, including a 
 
 ### Chart of steps
 
-The `topo` workflow is described by the following chart:
+The `topo` workflow, including its **inputs**, **outputs**, **processing steps** and **output detail level**, are described on the following chart:
 
 :::{figure} imgs/topo_workflow_pipeline.png
 :width: 100%
@@ -98,7 +98,7 @@ The `topo` workflow is described by the following chart:
 The parameters to pass to the `topo` workflow are divided into four categories:
 - The `inputs` define file opening and pre-processing, including **one required path to elevation data**, but also optional masking, CRS, nodata over-riding, and downsampling factor,
 - The `outputs` define file writing and report generation, with various **levels** of detail for the produced outputs,
-- The `terrain attributes` define steps for coregistration, directly **interfacing with the {ref}`terrain` module** of xDEM,
+- The `terrain_attributes` define steps for coregistration, directly **interfacing with the {ref}`terrain-attributes` module** of xDEM,
 - The `statistics` define steps for computing statistics before/after coregistration, directly **interfacing with the [Statistics](https://geoutils.readthedocs.io/en/stable/stats.html) module** of GeoUtils.
 
 These categories and detailed parameter values are further detailed below:

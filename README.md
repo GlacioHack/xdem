@@ -14,7 +14,7 @@
 [![Checked with mypy](http://www.mypy-lang.org/static/mypy_badge.svg)](http://mypy-lang.org/)
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 
-**xDEM** is an open source project to develop a core Python package for the analysis of digital elevation models (DEMs) and elevation point clouds.
+**xDEM** is an open source project to develop a core Python package for the analysis of digital elevation models (DEMs) and elevation point clouds (EPCs).
 
 It aims at **providing modular and robust tools for the most common analyses needed with elevation data**, including geospatial
 operations (vertical referencing), terrain analysis/geomorphometry (e.g., slope, aspect, curvatures, roughness indexes), 3D coregistration, corrections

@@ -5,8 +5,8 @@ Below, the release notes for all minor versions and our roadmap to a first major
 
 ## 0.2.0
 
-xDEM version 0.2 is the **second minor release**, notably marked by the merge in efforts with [demcompare](https://github.com/CNES/demcompare) to build a unified tool!
-It is the result of months of work to consolidate several features, in particular support for **elevation point clouds**. Parallel work on scalability with Dask and Multiprocessing
+xDEM version 0.2 is the **second minor release**, notably marked by the merge in efforts with [demcompare](https://github.com/CNES/demcompare) (no longer maintained) to build a unified tool!
+It is the result of months of work to consolidate several features, in particular support for **elevation point clouds** (EPCs). Parallel work on scalability with Dask and Multiprocessing
 is ongoing, and should soon be released in a 0.3.
 
 This new version adds:
