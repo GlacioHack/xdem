@@ -3376,7 +3376,7 @@ def plot_2d_binning(
     :param out_fname: File to save the variogram plot to
     """
 
-    import_optional("matplotlib")
+    matplotlib = import_optional("matplotlib")
     import matplotlib.pyplot as plt
 
     # Create axes
