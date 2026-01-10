@@ -25,13 +25,11 @@ import logging
 import math as m
 import multiprocessing as mp
 import warnings
-from typing import Any, Callable, Iterable, Literal, TypedDict, overload
+from typing import Any, Callable, Iterable, Literal, TypedDict, overload, TYPE_CHECKING
+from packaging.version import Version
 
 import geopandas as gpd
 import geoutils as gu
-import matplotlib
-import matplotlib.colors as colors
-import matplotlib.pyplot as plt
 import numba
 import numpy as np
 import pandas as pd
@@ -42,7 +40,6 @@ from geoutils.stats.sampling import subsample_array
 from geoutils.vector.vector import Vector, VectorType
 from numba import prange
 from numpy.typing import ArrayLike
-from packaging.version import Version
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
@@ -52,6 +49,8 @@ from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_
 from xdem._misc import deprecate, import_optional
 from xdem._typing import NDArrayb, NDArrayf
 
+if TYPE_CHECKING:
+    import matplotlib
 
 @deprecate(
     removal_version=Version("0.4"), details="xdem.spatialstats.nmad is being deprecated in favor of geoutils.stats.nmad"
@@ -3060,6 +3059,9 @@ def plot_variogram(
     :return:
     """
 
+    matplotlib = import_optional("matplotlib")
+    import matplotlib.pyplot as plt
+
     # Create axes if they are not passed
     if ax is None:
         fig = plt.figure()
@@ -3239,6 +3241,9 @@ def plot_1d_binning(
     :param out_fname: File to save the variogram plot to
     """
 
+    matplotlib = import_optional("matplotlib")
+    import matplotlib.pyplot as plt
+
     # Create axes
     if ax is None:
         fig = plt.figure()
@@ -3338,7 +3343,7 @@ def plot_2d_binning(
     label_var_name_1: str | None = None,
     label_var_name_2: str | None = None,
     label_statistic: str | None = None,
-    cmap: matplotlib.colors.Colormap = plt.cm.Reds,
+    cmap: matplotlib.colors.Colormap = matplotlib.pyplot.cm.Reds,
     min_count: int = 30,
     scale_var_1: str = "linear",
     scale_var_2: str = "linear",
@@ -3369,6 +3374,9 @@ def plot_2d_binning(
     :param ax: Plotting ax to use, creates a new one by default
     :param out_fname: File to save the variogram plot to
     """
+
+    import_optional("matplotlib")
+    import matplotlib.pyplot as plt
 
     # Create axes
     if ax is None:
@@ -3528,7 +3536,7 @@ def plot_2d_binning(
     cb_val = np.linspace(0, 1, len(col_bounds))
     for j in range(len(cb_val)):
         cb.append(cmap(cb_val[j]))
-    cmap_cus = colors.LinearSegmentedColormap.from_list(
+    cmap_cus = matplotlib.colors.LinearSegmentedColormap.from_list(
         "my_cb", list(zip((col_bounds - min(col_bounds)) / (max(col_bounds - min(col_bounds))), cb)), N=1000
     )
 
@@ -3578,7 +3586,7 @@ def plot_2d_binning(
     cbaxes = axcmap.inset_axes([0, 0.75, 1, 0.2], label="cmap")
 
     # Create colormap object and plot
-    norm = colors.Normalize(vmin=min(col_bounds), vmax=max(col_bounds))
+    norm = matplotlib.colors.Normalize(vmin=min(col_bounds), vmax=max(col_bounds))
     sm = plt.cm.ScalarMappable(cmap=cmap_cus, norm=norm)
     sm.set_array([])
     cb = plt.colorbar(sm, cax=cbaxes, orientation="horizontal", extend="both", shrink=0.8)

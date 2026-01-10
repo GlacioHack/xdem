@@ -458,6 +458,8 @@ class TestBinning:
 
     def test_plot_binning(self) -> None:
 
+        pytest.importorskip("matplotlib")
+
         # Define placeholder data
         df = pd.DataFrame({"var1": [0, 1, 2], "var2": [2, 3, 4], "statistic": [0, 0, 0]})
 
@@ -967,6 +969,7 @@ class TestVariogram:
 
         # Import optional skgstat or skip test
         pytest.importorskip("skgstat")
+        pytest.importorskip("matplotlib")
 
         # Check the variogram estimation runs for a random state
         df = xdem.spatialstats.sample_empirical_variogram(
