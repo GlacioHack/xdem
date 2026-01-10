@@ -456,8 +456,9 @@ class TestBinning:
                 dvalues=self.diff.get_nanarray(), stable_mask=self.outlines, list_var=[self.slope.get_nanarray()]
             )
 
-    @pytest.mark.skipif(find_spec("matplotlib") is not None,
-                        reason="Only runs if matplotlib is missing.")  # type: ignore
+    @pytest.mark.skipif(
+        find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
+    )  # type: ignore
     def test_plot_binning__missing_dep(self) -> None:
         """Check that proper import error is raised when matplotlib is missing"""
 
@@ -978,8 +979,9 @@ class TestVariogram:
                 dvalues=diff_on_stable_arr, stable_mask=self.outlines, list_models=["Gau", "Sph"], random_state=42
             )
 
-    @pytest.mark.skipif(find_spec("matplotlib") is not None,
-                        reason="Only runs if matplotlib is missing.")  # type: ignore
+    @pytest.mark.skipif(
+        find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
+    )  # type: ignore
     def test_plot_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when matplotlib is missing"""
 
