@@ -456,6 +456,20 @@ class TestBinning:
                 dvalues=self.diff.get_nanarray(), stable_mask=self.outlines, list_var=[self.slope.get_nanarray()]
             )
 
+    @pytest.mark.skipif(find_spec("matplotlib") is not None,
+                        reason="Only runs if matplotlib is missing.")  # type: ignore
+    def test_plot_binning__missing_dep(self) -> None:
+        """Check that proper import error is raised when matplotlib is missing"""
+
+        # Define placeholder data
+        df = pd.DataFrame({"var1": [0, 1, 2], "var2": [2, 3, 4], "statistic": [0, 0, 0]})
+
+        with pytest.raises(ImportError, match="Optional dependency 'matplotlib' required.*"):
+            xdem.spatialstats.plot_1d_binning(df, var_name="var1", statistic_name="statistic")
+
+        with pytest.raises(ImportError, match="Optional dependency 'matplotlib' required.*"):
+            xdem.spatialstats.plot_2d_binning(df, var_name_1="var1", var_name_2="var2", statistic_name="statistic")
+
     def test_plot_binning(self) -> None:
 
         pytest.importorskip("matplotlib")
@@ -964,7 +978,17 @@ class TestVariogram:
                 dvalues=diff_on_stable_arr, stable_mask=self.outlines, list_models=["Gau", "Sph"], random_state=42
             )
 
-    def test_empirical_fit_plotting(self) -> None:
+    @pytest.mark.skipif(find_spec("matplotlib") is not None,
+                        reason="Only runs if matplotlib is missing.")  # type: ignore
+    def test_plot_variogram__missing_dep(self) -> None:
+        """Check that proper import error is raised when matplotlib is missing"""
+
+        df = pd.DataFrame(data={"exp": [1], "lags": [1], "count": [100]})
+
+        with pytest.raises(ImportError, match="Optional dependency 'matplotlib' required.*"):
+            xdem.spatialstats.plot_variogram(df)
+
+    def test_plot_variogram(self) -> None:
         """Verify that the shape of the empirical variogram output works with the fit and plotting"""
 
         # Import optional skgstat or skip test
