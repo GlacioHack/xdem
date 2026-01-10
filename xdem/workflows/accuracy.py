@@ -43,7 +43,7 @@ class Accuracy(Workflows):
     Accuracy class, inherits from the Workflow class to apply a workflow.
     """
 
-    def __init__(self, config_dem: str | Dict[str, Any]) -> None:
+    def __init__(self, config_dem: str | Dict[str, Any], output: str | None = None) -> None:
         """
         Initialization with configuration file.
 
@@ -56,7 +56,7 @@ class Accuracy(Workflows):
         self.elapsed: float | None = None
         self.df_stats: pd.DataFrame | None = None
 
-        super().__init__(config_dem)
+        super().__init__(config_dem, output)
 
         self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"])
         self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"]["reference_elev"])
@@ -141,7 +141,9 @@ class Accuracy(Workflows):
         my_coreg = sum(coreg_functions[1:], coreg_functions[0]) if len(coreg_functions) > 1 else coreg_functions[0]
 
         # Coregister
-        aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, self.inlier_mask)
+        aligned_elev = self.to_be_aligned_elev.coregister_3d(
+            self.reference_elev, my_coreg, self.inlier_mask, random_state=42
+        )
         aligned_elev.to_file(self.outputs_folder / "rasters" / "aligned_elev.tif")
 
         self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
@@ -426,6 +428,15 @@ class Accuracy(Workflows):
         )
         html += "</div>\n"
 
+        def format_values(val: Any) -> Any:
+            """Format values for the dictionary."""
+            if isinstance(val, float):
+                return np.format_float_positional(val)
+            elif callable(val):
+                return val.__name__
+            else:
+                return str(val)
+
         # Metadata: Inputs, coregistration
         for title, dictionary in list_dict:  # type: ignore
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"
@@ -433,6 +444,8 @@ class Accuracy(Workflows):
             html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
             html += "<tr><th>Information</th><th>Value</th></tr>\n"
             for key, value in dictionary.items():
+                if isinstance(value, dict):
+                    value = {k: format_values(v) for k, v in value.items()}
                 html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
             html += "</table>\n"
             html += "</div>\n"

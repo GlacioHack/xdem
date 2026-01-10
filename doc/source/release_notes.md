@@ -1,6 +1,35 @@
+(release-notes)=
 # Release notes
 
 Below, the release notes for all minor versions and our roadmap to a first major version.
+
+## 0.2.0
+
+xDEM version 0.2 is the **second minor release**, notably marked by the merge in efforts with [demcompare](https://github.com/CNES/demcompare) (no longer maintained) to build a unified tool!
+It is the result of months of work to consolidate several features, in particular support for **elevation point clouds** (EPCs). Parallel work on scalability with Dask and Multiprocessing
+is ongoing, and should soon be released in a 0.3.
+
+This new version adds:
+- Elevation point cloud objects (for both vector and LAS files) with relevant methods (coregistration, vertical referencing) and that builds on the point cloud object of GeoUtils (to interface easily with rasters and vectors),
+- Support for elevation point clouds in coregistration and bias-correction pipelines,
+- New terrain attributes including new fits to estimate derivatives (used for slope, aspect, ...), more rigorous curvature definitions and texture shading for visualization,
+- An experimental command-line interface for multi-step workflows such as DEM accuracy assessment,
+- Statistics features common to rasters and point clouds based on GeoUtils (being expanded with binning and spatial statistics).
+
+Computationally, we started introducing parallel out-of-memory functionalities (for now through Multiprocessing, soon available also through Dask) for:
+- Blockwise coregistration,
+- Terrain attributes (that also benefit from a general performance improvement, and the option of using SciPy as engine instead of Numba).
+
+Internally, xDEM has now defined a governance, nearly doubled its number of tests, robustified its packaging and minimized its required dependencies.
+
+A few changes might be required to adapt from previous versions (from deprecation warnings):
+
+- The `curvature()` function is being deprecated in favor of other clearly defined curvatures,
+- The `slope_method=` argument of `slope()` and `aspect()` is being deprecated in favor of a `surface_fit=` argument for all surface derivatives (including curvatures),
+- The `spatialstats.nmad()` function is being deprecator in favor of `geoutils.stats.nmad()`,
+- The `.save()` function is being deprecated in favor of `.to_file()`,
+- Specify `DEM.interp_points(as_array=True)` to mirror the previous behaviour of returning a 1D array of interpolated values, otherwise now returns an elevation point cloud by default,
+- The `Mask` class of GeoUtils is deprecated in favor of `Raster(is_mask=True)` to declare a boolean-type Raster, but should keep working until 0.3.
 
 ## 0.1.0
 

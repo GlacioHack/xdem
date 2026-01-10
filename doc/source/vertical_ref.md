@@ -62,7 +62,19 @@ import matplotlib.pyplot as plt
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 ```
 
+```{note}
+:class: note
+:class: margin
+
+xDEM warns that the grid doesn't exist locally, and attempts to download it.
+```
+
 ```{code-cell} ipython3
+---
+mystnb:
+  output_stderr: show
+---
+
 # Set current vertical CRS
 ref_dem.set_vcrs("EGM96")
 # Transform to a local reference system from https://cdn.proj.org/
@@ -215,10 +227,15 @@ dem.vcrs
 - **Any PROJ grid name available at [https://cdn.proj.org/](https://cdn.proj.org/)**,
 
 ```{tip}
-**No need to download the grid!** This is done automatically during the setting operation, if the grid does not already exist locally.
+**No need to download the grid!** This is done automatically during the setting operation, if the grid does not already exist locally (in which case xDEM raises a warning).
 ```
 
 ```{code-cell} ipython3
+---
+mystnb:
+  output_stderr: show
+---
+
 # Set a geoid vertical CRS based on a grid
 dem.set_vcrs("us_noaa_geoid06_ak.tif")
 dem.vcrs

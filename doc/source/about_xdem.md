@@ -42,7 +42,7 @@ Most contributors and users are scientists or industrials working in **various f
 :class: tip
 :class: margin
 
-xDEM is **merging efforts with CNES's [demcompare](https://github.com/CNES/demcompare)** to combine the best of both tools into one!
+xDEM has **merged efforts with CNES's [demcompare](https://github.com/CNES/demcompare)** (no longer maintained) to combine the best of both tools into xDEM!
 ```
 
 ::::{grid}

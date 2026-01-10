@@ -45,7 +45,7 @@ By default, the `accuracy` workflow **reprojects on the reference elevation data
 
 In the example of configuration file below, we define:
 - The **paths to the two elevation datasets** which are **required**,
-- The **path to a mask of unstable surfaces**, to exclude terrain during the analysis,
+- The **path to a vector of unstable surfaces** to exclude terrain during the analysis (polygon interior is excluded),
 - The **path to an output directory** where the results will be written,
 - The **name of the coregistration** method to run, and the subsample size to use,
 - The **specific list of statistics** to compute after/before coregistration.
@@ -62,7 +62,7 @@ cd _workflows/
 For details on the individual parameters, see {ref}`params-accuracy` further below. For generic information on the YAML configuration file, see the {ref}`cli` page.
 
 ```{tip}
-To display a template of all available configuration options for the YAML file, use the `--display_template_config` argument.
+To display a template of all available configuration options for the YAML file, use the `--template-config` argument.
 ```
 
 ### Running the workflow
@@ -80,33 +80,12 @@ Now that we have this configuration file, we run the workflow.
 
 The logging output is printed in the terminal, showing the different steps. For instance, we can see that the coregistration converged in three iterations.
 
-```{code-cell} python
-:tags: [remove-cell]
-
-# Copy output folder to build directory to be able to embed HTML directly below
-import os
-import shutil
-from pathlib import Path
-
-# Source + destination
-src = Path("outputs_accuracy")
-dst = Path("../../build/_workflows/outputs_accuracy")
-
-# Ensure clean copy (important for incremental builds)
-if dst.exists():
-    shutil.rmtree(dst)
-dst.parent.mkdir(parents=True, exist_ok=True)
-
-# Copy entire directory tree
-shutil.copytree(src, dst)
-```
-
 Finally, a report is created (both in HTML and PDF formats) in the output directory.
 
 We can visualize the report of our workflow above:
 
 ```{raw} html
-<iframe src="_workflows/outputs_accuracy/report.html" width="100%" height="800"></iframe>
+<iframe src="_static/outputs_accuracy/report.pdf" width="100%" height="800"></iframe>
 ```
 
 ## Workflow details
@@ -115,7 +94,7 @@ This section describes in detail the steps for the `accuracy` workflow, includin
 
 ### Chart of steps
 
-The `accuracy` workflow is described by the following chart:
+The `accuracy` workflow, including its **inputs**, **outputs**, **processing steps** and **output detail level**, are described on the following chart:
 
 :::{figure} imgs/accuracy_workflow_pipeline.png
 :width: 100%

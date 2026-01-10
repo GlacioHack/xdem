@@ -23,10 +23,12 @@ All workflows are run using the following command structure, replacing the argum
 xdem workflow_name --config config_file.yaml
 ```
 
+Optionally, the output folder can be set directly in the command-line using `--output` (overrides YAML file).
+
 The configuration file is written as a YAML. To display a template of all available configuration options for the YAML file, use the following command:
 
 ```{code}
-xdem workflow_name --display_template_config
+xdem workflow_name --template-config
 ```
 
 When edited by a user, a configuration file **must contain at minima the input parameters listed as "required"** on the documentation page of the given workflow.
