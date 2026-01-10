@@ -240,8 +240,6 @@ Below, we only repeat some core attributes and methods of GeoUtils, see
     EPC.from_array
 ```
 
-(api-dem-attrs)=
-
 ### Unique attributes
 
 #### Inherited from {class}`~geoutils.PointCloud`
