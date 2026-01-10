@@ -67,15 +67,6 @@ from xdem.fit import (
 )
 from xdem.spatialstats import nd_binning
 
-try:
-    import pytransform3d.rotations
-    import pytransform3d.transformations
-    from pytransform3d.transform_manager import TransformManager
-
-    _HAS_P3D = True
-except ImportError:
-    _HAS_P3D = False
-
 # Map each workflow name to a function and optimizer
 fit_workflows = {
     "norder_polynomial": {"func": polynomial_1d, "optimizer": robust_norder_polynomial_fit},
@@ -1062,6 +1053,138 @@ def _bin_or_and_fit_nd(
 ###############################################
 
 
+def _check_matrix(matrix: NDArrayf, atol: float = 10e-8, warn_failure_reason: bool = False) -> bool:
+    """
+    Check affine matrix is valid.
+
+    :param matrix: Input affine matrix.
+    :param atol: Absolute tolerance for check.
+    :param warn_failure_reason: Whether to warn of reason of check failure.
+
+    :return: True or False.
+    """
+    # Is affine, shape should be 4x4 and last row must be [0, 0, 0, 1]
+    is_affine = matrix.shape == (4, 4) and np.allclose(matrix[3], [0, 0, 0, 1], atol=atol)
+
+    # The rotation part should be invertible
+    R = matrix[:3, :3]
+    is_invertible = abs(np.linalg.det(R)) > atol
+
+    # The matrix should be finite
+    is_finite = all(np.isfinite(matrix))
+
+    # Complete validity
+    checks = np.array([is_affine, is_invertible, is_finite])
+    check_names = ["Not affine shape (4x4 with last row of [0, 0, 0, 1])", "Not invertible", "Not finite"]
+    complete_validitiy = all(checks)
+
+    if not complete_validitiy and warn_failure_reason:
+        where_fail = np.nonzero(~np.array(checks))[0]
+        warnings.warn(
+            category=UserWarning, message=f"Validity check failed: {', '.join([check_names[w] for w in where_fail])}."
+        )
+
+    return complete_validitiy
+
+
+def _make_matrix_valid(matrix: NDArrayf) -> NDArrayf:
+    """
+    Make affine matrix valid given numerical imprecisions.
+
+    :param matrix: Input affine matrix.
+    :return: Valid matrix.
+    """
+
+    # Copy matrix
+    T = np.asarray(matrix).copy()
+
+    # Enforce last row
+    T[3, :] = [0, 0, 0, 1]
+
+    # Orthogonalize rotation
+    U, _, Vt = np.linalg.svd(T[:3, :3])
+    R_ortho = U @ Vt
+    # Enforce right-handed system
+    if np.linalg.det(R_ortho) < 0:
+        U[:, -1] *= -1
+        R_ortho = U @ Vt
+    T[:3, :3] = R_ortho
+
+    return T
+
+
+def _euler_to_matrix(alpha1: float, alpha2: float, alpha3: float) -> NDArrayf:
+    """
+    Extrinsic Euler angles to affine matrix.
+
+    :param alpha1: Angle around X in radians.
+    :param alpha2: Angle around Y in radians.
+    :param alpha3: Angle around Z in radians.
+
+    :return: Rotation matrix.
+    """
+
+    def Rx(a: float) -> NDArrayf:
+        ca, sa = np.cos(a), np.sin(a)
+        return np.array(
+            [
+                [1, 0, 0],
+                [0, ca, -sa],
+                [0, sa, ca],
+            ]
+        )
+
+    def Ry(a: float) -> NDArrayf:
+        ca, sa = np.cos(a), np.sin(a)
+        return np.array(
+            [
+                [ca, 0, sa],
+                [0, 1, 0],
+                [-sa, 0, ca],
+            ]
+        )
+
+    def Rz(a: float) -> NDArrayf:
+        ca, sa = np.cos(a), np.sin(a)
+        return np.array(
+            [
+                [ca, -sa, 0],
+                [sa, ca, 0],
+                [0, 0, 1],
+            ]
+        )
+
+    return Rz(alpha3) @ Ry(alpha2) @ Rx(alpha1)
+
+
+def _matrix_to_euler(rotation_matrix: NDArrayf, atol: float = 10e-8) -> tuple[float, float, float]:
+    """
+    Affine matrix to extrinsic Euler angles.
+
+    :param rotation_matrix: Rotation matrix.
+
+    :return: Euler extrinsic angles in radians (rotations about X, Y and Z).
+    """
+
+    if not np.allclose(rotation_matrix.T @ rotation_matrix, np.eye(3), atol=atol):
+        raise ValueError("Matrix is not orthogonal")
+
+    if abs(rotation_matrix[2, 0]) < 1 - atol:
+        beta = -np.arcsin(rotation_matrix[2, 0])
+        cb = np.cos(beta)
+
+        alpha = np.arctan2(rotation_matrix[2, 1] / cb, rotation_matrix[2, 2] / cb)
+        gamma = np.arctan2(rotation_matrix[1, 0] / cb, rotation_matrix[0, 0] / cb)
+
+    # Gimbal lock
+    else:
+        beta = np.pi / 2 if rotation_matrix[2, 0] <= -1 else -np.pi / 2
+        alpha = 0.0
+        gamma = np.arctan2(-rotation_matrix[0, 1], rotation_matrix[1, 1])
+
+    return float(alpha), float(beta), float(gamma)
+
+
 def matrix_from_translations_rotations(
     t1: float = 0.0,
     t2: float = 0.0,
@@ -1096,7 +1219,7 @@ def matrix_from_translations_rotations(
     # If angles were given in degrees
     if use_degrees:
         e = np.deg2rad(e)
-    rot_matrix = pytransform3d.rotations.matrix_from_euler(e=e, i=0, j=1, k=2, extrinsic=True)
+    rot_matrix = _euler_to_matrix(alpha1=e[0], alpha2=e[1], alpha3=e[2])
 
     # Add rotation matrix, and translations
     matrix[0:3, 0:3] = rot_matrix
@@ -1123,7 +1246,7 @@ def translations_rotations_from_matrix(
     t1, t2, t3 = matrix[:3, 3]
 
     # Get rotations from affine matrix
-    rots = pytransform3d.rotations.euler_from_matrix(matrix[:3, :3], i=0, j=1, k=2, extrinsic=True, strict_check=True)
+    rots = _matrix_to_euler(matrix[:3, :3])
     if return_degrees:
         rots = np.rad2deg(np.array(rots))
 
@@ -1133,7 +1256,7 @@ def translations_rotations_from_matrix(
     return t1, t2, t3, alpha1, alpha2, alpha3
 
 
-def invert_matrix(matrix: NDArrayf) -> NDArrayf:
+def invert_matrix(matrix: NDArrayf, atol: float = 10e-8) -> NDArrayf:
     """
     Invert a transformation matrix.
 
@@ -1141,13 +1264,27 @@ def invert_matrix(matrix: NDArrayf) -> NDArrayf:
 
     :return: Inverted transformation matrix.
     """
-    with warnings.catch_warnings():
-        # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
-        warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
 
-        checked_matrix = pytransform3d.transformations.check_transform(matrix)
-        # Invert the transform if wanted.
-        return pytransform3d.transformations.invert_transform(checked_matrix)
+    if not np.allclose(matrix[3], [0, 0, 0, 1], atol=atol):
+        raise ValueError("Not affine")
+
+    R = matrix[:3, :3]
+    t = matrix[:3, 3]
+
+    if not np.allclose(R.T @ R, np.eye(3), atol=atol):
+        raise ValueError("Not a rigid transform")
+
+    # Make valid before inversion
+    valid_matrix = _make_matrix_valid(matrix)
+
+    R = valid_matrix[:3, :3]
+    t = valid_matrix[:3, 3]
+
+    Tinv = np.eye(4)
+    Tinv[:3, :3] = R.T
+    Tinv[:3, 3] = -R.T @ t
+
+    return Tinv
 
 
 def _apply_matrix_pts_mat(
@@ -3053,17 +3190,10 @@ class CoregPipeline(Coreg):
 
     def _to_matrix_func(self) -> NDArrayf:
         """Try to join the coregistration steps to a single transformation matrix."""
-        if not _HAS_P3D:
-            raise ValueError("Optional dependency needed. Install 'pytransform3d'")
 
-        transform_mgr = TransformManager()
+        total_transform = np.eye(4)
+        for coreg in self.pipeline:
+            new_matrix = coreg.to_matrix()
+            total_transform = new_matrix @ total_transform
 
-        with warnings.catch_warnings():
-            # Deprecation warning from pytransform3d. Let's hope that is fixed in the near future.
-            warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
-            for i, coreg in enumerate(self.pipeline):
-                new_matrix = coreg.to_matrix()
-
-                transform_mgr.add_transform(i, i + 1, new_matrix)
-
-            return transform_mgr.get_transform(0, len(self.pipeline))
+        return total_transform

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import warnings
+from importlib.util import find_spec
 from typing import Any
 
 import geoutils as gu
@@ -455,7 +456,24 @@ class TestBinning:
                 dvalues=self.diff.get_nanarray(), stable_mask=self.outlines, list_var=[self.slope.get_nanarray()]
             )
 
+    @pytest.mark.skipif(
+        find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
+    )  # type: ignore
+    def test_plot_binning__missing_dep(self) -> None:
+        """Check that proper import error is raised when matplotlib is missing"""
+
+        # Define placeholder data
+        df = pd.DataFrame({"var1": [0, 1, 2], "var2": [2, 3, 4], "statistic": [0, 0, 0]})
+
+        with pytest.raises(ImportError, match="Optional dependency 'matplotlib' required.*"):
+            xdem.spatialstats.plot_1d_binning(df, var_name="var1", statistic_name="statistic")
+
+        with pytest.raises(ImportError, match="Optional dependency 'matplotlib' required.*"):
+            xdem.spatialstats.plot_2d_binning(df, var_name_1="var1", var_name_2="var2", statistic_name="statistic")
+
     def test_plot_binning(self) -> None:
+
+        pytest.importorskip("matplotlib")
 
         # Define placeholder data
         df = pd.DataFrame({"var1": [0, 1, 2], "var2": [2, 3, 4], "statistic": [0, 0, 0]})
@@ -479,13 +497,22 @@ class TestBinning:
 
 class TestVariogram:
 
-    # Import optional skgstat or skip test
-    pytest.importorskip("skgstat")
-
     ref, diff, mask, outlines = load_ref_and_diff()
+
+    @pytest.mark.skipif(
+        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
+    )  # type: ignore
+    def test_sample_empirical_variogram__missing_dep(self):
+        """Check that proper import error is raised when skgstat is missing"""
+
+        with pytest.raises(ImportError, match="Optional dependency 'scikit-gstat' required.*"):
+            xdem.spatialstats.sample_empirical_variogram(values=self.diff, subsample=10, random_state=42)
 
     def test_sample_multirange_variogram_default(self) -> None:
         """Verify that the default function runs, and its basic output"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         # Check the variogram output is consistent for a random state
         df = xdem.spatialstats.sample_empirical_variogram(values=self.diff, subsample=10, random_state=42)
@@ -521,6 +548,8 @@ class TestVariogram:
     def test_sample_empirical_variogram_speed(self) -> None:
         """Verify that no speed is lost outside of routines on variogram sampling by comparing manually to skgstat"""
 
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
         import skgstat
 
         values = self.diff
@@ -621,6 +650,9 @@ class TestVariogram:
     def test_sample_multirange_variogram_methods(self, subsample_method) -> None:
         """Verify that all other methods run"""
 
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
+
         # Check the variogram estimation runs for several methods
         df = xdem.spatialstats.sample_empirical_variogram(
             values=self.diff, subsample=10, random_state=42, subsample_method=subsample_method
@@ -639,6 +671,9 @@ class TestVariogram:
 
     def test_sample_multirange_variogram_args(self) -> None:
         """Verify that optional parameters run only for their specific method, raise warning otherwise"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         # Define parameters
         pdist_args: EmpiricalVariogramKArgs = {"pdist_multi_ranges": [0, self.diff.res[0] * 5, self.diff.res[0] * 10]}
@@ -688,6 +723,9 @@ class TestVariogram:
     def test_choose_cdist_equidistant_sampling_parameters(self, subsample: int, shape: tuple[int, int]) -> None:
         """Verify that the automatically-derived parameters of equidistant sampling are sound"""
 
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
+
         # Assign an arbitrary extent
         extent = (0, 1, 0, 1)
 
@@ -721,6 +759,9 @@ class TestVariogram:
     def test_errors_subsample_parameter(self) -> None:
         """Tests that an error is raised when the subsample argument is too little"""
 
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
+
         keyword_arguments = {"subsample": 3, "extent": (0, 1, 0, 1), "shape": (10, 10)}
 
         with pytest.raises(ValueError, match="The number of subsamples needs to be at least 10."):
@@ -728,6 +769,9 @@ class TestVariogram:
 
     def test_multirange_fit_performance(self) -> None:
         """Verify that the fitting works with artificial dataset"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -763,8 +807,20 @@ class TestVariogram:
         if PLOT:
             xdem.spatialstats.plot_variogram(df, list_fit_fun=[fun])
 
+    @pytest.mark.skipif(
+        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
+    )  # type: ignore
+    def test_fit_sum_variogram__missing_dep(self) -> None:
+        """Check that proper import error is raised when skgstat is missing"""
+
+        with pytest.raises(ImportError, match="Optional dependency 'scikit-gstat' required.*"):
+            xdem.spatialstats.fit_sum_model_variogram(["spherical", "spherical", "spherical"], pd.DataFrame())
+
     def test_check_params_variogram_model(self) -> None:
         """Verify that the checking function for the modelled variogram parameters dataframe returns adequate errors"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         # Check when missing a column
         with pytest.raises(
@@ -835,6 +891,9 @@ class TestVariogram:
 
     def test_estimate_model_spatial_correlation_and_infer_from_stable(self, test_output_dir: str) -> None:
         """Test consistency of outputs and errors in wrapper functions for estimation of spatial correlation"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
 
@@ -920,8 +979,23 @@ class TestVariogram:
                 dvalues=diff_on_stable_arr, stable_mask=self.outlines, list_models=["Gau", "Sph"], random_state=42
             )
 
-    def test_empirical_fit_plotting(self) -> None:
+    @pytest.mark.skipif(
+        find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
+    )  # type: ignore
+    def test_plot_variogram__missing_dep(self) -> None:
+        """Check that proper import error is raised when matplotlib is missing"""
+
+        df = pd.DataFrame(data={"exp": [1], "lags": [1], "count": [100]})
+
+        with pytest.raises(ImportError, match="Optional dependency 'matplotlib' required.*"):
+            xdem.spatialstats.plot_variogram(df)
+
+    def test_plot_variogram(self) -> None:
         """Verify that the shape of the empirical variogram output works with the fit and plotting"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
+        pytest.importorskip("matplotlib")
 
         # Check the variogram estimation runs for a random state
         df = xdem.spatialstats.sample_empirical_variogram(

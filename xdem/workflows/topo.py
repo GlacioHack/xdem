@@ -26,10 +26,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
-import matplotlib.pyplot as plt
-import yaml  # type: ignore
-
 import xdem
+from xdem._misc import import_optional
 from xdem.workflows.schemas import TOPO_SCHEMA
 from xdem.workflows.workflows import Workflows
 
@@ -44,6 +42,8 @@ class Topo(Workflows):
         Initialize Topo class
         :param config_dem: Path to a user configuration file
         """
+
+        yaml = import_optional("yaml", package_name="pyyaml")
 
         self.elapsed: float | None = None
         self.schema = TOPO_SCHEMA
@@ -144,6 +144,9 @@ class Topo(Workflows):
             "roughness": {"label": "Roughness (m)", "cmap": "Oranges", "vlim": (None, None)},
             "fractal_dimension": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
         }
+
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
 
         fig, axes = plt.subplots(nrows, ncols)
 

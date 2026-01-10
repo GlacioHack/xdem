@@ -3,31 +3,33 @@ channels:
   - conda-forge
 dependencies:
   - python>=3.10,<3.14
-  - geopandas>=0.12.0
+  # Core dependencies
+  - geoutils=0.2.2
   - numba=0.*
-  - numpy>=1,<3
-  - matplotlib=3.*
-  - pyproj>=3.4,<4
+  # First-order dependency on the above
+  - geopandas>=0.12.0
   - rasterio>=1.3,<2
   - scipy=1.*
-  - tqdm
-  - geoutils=0.2.1
+  # Second-order or plus dependency on the above
+  - numpy>=1,<3
+  - pyproj>=3.4,<4
   - affine
   - pandas
   - pyogrio
   - shapely
-  - cerberus
-  - pyyaml
-  - weasyprint
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
 
   # Optional dependencies
-  - pytransform3d
-  - scikit-learn
-  - laspy
-  - lazrs-python # For LAZ files
+  - matplotlib=3.*  # For plotting
+  - scikit-learn  # For optimizations
+  - laspy  # For LAS file support
+  - lazrs-python  # For LAZ file support
+  - cerberus  # For CLI
+  - pyyaml  # For CLI
+  - weasyprint  # For CLI
+  - tqdm  # For progress bars
 
   # Test dependencies
   - pytest

@@ -26,13 +26,16 @@ import csv
 import geoutils as gu
 import numpy as np
 import pytest
-import yaml  # type: ignore
 
 import xdem
 from xdem.workflows.topo import Topo
 from xdem.workflows.workflows import Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
+
+pytest.importorskip("cerberus")
+
+import yaml  # type: ignore  # noqa
 
 
 def test_workflows_init_wrong_config():

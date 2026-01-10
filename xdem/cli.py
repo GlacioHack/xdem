@@ -22,20 +22,22 @@ import ctypes.util
 import logging
 import sys
 
-import yaml  # type: ignore
-
+from xdem._misc import import_optional
 from xdem.workflows import Accuracy, Topo
 from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOPO
 
-lib_gobject_name = ctypes.util.find_library("gobject-2.0")
-lib_pango_name = ctypes.util.find_library("pango-1.0")
+try:
+    lib_gobject_name = ctypes.util.find_library("gobject-2.0")
+    lib_pango_name = ctypes.util.find_library("pango-1.0")
+    if lib_gobject_name and lib_pango_name:
+        from weasyprint import HTML
 
-if lib_gobject_name and lib_pango_name:
-    from weasyprint import HTML
-
-    _has_libgobject = True
-else:
-    _has_libgobject = False
+        _has_libgobject = True
+    else:
+        _has_libgobject = False
+    _has_weasyprint = _has_libgobject
+except ImportError:
+    _has_weasyprint = False
 
 
 def main() -> None:
@@ -43,7 +45,9 @@ def main() -> None:
     Main function for the CLI
     """
 
-    parser = argparse.ArgumentParser(prog="xdem", description="CLI tool to process DEM workflows", add_help=False)
+    yaml = import_optional("yaml", package_name="pyyaml")
+
+    parser = argparse.ArgumentParser(prog="xdem", description="CLI tool to run xDEM workflows", add_help=False)
     parser.add_argument(
         "-h", "--help", action="help", default=argparse.SUPPRESS, help="Show this help message and exit"
     )
@@ -140,7 +144,11 @@ def main() -> None:
     else:
         raise ValueError(f"{args.command} doesn't exist, valid command are 'accuracy', 'topo'")
 
-    if args.config and _has_libgobject:
+    if args.config:
+        if not _has_weasyprint:
+            msg = "Optional dependency 'weasyprint' required. " "Install it directly or through: pip install xdem[opt]."
+            raise ImportError(msg)
+
         logger.info("Generating HTML and PDF report")
         HTML(workflow.outputs_folder / "report.html").write_pdf(workflow.outputs_folder / "report.pdf")
 

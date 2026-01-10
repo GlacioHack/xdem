@@ -25,10 +25,52 @@ import sys
 import warnings
 from typing import Any, Callable
 
-import yaml  # type: ignore
 from packaging.version import Version
 
 import xdem
+
+
+def get_progress(iterable: Any | None = None, **kwargs: Any) -> Any:
+    """
+    Helper function to return a tqdm progress bar if available, otherwise a no-op wrapper.
+
+    :param iterable: Optional iterable to pass to tqdm progress bar.
+    :param kwargs: Optional keyword arguments to pass to tqdm progress bar.
+
+    :return: A tqdm progress bar.
+    """
+    try:
+        from tqdm.auto import tqdm
+    except ImportError:
+        if iterable is None:
+            return lambda x: x
+        return iterable
+
+    if iterable is None:
+        return tqdm
+    return tqdm(iterable, **kwargs)
+
+
+def import_optional(import_name: str, package_name: str | None = None, extra_name: str = "opt") -> Any:
+    """
+    Helper function to consistently import and raise errors for an optional dependency.
+
+    :param import_name: Name of the dependency to import.
+    :param package_name: Name of the package to install (optional, only if different from import name e.g.
+        "pyyaml" package is imported as "import yaml".).
+    :param extra_name: Name of the extra tag to install the optional dependency from GeoUtils.
+    """
+
+    if package_name is None:
+        package_name = import_name
+
+    try:
+        return __import__(import_name)
+    except ImportError as e:
+        raise ImportError(
+            f"Optional dependency '{package_name}' required. "
+            f"Install it directly or through: pip install xdem[{extra_name}]."
+        ) from e
 
 
 def deprecate(removal_version: Version = None, details: str = None) -> Callable[[Any], Any]:
@@ -164,6 +206,8 @@ def diff_environment_yml(
     :param print_dep: Whether to print conda differences "conda", pip differences "pip" or both.
     :param input_dict: Whether to consider the input as a dict (for testing purposes).
     """
+
+    yaml = import_optional("yaml", package_name="pyyaml")
 
     if not input_dict:
         # Load the yml as dictionaries

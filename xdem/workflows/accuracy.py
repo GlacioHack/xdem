@@ -26,14 +26,13 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Dict
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import yaml  # type: ignore
 from geoutils.raster import RasterType
 from numpy import floating
 
 import xdem
+from xdem._misc import import_optional
 from xdem.workflows.schemas import ACCURACY_SCHEMA
 from xdem.workflows.workflows import Workflows
 
@@ -49,6 +48,8 @@ class Accuracy(Workflows):
 
         :param config_dem: Path to user configuration file.
         """
+
+        yaml = import_optional("yaml", package_name="pyyaml")
 
         self.schema = ACCURACY_SCHEMA
         self.elapsed: float | None = None
@@ -249,6 +250,10 @@ class Accuracy(Workflows):
         """
         Compute altitudes difference histogram.
         """
+
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
+
         logging.info("Computing histogram on altitude difference")
         plt.figure(figsize=(12, 6))
         bins = np.linspace(self.stats_before["min"], self.stats_before["max"], 300)

@@ -36,8 +36,8 @@ from geoutils._typing import Number
 from geoutils.interface.interpolate import _interp_points
 from geoutils.raster.georeferencing import _coords, _res
 from geoutils.stats import nmad
-from tqdm import trange
 
+from xdem._misc import get_progress
 from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import (
     Coreg,
@@ -48,20 +48,13 @@ from xdem.coreg.base import (
     _apply_matrix_pts_mat,
     _bin_or_and_fit_nd,
     _get_subsample_mask_pts_rst,
+    _make_matrix_valid,
     _preprocess_pts_rst_subsample,
     _reproject_horizontal_shift_samecrs,
     invert_matrix,
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
 )
-
-try:
-    import pytransform3d.rotations
-    import pytransform3d.transformations
-
-    _HAS_P3D = True
-except ImportError:
-    _HAS_P3D = False
 
 ######################################
 # Generic functions for affine methods
@@ -132,7 +125,9 @@ def _iterate_method(
 
     # Iteratively run the analysis until the maximum iterations or until the error gets low enough
     # If logging level <= INFO, will use progressbar and print additional statements
-    pbar = trange(max_iterations, disable=logging.getLogger().getEffectiveLevel() > logging.INFO, desc="   Progress")
+    pbar = get_progress(
+        range(max_iterations), disable=logging.getLogger().getEffectiveLevel() > logging.INFO, desc="   Progress"
+    )
     for i in pbar:
 
         # Apply method and get new statistic to compare to tolerance, new inputs for next iterations, and
@@ -1821,10 +1816,7 @@ class AffineCoreg(Coreg):
         super().__init__(meta=meta)
 
         if matrix is not None:
-            with warnings.catch_warnings():
-                # This error is fixed in the upcoming 1.8
-                warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
-                valid_matrix = pytransform3d.transformations.check_transform(matrix)
+            valid_matrix = _make_matrix_valid(matrix)
             self._meta["outputs"]["affine"] = {"matrix": valid_matrix}
 
         self._is_affine = True
@@ -1936,10 +1928,9 @@ class AffineCoreg(Coreg):
         """
         if np.any(~np.isfinite(matrix)):
             raise ValueError(f"Matrix has non-finite values:\n{matrix}")
-        with warnings.catch_warnings():
-            # This error is fixed in the upcoming 1.8
-            warnings.filterwarnings("ignore", message="`np.float` is a deprecated alias for the builtin `float`")
-            valid_matrix = pytransform3d.transformations.check_transform(matrix)
+
+        valid_matrix = _make_matrix_valid(matrix)
+
         return cls(matrix=valid_matrix)
 
     @classmethod

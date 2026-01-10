@@ -32,6 +32,8 @@ from xdem.workflows.workflows import Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
+pytest.importorskip("cerberus")
+
 
 def test_init_topo_summary(get_topo_inputs_config, tmp_path, list_default_terrain_attributes):
     """

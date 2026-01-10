@@ -3,11 +3,11 @@
 import os
 import tempfile
 import warnings
+from importlib.util import find_spec
 
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
-import pyogrio
 import pytest
 from geopandas.testing import assert_geodataframe_equal
 from pyproj import CRS
@@ -16,9 +16,6 @@ from shapely import Polygon
 
 import xdem
 from xdem import DEM, EPC
-
-drivers = pyogrio.list_drivers()
-is_parquet_installed = "Parquet" in drivers and "r" in drivers["Parquet"]
 
 
 class TestEPC:
@@ -64,6 +61,44 @@ class TestEPC:
         assert epc2.data_column == "Z"
         assert_geodataframe_equal(epc2.ds, self.gdf2)
 
+        # 3/ For a multiple column point cloud from a Geopackage file
+        epc3 = EPC(self.fn_epc, data_column="h_li")
+        assert epc3.data_column == "h_li"
+        assert all(
+            epc3.ds.columns
+            == [
+                "time",
+                "h_li_sigma",
+                "atl06_quality_summary",
+                "sigma_geo_h",
+                "tide_ocean",
+                "bsnow_h",
+                "w_surface_window_final",
+                "gt",
+                "seg_azimuth",
+                "dh_fit_dx",
+                "n_fit_photons",
+                "segment_id",
+                "spot",
+                "bsnow_conf",
+                "rgt",
+                "h_robust_sprd",
+                "r_eff",
+                "y_atc",
+                "cycle",
+                "h_li",
+                "x_atc",
+                "geometry",
+            ]
+        )
+
+    @pytest.mark.skipif(find_spec("laspy") is not None, reason="Only runs if laspy is missing.")  # type: ignore
+    def test_init__missing_dep(self) -> None:
+        """Check that proper import error is raised when laspy is missing"""
+
+        with pytest.raises(ImportError, match="Optional dependency 'laspy' required.*"):
+            xdem.EPC(self.fn_las)
+
     def test_init__las(self) -> None:
         """Test that LAS files work properly in EPC class init."""
 
@@ -87,43 +122,6 @@ class TestEPC:
                 np.array_equal(epc.data, epc2.data, equal_nan=True),
                 np.array_equal(epc2.data, epc3.data, equal_nan=True),
             )
-        )
-
-    @pytest.mark.skipif(not is_parquet_installed, reason="Parquet not installed (for base build).")  # type: ignore
-    def test_init__parquet(self) -> None:
-        """Test that parquet files work properly in EPC class init."""
-
-        pytest.importorskip("parquet")
-
-        # For a multiple column point cloud from a Parquet file
-        epc3 = EPC(self.fn_epc, data_column="h_li")
-        assert epc3.data_column == "h_li"
-        assert all(
-            epc3.ds.columns
-            == [
-                "gt",
-                "dh_fit_dx",
-                "cycle",
-                "y_atc",
-                "seg_azimuth",
-                "r_eff",
-                "sigma_geo_h",
-                "x_atc",
-                "h_li",
-                "segment_id",
-                "tide_ocean",
-                "bsnow_h",
-                "rgt",
-                "spot",
-                "h_robust_sprd",
-                "n_fit_photons",
-                "bsnow_conf",
-                "atl06_quality_summary",
-                "h_li_sigma",
-                "w_surface_window_final",
-                "time",
-                "geometry",
-            ]
         )
 
     def test_init__vcrs(self) -> None:

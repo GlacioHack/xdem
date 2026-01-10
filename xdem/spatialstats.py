@@ -25,13 +25,10 @@ import logging
 import math as m
 import multiprocessing as mp
 import warnings
-from typing import Any, Callable, Iterable, Literal, TypedDict, overload
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, TypedDict, overload
 
 import geopandas as gpd
 import geoutils as gu
-import matplotlib
-import matplotlib.colors as colors
-import matplotlib.pyplot as plt
 import numba
 import numpy as np
 import pandas as pd
@@ -49,20 +46,11 @@ from scipy.optimize import curve_fit
 from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 
+from xdem._misc import deprecate, import_optional
 from xdem._typing import NDArrayb, NDArrayf
-from xdem.misc import deprecate
 
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-    try:
-        import skgstat as skg
-
-        _has_skgstat = True
-        if Version(skg.__version__) < Version("1.0.18"):
-            raise ImportWarning(f"scikit-gstat>=1.0.18 is recommended, current version is {skg.__version__}.")
-    except ImportError:
-        _has_skgstat = False
+if TYPE_CHECKING:
+    import matplotlib
 
 
 @deprecate(
@@ -1066,6 +1054,8 @@ def _get_pdist_empirical_variogram(values: NDArrayf, coords: NDArrayf, **kwargs:
 
     """
 
+    skg = import_optional("skgstat", package_name="scikit-gstat")
+
     # Remove random_state keyword argument that is not used
     kwargs.pop("random_state")
 
@@ -1188,6 +1178,8 @@ def _get_cdist_empirical_variogram(
     :return: Empirical variogram (variance, upper bound of lag bin, counts)
 
     """
+
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     if subsample_method == "cdist_equidistant":
 
@@ -1351,8 +1343,7 @@ def sample_empirical_variogram(
     :return: Empirical variogram (variance, upper bound of lag bin, counts)
     """
 
-    if not _has_skgstat:
-        raise ValueError("Optional dependency needed. Install 'scikit-gstat'.")
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     # First, check all that the values provided are OK
     if isinstance(values, Raster):
@@ -1541,13 +1532,12 @@ def sample_empirical_variogram(
 def _get_skgstat_variogram_model_name(model: str | Callable[[NDArrayf, float, float], NDArrayf]) -> str:
     """Function to identify a SciKit-GStat variogram model from a string or a function"""
 
-    if not _has_skgstat:
-        raise ValueError("Optional dependency needed. Install 'scikit-gstat'.")
+    skg = import_optional("skgstat", package_name="scikit-gstat")  # noqa
 
     list_supported_models = ["spherical", "gaussian", "exponential", "cubic", "stable", "matern"]
 
     if callable(model):
-        if inspect.getmodule(model).__name__ == "skgstat.models":  # type: ignore
+        if inspect.getmodule(model).__name__ == "skg.models":  # type: ignore
             model_name = model.__name__
         else:
             raise ValueError("Variogram models can only be passed as functions of the skgstat.models package.")
@@ -1584,6 +1574,8 @@ def get_variogram_model_func(params_variogram_model: pd.DataFrame) -> Callable[[
 
     :return: Function of sum of variogram with spatial lags.
     """
+
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     # Check input dataframe
     _check_validity_params_variogram(params_variogram_model)
@@ -1693,6 +1685,8 @@ def fit_sum_model_variogram(
 
     :return: Function of sum of variogram, Dataframe of optimized coefficients.
     """
+
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     # Define a function of a sum of variogram model forms, with undetermined arguments
     def variogram_sum(h: float, *args: list[float]) -> float:
@@ -3066,6 +3060,9 @@ def plot_variogram(
     :return:
     """
 
+    matplotlib = import_optional("matplotlib")
+    import matplotlib.pyplot as plt
+
     # Create axes if they are not passed
     if ax is None:
         fig = plt.figure()
@@ -3245,6 +3242,9 @@ def plot_1d_binning(
     :param out_fname: File to save the variogram plot to
     """
 
+    matplotlib = import_optional("matplotlib")
+    import matplotlib.pyplot as plt
+
     # Create axes
     if ax is None:
         fig = plt.figure()
@@ -3344,7 +3344,7 @@ def plot_2d_binning(
     label_var_name_1: str | None = None,
     label_var_name_2: str | None = None,
     label_statistic: str | None = None,
-    cmap: matplotlib.colors.Colormap = plt.cm.Reds,
+    cmap: matplotlib.colors.Colormap = "Reds",
     min_count: int = 30,
     scale_var_1: str = "linear",
     scale_var_2: str = "linear",
@@ -3375,6 +3375,9 @@ def plot_2d_binning(
     :param ax: Plotting ax to use, creates a new one by default
     :param out_fname: File to save the variogram plot to
     """
+
+    matplotlib = import_optional("matplotlib")
+    import matplotlib.pyplot as plt
 
     # Create axes
     if ax is None:
@@ -3533,8 +3536,8 @@ def plot_2d_binning(
     cb = []
     cb_val = np.linspace(0, 1, len(col_bounds))
     for j in range(len(cb_val)):
-        cb.append(cmap(cb_val[j]))
-    cmap_cus = colors.LinearSegmentedColormap.from_list(
+        cb.append(matplotlib.cm.get_cmap(cmap)(cb_val[j]))
+    cmap_cus = matplotlib.colors.LinearSegmentedColormap.from_list(
         "my_cb", list(zip((col_bounds - min(col_bounds)) / (max(col_bounds - min(col_bounds))), cb)), N=1000
     )
 
@@ -3584,7 +3587,7 @@ def plot_2d_binning(
     cbaxes = axcmap.inset_axes([0, 0.75, 1, 0.2], label="cmap")
 
     # Create colormap object and plot
-    norm = colors.Normalize(vmin=min(col_bounds), vmax=max(col_bounds))
+    norm = matplotlib.colors.Normalize(vmin=min(col_bounds), vmax=max(col_bounds))
     sm = plt.cm.ScalarMappable(cmap=cmap_cus, norm=norm)
     sm.set_array([])
     cb = plt.colorbar(sm, cax=cbaxes, orientation="horizontal", extend="both", shrink=0.8)

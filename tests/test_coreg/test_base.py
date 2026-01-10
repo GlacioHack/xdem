@@ -22,8 +22,6 @@ from xdem import coreg, examples
 from xdem._typing import NDArrayf
 from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
 
-pytest.importorskip("pytransform3d")
-
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
     """Load example files to try coregistration methods with."""
@@ -893,8 +891,6 @@ class TestCoregPipeline:
 
 class TestAffineManipulation:
 
-    import pytransform3d.rotations
-
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
 
     # Identity transformation
@@ -921,11 +917,13 @@ class TestAffineManipulation:
     rotation_y = 10
     rotation_z = 3
     e = np.deg2rad(np.array([rotation_x, rotation_y, rotation_z]))
+    trans_x = 0.5
+    trans_y = 1
+    trans_z = 1.5
     # This is a 3x3 rotation matrix
-    rot_matrix = pytransform3d.rotations.matrix_from_euler(e=e, i=0, j=1, k=2, extrinsic=True)
-    matrix_all = matrix_rotations.copy()
-    matrix_all[0:3, 0:3] = rot_matrix
-    matrix_all[:3, 3] = [0.5, 1, 1.5]
+    matrix_all = xdem.coreg.matrix_from_translations_rotations(
+        trans_x, trans_y, trans_z, rotation_x, rotation_y, rotation_z
+    )
 
     list_matrices = [matrix_identity, matrix_vertical, matrix_translations, matrix_rotations, matrix_all]
 

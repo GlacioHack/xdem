@@ -19,17 +19,40 @@
 """
 Schema constants and validation function
 """
+from __future__ import (
+    annotations,  # Required to have Validator=object (when cerberus missing) understood for typing
+)
+
 import logging
 import os
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError, URLError
 
-from cerberus import Validator
-
+from xdem._misc import import_optional
 from xdem.vcrs import _vcrs_from_user_input
+
+if TYPE_CHECKING:
+    # Only used for type checking
+    from cerberus import Validator
+else:
+    # Inheritance of optional dependency class
+    try:
+        from cerberus import Validator
+
+        _HAS_CERBERUS = True
+    except ImportError:
+        Validator = object
+        _HAS_CERBERUS = False
 
 
 class CustomValidator(Validator):  # type: ignore
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        # Raise error if package does not exist
+        if not _HAS_CERBERUS:
+            import_optional("cerberus")
+        super().__init__(*args, **kwargs)
+
     def _validate_path_exists(self, path_exists: bool, field: str, value: str) -> bool:
         """
         {'type': 'boolean'}
@@ -129,7 +152,7 @@ def make_coreg_step(required: bool = False, default_method: str = None) -> Valid
     return step_schema
 
 
-def validate_configuration(user_config: dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+def validate_configuration(user_config: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     """
     Validate the configuration:
     :param user_config: Configuration dict or YAML string
