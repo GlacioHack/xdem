@@ -25,7 +25,6 @@ import sys
 import warnings
 from typing import Any, Callable
 
-import yaml  # type: ignore
 from packaging.version import Version
 
 import xdem
@@ -207,6 +206,8 @@ def diff_environment_yml(
     :param print_dep: Whether to print conda differences "conda", pip differences "pip" or both.
     :param input_dict: Whether to consider the input as a dict (for testing purposes).
     """
+
+    import_optional("yaml", package_name="pyyaml")
 
     if not input_dict:
         # Load the yml as dictionaries
