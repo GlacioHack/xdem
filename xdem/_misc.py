@@ -207,7 +207,7 @@ def diff_environment_yml(
     :param input_dict: Whether to consider the input as a dict (for testing purposes).
     """
 
-    import_optional("yaml", package_name="pyyaml")
+    yaml = import_optional("yaml", package_name="pyyaml")
 
     if not input_dict:
         # Load the yml as dictionaries

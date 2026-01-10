@@ -25,8 +25,7 @@ import logging
 import math as m
 import multiprocessing as mp
 import warnings
-from typing import Any, Callable, Iterable, Literal, TypedDict, overload, TYPE_CHECKING
-from packaging.version import Version
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, TypedDict, overload
 
 import geopandas as gpd
 import geoutils as gu
@@ -40,6 +39,7 @@ from geoutils.stats.sampling import subsample_array
 from geoutils.vector.vector import Vector, VectorType
 from numba import prange
 from numpy.typing import ArrayLike
+from packaging.version import Version
 from scipy import integrate
 from scipy.interpolate import RegularGridInterpolator, griddata
 from scipy.optimize import curve_fit
@@ -51,6 +51,7 @@ from xdem._typing import NDArrayb, NDArrayf
 
 if TYPE_CHECKING:
     import matplotlib
+
 
 @deprecate(
     removal_version=Version("0.4"), details="xdem.spatialstats.nmad is being deprecated in favor of geoutils.stats.nmad"
