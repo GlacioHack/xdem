@@ -3536,7 +3536,7 @@ def plot_2d_binning(
     cb = []
     cb_val = np.linspace(0, 1, len(col_bounds))
     for j in range(len(cb_val)):
-        cb.append(cmap(cb_val[j]))
+        cb.append(matplotlib.cm.get_cmap(cmap)(cb_val[j]))
     cmap_cus = matplotlib.colors.LinearSegmentedColormap.from_list(
         "my_cb", list(zip((col_bounds - min(col_bounds)) / (max(col_bounds - min(col_bounds))), cb)), N=1000
     )
