@@ -3344,7 +3344,7 @@ def plot_2d_binning(
     label_var_name_1: str | None = None,
     label_var_name_2: str | None = None,
     label_statistic: str | None = None,
-    cmap: matplotlib.colors.Colormap = matplotlib.pyplot.cm.Reds,
+    cmap: matplotlib.colors.Colormap = "Reds",
     min_count: int = 30,
     scale_var_1: str = "linear",
     scale_var_2: str = "linear",
