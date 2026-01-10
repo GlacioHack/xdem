@@ -431,7 +431,7 @@ each geometry on which to loop.
 for areas filling the min_coverage criterion.
     """
 
-    matplotlib = import_optional("matplotlib")
+    import_optional("matplotlib")
     import matplotlib.pyplot as plt
 
     # Remove any unnecessary dimension

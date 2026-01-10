@@ -147,6 +147,7 @@ class Topo(Workflows):
 
         import_optional("matplotlib")
         import matplotlib.pyplot as plt
+
         fig, axes = plt.subplots(nrows, ncols)
 
         axes = axes.flatten()
