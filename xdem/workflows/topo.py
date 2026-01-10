@@ -26,8 +26,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
-import matplotlib.pyplot as plt
-
 import xdem
 from xdem._misc import import_optional
 from xdem.workflows.schemas import TOPO_SCHEMA
@@ -147,6 +145,8 @@ class Topo(Workflows):
             "fractal_dimension": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
         }
 
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
         fig, axes = plt.subplots(nrows, ncols)
 
         axes = axes.flatten()

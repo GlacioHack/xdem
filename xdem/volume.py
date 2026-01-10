@@ -23,7 +23,6 @@ import logging
 import warnings
 from typing import Any, Callable
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import rasterio.fill
@@ -36,7 +35,7 @@ from geoutils.raster.array import (
 )
 
 import xdem
-from xdem._misc import get_progress
+from xdem._misc import get_progress, import_optional
 from xdem._typing import MArrayf, NDArrayf
 
 
@@ -431,6 +430,10 @@ each geometry on which to loop.
     :returns: A dDEM with gaps filled by applying a hypsometric interpolation for each geometry in mask, \
 for areas filling the min_coverage criterion.
     """
+
+    matplotlib = import_optional("matplotlib")
+    import matplotlib.pyplot as plt
+
     # Remove any unnecessary dimension
     orig_shape = voided_ddem.shape
     voided_ddem = voided_ddem.squeeze()

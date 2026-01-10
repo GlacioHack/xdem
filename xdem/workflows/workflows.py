@@ -27,8 +27,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 
 import geoutils as gu
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
 from geoutils import Raster
 from geoutils.raster import RasterType
@@ -62,6 +60,8 @@ class Workflows(ABC):
 
         :return: None
         """
+
+        mpl = import_optional("matplotlib")
 
         # Default parameters for plots
         mpl.rcParams["font.size"] = "10"
@@ -140,6 +140,9 @@ class Workflows(ABC):
 
         :return: None
         """
+
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
 
         if mask_path is None:
             dem.plot(**kwargs)

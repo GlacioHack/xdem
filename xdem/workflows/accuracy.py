@@ -26,7 +26,6 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Dict
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from geoutils.raster import RasterType
@@ -251,6 +250,10 @@ class Accuracy(Workflows):
         """
         Compute altitudes difference histogram.
         """
+
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
+
         logging.info("Computing histogram on altitude difference")
         plt.figure(figsize=(12, 6))
         bins = np.linspace(self.stats_before["min"], self.stats_before["max"], 300)
