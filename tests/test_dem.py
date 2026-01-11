@@ -365,6 +365,8 @@ class TestDEM:
 
         fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
+        # Crop to tiny DEM for speed
+        dem = dem.icrop((20, 20))
 
         dem_class_attr = getattr(dem, terrain_attribute)()
         terrain_module_attr = getattr(xdem.terrain, terrain_attribute)(dem)
