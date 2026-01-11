@@ -11,11 +11,8 @@ PLOT = False
 
 
 class TestFreqAttribute:
-    filepath = xdem.examples.get_path("longyearbyen_ref_dem")
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="Parse metadata")
-        dem = xdem.DEM(filepath, silent=True)
+    filepath = xdem.examples.get_path_test("longyearbyen_ref_dem")
+    dem = xdem.DEM(filepath)
 
     def test_texture_shading(self) -> None:
         """Test the texture_shading function."""

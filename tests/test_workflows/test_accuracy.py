@@ -43,8 +43,8 @@ def test_init_diff_analysis(get_accuracy_object_with_run, tmp_path):
     assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
-    mask = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+    dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
+    mask = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
     inlier_mask = ~mask.create_mask(dem)
     assert workflows.inlier_mask == inlier_mask
 
@@ -57,16 +57,18 @@ def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path):
     user_config = get_accuracy_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Accuracy(user_config)
+    workflows._load_data()
 
-    with pytest.raises(NotImplementedError, match="For now it doesn't working, please add a reference DEM"):
+    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
         workflows._get_reference_elevation()
 
     user_config = get_accuracy_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     user_config["inputs"]["reference_elev"] = None
 
-    with pytest.raises(NotImplementedError, match="For now it doesn't working, please add a reference DEM"):
-        _ = Accuracy(user_config)
+    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
+        workflows = Accuracy(user_config)
+        workflows._load_data()
 
 
 @pytest.mark.skip("Not implemented")
@@ -84,7 +86,7 @@ def test__get_stats(get_accuracy_inputs_config, tmp_path):
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Accuracy(user_config)
 
-    dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+    dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
     stats_gt = dem.get_stats(
         [
             "mean",
@@ -271,8 +273,9 @@ def test_mask_init(tmp_path, get_accuracy_inputs_config):
     user_config["outputs"] = {"path": str(tmp_path)}
     del user_config["inputs"]["reference_elev"]["path_to_mask"]
     workflows = Accuracy(user_config)
-    dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
-    mask = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+    workflows._load_data()
+    dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
+    mask = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
     inlier_mask = ~mask.create_mask(dem)
     assert workflows.inlier_mask == inlier_mask
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()

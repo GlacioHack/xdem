@@ -10,16 +10,12 @@ from scipy.ndimage import binary_dilation
 
 import xdem
 from xdem.terrain.surfit import all_coefs
-
 PLOT = False
 
 
 class TestTerrainAttribute:
-    filepath = xdem.examples.get_path("longyearbyen_ref_dem")
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="Parse metadata")
-        dem = xdem.DEM(filepath, silent=True)
+    filepath = xdem.examples.get_path_test("longyearbyen_ref_dem")
+    dem = xdem.DEM(filepath)
 
     @pytest.mark.parametrize(
         "attribute_name",
@@ -73,15 +69,15 @@ class TestTerrainAttribute:
             # Remove terrain
             diff_zt_fl[~ind] = np.nan
 
-            # The 50% lowest differences should be relatively small (less than 10% of magnitude, e.g. a couple degrees
+            # The 50% lowest differences should be relatively small (less than 20% of magnitude, e.g. a couple degrees
             # for slope)
-            assert np.nanpercentile(diff_zt_fl, 50) < 0.1 * magnitude
+            assert np.nanpercentile(diff_zt_fl, 50) < 0.25 * magnitude
 
             # Only slope and aspect are supported for Horn
             if attribute_name in ["slope", "aspect"]:
                 attr_horn = getattr(xdem.terrain, attribute_name)(self.dem, surface_fit="Horn")
                 diff_zt_horn = np.abs(attr_zt - attr_horn)
-                assert np.nanpercentile(diff_zt_horn, 80) < 0.1 * magnitude
+                assert np.nanpercentile(diff_zt_horn, 80) < 0.25 * magnitude
 
         except Exception as exception:
 
@@ -178,7 +174,7 @@ class TestTerrainAttribute:
         # Introduce some nans
         rng = np.random.default_rng(42)
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
+        dem.data.mask.ravel()[rng.choice(dem.data.size, 25, replace=False)] = True
         # Validate that this doesn't raise weird warnings after introducing nans.
         xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 

@@ -24,9 +24,10 @@ DO_PLOT = False
 
 
 class TestDEM:
+
     def test_init(self) -> None:
         """Test that inputs work properly in DEM class init."""
-        fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_img = xdem.examples.get_path_test("longyearbyen_ref_dem")
 
         # From filename
         dem = DEM(fn_img)
@@ -79,7 +80,7 @@ class TestDEM:
         # Tests 1: instantiation with a file that has a 2D CRS
 
         # First, check a DEM that does not have any vertical CRS set
-        fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_img = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_img)
         assert dem.vcrs is None
 
@@ -176,7 +177,7 @@ class TestDEM:
         - if r is copied, r.data changed, r2.data should be unchanged
         """
         # Open dataset, update data and make a copy
-        r = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+        r = xdem.DEM(xdem.examples.get_path_test("longyearbyen_ref_dem"))
         r.data += 5
         r2 = r.copy()
 
@@ -216,7 +217,7 @@ class TestDEM:
     def test_set_vcrs(self) -> None:
         """Tests to set the vertical CRS."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
         # -- Test 1: we check with names --
@@ -264,7 +265,7 @@ class TestDEM:
     def test_to_vcrs(self) -> None:
         """Tests the conversion of vertical CRS."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
         # Reproject in WGS84 2D
@@ -308,7 +309,7 @@ class TestDEM:
     def test_to_vcrs__equal_warning(self) -> None:
         """Test that DEM.to_vcrs() does not transform if both 3D CRS are equal."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
         # With both inputs as names
@@ -362,7 +363,7 @@ class TestDEM:
     def test_terrain_attributes_wrappers(self, terrain_attribute: str) -> None:
         """Check the terrain attributes corresponds to the ones derived in the terrain module."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
         dem_class_attr = getattr(dem, terrain_attribute)()
@@ -370,10 +371,10 @@ class TestDEM:
 
         assert dem_class_attr.raster_equal(terrain_module_attr)
 
-    def test_info_2Dcrs(self) -> None:
+    def test_info_2dcrs(self) -> None:
         """Tests info function with the new Coordinate system line on dem with 2D CRS"""
 
-        dem_path = xdem.examples.get_path("longyearbyen_ref_dem")
+        dem_path = xdem.examples.get_path_test("longyearbyen_ref_dem")
         raster = gu.Raster(dem_path)
         dem = xdem.dem.DEM(dem_path)
         crs_key = "Coordinate system:"
@@ -408,10 +409,10 @@ class TestDEM:
         assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'EPSG:5773']"
 
     @pytest.mark.skip()  # type: ignore
-    def test_info_3Dcrs(self) -> None:
+    def test_info_3dcrs(self) -> None:
         """Tests info function with the new Coordinate system line on dem with 3D CRS"""
 
-        dem_path = xdem.examples.get_path("gizeh")
+        dem_path = xdem.examples.get_path_test("gizeh")
         dem = xdem.dem.DEM(dem_path)
         dem_infos_array = dem.info(verbose=False).split("\n")
 
@@ -453,8 +454,8 @@ class TestDEM:
         """
         Test coregister_3d functionality
         """
-        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
@@ -499,8 +500,8 @@ class TestDEM:
         Test coregister_3d initial and output shift
         """
 
-        dem_ref = DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-        dem_tba = DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+        dem_ref = DEM(xdem.examples.get_path_test("longyearbyen_ref_dem"))
+        dem_tba = DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
 
         if expected_message is not None:
             # Init coreg method and catch error
@@ -563,8 +564,8 @@ class TestDEM:
         # Import optional skgstat or skip test
         pytest.importorskip("skgstat")
 
-        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
@@ -580,8 +581,8 @@ class TestDEM:
     def test_estimate_uncertainty__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 
-        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
@@ -591,7 +592,7 @@ class TestDEM:
 
     def test_to_pointcloud__type_override(self) -> None:
 
-        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem_ref = DEM(fn_ref)
         epc_ref = dem_ref.to_pointcloud(subsample=500)
 

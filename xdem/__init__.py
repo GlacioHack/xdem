@@ -20,7 +20,6 @@ from xdem import (  # noqa
     coreg,
     dem,
     examples,
-    filters,
     fit,
     spatialstats,
     terrain,

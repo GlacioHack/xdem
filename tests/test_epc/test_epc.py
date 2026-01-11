@@ -239,7 +239,7 @@ class TestEPC:
     def test_to_vcrs(self) -> None:
         """Tests the conversion of vertical CRS for an EPC."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = xdem.DEM(fn_dem)
         epc = EPC(dem.to_pointcloud(subsample=500))
 
@@ -333,8 +333,8 @@ class TestEPC:
         """
         Test coregister_3d works for an EPC.
         """
-        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
@@ -362,8 +362,8 @@ class TestEPC:
         """
         Test coregister_3d functionality raises propers errors for an EPC.
         """
-        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)

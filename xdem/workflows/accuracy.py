@@ -57,8 +57,22 @@ class Accuracy(Workflows):
 
         super().__init__(config_dem, output)
 
+        self.compute_coreg = self.config["coregistration"]["process"]
+
+        if not self.compute_coreg:
+            del self.config["coregistration"]["sampling_grid"]
+            del self.config["coregistration"]["step_one"]
+
+        yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
+        Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
+
+        self.config = self.remove_none(self.config)  # type: ignore
+
+    def _load_data(self):
+        """Load data."""
+
         self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"])
-        self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"]["reference_elev"])
+        self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"].get("reference_elev", None))
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
         self.generate_plot(
@@ -94,23 +108,12 @@ class Accuracy(Workflows):
                 cbar_title="Elevation (m)",
             )
 
-        self.compute_coreg = self.config["coregistration"]["process"]
-
-        if not self.compute_coreg:
-            del self.config["coregistration"]["sampling_grid"]
-            del self.config["coregistration"]["step_one"]
-
-        yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
-        Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
-
-        self.config = self.remove_none(self.config)  # type: ignore
-
     def _get_reference_elevation(self) -> float:
         """
         Get reference elevation.
         """
 
-        raise NotImplementedError("For now it doesn't working, please add a reference DEM")
+        raise NotImplementedError("This is not implemented, add a reference DEM")
 
     def _compute_coregistration(self) -> RasterType:
         """
@@ -295,6 +298,8 @@ class Accuracy(Workflows):
         """
 
         t0 = time.time()
+
+        self._load_data()
 
         if self.compute_coreg:
             # Reprojection step

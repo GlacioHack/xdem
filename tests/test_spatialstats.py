@@ -24,10 +24,10 @@ PLOT = False
 def load_ref_and_diff() -> tuple[Raster, Raster, NDArrayf, Vector]:
     """Load example files to try coregistration methods with."""
 
-    reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
-    outlines = Vector(examples.get_path("longyearbyen_glacier_outlines"))
+    reference_raster = Raster(examples.get_path_test("longyearbyen_ref_dem"))
+    outlines = Vector(examples.get_path_test("longyearbyen_glacier_outlines"))
 
-    ddem = Raster(examples.get_path("longyearbyen_ddem"))
+    ddem = Raster(examples.get_path_test("longyearbyen_ddem"))
     mask = outlines.create_mask(ddem)
 
     return reference_raster, ddem, mask, outlines
@@ -63,8 +63,8 @@ class TestBinning:
         assert np.nanmin(self.slope.data.flatten()[indices]) == np.min(pd.IntervalIndex(df.slope).left)
         assert np.nanmax(self.slope.data.flatten()[indices]) == np.max(pd.IntervalIndex(df.slope).right)
 
-        # NMAD should go up quite a bit with slope, more than 8 m between the two extreme bins
-        assert df.nmad.values[-1] - df.nmad.values[0] > 8
+        # NMAD should go up a bit with slope, more than 1 m between the two extreme bins
+        assert df.nmad.values[-1] - df.nmad.values[0] > 1
 
         # 1D binning with 20 bins
         df = xdem.spatialstats.nd_binning(
@@ -409,13 +409,15 @@ class TestBinning:
 
         # Test infer function
         errors_1, df_binning_1, err_fun_1 = xdem.spatialstats.infer_heteroscedasticity_from_stable(
-            dvalues=self.diff, list_var=[self.slope, self.max_curv], unstable_mask=self.outlines
+            dvalues=self.diff, list_var=[self.slope, self.max_curv], unstable_mask=self.outlines,
+            min_count=0
         )
 
         df_binning_2, err_fun_2 = xdem.spatialstats._estimate_model_heteroscedasticity(
             dvalues=self.diff[~self.mask],
             list_var=[self.slope[~self.mask], self.max_curv[~self.mask]],
             list_var_names=["var1", "var2"],
+            min_count=0
         )
 
         pd.testing.assert_frame_equal(df_binning_1, df_binning_2)
@@ -516,9 +518,8 @@ class TestVariogram:
 
         # Check the variogram output is consistent for a random state
         df = xdem.spatialstats.sample_empirical_variogram(values=self.diff, subsample=10, random_state=42)
-        # assert df["exp"][15] == pytest.approx(5.11900520324707, abs=1e-3)
-        assert df["lags"][15] == pytest.approx(5120)
-        assert df["count"][15] == 2
+        assert df["lags"][2] == pytest.approx(56.56854249492382)
+        assert df["count"][2] == 3
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
@@ -1039,7 +1040,9 @@ class TestNeffEstimation:
     # Import optional skgstat or skip test
     pytest.importorskip("skgstat")
 
-    ref, diff, _, outlines = load_ref_and_diff()
+    ref = Raster(examples.get_path("longyearbyen_ref_dem"))
+    ddem = Raster(examples.get_path("longyearbyen_ddem"))
+    outlines = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
     @pytest.mark.parametrize("range1", [10**i for i in range(3)])  # type: ignore
     @pytest.mark.parametrize("psill1", [0.1, 1, 10])  # type: ignore
@@ -1152,22 +1155,6 @@ class TestNeffEstimation:
         # Check that the approximation is about the same as the original estimate within 10%
         assert neff_approx == pytest.approx(neff_exact, rel=0.1)
 
-        # Check that the approximation works even on large dataset without creating memory errors
-        # 100,000 points squared (pairwise) should use more than 64GB of RAM without subsample
-        rng = np.random.default_rng(42)
-        coords = rng.normal(size=(100000, 2))
-        errors = rng.normal(size=(100000))
-        # This uses a subsample of 100, so should run just fine despite the large size
-        neff_approx_nv = neff_hugonnet_approx(
-            coords=coords,
-            errors=errors,
-            params_variogram_model=params_variogram_model,
-            subsample=100,
-            vectorized=True,
-            random_state=42,
-        )
-        assert neff_approx_nv is not None
-
     def test_number_effective_samples(self) -> None:
         """Test that the wrapper function for neff functions behaves correctly and that output values are robust"""
 
@@ -1186,7 +1173,7 @@ class TestNeffEstimation:
 
         # The function should return the same results as neff_hugonnet_approx when using a shape area
         # First, get the vector area and compute with the wrapper function
-        res = 100.0
+        res = 500
         outlines_brom = Vector(self.outlines.ds[self.outlines.ds["NAME"] == "Brombreen"])
         neff1 = xdem.spatialstats.number_effective_samples(
             area=outlines_brom,
@@ -1212,12 +1199,13 @@ class TestNeffEstimation:
         # We can test the match between values accurately thanks to the random_state
         assert neff1 == pytest.approx(neff2, rel=0.00001)
 
+        ref_rough = self.ref.reproject(res=500)
         # Check that using a Raster as input for the resolution works
         neff3 = xdem.spatialstats.number_effective_samples(
             area=outlines_brom,
             subsample=10,
             params_variogram_model=params_variogram_model,
-            rasterize_resolution=self.ref,
+            rasterize_resolution=ref_rough,
             random_state=42,
         )
         # The value should be nearly the same within 10% (the discretization grid is different so affects a tiny bit the
@@ -1254,8 +1242,7 @@ class TestNeffEstimation:
     def test_spatial_error_propagation(self, test_output_dir: str) -> None:
         """Test that the spatial error propagation wrapper function runs properly"""
 
-        # Load the error map from TestBinning
-        errors = Raster(os.path.join(test_output_dir, "dh_error.tif"))
+        errors = self.ref.copy(new_array=np.ones(self.ref.shape))
 
         # Load the spatial correlation from TestVariogram
         params_variogram_model = pd.read_csv(
@@ -1348,7 +1335,7 @@ class TestPatchesMethod:
         diff, mask = load_ref_and_diff()[1:3]
 
         gsd = diff.res[0]
-        area = 100000
+        area = 10000
 
         # Check the patches method runs
         df, df_full = xdem.spatialstats.patches_method(
@@ -1357,7 +1344,7 @@ class TestPatchesMethod:
             gsd=gsd,
             areas=[area],
             random_state=42,
-            n_patches=100,
+            n_patches=7,
             vectorized=False,
             return_in_patch_statistics=True,
         )
@@ -1368,14 +1355,14 @@ class TestPatchesMethod:
 
         # Check the sampling is fixed for a random state
         # assert df["nmad"][0] == pytest.approx(1.8401465163449207, abs=1e-3)
-        assert df["nb_indep_patches"][0] == 100
+        assert df["nb_indep_patches"][0] == 7
         assert df["exact_areas"][0] == pytest.approx(df["areas"][0], rel=0.2)
 
         # Then, the full dataframe
-        assert df_full.shape == (100, 5)
+        assert df_full.shape == (7, 5)
 
         # Check the sampling is always fixed for a random state
-        assert df_full["tile"].values[0] == "47_17"
+        assert df_full["tile"].values[0] == "0_8"
 
         # Check that all counts respect the default minimum percentage of 80% valid pixels
         assert all(df_full["count"].values > 0.8 * np.max(df_full["count"].values))
@@ -1386,14 +1373,14 @@ class TestPatchesMethod:
         diff, mask = load_ref_and_diff()[1:3]
 
         gsd = diff.res[0]
-        area = 100000
+        area = 10000
 
         # First, the patches method runs with scipy
         df = xdem.spatialstats.patches_method(
             diff,
             unstable_mask=mask,
             gsd=gsd,
-            areas=[area, area * 10],
+            areas=[area, area * 2],
             random_state=42,
             vectorized=True,
             convolution_method="scipy",

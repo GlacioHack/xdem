@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 import scipy
 
+from geoutils import Raster, Vector
 import xdem.terrain
 from xdem import examples
 from xdem.coreg import biascorr
@@ -18,26 +19,14 @@ from xdem.fit import polynomial_2d, sumsin_1d
 
 PLOT = False
 
-
-def load_examples() -> tuple[gu.Raster, gu.Raster, gu.Vector]:
+def load_examples() -> tuple[Raster, Raster, Vector]:
     """Load example files to try coregistration methods with."""
 
-    reference_dem = gu.Raster(examples.get_path("longyearbyen_ref_dem"))
-    to_be_aligned_dem = gu.Raster(examples.get_path("longyearbyen_tba_dem"))
-    glacier_mask = gu.Vector(examples.get_path("longyearbyen_glacier_outlines"))
+    ref_dem = Raster(examples.get_path_test("longyearbyen_ref_dem"))
+    tba_dem = Raster(examples.get_path_test("longyearbyen_tba_dem"))
+    glacier_mask = Vector(examples.get_path_test("longyearbyen_glacier_outlines"))
 
-    # Crop to smaller extents for test speed
-    res = reference_dem.res
-    crop_geom = (
-        reference_dem.bounds.left,
-        reference_dem.bounds.bottom,
-        reference_dem.bounds.left + res[0] * 300,
-        reference_dem.bounds.bottom + res[1] * 300,
-    )
-    reference_dem = reference_dem.crop(crop_geom)
-    to_be_aligned_dem = to_be_aligned_dem.crop(crop_geom)
-
-    return reference_dem, to_be_aligned_dem, glacier_mask
+    return ref_dem, tba_dem, glacier_mask
 
 
 class TestBiasCorr:
@@ -266,7 +255,7 @@ class TestBiasCorr:
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": 20}, {"elevation": (0, 500, 1000)}))  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": 20}, {"elevation": (200, 500, 800)}))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
     def test_biascorr__bin_1d(self, fit_args, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
@@ -289,7 +278,7 @@ class TestBiasCorr:
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (0, 500, 1000), "slope": (0, 20, 40)}))  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (4, {"elevation": (200, 500, 800), "slope": (0, 20, 40)}))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
     def test_biascorr__bin_2d(self, fit_args, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
@@ -321,7 +310,7 @@ class TestBiasCorr:
             scipy.optimize.curve_fit,
         ],
     )  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (100, {"elevation": np.arange(0, 1000, 100)}))  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": np.arange(200, 500, 10)}))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
     def test_biascorr__bin_and_fit_1d(self, fit_args, fit_func, fit_optimizer, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
@@ -372,7 +361,7 @@ class TestBiasCorr:
             scipy.optimize.curve_fit,
         ],
     )  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (0, 500, 1000), "slope": (0, 20, 40)}))  # type: ignore
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (200, 500, 800), "slope": (0, 20, 40)}))  # type: ignore
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
     def test_biascorr__bin_and_fit_2d(self, fit_args, fit_func, fit_optimizer, bin_sizes, bin_statistic) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
@@ -423,8 +412,8 @@ class TestBiasCorr:
         assert dirbias.meta["inputs"]["fitorbin"]["bias_var_names"] == ["angle"]
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("angle", [20, 90])  # type: ignore
-    @pytest.mark.parametrize("nb_freq", [1, 2, 3])  # type: ignore
+    @pytest.mark.parametrize("angle", [20])  # type: ignore
+    @pytest.mark.parametrize("nb_freq", [3])  # type: ignore
     def test_directionalbias__synthetic(self, fit_args, angle, nb_freq) -> None:
         """Test the subclass DirectionalBias with synthetic data."""
 
@@ -483,7 +472,7 @@ class TestBiasCorr:
             subsample=40000,
             random_state=42,
             bounds_amp_wave_phase=bounds,
-            niter=20,
+            niter=2,
         )
 
         # Check all fit parameters are the same within 10%

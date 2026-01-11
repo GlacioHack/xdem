@@ -35,8 +35,8 @@ def get_topo_inputs_config():
     return {
         "inputs": {
             "reference_elev": {
-                "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
-                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
+                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
             }
         },
     }
@@ -48,11 +48,11 @@ def get_dem_config():
     Return minimal configuration for inputs in topo
     """
     return {
-        "path_to_elev": xdem.examples.get_path("longyearbyen_ref_dem"),
+        "path_to_elev": xdem.examples.get_path_test("longyearbyen_ref_dem"),
         "force_source_nodata": -9999,
         "from_vcrs": "Ellipsoid",
         "to_vcrs": "EGM96",
-        "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+        "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
         "downsample": 1,
     }
 
@@ -65,12 +65,12 @@ def get_accuracy_inputs_config():
     return {
         "inputs": {
             "reference_elev": {
-                "path_to_elev": xdem.examples.get_path("longyearbyen_ref_dem"),
-                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                "path_to_elev": xdem.examples.get_path_test("longyearbyen_ref_dem"),
+                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
             },
             "to_be_aligned_elev": {
-                "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
-                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
+                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
             },
         },
     }
@@ -84,12 +84,12 @@ def get_accuracy_object_with_run(tmp_path):
     user_config = {
         "inputs": {
             "reference_elev": {
-                "path_to_elev": xdem.examples.get_path("longyearbyen_ref_dem"),
-                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                "path_to_elev": xdem.examples.get_path_test("longyearbyen_ref_dem"),
+                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
             },
             "to_be_aligned_elev": {
-                "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
-                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
+                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
             },
         },
         "outputs": {"path": str(tmp_path)},
@@ -108,8 +108,8 @@ def pipeline_topo():
     return {
         "inputs": {
             "reference_elev": {
-                "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
-                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
+                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
                 "downsample": 1,
             }
         },

@@ -188,10 +188,10 @@ class Workflows(ABC):
         """
         mask_path = None
         if config_dem is not None:
-            dem = xdem.DEM(config_dem["path_to_elev"], downsample=config_dem["downsample"])
+            dem = xdem.DEM(config_dem["path_to_elev"], downsample=config_dem.get("downsample", 1))
             inlier_mask = None
-            from_vcrs = config_dem["from_vcrs"]
-            to_vcrs = config_dem["to_vcrs"]
+            from_vcrs = config_dem.get("from_vcrs", None)
+            to_vcrs = config_dem.get("to_vcrs", None)
             if from_vcrs:
                 dem.set_vcrs(from_vcrs)
             if to_vcrs:

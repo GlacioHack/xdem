@@ -348,7 +348,7 @@ def robust_norder_polynomial_fit(
     ydata: NDArrayf,
     sigma: NDArrayf | None = None,
     max_order: int = 6,
-    estimator_name: str = "Theil-Sen",
+    estimator_name: str = "Huber",
     cost_func: Callable[[NDArrayf, NDArrayf], float] = soft_loss,
     margin_improvement: float = 20.0,
     subsample: float | int = 1,

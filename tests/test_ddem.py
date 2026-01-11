@@ -1,5 +1,7 @@
 """Functions to test the difference of DEMs tools."""
 
+import warnings
+
 import geoutils as gu
 import numpy as np
 
@@ -7,9 +9,9 @@ import xdem
 
 
 class TestdDEM:
-    dem_2009 = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-    dem_1990 = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
-    outlines_1990 = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+    dem_2009 = xdem.DEM(xdem.examples.get_path_test("longyearbyen_ref_dem"))
+    dem_1990 = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
+    outlines_1990 = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
 
     ddem = xdem.dDEM(dem_2009 - dem_1990, start_time=np.datetime64("1990-08-01"), end_time=np.datetime64("2009-08-01"))
 
@@ -50,10 +52,12 @@ class TestdDEM:
 
     def test_regional_hypso(self) -> None:
         """Test the regional hypsometric approach."""
+
+        warnings.filterwarnings("ignore", message="Not enough valid bins.*", category=UserWarning)
         ddem = self.ddem.copy()
         ddem.data.mask = np.zeros_like(ddem.data, dtype=bool)
         rng = np.random.default_rng(42)
-        ddem.data.mask.ravel()[rng.choice(ddem.data.size, 50000, replace=False)] = True
+        ddem.data.mask.ravel()[rng.choice(ddem.data.size, 100, replace=False)] = True
         assert np.count_nonzero(ddem.data.mask) > 0
 
         assert ddem.filled_data is None
@@ -73,7 +77,7 @@ class TestdDEM:
         scott_1990 = self.outlines_1990.query("NAME == 'Scott Turnerbreen'")
         ddem.data.mask = np.zeros_like(ddem.data, dtype=bool)
         rng = np.random.default_rng(42)
-        ddem.data.mask.ravel()[rng.choice(ddem.data.size, 50000, replace=False)] = True
+        ddem.data.mask.ravel()[rng.choice(ddem.data.size, 100, replace=False)] = True
         assert np.count_nonzero(ddem.data.mask) > 0
 
         assert ddem.filled_data is None

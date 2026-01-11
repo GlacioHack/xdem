@@ -70,8 +70,8 @@ def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
             "Information about inputs",
             {
                 "reference_elev": {
-                    "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
-                    "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                    "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
+                    "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
                     "from_vcrs": None,
                     "to_vcrs": None,
                     "downsample": 1,
@@ -130,7 +130,7 @@ def test_generate_graph(get_topo_inputs_config, tmp_path):
     """
     Test generate_plot function
     """
-    dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+    dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
     filename = "test_generate_graph"
     title = "Test graph"
 
