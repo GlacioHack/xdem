@@ -3,7 +3,9 @@ from typing import Callable
 
 import pytest
 
+import numpy as np
 from xdem.examples import _download_and_extract_tarball
+from xdem.terrain import get_terrain_attribute
 
 _TESTDATA_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tests", "test_data"))
 _TESTOUTPUT_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tests", "test_output"))
@@ -33,3 +35,16 @@ def get_test_data_path() -> Callable[[str], str]:
         return file_path
 
     return _get_test_data_path
+
+@pytest.fixture(scope="session", autouse=True)
+def precompile_numba_functions():
+    """Pre-compile Numba functions ahead of test execution to avoid multiple compilations."""
+
+    # Define arbitrary DEM
+    rng = np.random.default_rng(42)
+    dem = rng.normal(size=(5, 5))
+
+    # Trigger compile of surface fit attributes
+    get_terrain_attribute(dem, resolution=1, attribute="slope", engine="numba")
+    # Trigger compile of surface fit attributes
+    get_terrain_attribute(dem, resolution=1, attribute="roughness", engine="numba")

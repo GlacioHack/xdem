@@ -564,7 +564,7 @@ class TestBiasCorr:
         """Test the subclass TerrainBias."""
 
         # Get maximum curvature
-        maxc = xdem.terrain.get_terrain_attribute(self.ref, attribute="max_curvature")
+        maxc = xdem.terrain.get_terrain_attribute(self.ref, attribute="max_curvature", engine="scipy")
 
         # Create a bias depending on bins
         synthetic_bias = np.zeros(np.shape(self.ref.data))
