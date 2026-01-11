@@ -474,7 +474,7 @@ class TestTerrainAttribute:
 
         # Generate attribute
         attr = xdem.terrain.get_terrain_attribute(
-            dem, resolution=1, attribute=attribute, surface_fit=surface_fit, engine="scipy"
+            dem, resolution=1, attribute=attribute, surface_fit=surface_fit, engine="numba"
         )
         mask_nan_attr = ~np.isfinite(attr)
 
