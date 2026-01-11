@@ -228,7 +228,7 @@ class TestTerrainAttribute:
         assert np.array_equal(slope, slope2, equal_nan=True)
 
         # A slope map with a lower resolution (higher value) should have gentler slopes.
-        slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
+        slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2, engine="scipy")
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
     @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])  # type: ignore
@@ -369,12 +369,12 @@ class TestTerrainAttribute:
         nodata = -9999
         dem = xdem.DEM.from_array(data, transform=transform, crs=crs, nodata=nodata)
         with pytest.warns(match="DEM is not in a projected CRS.*"):
-            xdem.terrain.get_terrain_attribute(dem, "slope")
+            xdem.terrain.get_terrain_attribute(dem, "slope", engine="scipy")
 
     def test_get_terrain_attribute__raster_input(self) -> None:
         """Test the get_terrain_attribute function supports raster input/output."""
 
-        slope, aspect = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "aspect"])
+        slope, aspect = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "aspect"], engine="scipy")
 
         assert slope != aspect
 
