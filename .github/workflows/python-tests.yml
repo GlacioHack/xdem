@@ -85,6 +85,8 @@ jobs:
         conda list
 
     - name: Test with pytest
+      env:
+        NUMBA_DISABLE_JIT: 1
       run: pytest -ra --cov=xdem/ --cov-report=lcov --durations=0
 
     - name: Upload coverage to Coveralls
