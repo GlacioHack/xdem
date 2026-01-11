@@ -333,6 +333,8 @@ class TestEPC:
         """
         Test coregister_3d works for an EPC.
         """
+        warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated.*")
+
         fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
         fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
 
