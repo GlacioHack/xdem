@@ -285,8 +285,9 @@ class TestTerrainAttribute:
         )
 
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
-        xdem.terrain.get_terrain_attribute(self.dem, "slope", mp_config=mp_config, resolution=self.dem.res,
-                                           engine="scipy")
+        xdem.terrain.get_terrain_attribute(
+            self.dem, "slope", mp_config=mp_config, resolution=self.dem.res, engine="scipy"
+        )
         assert os.path.exists(outfile)
         slope = gu.Raster(outfile, load_data=True)
         assert isinstance(slope, gu.Raster)
