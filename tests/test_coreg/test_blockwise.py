@@ -11,11 +11,12 @@ import numpy as np
 import pytest
 from geoutils import Raster, Vector
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.raster import ClusterGenerator, RasterType
+from geoutils.raster import ClusterGenerator
 from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
 from xdem.coreg import BlockwiseCoreg, Coreg
+
 
 @pytest.fixture(scope="module")  # type: ignore
 def example_data() -> tuple[Raster, Raster, Vector]:
@@ -26,6 +27,7 @@ def example_data() -> tuple[Raster, Raster, Vector]:
 
     inlier_mask = ~outlines.create_mask(ref_dem)
     return ref_dem, tba_dem, inlier_mask
+
 
 @pytest.fixture  # type: ignore
 def step() -> Coreg:

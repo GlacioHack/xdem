@@ -68,7 +68,7 @@ class Accuracy(Workflows):
 
         self.config = self.remove_none(self.config)  # type: ignore
 
-    def _load_data(self):
+    def _load_data(self) -> None:
         """Load data."""
 
         self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"])

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os.path
-import re
 import warnings
 
 import geopandas as gpd
@@ -25,6 +24,7 @@ from xdem.coreg.affine import (
     translations_rotations_from_matrix,
 )
 
+
 def load_examples() -> tuple[Raster, Raster, Vector]:
     """Load example files to try coregistration methods with."""
 
@@ -33,6 +33,7 @@ def load_examples() -> tuple[Raster, Raster, Vector]:
     glacier_mask = Vector(examples.get_path_test("longyearbyen_glacier_outlines"))
 
     return ref_dem, tba_dem, glacier_mask
+
 
 def load_examples_fullsize() -> tuple[Raster, Raster, Vector]:
     """Load example files to try coregistration methods with."""
@@ -499,11 +500,6 @@ class TestAffineCoreg:
         # Coregister
         subsample_size = 50000 if rigid_coreg.__class__.__name__ != "CPD" else 500
         rigid_coreg.fit(ref, ref_shifted_rotated, random_state=42, subsample=subsample_size)
-
-        # Check that fit matrix is the invert of those used above, within a relative % for rotations
-        fit_matrix = rigid_coreg.meta["outputs"]["affine"]["matrix"]
-        invert_fit_matrix = invert_matrix(fit_matrix)
-        invert_fit_shifts_rotations = translations_rotations_from_matrix(invert_fit_matrix)
 
     @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD, coreg.LZD])  # type: ignore
     def test_coreg_rigid__only_translation(self, coreg_method) -> None:

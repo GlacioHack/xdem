@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import warnings
 from typing import Literal
 
 import numpy as np
@@ -10,6 +9,7 @@ from scipy.ndimage import binary_dilation
 
 import xdem
 from xdem.terrain.surfit import all_coefs
+
 PLOT = False
 
 

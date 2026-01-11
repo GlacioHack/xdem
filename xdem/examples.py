@@ -71,6 +71,7 @@ available_test = list(_FILEPATHS_TEST.keys())
 # IF MODIFIED, NEED TO BE ADJUSTED IN XDEM-DATA TO PRODUCE GDAL OUTPUTS AS WELL
 _TEST_ICROP_BOUNDS = (137, 21, 187, 75)
 
+
 def _download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = False) -> None:
     """
     Helper function to download and extract a tarball from a given URL.
@@ -128,12 +129,13 @@ def _download_longyearbyen_examples(overwrite: bool = False) -> None:
         target_dir = os.path.join(ed, "Longyearbyen", "data")
     _download_and_extract_tarball(dir="data/Longyearbyen", target_dir=target_dir, overwrite=overwrite)
 
+
 def _process_coregistered_examples(overwrite: bool = False) -> None:
     """
-       Process the Longyearbyen example files into a dDEM (to avoid repeating this in many test/documentation steps).
+    Process the Longyearbyen example files into a dDEM (to avoid repeating this in many test/documentation steps).
 
-       :param overwrite: Do not download the files again if they already exist.
-       """
+    :param overwrite: Do not download the files again if they already exist.
+    """
 
     _download_longyearbyen_examples()
 
@@ -211,6 +213,7 @@ def get_path(name: str) -> str:
             + '" , "'.join(list(_FILEPATHS_DATA.keys()) + list(_FILEPATHS_PROCESSED.keys()))
             + '".'
         )
+
 
 def get_path_test(name: str) -> str:
     """

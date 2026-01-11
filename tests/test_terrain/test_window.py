@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from typing import Literal
 
 import numpy as np

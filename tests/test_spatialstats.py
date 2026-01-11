@@ -409,15 +409,14 @@ class TestBinning:
 
         # Test infer function
         errors_1, df_binning_1, err_fun_1 = xdem.spatialstats.infer_heteroscedasticity_from_stable(
-            dvalues=self.diff, list_var=[self.slope, self.max_curv], unstable_mask=self.outlines,
-            min_count=0
+            dvalues=self.diff, list_var=[self.slope, self.max_curv], unstable_mask=self.outlines, min_count=0
         )
 
         df_binning_2, err_fun_2 = xdem.spatialstats._estimate_model_heteroscedasticity(
             dvalues=self.diff[~self.mask],
             list_var=[self.slope[~self.mask], self.max_curv[~self.mask]],
             list_var_names=["var1", "var2"],
-            min_count=0
+            min_count=0,
         )
 
         pd.testing.assert_frame_equal(df_binning_1, df_binning_2)

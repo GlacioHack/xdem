@@ -378,8 +378,9 @@ class TestCoregClass:
         aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
 
         # Perform fit and apply
-        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, subsample=10000, random_state=42,
-                                                        fit_kwargs=fit_kwargs)
+        aligned_and = coreg_fit_and_apply.fit_and_apply(
+            **self.fit_params, subsample=10000, random_state=42, fit_kwargs=fit_kwargs
+        )
 
         # Check outputs are the same: aligned raster, and metadata keys and values
 

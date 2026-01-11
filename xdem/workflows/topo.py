@@ -61,7 +61,7 @@ class Topo(Workflows):
 
         self.config = self.remove_none(self.config)  # type: ignore
 
-    def _load_data(self):
+    def _load_data(self) -> None:
         """
         Load data defined in config file.
         """

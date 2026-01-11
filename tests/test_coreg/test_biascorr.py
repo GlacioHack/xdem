@@ -10,14 +10,15 @@ import geoutils as gu
 import numpy as np
 import pytest
 import scipy
-
 from geoutils import Raster, Vector
+
 import xdem.terrain
 from xdem import examples
 from xdem.coreg import biascorr
 from xdem.fit import polynomial_2d, sumsin_1d
 
 PLOT = False
+
 
 def load_examples() -> tuple[Raster, Raster, Vector]:
     """Load example files to try coregistration methods with."""
