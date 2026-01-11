@@ -454,6 +454,9 @@ class TestDEM:
         """
         Test coregister_3d functionality
         """
+
+        warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated.*")
+
         fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
         fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
 
