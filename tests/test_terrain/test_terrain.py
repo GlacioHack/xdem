@@ -228,7 +228,9 @@ class TestTerrainAttribute:
         assert np.array_equal(slope, slope2, equal_nan=True)
 
         # A slope map with a lower resolution (higher value) should have gentler slopes.
-        slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2, engine="scipy")
+        slope_lowres = xdem.terrain.get_terrain_attribute(
+            self.dem.data, "slope", resolution=self.dem.res[0] * 2, engine="scipy"
+        )
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
     @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])  # type: ignore

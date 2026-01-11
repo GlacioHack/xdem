@@ -195,12 +195,20 @@ class TestTerrainAttribute:
 
         # Get geometric and directional curvatures
         curv_g = xdem.terrain.get_terrain_attribute(
-            self.dem.data, attribute=name, resolution=self.dem.res, curv_method="geometric", surface_fit=surface_fit,
-            engine="scipy"
+            self.dem.data,
+            attribute=name,
+            resolution=self.dem.res,
+            curv_method="geometric",
+            surface_fit=surface_fit,
+            engine="scipy",
         )
         curv_d = xdem.terrain.get_terrain_attribute(
-            self.dem.data, attribute=name, resolution=self.dem.res, curv_method="directional", surface_fit=surface_fit,
-            engine="scipy"
+            self.dem.data,
+            attribute=name,
+            resolution=self.dem.res,
+            curv_method="directional",
+            surface_fit=surface_fit,
+            engine="scipy",
         )
 
         # For planform, the result should be the same
@@ -465,7 +473,9 @@ class TestTerrainAttribute:
         mask_nan_dem = ~np.isfinite(dem)
 
         # Generate attribute
-        attr = xdem.terrain.get_terrain_attribute(dem, resolution=1, attribute=attribute, surface_fit=surface_fit, engine="scipy")
+        attr = xdem.terrain.get_terrain_attribute(
+            dem, resolution=1, attribute=attribute, surface_fit=surface_fit, engine="scipy"
+        )
         mask_nan_attr = ~np.isfinite(attr)
 
         # We dilate the initial mask by a structuring element matching the window size of the surface fit
