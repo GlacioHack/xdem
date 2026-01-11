@@ -248,8 +248,8 @@ def get_terrain_attribute(
     :param curv_method: Method to calculate the curvatures: "geometric" or "directional".
     :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
     :param window_size: Window size for windowed attributes (TPI, TRI, roughnesses, rugosity).
-    :param engine: Engine to use for computing the attributes with convolution or other windowed calculations, currently
-        supports "scipy" or "numba".
+    :param engine: Engine to use for computing the attributes, windowed and surface fit attributes all support
+        "scipy" or "numba".
     :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
         input DEM if floating type or to float32 if integer type.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
@@ -623,6 +623,7 @@ def slope(
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -634,6 +635,7 @@ def slope(
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> Raster: ...
 
 
@@ -645,6 +647,7 @@ def slope(
     degrees: bool = True,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | Raster:
     """
     Generate a slope map for a DEM, returned in degrees by default.
@@ -658,6 +661,7 @@ def slope(
     :param degrees: Whether to use degrees or radians (False means radians).
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :examples:
         >>> dem = np.repeat(np.arange(3), 3).reshape(3, 3)
@@ -688,6 +692,7 @@ def slope(
         resolution=resolution,
         degrees=degrees,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -698,6 +703,7 @@ def aspect(
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -708,6 +714,7 @@ def aspect(
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -718,6 +725,7 @@ def aspect(
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | Raster:
     """
     Calculate the aspect of each cell in a DEM, returned in degrees by default. The aspect of flat slopes is 180° by
@@ -735,6 +743,7 @@ def aspect(
     :param surface_fit: Surface fit method to use for aspect: "Horn", "ZevenbergThorne" or "Florinsky".
     :param degrees: Whether to use degrees or radians (False means radians).
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :examples:
         >>> dem = np.tile(np.arange(3), (3,1))
@@ -771,6 +780,7 @@ def aspect(
         resolution=1.0,
         degrees=degrees,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -784,6 +794,7 @@ def hillshade(
     z_factor: float = 1.0,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -797,6 +808,7 @@ def hillshade(
     z_factor: float = 1.0,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -810,6 +822,7 @@ def hillshade(
     z_factor: float = 1.0,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
     Generate a hillshade from the given DEM. The value 0 is used for nodata, and 1 to 255 for hillshading.
@@ -824,7 +837,7 @@ def hillshade(
     :param z_factor: Vertical exaggeration factor.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
-
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises AssertionError: If the given DEM is not a 2D array.
     :raises ValueError: If invalid argument types or ranges were given.
@@ -852,6 +865,7 @@ def hillshade(
         hillshade_altitude=altitude,
         hillshade_z_factor=z_factor,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -861,6 +875,7 @@ def curvature(
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -870,6 +885,7 @@ def curvature(
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -879,6 +895,7 @@ def curvature(
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
     THIS FUNCTION IS DEPRECATED - REFER TO DOCS FOR SPECIFIC CURVATURE RECOMMENDATIONS
@@ -898,6 +915,7 @@ def curvature(
     :param dem: The DEM to calculate the curvature from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -917,6 +935,7 @@ def curvature(
         surface_fit=surface_fit,
         resolution=resolution,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -927,6 +946,7 @@ def profile_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -937,6 +957,7 @@ def profile_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -947,6 +968,7 @@ def profile_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
 
@@ -963,6 +985,7 @@ def profile_curvature(
     :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
     :param curv_method: The method to use to calculate the curvature, either 'geometric' or 'directional'.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -988,6 +1011,7 @@ def profile_curvature(
         curv_method=curv_method,
         resolution=resolution,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -998,6 +1022,7 @@ def tangential_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -1008,6 +1033,7 @@ def tangential_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -1018,6 +1044,7 @@ def tangential_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
 
@@ -1035,6 +1062,7 @@ def tangential_curvature(
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1060,6 +1088,7 @@ def tangential_curvature(
         curv_method=curv_method,
         resolution=resolution,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -1070,6 +1099,7 @@ def planform_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -1080,6 +1110,7 @@ def planform_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -1090,6 +1121,7 @@ def planform_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
 
@@ -1105,6 +1137,7 @@ def planform_curvature(
     :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
     :param curv_method: The method to use to calculate the curvature, either 'geometric' or 'directional'.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1130,6 +1163,7 @@ def planform_curvature(
         curv_method=curv_method,
         resolution=resolution,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -1140,6 +1174,7 @@ def flowline_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -1150,6 +1185,7 @@ def flowline_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -1160,6 +1196,7 @@ def flowline_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf:
     """
     Calculates flow line curvature in units of m-1 multiplied by 100. Defined as the curvature of a projection of the
@@ -1176,6 +1213,7 @@ def flowline_curvature(
     :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
     :param curv_method: The method to use to calculate the curvature, either 'geometric' or 'directional'.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1201,6 +1239,7 @@ def flowline_curvature(
         curv_method=curv_method,
         resolution=resolution,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -1211,6 +1250,7 @@ def max_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -1221,6 +1261,7 @@ def max_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -1231,6 +1272,7 @@ def max_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
     Calculate the maximal (geometric) or maximum (directional derivative) curvature in units of m-1 multiplied by 100.
@@ -1247,6 +1289,7 @@ def max_curvature(
     :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
     :param curv_method: The method to use to calculate the curvature, either 'geometric' or 'directional'.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1272,6 +1315,7 @@ def max_curvature(
         curv_method=curv_method,
         resolution=resolution,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -1282,6 +1326,7 @@ def min_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -1292,6 +1337,7 @@ def min_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -1302,6 +1348,7 @@ def min_curvature(
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
     Calculate the minimal (geometric) or minimum (directional derivative) curvature in units of m-1 multiplied by 100.
@@ -1318,6 +1365,7 @@ def min_curvature(
     :param surface_fit: The surface fit to use, either 'ZevenbergThorne' or 'Florinsky'.
     :param curv_method: The method to use to calculate the curvature, either 'geometric' or 'directional'.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1343,6 +1391,7 @@ def min_curvature(
         curv_method=curv_method,
         resolution=resolution,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -1351,6 +1400,7 @@ def topographic_position_index(
     dem: NDArrayf | MArrayf,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> NDArrayf: ...
 
 
@@ -1359,6 +1409,7 @@ def topographic_position_index(
     dem: RasterType,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> RasterType: ...
 
 
@@ -1367,6 +1418,7 @@ def topographic_position_index(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> NDArrayf | RasterType:
     """
     Calculates the Topographic Position Index, the difference to the average of neighbouring pixels. Output is in the
@@ -1377,6 +1429,7 @@ def topographic_position_index(
     :param dem: The DEM to calculate the topographic position index from.
     :param window_size: The size of the window for deriving the metric.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1399,6 +1452,7 @@ def topographic_position_index(
         attribute="topographic_position_index",
         window_size=window_size,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -1408,6 +1462,7 @@ def terrain_ruggedness_index(
     method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> NDArrayf: ...
 
 
@@ -1417,6 +1472,7 @@ def terrain_ruggedness_index(
     method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> RasterType: ...
 
 
@@ -1426,6 +1482,7 @@ def terrain_ruggedness_index(
     method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> NDArrayf | RasterType:
     """
     Calculates the Terrain Ruggedness Index, the cumulated differences to neighbouring pixels. Output is in the
@@ -1442,6 +1499,7 @@ def terrain_ruggedness_index(
     :param method: The algorithm used ("Riley" for topography or "Wilson" for bathymetry).
     :param window_size: The size of the window for deriving the metric.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1465,6 +1523,7 @@ def terrain_ruggedness_index(
         tri_method=method,
         window_size=window_size,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -1473,6 +1532,7 @@ def roughness(
     dem: NDArrayf | MArrayf,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> NDArrayf: ...
 
 
@@ -1481,6 +1541,7 @@ def roughness(
     dem: RasterType,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> RasterType: ...
 
 
@@ -1489,6 +1550,7 @@ def roughness(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> NDArrayf | RasterType:
     """
     Calculates the roughness, the maximum difference between neighbouring pixels, for any window size. Output is in the
@@ -1499,6 +1561,7 @@ def roughness(
     :param dem: The DEM to calculate the roughness from.
     :param window_size: The size of the window for deriving the metric.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1521,6 +1584,7 @@ def roughness(
         attribute="roughness",
         window_size=window_size,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -1529,6 +1593,7 @@ def rugosity(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> NDArrayf: ...
 
 
@@ -1537,6 +1602,7 @@ def rugosity(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> RasterType: ...
 
 
@@ -1545,6 +1611,7 @@ def rugosity(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> NDArrayf | RasterType:
     """
     Calculates the rugosity, the ratio between real area and planimetric area. Only available for a 3x3 window. The
@@ -1555,6 +1622,7 @@ def rugosity(
     :param dem: The DEM to calculate the rugosity from.
     :param resolution: The X/Y resolution of the DEM, only if passed as an array.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1577,6 +1645,7 @@ def rugosity(
         attribute="rugosity",
         resolution=resolution,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
@@ -1585,6 +1654,7 @@ def fractal_roughness(
     dem: NDArrayf | MArrayf,
     window_size: int = 13,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> NDArrayf: ...
 
 
@@ -1593,6 +1663,7 @@ def fractal_roughness(
     dem: RasterType,
     window_size: int = 13,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> RasterType: ...
 
 
@@ -1601,6 +1672,7 @@ def fractal_roughness(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 13,
     mp_config: MultiprocConfig | None = None,
+    engine: Literal["scipy", "numba"] = "numba",
 ) -> NDArrayf | RasterType:
     """
     Calculates the fractal roughness, the local 3D fractal dimension. Can only be computed on window sizes larger or
@@ -1611,6 +1683,7 @@ def fractal_roughness(
     :param dem: The DEM to calculate the roughness from.
     :param window_size: The size of the window for deriving the metric.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
+    :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
     :raises ValueError: If the inputs are poorly formatted.
 
@@ -1635,6 +1708,7 @@ def fractal_roughness(
         attribute="fractal_roughness",
         window_size=window_size,
         mp_config=mp_config,
+        engine=engine,
     )
 
 
