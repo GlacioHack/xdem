@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import sys
 import re
+import sys
 import warnings
 
 import geopandas as gpd
@@ -190,7 +190,9 @@ class TestBiasCorr:
             bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
             bcorr2d2.fit(**fit_args, bias_vars=bias_vars_dict)
 
-    @pytest.mark.skipif(sys.platform != "linux", reason="Basinhopping from DirectionalBias fails on Mac")
+    @pytest.mark.skipif(
+        sys.platform != "linux", reason="Basinhopping from DirectionalBias fails on Mac"
+    )  # type: ignore
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     @pytest.mark.parametrize(
         "fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: x[0] * a + b)
