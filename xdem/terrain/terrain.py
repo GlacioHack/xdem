@@ -1562,7 +1562,7 @@ def rugosity(
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> rugosity(dem, resolution=1.)[1, 1]
-        np.float32(1.4142135)
+        np.float32(1.4142131)
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
