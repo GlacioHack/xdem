@@ -422,9 +422,6 @@ class TestTerrainAttribute:
     ) -> None:
         """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
 
-        attribute = "slope"
-        surface_fit = "Florinsky"
-
         rnd = np.random.default_rng(42)
         # Leave just enough space to have a NaN in the middle and still have a ring of valid values
         # after NaN propagation from edges + center
