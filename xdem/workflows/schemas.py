@@ -187,6 +187,7 @@ ACCURACY_SCHEMA = {
                 "type": "string",
                 "allowed": ["reference_elev", "to_be_aligned_elev"],
                 "default": "reference_elev",
+                "nullable": True,
                 "required": False,
             },
         },
