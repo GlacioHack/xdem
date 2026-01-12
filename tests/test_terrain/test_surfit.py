@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from typing import Literal
+from importlib.util import find_spec
 
 import numpy as np
 import pytest
@@ -421,10 +422,12 @@ class TestTerrainAttribute:
         ],
     )  # type: ignore
     @pytest.mark.parametrize("surface_fit", ["Horn", "ZevenbergThorne", "Florinsky"])  # type: ignore
-    def test_get_surface_attributes__engine(
+    def test_get_surface_attribute__engine(
         self, attribute: str, surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"]
     ) -> None:
         """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
+
+        pytest.importorskip("numba")
 
         rnd = np.random.default_rng(42)
         # Leave just enough space to have a NaN in the middle and still have a ring of valid values
@@ -444,6 +447,21 @@ class TestTerrainAttribute:
         )[0]
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
+
+    @pytest.mark.skipif(
+        find_spec("numba") is not None, reason="Only runs if numba is missing."
+    )  # type: ignore
+    def test_get_surface_attribute__missing_dep(self) -> None:
+        """Check that proper import error is raised when numba is missing"""
+
+        rnd = np.random.default_rng(42)
+        # Leave just enough space to have a NaN in the middle and still have a ring of valid values
+        # after NaN propagation from edges + center
+        dem = rnd.normal(size=(11, 11))
+        dem[5, 5] = np.nan
+
+        with pytest.raises(ImportError, match="Optional dependency 'numba' required.*"):
+            xdem.terrain.get_terrain_attribute(dem, resolution=1, attribute="slope", engine="numba")
 
     @pytest.mark.parametrize(
         "attribute",
