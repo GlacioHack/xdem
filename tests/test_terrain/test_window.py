@@ -3,8 +3,10 @@ from __future__ import annotations
 import warnings
 from typing import Literal
 
+from packaging.version import Version
 import numpy as np
 import pytest
+import scipy
 from scipy.ndimage import binary_dilation
 
 import xdem
@@ -101,16 +103,17 @@ class TestTerrainAttribute:
         ],
     )  # type: ignore
     def test_get_windowed_attrs__engine(self, attribute: str) -> None:
-        """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
+        """Check that all windowed attributes give the same results with SciPy or Numba."""
 
         rnd = np.random.default_rng(42)
         dem = rnd.normal(size=(15, 15))
+        dem[5, 5] = np.nan  # Add NaN to check propagation from an existing NaN is similar
 
         # Get TRI method if specified
         if "Wilson" in attribute or "Riley" in attribute:
-            attribute = "terrain_ruggedness_index"
             tri_method: Literal["Riley", "Wilson"]
             tri_method = attribute.split("_")[-1]  # type: ignore
+            attribute = "terrain_ruggedness_index"
         # Otherwise use any one, doesn't matter
         else:
             tri_method = "Wilson"
@@ -123,6 +126,46 @@ class TestTerrainAttribute:
         )
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
+
+    @pytest.mark.skipif(Version(scipy.__version__) < Version("1.16.0"),
+                        reason="SciPy version is too old and does not yet support vectorized_filter.")  # type: ignore
+    @pytest.mark.parametrize(
+        "attribute",
+        [
+            "topographic_position_index",
+            "terrain_ruggedness_index_Riley",
+            "terrain_ruggedness_index_Wilson",
+            "roughness",
+            "rugosity",
+            "fractal_roughness",
+        ],
+    )  # type: ignore
+    def test_get_windowed_attrs__scipy_backend(self, attribute: str) -> None:
+        """Check that all windowed attributes give the same result with SciPy generic_filter or vectorized_filter."""
+
+        rnd = np.random.default_rng(42)
+        dem = rnd.normal(size=(15, 15))
+        dem[5, 5] = np.nan   # Add NaN to check propagation from an existing NaN is similar
+
+        # Get TRI method if specified
+        if "Wilson" in attribute or "Riley" in attribute:
+            tri_method: Literal["Riley", "Wilson"]
+            tri_method = attribute.split("_")[-1]  # type: ignore
+            attribute = "terrain_ruggedness_index"
+        # Otherwise use any one, doesn't matter
+        else:
+            tri_method = "Wilson"
+
+        attrs_vectorized = xdem.terrain.window._get_windowed_indexes(
+            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="scipy",
+            force_scipy_backend="vectorized"
+        )
+        attrs_generic = xdem.terrain.window._get_windowed_indexes(
+            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="scipy",
+            force_scipy_backend="generic"
+        )
+
+        assert np.allclose(attrs_vectorized, attrs_generic, equal_nan=True)
 
     @pytest.mark.parametrize(
         "attribute",
