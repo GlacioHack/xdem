@@ -41,7 +41,6 @@ available_attributes = [
     "slope",
     "aspect",
     "hillshade",
-    "curvature",
     "profile_curvature",
     "tangential_curvature",
     "planform_curvature",

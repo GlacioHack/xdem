@@ -174,7 +174,7 @@ def _tri_wilson_func_scipy(
 def _tpi_func(arr: NDArrayf, window_size: int) -> float:
     """Non-vectorized TPI, the difference between center and mean of neighbouring pixels."""
 
-    mid_ind = window_size // 2
+    mid_ind = int(arr.shape[0] / 2)
     return arr[mid_ind] - (np.sum(arr) - arr[mid_ind]) / (window_size**2 - 1)
 
 
@@ -434,40 +434,46 @@ def _fractal_roughness_func_scipy(
 ) -> NDArrayf:
     """SciPy wrapper for fractal roughness implementation, with option of forcing backend for tests."""
 
-    # If vectorized is available, use it
-    if _HAS_VECTORIZED_FILTER or force_backend == "vectorized":
-
-        # Pre-compute scale-dependent constants
-        qs, log_q, mx, SS_xx = _fractal_precompute(window_size)
-
-        _part_func = partial(
-            _fractal_roughness_func_vectorized, window_size=window_size, qs=qs, log_q=log_q, mx=mx, SS_xx=SS_xx
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice.")
+        warnings.filterwarnings(
+            "ignore",
+            category=RuntimeWarning,
+            message="divide by zero encountered in .*",
         )
-        return scipy.ndimage.vectorized_filter(
-            dem,
-            _part_func,
-            size=window_size,
-            mode="constant",
-            cval=np.nan,
+        warnings.filterwarnings(
+            "ignore",
+            category=RuntimeWarning,
+            message="invalid value encountered in .*",
         )
 
-    # Otherwise fallback on generic function
-    else:
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice.")
-            warnings.filterwarnings(
-                "ignore",
-                category=RuntimeWarning,
-                message="invalid value encountered in divide",
+        # If vectorized is available, use it
+        if _HAS_VECTORIZED_FILTER or force_backend == "vectorized":
+
+            # Pre-compute scale-dependent constants
+            qs, log_q, mx, SS_xx = _fractal_precompute(window_size)
+
+            _part_func = partial(
+                _fractal_roughness_func_vectorized, window_size=window_size, qs=qs, log_q=log_q, mx=mx, SS_xx=SS_xx
             )
-        return scipy.ndimage.generic_filter(
-            dem,
-            _fractal_roughness_func,
-            size=window_size,
-            mode="constant",
-            cval=np.nan,
-            extra_arguments=(window_size, out_dtype),
-        )
+            return scipy.ndimage.vectorized_filter(
+                dem,
+                _part_func,
+                size=window_size,
+                mode="constant",
+                cval=np.nan,
+            )
+
+        # Otherwise fallback on generic function
+        else:
+            return scipy.ndimage.generic_filter(
+                dem,
+                _fractal_roughness_func,
+                size=window_size,
+                mode="constant",
+                cval=np.nan,
+                extra_arguments=(window_size, out_dtype),
+            )
 
 
 ##############################
