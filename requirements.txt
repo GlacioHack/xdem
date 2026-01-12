@@ -2,7 +2,6 @@
 # See that file for comments about the need/usage of each dependency.
 
 geoutils==0.2.2
-numba==0.*
 geopandas>=0.12.0
 rasterio>=1.3,<2
 scipy==1.*

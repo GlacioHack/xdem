@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import Literal
 from importlib.util import find_spec
+from typing import Literal
 
 import numpy as np
 import pytest
@@ -448,9 +448,7 @@ class TestTerrainAttribute:
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
 
-    @pytest.mark.skipif(
-        find_spec("numba") is not None, reason="Only runs if numba is missing."
-    )  # type: ignore
+    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")  # type: ignore
     def test_get_surface_attribute__missing_dep(self) -> None:
         """Check that proper import error is raised when numba is missing"""
 

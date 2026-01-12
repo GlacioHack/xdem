@@ -55,9 +55,9 @@ slope = xdem.terrain.slope(dem.data, resolution=dem.res)
 ```
 
 ```{tip}
-All attributes can be derived using either SciPy (default) or Numba (optional dependency) as computing engine. Both perform similarly, 
-with Numba usually being slightly faster (x2 to 4) for deriving multiple times the same attributes,  
-due to optimization for your machine at the cost of an initial compile time (usually lasting about 5 to 10 seconds). 
+All attributes can be derived using either SciPy (default) or Numba (optional dependency) as computing engine. Both perform similarly,
+with Numba usually being slightly faster (x2 to 4) for deriving multiple times the same attributes,
+due to optimization for your machine at the cost of an initial compile time (usually lasting about 5 to 10 seconds).
 See Numba's [just-in-time compilation](https://numba.readthedocs.io/en/stable/reference/jit-compilation.html)
 and [compilation caching](https://numba.readthedocs.io/en/stable/developer/caching.html) for details.
 

@@ -20,13 +20,13 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Literal, Callable
+from typing import Any, Callable, Literal
 
 import numpy as np
 from scipy.ndimage import binary_dilation
 
-from xdem._typing import DTypeLike, NDArrayf
 from xdem._misc import import_optional
+from xdem._typing import DTypeLike, NDArrayf
 
 # Manage numba as an optional dependency
 try:
@@ -45,6 +45,7 @@ except ImportError:
             return func
 
         return decorator
+
 
 ###########################################################################
 # SURFACE FIT ATTRIBUTES: DEPENDENT FIT COEFFICIENTS IN A GIVEN WINDOW SIZE

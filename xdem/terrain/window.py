@@ -21,15 +21,14 @@ from __future__ import annotations
 
 import warnings
 from functools import partial
-from typing import Literal, Callable, Any
+from typing import Any, Callable, Literal
 
-import numba
 import numpy as np
 import scipy
 from packaging.version import Version
 
-from xdem._typing import DTypeLike, NDArrayf
 from xdem._misc import import_optional
+from xdem._typing import DTypeLike, NDArrayf
 
 _HAS_VECTORIZED_FILTER = Version(scipy.__version__) >= Version("1.16.0")
 
@@ -50,6 +49,7 @@ except ImportError:
             return func
 
         return decorator
+
 
 #########################################################################
 # WINDOWED ATTRIBUTES: INDEPENDENT OF EACH OTHER WITH VARYING WINDOW SIZE
