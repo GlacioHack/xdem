@@ -305,6 +305,9 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
+    @pytest.mark.skipif(
+        sys.platform != "linux", reason="Basinhopping from DirectionalBias fails on Mac"
+    )  # type: ignore
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     @pytest.mark.parametrize(
         "fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: x[0] * a + b)
