@@ -334,7 +334,7 @@ class TestTerrainAttribute:
                 "'Florinsky']"
             ),
         ):
-            xdem.terrain.slope(self.dem, method="DoesNotExist")  # type: ignore
+            xdem.terrain.slope(self.dem, surface_fit="DoesNotExist")  # type: ignore
 
         # Wrong method name for TRI
         with pytest.raises(

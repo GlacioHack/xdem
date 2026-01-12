@@ -423,7 +423,10 @@ class TestTerrainAttribute:
         """Check that all quadric coefficients from the convolution give the same results as with the numba loop."""
 
         rnd = np.random.default_rng(42)
-        dem = rnd.normal(size=(5, 7))
+        # Leave just enough space to have a NaN in the middle and still have a ring of valid values
+        # after NaN propagation from edges + center
+        dem = rnd.normal(size=(11, 11))
+        dem[5, 5] = np.nan
 
         # Horn only works for first derivatives
         if surface_fit == "Horn" and attribute not in ["slope", "aspect", "hillshade"]:
@@ -431,10 +434,10 @@ class TestTerrainAttribute:
 
         attrs_scipy = xdem.terrain.surfit._get_surface_attributes(
             dem=dem, resolution=2, surface_attributes=[attribute], surface_fit=surface_fit, engine="scipy"
-        )
+        )[0]
         attrs_numba = xdem.terrain.surfit._get_surface_attributes(
             dem=dem, resolution=2, surface_attributes=[attribute], surface_fit=surface_fit, engine="numba"
-        )
+        )[0]
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
 
