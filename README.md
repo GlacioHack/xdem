@@ -28,8 +28,8 @@ modular `Coreg` objects that easily interface between themselves**.
 Additionally, for raster and point cloud functionalities, xDEM inherits many convenient functionalities from [GeoUtils](https://github.com/GlacioHack/geoutils).
 Those include **implicit loading**, **numerical interfacing** and **convenient object-based geospatial methods** to easily perform
 the most common higher-level tasks needed by geospatial users (e.g., reprojection, cropping, vector masking). Through [GeoUtils](https://github.com/GlacioHack/geoutils), xDEM
-relies on [Rasterio](https://github.com/rasterio/rasterio), [GeoPandas](https://github.com/geopandas/geopandas) and [Pyproj](https://github.com/pyproj4/pyproj) for georeferenced calculations, and on [NumPy](https://github.com/numpy/numpy), [SciPy](https://scipy.org/) 
-(and optionally [Numba](https://numba.pydata.org/))  for efficient numerics. It allows easy access to the functionalities of 
+relies on [Rasterio](https://github.com/rasterio/rasterio), [GeoPandas](https://github.com/geopandas/geopandas) and [Pyproj](https://github.com/pyproj4/pyproj) for georeferenced calculations, and on [NumPy](https://github.com/numpy/numpy), [SciPy](https://scipy.org/)
+(and optionally [Numba](https://numba.pydata.org/))  for efficient numerics. It allows easy access to the functionalities of
 these packages through interfacing or composition, and quick inter-operability through object conversion.
 
 If you are looking for an accessible Python package to write the Python equivalent of your [GDAL](https://gdal.org/) command lines, or of your
