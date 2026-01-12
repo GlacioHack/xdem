@@ -1326,6 +1326,30 @@ class TestSubSampling:
 
 
 class TestPatchesMethod:
+
+    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")  # type: ignore
+    def test_get_surface_attribute__missing_dep(self) -> None:
+        """Check that proper import error is raised when numba is missing"""
+
+        diff, mask = load_ref_and_diff()[1:3]
+        gsd = diff.res[0]
+        area = 10000
+
+        with pytest.raises(ImportError, match="Optional dependency 'numba' required.*"):
+
+            # Check the patches method runs
+            df, df_full = xdem.spatialstats.patches_method(
+                diff,
+                unstable_mask=mask,
+                gsd=gsd,
+                areas=[area],
+                random_state=42,
+                n_patches=7,
+                vectorized=False,
+                return_in_patch_statistics=True,
+                convolution_method="numba"
+            )
+
     def test_patches_method_loop_quadrant(self) -> None:
         """Check that the patches method with quadrant loops (vectorized=False) functions correctly"""
 
