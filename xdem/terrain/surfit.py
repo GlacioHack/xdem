@@ -20,13 +20,32 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
-import numba
 import numpy as np
 from scipy.ndimage import binary_dilation
 
+from xdem._misc import import_optional
 from xdem._typing import DTypeLike, NDArrayf
+
+# Manage numba as an optional dependency
+try:
+    from numba import njit, prange
+
+    _HAS_NUMBA = True
+except ImportError:
+    _HAS_NUMBA = False
+
+    def njit(*args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """
+        Fake jit decorator if numba is not installed
+        """
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            return func
+
+        return decorator
+
 
 ###########################################################################
 # SURFACE FIT ATTRIBUTES: DEPENDENT FIT COEFFICIENTS IN A GIVEN WINDOW SIZE
@@ -925,7 +944,7 @@ def _make_attribute_from_coefs(
     return attrs
 
 
-@numba.njit(inline="always", cache=True)  # type: ignore
+@njit(inline="always", cache=True)  # type: ignore
 def _convolution_numba(
     dem: NDArrayf,
     filters: NDArrayf,
@@ -951,10 +970,10 @@ def _convolution_numba(
 
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
-_make_attribute_from_coefs_numba = numba.njit(inline="always", cache=True)(_make_attribute_from_coefs)
+_make_attribute_from_coefs_numba = njit(inline="always", cache=True)(_make_attribute_from_coefs)
 
 
-@numba.njit(parallel=True, cache=True)  # type: ignore
+@njit(parallel=True, cache=True)  # type: ignore
 def _get_surface_attributes_numba(
     dem: NDArrayf,
     filters: NDArrayf,
@@ -1017,8 +1036,8 @@ def _get_surface_attributes_numba(
     outputs = np.full((attrs_size, row_range, col_range), fill_value=np.nan, dtype=out_dtype)
 
     # Loop over every pixel concurrently by using prange
-    for row in numba.prange(row_range):
-        for col in numba.prange(col_range):
+    for row in prange(row_range):
+        for col in prange(col_range):
 
             # Compute coefficients from convolution
             coefs = _convolution_numba(dem, filters, row, col, out_dtype=np.float64)
@@ -1248,6 +1267,10 @@ def _get_surface_attributes(
                 **kwargs,
             )
     elif engine == "numba":
+
+        # Fail and raise error if optional dependency is not installed
+        numba = import_optional("numba")
+
         _, M1, M2 = kern3d.shape
         half_M1 = int((M1 - 1) / 2)
         half_M2 = int((M2 - 1) / 2)

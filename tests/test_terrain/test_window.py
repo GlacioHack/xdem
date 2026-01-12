@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.util import find_spec
 from typing import Literal
 
 import numpy as np
@@ -98,8 +99,10 @@ class TestTerrainAttribute:
             "fractal_roughness",
         ],
     )  # type: ignore
-    def test_get_windowed_attrs__engine(self, attribute: str) -> None:
+    def test_get_windowed_attribute__engine(self, attribute: str) -> None:
         """Check that all windowed attributes give the same results with SciPy or Numba."""
+
+        pytest.importorskip("numba")
 
         rnd = np.random.default_rng(42)
         dem = rnd.normal(size=(15, 15))
@@ -123,6 +126,19 @@ class TestTerrainAttribute:
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
 
+    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")  # type: ignore
+    def test_get_surface_attribute__missing_dep(self) -> None:
+        """Check that proper import error is raised when numba is missing"""
+
+        rnd = np.random.default_rng(42)
+        # Leave just enough space to have a NaN in the middle and still have a ring of valid values
+        # after NaN propagation from edges + center
+        dem = rnd.normal(size=(11, 11))
+        dem[5, 5] = np.nan
+
+        with pytest.raises(ImportError, match="Optional dependency 'numba' required.*"):
+            xdem.terrain.get_terrain_attribute(dem, resolution=1, attribute="roughness", engine="numba")
+
     @pytest.mark.skipif(
         Version(scipy.__version__) < Version("1.16.0"),
         reason="SciPy version is too old and does not yet support vectorized_filter.",
@@ -138,7 +154,7 @@ class TestTerrainAttribute:
             "fractal_roughness",
         ],
     )  # type: ignore
-    def test_get_windowed_attrs__scipy_backend(self, attribute: str) -> None:
+    def test_get_windowed_attribute__scipy_backend(self, attribute: str) -> None:
         """Check that all windowed attributes give the same result with SciPy generic_filter or vectorized_filter."""
 
         rnd = np.random.default_rng(42)

@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, TypedDict, o
 
 import geopandas as gpd
 import geoutils as gu
-import numba
 import numpy as np
 import pandas as pd
 import scipy.ndimage
@@ -37,7 +36,6 @@ from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
 from geoutils.stats.sampling import subsample_array
 from geoutils.vector.vector import Vector, VectorType
-from numba import prange
 from numpy.typing import ArrayLike
 from packaging.version import Version
 from scipy import integrate
@@ -51,6 +49,24 @@ from xdem._typing import NDArrayb, NDArrayf
 
 if TYPE_CHECKING:
     import matplotlib
+
+# Manage numba as an optional dependency
+try:
+    from numba import njit, prange
+
+    _HAS_NUMBA = True
+except ImportError:
+    _HAS_NUMBA = False
+
+    def njit(*args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """
+        Fake jit decorator if numba is not installed
+        """
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            return func
+
+        return decorator
 
 
 @deprecate(
@@ -2508,7 +2524,7 @@ def _scipy_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> N
             )
 
 
-@numba.njit(parallel=True)  # type: ignore
+@njit(parallel=True)  # type: ignore
 def _numba_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> NDArrayf:
     """
     Numba convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2.
@@ -2560,6 +2576,9 @@ def convolution(imgs: NDArrayf, filters: NDArrayf, method: str = "scipy") -> NDA
     if method.lower() == "scipy":
         _scipy_convolution(imgs=imgs, filters=filters, output=output)
     elif "numba" in method.lower():
+
+        import_optional("numba")
+
         half_M1 = int((M1 - 1) / 2)
         half_M2 = int((M2 - 1) / 2)
         imgs_pad = np.pad(imgs, pad_width=((0, 0), (half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)

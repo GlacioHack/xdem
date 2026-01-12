@@ -21,16 +21,35 @@ from __future__ import annotations
 
 import warnings
 from functools import partial
-from typing import Literal
+from typing import Any, Callable, Literal
 
-import numba
 import numpy as np
 import scipy
 from packaging.version import Version
 
+from xdem._misc import import_optional
 from xdem._typing import DTypeLike, NDArrayf
 
 _HAS_VECTORIZED_FILTER = Version(scipy.__version__) >= Version("1.16.0")
+
+# Manage numba as an optional dependency
+try:
+    from numba import njit, prange
+
+    _HAS_NUMBA = True
+except ImportError:
+    _HAS_NUMBA = False
+
+    def njit(*args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """
+        Fake jit decorator if numba is not installed
+        """
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            return func
+
+        return decorator
+
 
 #########################################################################
 # WINDOWED ATTRIBUTES: INDEPENDENT OF EACH OTHER WITH VARYING WINDOW SIZE
@@ -57,7 +76,7 @@ def _tri_riley_func(arr: NDArrayf) -> float:
 # Numba wrapper for TRI from Riley
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
-_tri_riley_func_numba = numba.njit(inline="always", cache=True)(_tri_riley_func)
+_tri_riley_func_numba = njit(inline="always", cache=True)(_tri_riley_func)
 
 
 def _tri_riley_func_vectorized(input_block: NDArrayf, axis: tuple[int, ...] = (-2, -1)) -> None:
@@ -114,7 +133,7 @@ def _tri_wilson_func(arr: NDArrayf, window_size: int) -> float:
 # Numba wrapper for TRI from Wilson
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
-_tri_wilson_func_numba = numba.njit(inline="always", cache=True)(_tri_wilson_func)
+_tri_wilson_func_numba = njit(inline="always", cache=True)(_tri_wilson_func)
 
 
 def _tri_wilson_func_vectorized(input_block: NDArrayf, window_size: int, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
@@ -181,7 +200,7 @@ def _tpi_func(arr: NDArrayf, window_size: int) -> float:
 # Numba wrapper for TPI
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
-_tpi_func_numba = numba.njit(inline="always", cache=True)(_tpi_func)
+_tpi_func_numba = njit(inline="always", cache=True)(_tpi_func)
 
 
 def _tpi_func_vectorized(input_block: NDArrayf, window_size: int, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
@@ -249,7 +268,7 @@ def _roughness_func(arr: NDArrayf) -> float:
 # Numba wrapper for roughness
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
-_roughness_func_numba = numba.njit(inline="always", cache=True)(_roughness_func)
+_roughness_func_numba = njit(inline="always", cache=True)(_roughness_func)
 
 
 def _roughness_func_vectorized(input_block: NDArrayf, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
@@ -362,7 +381,7 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
 # Numba wrapper for fractal roughness
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
-_fractal_roughness_func_numba = numba.njit(inline="always", cache=True)(_fractal_roughness_func)
+_fractal_roughness_func_numba = njit(inline="always", cache=True)(_fractal_roughness_func)
 
 
 def _fractal_precompute(window_size: int) -> tuple[NDArrayf, NDArrayf, float, float]:
@@ -572,7 +591,7 @@ def _rugosity_func(arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.f
 
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
-_rugosity_func_numba = numba.njit(inline="always", cache=True)(_rugosity_func)
+_rugosity_func_numba = njit(inline="always", cache=True)(_rugosity_func)
 
 
 def _rugosity_func_vectorized(input_block: NDArrayf, resolution: float, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
@@ -744,7 +763,7 @@ def _preprocess_windowed_indexes(
     return idx_attrs, make_attrs, attrs_size
 
 
-@numba.njit(inline="always", cache=True)  # type: ignore
+@njit(inline="always", cache=True)  # type: ignore
 def _make_windowed_indexes(
     dem_window: NDArrayf,
     window_size: int,
@@ -794,7 +813,7 @@ def _make_windowed_indexes(
     return attrs
 
 
-@numba.njit(parallel=True, cache=True)  # type: ignore
+@njit(parallel=True, cache=True)  # type: ignore
 def _get_windowed_indexes_numba(
     dem: NDArrayf,
     window_size: int,
@@ -825,8 +844,8 @@ def _get_windowed_indexes_numba(
     outputs = np.full((attrs_size, row_range, col_range), fill_value=np.nan, dtype=out_dtype)
 
     # Loop over every pixel concurrently by using prange
-    for row in numba.prange(row_range):
-        for col in numba.prange(col_range):
+    for row in prange(row_range):
+        for col in prange(col_range):
 
             dem_window = dem[row : row + window_size, col : col + window_size].flatten()
             out_size = (attrs_size,)
@@ -958,6 +977,10 @@ def _get_windowed_indexes(
             force_backend=force_scipy_backend,
         )
     elif engine == "numba":
+
+        # Fail and raise error if optional dependency is not installed
+        numba = import_optional("numba")
+
         hw = int((window_size - 1) / 2)
         dem = np.pad(dem, pad_width=((hw, hw), (hw, hw)), constant_values=np.nan)
         # Now required to declare list typing in latest Numba before deprecation
