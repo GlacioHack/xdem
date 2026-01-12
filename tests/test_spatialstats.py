@@ -1347,7 +1347,7 @@ class TestPatchesMethod:
                 n_patches=7,
                 vectorized=False,
                 return_in_patch_statistics=True,
-                convolution_method="numba"
+                convolution_method="numba",
             )
 
     def test_patches_method_loop_quadrant(self) -> None:

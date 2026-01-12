@@ -36,7 +36,6 @@ from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
 from geoutils.stats.sampling import subsample_array
 from geoutils.vector.vector import Vector, VectorType
-from numba import prange
 from numpy.typing import ArrayLike
 from packaging.version import Version
 from scipy import integrate
