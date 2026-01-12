@@ -18,7 +18,7 @@
 
 It aims at **providing modular and robust tools for the most common analyses needed with elevation data**, including geospatial
 operations (vertical referencing), terrain analysis/geomorphometry (e.g., slope, aspect, curvatures, roughness indexes), 3D coregistration, corrections
-and uncertainty analysis from a wide range of peer-reviewed studies (see :ref:`methods` below for the full list).
+and uncertainty analysis from a wide range of peer-reviewed studies (see [Methods section](#methods-implemented-in-the-package) below for the full list).
 
 The core manipulation of elevation data is **conveniently centered around `DEM` and `EPC` classes**. Terrain analysis
 is implemented in a modular way to support state-of-the art methods (and, notably, re-implements all tools
@@ -54,7 +54,6 @@ See [mamba's documentation](https://mamba.readthedocs.io/en/latest/) to install 
 pip install xdem
 ```
 
-(methods=)
 ## Methods implemented in the package
 
 Below is a summary of the methods implemented in xDEM.
