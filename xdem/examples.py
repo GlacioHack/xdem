@@ -28,7 +28,7 @@ import geoutils as gu
 
 import xdem
 
-_DATA_REPO_URL = "https://github.com/GlacioHack/xdem-data/tarball/main"
+_DATA_REPO_URL = "https://github.com/GlacioHack/xdem-data/"
 _COMMIT_HASH = "f8b252cca1f9dc60fa6ccef3df93211b83803a44"
 
 # This directory needs to be created within xdem/ so that it works for an installed package as well
@@ -94,7 +94,7 @@ def _download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = F
     tar_path = os.path.join(temp_dir.name, "data.tar.gz")
 
     # Construct the URL with the commit hash
-    url = f"{_DATA_REPO_URL}#commit={_COMMIT_HASH}"
+    url = f"{_DATA_REPO_URL}/archive/{_COMMIT_HASH}.tar.gz"
 
     # Download the tarball
     response = urllib.request.urlopen(url)

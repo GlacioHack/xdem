@@ -24,6 +24,7 @@ from typing import Any, Literal
 
 import numba
 import numpy as np
+from scipy.ndimage import binary_dilation
 
 from xdem._typing import DTypeLike, NDArrayf
 
@@ -457,7 +458,6 @@ def _make_attribute_from_coefs(
     mincurv_idx: int,
     make_attrs: list[bool],
     out_size: tuple[int, ...],
-    # slope_method_id: int,
     surface_fit_id: int,
     curv_method_id: int,
     hillshade_altitude: float = 45.0,
@@ -963,7 +963,6 @@ def _get_surface_attributes_numba(
     idx_attrs: list[int],
     attrs_size: int,
     out_dtype: DTypeLike,
-    # slope_method_id: int = 0,
     surface_fit_id: int,
     curv_method_id: int,
     hillshade_altitude: float = 45.0,
@@ -1075,7 +1074,6 @@ def _get_surface_attributes_scipy(
     make_attrs: list[bool],
     idx_coefs: list[int],
     idx_attrs: list[int],
-    # slope_method_id: int,
     surface_fit_id: int,
     curv_method_id: int,
     attrs_size: int,
@@ -1164,6 +1162,14 @@ def _get_surface_attributes_scipy(
             out_dtype=out_dtype,
             **kwargs,
         )
+    # Force NaN at the coordinates surrounding (some kernels don't use the center value and thus don't propagate NaNs)
+    mask_invalid = ~np.isfinite(dem)
+    if surface_fit_id == 2:
+        struct = np.ones((5, 5), dtype=bool)
+    else:
+        struct = np.ones((3, 3), dtype=bool)
+    eroded_mask_invalid = binary_dilation(mask_invalid.astype(int), structure=struct, iterations=1)
+    attrs[:, eroded_mask_invalid] = np.nan
 
     return attrs
 
@@ -1221,18 +1227,26 @@ def _get_surface_attributes(
     # Run convolution to compute all coefficients, then reduce those to attributes through either SciPy or Numba
     # (For Numba: Reduction is done within loop to reduce memory usage of computing dozens of full-array coefficients)
     if engine == "scipy":
-        output = _get_surface_attributes_scipy(
-            dem=dem,
-            filters=kern3d,
-            idx_coefs=idx_coefs,
-            idx_attrs=idx_attrs,
-            make_attrs=make_attrs,
-            surface_fit_id=surface_fit_id,
-            curv_method_id=curv_method_id,
-            attrs_size=attrs_size,
-            out_dtype=out_dtype,
-            **kwargs,
-        )
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice.")
+            warnings.filterwarnings(
+                "ignore",
+                category=RuntimeWarning,
+                message="invalid value encountered in divide",
+            )
+            output = _get_surface_attributes_scipy(
+                dem=dem,
+                filters=kern3d,
+                idx_coefs=idx_coefs,
+                idx_attrs=idx_attrs,
+                make_attrs=make_attrs,
+                surface_fit_id=surface_fit_id,
+                curv_method_id=curv_method_id,
+                attrs_size=attrs_size,
+                out_dtype=out_dtype,
+                **kwargs,
+            )
     elif engine == "numba":
         _, M1, M2 = kern3d.shape
         half_M1 = int((M1 - 1) / 2)

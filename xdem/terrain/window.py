@@ -20,22 +20,33 @@
 from __future__ import annotations
 
 import warnings
+from functools import partial
 from typing import Literal
 
 import numba
 import numpy as np
-from scipy.ndimage import generic_filter
+import scipy
+from packaging.version import Version
 
 from xdem._typing import DTypeLike, NDArrayf
+
+_HAS_VECTORIZED_FILTER = Version(scipy.__version__) >= Version("1.16.0")
 
 #########################################################################
 # WINDOWED ATTRIBUTES: INDEPENDENT OF EACH OTHER WITH VARYING WINDOW SIZE
 #########################################################################
 
+# Implementation are both in Scipy (non-vectorized and vectorized) and Numba (using JIT on non-vectorized function).
+
+###################################################
+# Terrain Ruggedness Index from Riley et al. (1999)
+# #################################################
+# Ref link: http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf
+
 
 def _tri_riley_func(arr: NDArrayf) -> float:
     """
-    Terrain Ruggedness Index from Riley et al. (1999): squareroot of squared sum of differences between center and
+    Non-vectorized TRI from Riley, the squareroot of squared sum of differences between center and
     neighbouring pixels.
     """
     mid_ind = int(arr.shape[0] / 2)
@@ -43,29 +54,248 @@ def _tri_riley_func(arr: NDArrayf) -> float:
     return np.sqrt(np.sum(diff**2))
 
 
+# Numba wrapper for TRI from Riley
+# The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
+# We lose speed-up by a factor of ~5 without it
+_tri_riley_func_numba = numba.njit(inline="always", cache=True)(_tri_riley_func)
+
+
+def _tri_riley_func_vectorized(input_block: NDArrayf, axis: tuple[int, ...] = (-2, -1)) -> None:
+    """
+    Vectorized TRI from Riley, with input sizes (N, w, w) and output size (N).
+
+    Argument "axis" is required by scipy.ndimage.vectorized_filter.
+    """
+    w = input_block.shape[-1]
+    mid = w // 2
+
+    center = input_block[..., mid, mid]
+
+    diff = input_block - center[..., None, None]
+    output_block = np.sqrt(np.sum(diff * diff, axis=axis))
+
+    return output_block
+
+
+def _tri_riley_func_scipy(
+    dem: NDArrayf, window_size: int, force_backend: Literal["generic", "vectorized"] | None = None
+) -> NDArrayf:
+    """SciPy wrapper for TRI Riley implementation, with option of forcing backend for tests."""
+
+    # If vectorized is available, use it
+    if _HAS_VECTORIZED_FILTER or force_backend == "vectorized":
+        tri = scipy.ndimage.vectorized_filter(
+            dem,
+            _tri_riley_func_vectorized,
+            size=window_size,
+            mode="constant",
+            cval=np.nan,
+        )
+    # Otherwise fallback on generic function
+    else:
+        tri = scipy.ndimage.generic_filter(dem, _tri_riley_func, mode="constant", size=window_size, cval=np.nan)
+
+    return tri
+
+
+####################################################
+# Terrain Ruggedness Index from Wilson et al. (2007)
+####################################################
+# Ref link: http://dx.doi.org/10.1080/01490410701295962
+
+
 def _tri_wilson_func(arr: NDArrayf, window_size: int) -> float:
-    """Terrain Ruggedness Index from Wilson et al. (2007): mean difference between center and neighbouring pixels."""
+    """Non-vectorized TRI from Wilson, the mean difference between center and neighbouring pixels."""
     mid_ind = int(arr.shape[0] / 2)
     diff = np.abs(arr - arr[mid_ind])
     return np.sum(diff) / (window_size**2 - 1)
 
 
+# Numba wrapper for TRI from Wilson
+# The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
+# We lose speed-up by a factor of ~5 without it
+_tri_wilson_func_numba = numba.njit(inline="always", cache=True)(_tri_wilson_func)
+
+
+def _tri_wilson_func_vectorized(input_block: NDArrayf, window_size: int, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
+    """
+    Vectorized implementation of TRI from Wilson, with input sizes (N, w, w) and output size (N).
+
+    Argument "axis" is required by scipy.ndimage.vectorized_filter.
+    """
+    w = window_size
+    mid = w // 2
+
+    center = input_block[..., mid, mid]
+    diff = np.abs(input_block - center[..., None, None])
+
+    # Subtract center contribution (which is zero anyway, but explicit is clearer)
+    sum_diff = np.sum(diff, axis=axis)
+
+    output_block = sum_diff / (w * w - 1)
+    return output_block
+
+
+def _tri_wilson_func_scipy(
+    dem: NDArrayf, window_size: int, force_backend: Literal["generic", "vectorized"] | None = None
+) -> NDArrayf:
+    """SciPy wrapper for TRI Wilson implementation, with option of forcing backend for tests."""
+
+    # If vectorized is available, use it
+    if _HAS_VECTORIZED_FILTER or force_backend == "vectorized":
+        part_func = partial(_tri_wilson_func_vectorized, window_size=window_size)
+        tri = scipy.ndimage.vectorized_filter(
+            dem,
+            part_func,
+            size=window_size,
+            mode="constant",
+            cval=np.nan,
+        )
+    # Otherwise fallback on generic function
+    else:
+        tri = scipy.ndimage.generic_filter(
+            dem,
+            _tri_wilson_func,
+            mode="constant",
+            size=window_size,
+            cval=np.nan,
+            extra_arguments=(window_size,),
+        )
+
+    return tri
+
+
+##############################################
+# Topographic Position Index from Weiss (2001)
+##############################################
+# Ref link: http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf
+
+
 def _tpi_func(arr: NDArrayf, window_size: int) -> float:
-    """Topographic Position Index from Weiss (2001): difference between center and mean of neighbouring pixels."""
+    """Non-vectorized TPI, the difference between center and mean of neighbouring pixels."""
+
     mid_ind = int(arr.shape[0] / 2)
     return arr[mid_ind] - (np.sum(arr) - arr[mid_ind]) / (window_size**2 - 1)
 
 
+# Numba wrapper for TPI
+# The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
+# We lose speed-up by a factor of ~5 without it
+_tpi_func_numba = numba.njit(inline="always", cache=True)(_tpi_func)
+
+
+def _tpi_func_vectorized(input_block: NDArrayf, window_size: int, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
+    """
+    Vectorized TPI, with input sizes (N, w, w) and output size (N).
+
+    Argument "axis" is required by scipy.ndimage.vectorized_filter.
+    """
+    w = window_size
+    mid = w // 2
+
+    center = input_block[..., mid, mid]
+    sum_all = np.sum(input_block, axis=axis)
+    sum_neighbors = sum_all - center
+
+    output_block = center - sum_neighbors / (w * w - 1)
+
+    return output_block
+
+
+def _tpi_func_scipy(
+    dem: NDArrayf, window_size: int, force_backend: Literal["generic", "vectorized"] | None = None
+) -> NDArrayf:
+    """SciPy wrapper for TPI implementation, with option of forcing backend for tests."""
+
+    # If vectorized is available, use it
+    if _HAS_VECTORIZED_FILTER or force_backend == "vectorized":
+        _part_func = partial(_tpi_func_vectorized, window_size=window_size)
+        tpi = scipy.ndimage.vectorized_filter(
+            dem,
+            _part_func,
+            size=window_size,
+            mode="constant",
+            cval=np.nan,
+        )
+
+    # Otherwise fallback on generic function
+    else:
+        tpi = scipy.ndimage.generic_filter(
+            dem,
+            _tpi_func,
+            mode="constant",
+            size=window_size,
+            cval=np.nan,
+            extra_arguments=(window_size,),
+        )
+
+    return tpi
+
+
+################################
+# Roughness from Dartnell (2000)
+################################
+# Ref link: https://environment.sfsu.edu/node/11292
+
+
 def _roughness_func(arr: NDArrayf) -> float:
-    """Roughness from Dartnell (2000): difference between maximum and minimum of the window."""
+    """Non-vectorized roughness from Dartnell, the difference between maximum and minimum of the window."""
     if np.count_nonzero(np.isnan(arr)) > 0:
         return float("nan")  # This is somehow necessary for Numba to not ignore NaNs
     else:
         return float(np.max(arr) - np.min(arr))
 
 
+# Numba wrapper for roughness
+# The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
+# We lose speed-up by a factor of ~5 without it
+_roughness_func_numba = numba.njit(inline="always", cache=True)(_roughness_func)
+
+
+def _roughness_func_vectorized(input_block: NDArrayf, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
+    """
+    Vectorized roughness with input sizes (N, w, w) and output size (N).
+
+    Argument "axis" is required by scipy.ndimage.vectorized_filter.
+    """
+    has_nan = np.isnan(input_block).any(axis=axis)
+
+    max_val = np.max(input_block, axis=axis)
+    min_val = np.min(input_block, axis=axis)
+
+    output_block = max_val - min_val
+    output_block[has_nan] = np.nan
+
+    return output_block
+
+
+def _roughness_func_scipy(
+    dem: NDArrayf, window_size: int, force_backend: Literal["generic", "vectorized"] | None = None
+) -> NDArrayf:
+    """SciPy wrapper for TPI implementation, with option of forcing backend for tests."""
+
+    # If vectorized is available, use it
+    if _HAS_VECTORIZED_FILTER or force_backend == "vectorized":
+        return scipy.ndimage.vectorized_filter(
+            dem,
+            _roughness_func_vectorized,
+            size=window_size,
+            mode="constant",
+            cval=np.nan,
+        )
+    # Otherwise fallback on generic function
+    else:
+        return scipy.ndimage.generic_filter(dem, _roughness_func, mode="constant", size=window_size, cval=np.nan)
+
+
+###############################################
+# Fractal roughness from Taud and Parrot (2005)
+###############################################
+# Ref link: https://doi.org/10.4000/geomorphologie.622
+
+
 def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLike = np.float32) -> float:
-    """Fractal roughness according to the box-counting method of Taud and Parrot (2005)."""
+    """Non-vectorized fractal roughness according to the box-counting method of Taud and Parrot."""
 
     # First, we compute the number of voxels for each pixel of Equation 4
     mid_ind = int(np.floor(arr.shape[0] / 2))
@@ -129,9 +359,132 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
     return D
 
 
+# Numba wrapper for fractal roughness
+# The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
+# We lose speed-up by a factor of ~5 without it
+_fractal_roughness_func_numba = numba.njit(inline="always", cache=True)(_fractal_roughness_func)
+
+
+def _fractal_precompute(window_size: int) -> tuple[NDArrayf, NDArrayf, float, float]:
+    """Pre-compute scale-dependent constants for vectorized fractal roughness."""
+
+    hw = window_size // 2
+    qs = np.array([q for q in range(1, hw + 1) if hw % q == 0], dtype=np.int32)
+
+    log_q = np.log(qs)
+    n = len(qs)
+    mx = log_q.mean()
+    SS_xx = np.sum(log_q * log_q) - n * mx * mx
+
+    return qs, log_q, mx, SS_xx  # type: ignore
+
+
+def _fractal_roughness_func_vectorized(
+    input_block: NDArrayf,
+    window_size: int,
+    qs: NDArrayf,
+    log_q: NDArrayf,
+    mx: float,
+    SS_xx: float,
+    axis: tuple[int, ...] = (-2, -1),
+) -> NDArrayf:
+    """
+    Vectorized fractal roughness, with input sizes (N, w, w) and output size (N).
+
+    Argument "axis" is required by scipy.ndimage.vectorized_filter.
+    """
+
+    w = window_size
+    mid = w // 2
+    # Get center value
+    Zc = input_block[..., mid, mid]
+
+    # Voxel count V of Equation 4
+    V = np.clip(input_block - Zc[..., None, None], 0, w)
+
+    # Then Equation 5
+    Ns = []
+    for q in qs:
+        nq = (w - 1) // q
+        # Reshape into blocks of q x q
+        # Shape: (..., nq, q, nq, q)
+        blocks = V[..., : nq * q, : nq * q]
+        blocks = blocks.reshape(blocks.shape[:-2] + (nq, q, nq, q))
+        # Max per block
+        max_per_block = blocks.max(axis=(axis[0] - 1, axis[1]))
+        Ns.append(max_per_block.sum(axis=axis) / q)
+
+    Ns = np.stack(Ns, axis=-1)
+
+    # Linear regression in log–log space
+    y = np.log(Ns)
+    my = y.mean(axis=-1)
+    SS_xy = np.sum(y * log_q, axis=-1) - len(qs) * my * mx
+    b1 = SS_xy / SS_xx
+    output_block = -b1
+
+    return output_block
+
+
+def _fractal_roughness_func_scipy(
+    dem: NDArrayf,
+    window_size: int,
+    out_dtype: DTypeLike = np.float32,
+    force_backend: Literal["generic", "vectorized"] | None = None,
+) -> NDArrayf:
+    """SciPy wrapper for fractal roughness implementation, with option of forcing backend for tests."""
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice.")
+        warnings.filterwarnings(
+            "ignore",
+            category=RuntimeWarning,
+            message="divide by zero encountered in .*",
+        )
+        warnings.filterwarnings(
+            "ignore",
+            category=RuntimeWarning,
+            message="invalid value encountered in .*",
+        )
+
+        # If vectorized is available, use it
+        if _HAS_VECTORIZED_FILTER or force_backend == "vectorized":
+
+            # Pre-compute scale-dependent constants
+            qs, log_q, mx, SS_xx = _fractal_precompute(window_size)
+
+            _part_func = partial(
+                _fractal_roughness_func_vectorized, window_size=window_size, qs=qs, log_q=log_q, mx=mx, SS_xx=SS_xx
+            )
+            return scipy.ndimage.vectorized_filter(
+                dem,
+                _part_func,
+                size=window_size,
+                mode="constant",
+                cval=np.nan,
+            )
+
+        # Otherwise fallback on generic function
+        else:
+            return scipy.ndimage.generic_filter(
+                dem,
+                _fractal_roughness_func,
+                size=window_size,
+                mode="constant",
+                cval=np.nan,
+                extra_arguments=(window_size, out_dtype),
+            )
+
+
+##############################
+# Rugosity from Jenness (2004)
+##############################
+# Ref link: https://doi.org/10.2193/0091-7648(2004)032%5B0829:CLSAFD%5D2.0.CO;2
+
+
 def _rugosity_func(arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.float32) -> float:
     """
-    Rugosity from Jenness (2004): difference between real surface area and planimetric surface area.
+    Non-vectorized rugosity, the difference between real surface area and planimetric surface area.
 
     The below computation only works for a 3x3 array, would need more effort to generalize it.
     """
@@ -219,12 +572,130 @@ def _rugosity_func(arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.f
 
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
-_tpi_func_numba = numba.njit(inline="always", cache=True)(_tpi_func)
-_tri_riley_func_numba = numba.njit(inline="always", cache=True)(_tri_riley_func)
-_tri_wilson_func_numba = numba.njit(inline="always", cache=True)(_tri_wilson_func)
-_roughness_func_numba = numba.njit(inline="always", cache=True)(_roughness_func)
 _rugosity_func_numba = numba.njit(inline="always", cache=True)(_rugosity_func)
-_fractal_roughness_func_numba = numba.njit(inline="always", cache=True)(_fractal_roughness_func)
+
+
+def _rugosity_func_vectorized(input_block: NDArrayf, resolution: float, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
+    """
+    Vectorized rugosity from Jenness, with input sizes (N, 3, 3) and output size (N).
+
+    Works on a 3x3 window only.
+    Argument "axis" is required by scipy.ndimage.vectorized_filter.
+    """
+
+    # Alias for readability
+    Z = input_block
+    L = resolution
+
+    # Center-relative dz for the 8 neighbors
+    Zc = Z[..., 1, 1]
+
+    dz_center = np.stack(
+        [
+            Zc - Z[..., 0, 0],  # 0
+            Zc - Z[..., 0, 1],  # 1
+            Zc - Z[..., 0, 2],  # 2
+            Zc - Z[..., 1, 0],  # 3
+            Zc - Z[..., 1, 2],  # 4
+            Zc - Z[..., 2, 0],  # 5
+            Zc - Z[..., 2, 1],  # 6
+            Zc - Z[..., 2, 2],  # 7
+        ],
+        axis=-1,
+    )
+
+    # Planimetric lengths for center segments
+    dl_center = (
+        np.array(
+            [np.sqrt(2), 1, np.sqrt(2), 1, 1, np.sqrt(2), 1, np.sqrt(2)],
+            dtype=Z.dtype,
+        )
+        * L
+    )
+
+    # Compute dz for surrounding-surrounding segments
+    dz_edges = np.stack(
+        [
+            Z[..., 0, 0] - Z[..., 0, 1],  # 8
+            Z[..., 0, 1] - Z[..., 0, 2],  # 9
+            Z[..., 2, 0] - Z[..., 2, 1],  # 10
+            Z[..., 2, 1] - Z[..., 2, 2],  # 11
+            Z[..., 0, 0] - Z[..., 1, 0],  # 12
+            Z[..., 1, 0] - Z[..., 2, 0],  # 13
+            Z[..., 0, 2] - Z[..., 1, 2],  # 14
+            Z[..., 1, 2] - Z[..., 2, 2],  # 15
+        ],
+        axis=-1,
+    )
+
+    dl_edges = np.full(8, L, dtype=Z.dtype)
+
+    # Then, combine all segments
+    dzs = np.concatenate([dz_center, dz_edges], axis=-1)
+    dls = np.concatenate([dl_center, dl_edges])
+
+    # Derive half surface lengths (hsl)
+    hsl = np.sqrt(dzs * dzs + dls * dls) / 2
+
+    # Make table of triangle indices into hsl
+    tri_idx = np.array(
+        [
+            [3, 0, 12],
+            [0, 1, 8],
+            [1, 2, 9],
+            [2, 4, 14],
+            [4, 7, 15],
+            [7, 6, 11],
+            [6, 5, 10],
+            [5, 3, 13],
+        ]
+    )
+
+    a = hsl[..., tri_idx[:, 0]]
+    b = hsl[..., tri_idx[:, 1]]
+    c = hsl[..., tri_idx[:, 2]]
+
+    s = (a + b + c) / 2
+    A = np.sqrt(s * (s - a) * (s - b) * (s - c))
+
+    output_block = np.sum(A, axis=-1) / (L * L)
+
+    return output_block
+
+
+def _rugosity_func_scipy(
+    dem: NDArrayf,
+    resolution: float,
+    out_dtype: DTypeLike = np.float32,
+    force_backend: Literal["generic", "vectorized"] | None = None,
+) -> NDArrayf:
+    """SciPy wrapper for rugosity implementation, with option of forcing backend for tests."""
+
+    # If vectorized is available, use it
+    if _HAS_VECTORIZED_FILTER or force_backend == "vectorized":
+        _part_func = partial(_rugosity_func_vectorized, resolution=resolution)
+        return scipy.ndimage.vectorized_filter(
+            dem,
+            _part_func,
+            size=3,
+            mode="constant",
+            cval=np.nan,
+        )
+    # Otherwise fallback on generic function
+    else:
+        return scipy.ndimage.generic_filter(
+            dem,
+            _rugosity_func,
+            size=3,
+            mode="constant",
+            cval=np.nan,
+            extra_arguments=(resolution, out_dtype),
+        )
+
+
+####################################
+# PREPROCESSING AND HEADER FUNCTIONS
+####################################
 
 
 def _preprocess_windowed_indexes(
@@ -388,72 +859,46 @@ def _get_windowed_indexes_scipy(
     tri_method_id: int,
     attrs_size: int,
     out_dtype: DTypeLike = np.float32,
+    force_backend: Literal["generic", "vectorized"] | None = None,
 ) -> NDArrayf:
 
     outputs = np.full((attrs_size, dem.shape[0], dem.shape[1]), fill_value=np.nan, dtype=out_dtype)
 
     make_tpi, make_tri, make_roughness, make_rugosity, make_fractal_roughness = make_attrs
 
-    # Topographic position index
     if make_tpi:
+        tpi = _tpi_func_scipy(dem=dem, window_size=window_size, force_backend=force_backend)
         tpi_idx = idx_attrs[0]
-        outputs[tpi_idx] = generic_filter(
-            dem,
-            _tpi_func,
-            mode="constant",
-            size=window_size,
-            cval=np.nan,
-            extra_arguments=(window_size,),
-        )
+        outputs[tpi_idx] = tpi
 
     if make_tri:
-
         tri_idx = idx_attrs[1]
         if tri_method_id == 0:
-            outputs[tri_idx] = generic_filter(dem, _tri_riley_func, mode="constant", size=window_size, cval=np.nan)
+            tri_ril = _tri_riley_func_scipy(dem=dem, window_size=window_size, force_backend=force_backend)
+            outputs[tri_idx] = tri_ril
 
         elif tri_method_id == 1:
-            outputs[tri_idx] = generic_filter(
-                dem,
-                _tri_wilson_func,
-                mode="constant",
-                size=window_size,
-                cval=np.nan,
-                extra_arguments=(window_size,),
-            )
+            tri_wil = _tri_wilson_func_scipy(dem=dem, window_size=window_size, force_backend=force_backend)
+            outputs[tri_idx] = tri_wil
 
     if make_roughness:
         roughness_idx = idx_attrs[2]
-        outputs[roughness_idx] = generic_filter(dem, _roughness_func, mode="constant", size=window_size, cval=np.nan)
+        roughness = _roughness_func_scipy(dem=dem, window_size=window_size, force_backend=force_backend)
+        outputs[roughness_idx] = roughness
 
     if make_rugosity:
         rugosity_idx = idx_attrs[3]
-        outputs[rugosity_idx] = generic_filter(
-            dem,
-            _rugosity_func,
-            mode="constant",
-            size=window_size,
-            cval=np.nan,
-            extra_arguments=(resolution, out_dtype),
+        rugosity = _rugosity_func_scipy(
+            dem=dem, resolution=resolution, out_dtype=out_dtype, force_backend=force_backend
         )
+        outputs[rugosity_idx] = rugosity
 
     if make_fractal_roughness:
         frac_roughness_idx = idx_attrs[4]
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice.")
-            warnings.filterwarnings(
-                "ignore",
-                category=RuntimeWarning,
-                message="invalid value encountered in divide",
-            )
-            outputs[frac_roughness_idx] = generic_filter(
-                dem,
-                _fractal_roughness_func,
-                mode="constant",
-                size=window_size,
-                cval=np.nan,
-                extra_arguments=(window_size, out_dtype),
-            )
+        frac_roughness = _fractal_roughness_func_scipy(
+            dem=dem, window_size=window_size, out_dtype=out_dtype, force_backend=force_backend
+        )
+        outputs[frac_roughness_idx] = frac_roughness
 
     return outputs
 
@@ -466,6 +911,7 @@ def _get_windowed_indexes(
     out_dtype: DTypeLike = np.float32,
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     engine: Literal["scipy", "numba"] = "scipy",
+    force_scipy_backend: Literal["generic", "vectorized"] | None = None,
 ) -> NDArrayf:
     """
     Derive windowed terrain indexes using SciPy or Numba based on a windowed calculation of variable size.
@@ -488,6 +934,7 @@ def _get_windowed_indexes(
         input DEM if floating type or to float32 if integer type.
     :param tri_method: Method for the terrain ruggedness index ("Riley" or "Wilson").
     :param engine: Engine to compute the windowed indexes ("scipy" or "numba").
+    :param force_scipy_backend: (For testing and SciPy only) Whether to use generic_filter or vectorized_filter.
     """
 
     # Get list of necessary coefficients depending on method and resolution
@@ -508,6 +955,7 @@ def _get_windowed_indexes(
             tri_method_id=tri_method_id,
             attrs_size=attrs_size,
             out_dtype=out_dtype,
+            force_backend=force_scipy_backend,
         )
     elif engine == "numba":
         hw = int((window_size - 1) / 2)

@@ -41,7 +41,6 @@ available_attributes = [
     "slope",
     "aspect",
     "hillshade",
-    "curvature",
     "profile_curvature",
     "tangential_curvature",
     "planform_curvature",
@@ -95,7 +94,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
@@ -116,7 +115,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
@@ -137,7 +136,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
@@ -158,7 +157,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
@@ -179,7 +178,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
@@ -1631,7 +1630,7 @@ def rugosity(
         ...                 [1, 2, 1],
         ...                 [1, 1, 1]], dtype="float32")
         >>> rugosity(dem, resolution=1.)[1, 1]
-        np.float32(1.4142135)
+        np.float32(1.4142131)
         >>> dem = np.array([[1, 1, 1],
         ...                 [1, 1, 1],
         ...                 [1, 1, 1]], dtype="float32")
