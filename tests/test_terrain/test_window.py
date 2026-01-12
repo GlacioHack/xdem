@@ -115,7 +115,7 @@ class TestTerrainAttribute:
             tri_method = "Wilson"
 
         attrs_scipy = xdem.terrain.window._get_windowed_indexes(
-            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="scipy"
+            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method
         )
         attrs_numba = xdem.terrain.window._get_windowed_indexes(
             dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="numba"

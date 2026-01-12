@@ -212,12 +212,12 @@ class TestTerrainAttribute:
         """Test the get_terrain_attribute function by itself."""
 
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
-        slope = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res, engine="scipy")
+        slope = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res)
         assert isinstance(slope, np.ndarray)
 
         # Create three products at the same time
         slope2, _, hillshade = xdem.terrain.get_terrain_attribute(
-            self.dem.data, ["slope", "aspect", "hillshade"], resolution=self.dem.res, engine="scipy"
+            self.dem.data, ["slope", "aspect", "hillshade"], resolution=self.dem.res
         )
 
         # Create a hillshade using its own function
@@ -229,7 +229,7 @@ class TestTerrainAttribute:
 
         # A slope map with a lower resolution (higher value) should have gentler slopes.
         slope_lowres = xdem.terrain.get_terrain_attribute(
-            self.dem.data, "slope", resolution=self.dem.res[0] * 2, engine="scipy"
+            self.dem.data, "slope", resolution=self.dem.res[0] * 2
         )
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
@@ -288,7 +288,7 @@ class TestTerrainAttribute:
 
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
         xdem.terrain.get_terrain_attribute(
-            self.dem, "slope", mp_config=mp_config, resolution=self.dem.res, engine="scipy"
+            self.dem, "slope", mp_config=mp_config, resolution=self.dem.res
         )
         assert os.path.exists(outfile)
         slope = gu.Raster(outfile, load_data=True)
@@ -297,7 +297,7 @@ class TestTerrainAttribute:
 
         # Create three products at the same time
         xdem.terrain.get_terrain_attribute(
-            self.dem, ["slope", "aspect", "hillshade"], mp_config=mp_config, resolution=self.dem.res, engine="scipy"
+            self.dem, ["slope", "aspect", "hillshade"], mp_config=mp_config, resolution=self.dem.res
         )
         for file in outfile_multi:
             assert os.path.exists(file)
@@ -371,12 +371,12 @@ class TestTerrainAttribute:
         nodata = -9999
         dem = xdem.DEM.from_array(data, transform=transform, crs=crs, nodata=nodata)
         with pytest.warns(match="DEM is not in a projected CRS.*"):
-            xdem.terrain.get_terrain_attribute(dem, "slope", engine="scipy")
+            xdem.terrain.get_terrain_attribute(dem, "slope")
 
     def test_get_terrain_attribute__raster_input(self) -> None:
         """Test the get_terrain_attribute function supports raster input/output."""
 
-        slope, aspect = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "aspect"], engine="scipy")
+        slope, aspect = xdem.terrain.get_terrain_attribute(self.dem, attribute=["slope", "aspect"])
 
         assert slope != aspect
 

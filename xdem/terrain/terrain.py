@@ -472,7 +472,7 @@ def _get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> list[NDArrayf]: ...
@@ -491,7 +491,7 @@ def _get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> list[RasterType]: ...
@@ -509,7 +509,7 @@ def _get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> list[NDArrayf] | list[RasterType]:
@@ -1399,7 +1399,7 @@ def topographic_position_index(
     dem: NDArrayf | MArrayf,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -1408,7 +1408,7 @@ def topographic_position_index(
     dem: RasterType,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -1417,7 +1417,7 @@ def topographic_position_index(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
     Calculates the Topographic Position Index, the difference to the average of neighbouring pixels. Output is in the
@@ -1461,7 +1461,7 @@ def terrain_ruggedness_index(
     method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -1471,7 +1471,7 @@ def terrain_ruggedness_index(
     method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -1481,7 +1481,7 @@ def terrain_ruggedness_index(
     method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
     Calculates the Terrain Ruggedness Index, the cumulated differences to neighbouring pixels. Output is in the
@@ -1531,7 +1531,7 @@ def roughness(
     dem: NDArrayf | MArrayf,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -1540,7 +1540,7 @@ def roughness(
     dem: RasterType,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -1549,7 +1549,7 @@ def roughness(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
     Calculates the roughness, the maximum difference between neighbouring pixels, for any window size. Output is in the
@@ -1592,7 +1592,7 @@ def rugosity(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -1601,7 +1601,7 @@ def rugosity(
     dem: RasterType,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -1610,7 +1610,7 @@ def rugosity(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
     Calculates the rugosity, the ratio between real area and planimetric area. Only available for a 3x3 window. The
@@ -1653,7 +1653,7 @@ def fractal_roughness(
     dem: NDArrayf | MArrayf,
     window_size: int = 13,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
 
 
@@ -1662,7 +1662,7 @@ def fractal_roughness(
     dem: RasterType,
     window_size: int = 13,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
 
 
@@ -1671,7 +1671,7 @@ def fractal_roughness(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 13,
     mp_config: MultiprocConfig | None = None,
-    engine: Literal["scipy", "numba"] = "numba",
+    engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
     """
     Calculates the fractal roughness, the local 3D fractal dimension. Can only be computed on window sizes larger or

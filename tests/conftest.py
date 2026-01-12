@@ -1,9 +1,9 @@
 import os
 from typing import Callable
 
+import numpy as np
 import pytest
 
-import numpy as np
 from xdem.examples import _download_and_extract_tarball
 from xdem.terrain import get_terrain_attribute
 
@@ -35,6 +35,7 @@ def get_test_data_path() -> Callable[[str], str]:
         return file_path
 
     return _get_test_data_path
+
 
 @pytest.fixture(scope="session", autouse=True)
 def precompile_numba_functions():

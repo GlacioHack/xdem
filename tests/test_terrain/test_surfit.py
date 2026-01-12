@@ -149,7 +149,7 @@ class TestTerrainAttribute:
         dem = self.dem.copy()
 
         # Derive curvature without any gaps
-        curvature = xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res, engine="scipy")
+        curvature = xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 
         # Validate that the array has the same shape as the input and that all non-edge values are finite.
         assert curvature.shape == dem.data.shape
@@ -169,14 +169,14 @@ class TestTerrainAttribute:
                 f"((1.0, 2.0) was given). This was required by: ['{name}']."
             ),
         ):
-            xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1.0, 2.0), engine="scipy")
+            xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=(1.0, 2.0))
 
         # Introduce some nans
         rng = np.random.default_rng(42)
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
         dem.data.mask.ravel()[rng.choice(dem.data.size, 25, replace=False)] = True
         # Validate that this doesn't raise weird warnings after introducing nans.
-        xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res, engine="scipy")
+        xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 
     @pytest.mark.parametrize(
         "name",
@@ -200,7 +200,6 @@ class TestTerrainAttribute:
             resolution=self.dem.res,
             curv_method="geometric",
             surface_fit=surface_fit,
-            engine="scipy",
         )
         curv_d = xdem.terrain.get_terrain_attribute(
             self.dem.data,
@@ -208,7 +207,6 @@ class TestTerrainAttribute:
             resolution=self.dem.res,
             curv_method="directional",
             surface_fit=surface_fit,
-            engine="scipy",
         )
 
         # For planform, the result should be the same
@@ -477,7 +475,7 @@ class TestTerrainAttribute:
 
         # Generate attribute
         attr = xdem.terrain.get_terrain_attribute(
-            dem, resolution=1, attribute=attribute, surface_fit=surface_fit, engine="numba"
+            dem, resolution=1, attribute=attribute, surface_fit=surface_fit,
         )
         mask_nan_attr = ~np.isfinite(attr)
 

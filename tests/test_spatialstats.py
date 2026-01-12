@@ -39,8 +39,12 @@ class TestBinning:
     ref, diff, mask, outlines = load_ref_and_diff()
 
     # Derive terrain attributes
-    slope, aspect = xdem.terrain.get_terrain_attribute(ref, attribute=["slope", "aspect"], surface_fit="Horn", engine="scipy")
-    max_curv = xdem.terrain.get_terrain_attribute(ref, attribute=["max_curvature"], surface_fit="ZevenbergThorne", engine="scipy")
+    slope, aspect = xdem.terrain.get_terrain_attribute(
+        ref, attribute=["slope", "aspect"], surface_fit="Horn", engine="scipy"
+    )
+    max_curv = xdem.terrain.get_terrain_attribute(
+        ref, attribute=["max_curvature"], surface_fit="ZevenbergThorne", engine="scipy"
+    )
 
     def test_nd_binning(self, test_output_dir: str) -> None:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
