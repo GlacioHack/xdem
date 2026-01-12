@@ -168,7 +168,7 @@ class Accuracy(Workflows):
         """
         Compute reprojection.
         """
-        sampling_source = self.config["coregistration"]["sampling_grid"]
+        sampling_source = self.config["inputs"]["sampling_grid"]
 
         # Reprojection
         if sampling_source == "reference_elev":
