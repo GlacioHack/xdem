@@ -25,6 +25,7 @@ import logging
 from pathlib import Path
 
 import geoutils as gu
+import pandas as pd
 import pytest
 
 import xdem
@@ -212,55 +213,64 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
 
 
 @pytest.mark.parametrize(
-    "level",
-    [1, 2],
+    "config",
+    [
+        (True, "reference_elev", "reference_elev"),
+        (False, "reference_elev", "reference_elev"),
+        (True, "to_be_aligned_elev", "to_be_aligned_elev"),
+        (False, "to_be_aligned_elev", "to_be_aligned_elev"),
+        (True, None, None),
+        (True, None, "reference_elev"),
+        (False, None, None),
+        (False, None, "reference_elev"),
+    ],
 )
-def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
+def test_run_prepa_data(get_accuracy_inputs_config, tmp_path, config):
     """
-    Test run function
+    Test preparation data with all sampling_grid values in a coreg/no coreg process.
     """
 
+    process, sampling_grid, dem_to_crop = config
+    print(process, sampling_grid, dem_to_crop)
     user_config = get_accuracy_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path), "level": level}
-    user_config["coregistration"] = {"process": False}
+    user_config["outputs"] = {"path": str(tmp_path), "level": 2}
+    user_config["coregistration"] = {"process": process}
+    user_config["inputs"]["sampling_grid"] = sampling_grid
+
+    if dem_to_crop is not None:
+        dem = xdem.DEM(user_config["inputs"][dem_to_crop]["path_to_elev"])
+        print(user_config["inputs"][dem_to_crop]["path_to_elev"], dem.shape)
+        nrows, ncols = dem.shape
+
+        dem_crop = dem.icrop((0, 0, ncols - 3, nrows - 3))
+        dem_crop.to_file(Path(tmp_path / "reference_elev_crop.tif"))
+        user_config["inputs"][dem_to_crop]["path_to_elev"] = Path(tmp_path / "reference_elev_crop.tif").as_posix()
+
     workflows = Accuracy(user_config)
-    workflows.run()
 
-    assert Path(tmp_path / "tables").joinpath("diff_elev_stats.csv").exists()
+    if dem_to_crop != sampling_grid:
+        with pytest.raises(ValueError, match="same shape, transform and CRS"):
+            workflows.run()
+    else:
+        workflows.run()
 
-    assert Path(tmp_path / "plots").joinpath("diff_elev.png").exists()
-    assert not Path(tmp_path / "plots").joinpath("diff_elev_before_coreg.png").exists()
-    assert not Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
-    assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
+        if sampling_grid is not None:
+            raster_files = [
+                "to_be_aligned_elev_reprojected.tif",
+                "reference_elev_reprojected.tif",
+            ]
 
-    assert not Path(tmp_path / "rasters").joinpath("aligned_elev.tif").exists()
+            for file in raster_files:
+                dem_test = xdem.DEM(Path(tmp_path) / "rasters" / file)
+                assert dem_crop.shape == dem_test.shape
 
-    assert Path(tmp_path).joinpath("report.html").exists()
-    # sometimes the PDF creation fails for no reason
-    # assert Path(tmp_path).joinpath("report.pdf").exists()
-    assert Path(tmp_path).joinpath("used_config.yaml").exists()
-
-    csv_files = [
-        "diff_elev_stats.csv",
-        "reference_elev_stats.csv",
-        "to_be_aligned_elev_stats.csv",
-    ]
-
-    raster_files = ["diff_elev.tif"]
-
-    if level == 1:
-        for file in csv_files:
-            assert (Path(tmp_path) / "tables" / file).exists()
-        for file in raster_files:
-            assert not (Path(tmp_path) / "rasters" / file).exists()
-
-    if level == 2:
-        for file in csv_files:
-            assert (Path(tmp_path) / "tables" / file).exists()
-        for file in raster_files:
-            assert not (Path(tmp_path) / "rasters" / file).exists()
+            csv_files = [
+                "reference_elev_stats.csv",
+                "to_be_aligned_elev_stats.csv",
+            ]
+            for file in csv_files:
+                stats = pd.read_csv(Path(tmp_path / "tables" / file).as_posix())
+                assert stats["Total count"].values[0] == dem_crop.shape[0] * dem_crop.shape[1]
 
 
 def test_create_html(tmp_path, get_accuracy_object_with_run):

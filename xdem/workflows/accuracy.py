@@ -61,7 +61,6 @@ class Accuracy(Workflows):
         self.compute_coreg = self.config["coregistration"]["process"]
 
         if not self.compute_coreg:
-            del self.config["coregistration"]["sampling_grid"]
             del self.config["coregistration"]["step_one"]
 
         yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
@@ -302,9 +301,12 @@ class Accuracy(Workflows):
 
         self._load_data()
 
-        if self.compute_coreg:
-            # Reprojection step
+        # Reprojection step
+        if "sampling_grid" in self.config["inputs"]:
+            print(self.config["inputs"]["sampling_grid"])
             self._prepare_datas_for_coreg()
+
+        if self.compute_coreg:
             # Coregistration step
             aligned_elev = self._compute_coregistration()
         else:
