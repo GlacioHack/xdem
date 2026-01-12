@@ -19,14 +19,15 @@
 """Terrain submodule on windowed attributes: independent calculations in a varying window size."""
 from __future__ import annotations
 
-from functools import partial
-
 import warnings
+from functools import partial
 from typing import Literal
-from packaging.version import Version
+
 import numba
 import numpy as np
 import scipy
+from packaging.version import Version
+
 from xdem._typing import DTypeLike, NDArrayf
 
 _HAS_VECTORIZED_FILTER = Version(scipy.__version__) >= Version("1.16.0")
@@ -42,6 +43,7 @@ _HAS_VECTORIZED_FILTER = Version(scipy.__version__) >= Version("1.16.0")
 # #################################################
 # Ref link: http://download.osgeo.org/qgis/doc/reference-docs/Terrain_Ruggedness_Index.pdf
 
+
 def _tri_riley_func(arr: NDArrayf) -> float:
     """
     Non-vectorized TRI from Riley, the squareroot of squared sum of differences between center and
@@ -51,12 +53,14 @@ def _tri_riley_func(arr: NDArrayf) -> float:
     diff = np.abs(arr - arr[mid_ind])
     return np.sqrt(np.sum(diff**2))
 
+
 # Numba wrapper for TRI from Riley
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
 _tri_riley_func_numba = numba.njit(inline="always", cache=True)(_tri_riley_func)
 
-def _tri_riley_func_vectorized(input_block: NDArrayf, axis: int | tuple[int, ...] = (-2, -1)) -> None:
+
+def _tri_riley_func_vectorized(input_block: NDArrayf, axis: tuple[int, ...] = (-2, -1)) -> None:
     """
     Vectorized TRI from Riley, with input sizes (N, w, w) and output size (N).
 
@@ -72,8 +76,10 @@ def _tri_riley_func_vectorized(input_block: NDArrayf, axis: int | tuple[int, ...
 
     return output_block
 
-def _tri_riley_func_scipy(dem: NDArrayf, window_size: int,
-                          force_backend: Literal["generic", "vectorized"] | None = None) -> NDArrayf:
+
+def _tri_riley_func_scipy(
+    dem: NDArrayf, window_size: int, force_backend: Literal["generic", "vectorized"] | None = None
+) -> NDArrayf:
     """SciPy wrapper for TRI Riley implementation, with option of forcing backend for tests."""
 
     # If vectorized is available, use it
@@ -91,10 +97,12 @@ def _tri_riley_func_scipy(dem: NDArrayf, window_size: int,
 
     return tri
 
+
 ####################################################
 # Terrain Ruggedness Index from Wilson et al. (2007)
 ####################################################
 # Ref link: http://dx.doi.org/10.1080/01490410701295962
+
 
 def _tri_wilson_func(arr: NDArrayf, window_size: int) -> float:
     """Non-vectorized TRI from Wilson, the mean difference between center and neighbouring pixels."""
@@ -102,13 +110,14 @@ def _tri_wilson_func(arr: NDArrayf, window_size: int) -> float:
     diff = np.abs(arr - arr[mid_ind])
     return np.sum(diff) / (window_size**2 - 1)
 
+
 # Numba wrapper for TRI from Wilson
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
 _tri_wilson_func_numba = numba.njit(inline="always", cache=True)(_tri_wilson_func)
 
-def _tri_wilson_func_vectorized(input_block: NDArrayf, window_size: int,
-                                axis: int | tuple[int, ...] = (-2, -1)) -> NDArrayf:
+
+def _tri_wilson_func_vectorized(input_block: NDArrayf, window_size: int, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
     """
     Vectorized implementation of TRI from Wilson, with input sizes (N, w, w) and output size (N).
 
@@ -126,8 +135,10 @@ def _tri_wilson_func_vectorized(input_block: NDArrayf, window_size: int,
     output_block = sum_diff / (w * w - 1)
     return output_block
 
-def _tri_wilson_func_scipy(dem: NDArrayf, window_size: int,
-                           force_backend: Literal["generic", "vectorized"] | None = None) -> NDArrayf:
+
+def _tri_wilson_func_scipy(
+    dem: NDArrayf, window_size: int, force_backend: Literal["generic", "vectorized"] | None = None
+) -> NDArrayf:
     """SciPy wrapper for TRI Wilson implementation, with option of forcing backend for tests."""
 
     # If vectorized is available, use it
@@ -143,20 +154,22 @@ def _tri_wilson_func_scipy(dem: NDArrayf, window_size: int,
     # Otherwise fallback on generic function
     else:
         tri = scipy.ndimage.generic_filter(
-                dem,
-                _tri_wilson_func,
-                mode="constant",
-                size=window_size,
-                cval=np.nan,
-                extra_arguments=(window_size,),
-            )
+            dem,
+            _tri_wilson_func,
+            mode="constant",
+            size=window_size,
+            cval=np.nan,
+            extra_arguments=(window_size,),
+        )
 
     return tri
+
 
 ##############################################
 # Topographic Position Index from Weiss (2001)
 ##############################################
 # Ref link: http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf
+
 
 def _tpi_func(arr: NDArrayf, window_size: int) -> float:
     """Non-vectorized TPI, the difference between center and mean of neighbouring pixels."""
@@ -164,12 +177,14 @@ def _tpi_func(arr: NDArrayf, window_size: int) -> float:
     mid_ind = window_size // 2
     return arr[mid_ind] - (np.sum(arr) - arr[mid_ind]) / (window_size**2 - 1)
 
+
 # Numba wrapper for TPI
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
 _tpi_func_numba = numba.njit(inline="always", cache=True)(_tpi_func)
 
-def _tpi_func_vectorized(input_block: NDArrayf, window_size: int, axis: int | tuple[int, ...] = (-2, -1)) -> NDArrayf:
+
+def _tpi_func_vectorized(input_block: NDArrayf, window_size: int, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
     """
     Vectorized TPI, with input sizes (N, w, w) and output size (N).
 
@@ -186,8 +201,10 @@ def _tpi_func_vectorized(input_block: NDArrayf, window_size: int, axis: int | tu
 
     return output_block
 
-def _tpi_func_scipy(dem: NDArrayf, window_size: int,
-                    force_backend: Literal["generic", "vectorized"] | None = None) -> NDArrayf:
+
+def _tpi_func_scipy(
+    dem: NDArrayf, window_size: int, force_backend: Literal["generic", "vectorized"] | None = None
+) -> NDArrayf:
     """SciPy wrapper for TPI implementation, with option of forcing backend for tests."""
 
     # If vectorized is available, use it
@@ -214,10 +231,12 @@ def _tpi_func_scipy(dem: NDArrayf, window_size: int,
 
     return tpi
 
+
 ################################
 # Roughness from Dartnell (2000)
 ################################
 # Ref link: https://environment.sfsu.edu/node/11292
+
 
 def _roughness_func(arr: NDArrayf) -> float:
     """Non-vectorized roughness from Dartnell, the difference between maximum and minimum of the window."""
@@ -226,12 +245,14 @@ def _roughness_func(arr: NDArrayf) -> float:
     else:
         return float(np.max(arr) - np.min(arr))
 
+
 # Numba wrapper for roughness
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
 _roughness_func_numba = numba.njit(inline="always", cache=True)(_roughness_func)
 
-def _roughness_func_vectorized(input_block: NDArrayf, axis: int | tuple[int, ...] = (-2, -1)) -> NDArrayf:
+
+def _roughness_func_vectorized(input_block: NDArrayf, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
     """
     Vectorized roughness with input sizes (N, w, w) and output size (N).
 
@@ -247,8 +268,10 @@ def _roughness_func_vectorized(input_block: NDArrayf, axis: int | tuple[int, ...
 
     return output_block
 
-def _roughness_func_scipy(dem: NDArrayf, window_size: int,
-                          force_backend: Literal["generic", "vectorized"] | None = None) -> NDArrayf:
+
+def _roughness_func_scipy(
+    dem: NDArrayf, window_size: int, force_backend: Literal["generic", "vectorized"] | None = None
+) -> NDArrayf:
     """SciPy wrapper for TPI implementation, with option of forcing backend for tests."""
 
     # If vectorized is available, use it
@@ -264,10 +287,12 @@ def _roughness_func_scipy(dem: NDArrayf, window_size: int,
     else:
         return scipy.ndimage.generic_filter(dem, _roughness_func, mode="constant", size=window_size, cval=np.nan)
 
+
 ###############################################
 # Fractal roughness from Taud and Parrot (2005)
 ###############################################
 # Ref link: https://doi.org/10.4000/geomorphologie.622
+
 
 def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLike = np.float32) -> float:
     """Non-vectorized fractal roughness according to the box-counting method of Taud and Parrot."""
@@ -333,10 +358,12 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
 
     return D
 
+
 # Numba wrapper for fractal roughness
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
 _fractal_roughness_func_numba = numba.njit(inline="always", cache=True)(_fractal_roughness_func)
+
 
 def _fractal_precompute(window_size: int) -> tuple[NDArrayf, NDArrayf, float, float]:
     """Pre-compute scale-dependent constants for vectorized fractal roughness."""
@@ -349,7 +376,8 @@ def _fractal_precompute(window_size: int) -> tuple[NDArrayf, NDArrayf, float, fl
     mx = log_q.mean()
     SS_xx = np.sum(log_q * log_q) - n * mx * mx
 
-    return qs, log_q, mx, SS_xx
+    return qs, log_q, mx, SS_xx  # type: ignore
+
 
 def _fractal_roughness_func_vectorized(
     input_block: NDArrayf,
@@ -358,7 +386,7 @@ def _fractal_roughness_func_vectorized(
     log_q: NDArrayf,
     mx: float,
     SS_xx: float,
-    axis: int | tuple[int, ...] = (-2, -1),
+    axis: tuple[int, ...] = (-2, -1),
 ) -> NDArrayf:
     """
     Vectorized fractal roughness, with input sizes (N, w, w) and output size (N).
@@ -381,9 +409,7 @@ def _fractal_roughness_func_vectorized(
         # Reshape into blocks of q x q
         # Shape: (..., nq, q, nq, q)
         blocks = V[..., : nq * q, : nq * q]
-        blocks = blocks.reshape(
-            blocks.shape[:-2] + (nq, q, nq, q)
-        )
+        blocks = blocks.reshape(blocks.shape[:-2] + (nq, q, nq, q))
         # Max per block
         max_per_block = blocks.max(axis=(axis[0] - 1, axis[1]))
         Ns.append(max_per_block.sum(axis=axis) / q)
@@ -400,8 +426,12 @@ def _fractal_roughness_func_vectorized(
     return output_block
 
 
-def _fractal_roughness_func_scipy(dem: NDArrayf, window_size: int, out_dtype: DTypeLike = np.float32,
-                                  force_backend: Literal["generic", "vectorized"] | None = None) -> NDArrayf:
+def _fractal_roughness_func_scipy(
+    dem: NDArrayf,
+    window_size: int,
+    out_dtype: DTypeLike = np.float32,
+    force_backend: Literal["generic", "vectorized"] | None = None,
+) -> NDArrayf:
     """SciPy wrapper for fractal roughness implementation, with option of forcing backend for tests."""
 
     # If vectorized is available, use it
@@ -410,8 +440,9 @@ def _fractal_roughness_func_scipy(dem: NDArrayf, window_size: int, out_dtype: DT
         # Pre-compute scale-dependent constants
         qs, log_q, mx, SS_xx = _fractal_precompute(window_size)
 
-        _part_func = partial(_fractal_roughness_func_vectorized, window_size=window_size,
-                             qs=qs, log_q=log_q, mx=mx, SS_xx=SS_xx)
+        _part_func = partial(
+            _fractal_roughness_func_vectorized, window_size=window_size, qs=qs, log_q=log_q, mx=mx, SS_xx=SS_xx
+        )
         return scipy.ndimage.vectorized_filter(
             dem,
             _part_func,
@@ -438,10 +469,12 @@ def _fractal_roughness_func_scipy(dem: NDArrayf, window_size: int, out_dtype: DT
             extra_arguments=(window_size, out_dtype),
         )
 
+
 ##############################
 # Rugosity from Jenness (2004)
 ##############################
 # Ref link: https://doi.org/10.2193/0091-7648(2004)032%5B0829:CLSAFD%5D2.0.CO;2
+
 
 def _rugosity_func(arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.float32) -> float:
     """
@@ -530,12 +563,13 @@ def _rugosity_func(arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.f
 
     return rug
 
+
 # The inline="always" is required to have the nested jit code behaving similarly as if it was in the original function
 # We lose speed-up by a factor of ~5 without it
 _rugosity_func_numba = numba.njit(inline="always", cache=True)(_rugosity_func)
 
-def _rugosity_func_vectorized(input_block: NDArrayf, resolution: float, axis: int | tuple[int, ...] = (-2, -1)) -> (
-        NDArrayf):
+
+def _rugosity_func_vectorized(input_block: NDArrayf, resolution: float, axis: tuple[int, ...] = (-2, -1)) -> NDArrayf:
     """
     Vectorized rugosity from Jenness, with input sizes (N, 3, 3) and output size (N).
 
@@ -550,34 +584,43 @@ def _rugosity_func_vectorized(input_block: NDArrayf, resolution: float, axis: in
     # Center-relative dz for the 8 neighbors
     Zc = Z[..., 1, 1]
 
-    dz_center = np.stack([
-        Zc - Z[..., 0, 0],  # 0
-        Zc - Z[..., 0, 1],  # 1
-        Zc - Z[..., 0, 2],  # 2
-        Zc - Z[..., 1, 0],  # 3
-        Zc - Z[..., 1, 2],  # 4
-        Zc - Z[..., 2, 0],  # 5
-        Zc - Z[..., 2, 1],  # 6
-        Zc - Z[..., 2, 2],  # 7
-    ], axis=-1)
+    dz_center = np.stack(
+        [
+            Zc - Z[..., 0, 0],  # 0
+            Zc - Z[..., 0, 1],  # 1
+            Zc - Z[..., 0, 2],  # 2
+            Zc - Z[..., 1, 0],  # 3
+            Zc - Z[..., 1, 2],  # 4
+            Zc - Z[..., 2, 0],  # 5
+            Zc - Z[..., 2, 1],  # 6
+            Zc - Z[..., 2, 2],  # 7
+        ],
+        axis=-1,
+    )
 
     # Planimetric lengths for center segments
-    dl_center = np.array(
-        [np.sqrt(2), 1, np.sqrt(2), 1, 1, np.sqrt(2), 1, np.sqrt(2)],
-        dtype=Z.dtype,
-    ) * L
+    dl_center = (
+        np.array(
+            [np.sqrt(2), 1, np.sqrt(2), 1, 1, np.sqrt(2), 1, np.sqrt(2)],
+            dtype=Z.dtype,
+        )
+        * L
+    )
 
     # Compute dz for surrounding-surrounding segments
-    dz_edges = np.stack([
-        Z[..., 0, 0] - Z[..., 0, 1],  # 8
-        Z[..., 0, 1] - Z[..., 0, 2],  # 9
-        Z[..., 2, 0] - Z[..., 2, 1],  # 10
-        Z[..., 2, 1] - Z[..., 2, 2],  # 11
-        Z[..., 0, 0] - Z[..., 1, 0],  # 12
-        Z[..., 1, 0] - Z[..., 2, 0],  # 13
-        Z[..., 0, 2] - Z[..., 1, 2],  # 14
-        Z[..., 1, 2] - Z[..., 2, 2],  # 15
-    ], axis=-1)
+    dz_edges = np.stack(
+        [
+            Z[..., 0, 0] - Z[..., 0, 1],  # 8
+            Z[..., 0, 1] - Z[..., 0, 2],  # 9
+            Z[..., 2, 0] - Z[..., 2, 1],  # 10
+            Z[..., 2, 1] - Z[..., 2, 2],  # 11
+            Z[..., 0, 0] - Z[..., 1, 0],  # 12
+            Z[..., 1, 0] - Z[..., 2, 0],  # 13
+            Z[..., 0, 2] - Z[..., 1, 2],  # 14
+            Z[..., 1, 2] - Z[..., 2, 2],  # 15
+        ],
+        axis=-1,
+    )
 
     dl_edges = np.full(8, L, dtype=Z.dtype)
 
@@ -589,16 +632,18 @@ def _rugosity_func_vectorized(input_block: NDArrayf, resolution: float, axis: in
     hsl = np.sqrt(dzs * dzs + dls * dls) / 2
 
     # Make table of triangle indices into hsl
-    tri_idx = np.array([
-        [3, 0, 12],
-        [0, 1, 8],
-        [1, 2, 9],
-        [2, 4, 14],
-        [4, 7, 15],
-        [7, 6, 11],
-        [6, 5, 10],
-        [5, 3, 13],
-    ])
+    tri_idx = np.array(
+        [
+            [3, 0, 12],
+            [0, 1, 8],
+            [1, 2, 9],
+            [2, 4, 14],
+            [4, 7, 15],
+            [7, 6, 11],
+            [6, 5, 10],
+            [5, 3, 13],
+        ]
+    )
 
     a = hsl[..., tri_idx[:, 0]]
     b = hsl[..., tri_idx[:, 1]]
@@ -611,8 +656,13 @@ def _rugosity_func_vectorized(input_block: NDArrayf, resolution: float, axis: in
 
     return output_block
 
-def _rugosity_func_scipy(dem: NDArrayf, resolution: float, out_dtype: DTypeLike = np.float32,
-                         force_backend: Literal["generic", "vectorized"] | None = None) -> NDArrayf:
+
+def _rugosity_func_scipy(
+    dem: NDArrayf,
+    resolution: float,
+    out_dtype: DTypeLike = np.float32,
+    force_backend: Literal["generic", "vectorized"] | None = None,
+) -> NDArrayf:
     """SciPy wrapper for rugosity implementation, with option of forcing backend for tests."""
 
     # If vectorized is available, use it
@@ -636,9 +686,11 @@ def _rugosity_func_scipy(dem: NDArrayf, resolution: float, out_dtype: DTypeLike 
             extra_arguments=(resolution, out_dtype),
         )
 
+
 ####################################
 # PREPROCESSING AND HEADER FUNCTIONS
 ####################################
+
 
 def _preprocess_windowed_indexes(
     windowed_indexes: list[str],
@@ -830,14 +882,16 @@ def _get_windowed_indexes_scipy(
 
     if make_rugosity:
         rugosity_idx = idx_attrs[3]
-        rugosity = _rugosity_func_scipy(dem=dem, resolution=resolution, out_dtype=out_dtype,
-                                        force_backend=force_backend)
+        rugosity = _rugosity_func_scipy(
+            dem=dem, resolution=resolution, out_dtype=out_dtype, force_backend=force_backend
+        )
         outputs[rugosity_idx] = rugosity
 
     if make_fractal_roughness:
         frac_roughness_idx = idx_attrs[4]
-        frac_roughness = _fractal_roughness_func_scipy(dem=dem, window_size=window_size, out_dtype=out_dtype,
-                                                       force_backend=force_backend)
+        frac_roughness = _fractal_roughness_func_scipy(
+            dem=dem, window_size=window_size, out_dtype=out_dtype, force_backend=force_backend
+        )
         outputs[frac_roughness_idx] = frac_roughness
 
     return outputs

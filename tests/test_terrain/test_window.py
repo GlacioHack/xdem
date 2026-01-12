@@ -3,10 +3,10 @@ from __future__ import annotations
 import warnings
 from typing import Literal
 
-from packaging.version import Version
 import numpy as np
 import pytest
 import scipy
+from packaging.version import Version
 from scipy.ndimage import binary_dilation
 
 import xdem
@@ -127,8 +127,10 @@ class TestTerrainAttribute:
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
 
-    @pytest.mark.skipif(Version(scipy.__version__) < Version("1.16.0"),
-                        reason="SciPy version is too old and does not yet support vectorized_filter.")  # type: ignore
+    @pytest.mark.skipif(
+        Version(scipy.__version__) < Version("1.16.0"),
+        reason="SciPy version is too old and does not yet support vectorized_filter.",
+    )  # type: ignore
     @pytest.mark.parametrize(
         "attribute",
         [
@@ -145,7 +147,7 @@ class TestTerrainAttribute:
 
         rnd = np.random.default_rng(42)
         dem = rnd.normal(size=(15, 15))
-        dem[5, 5] = np.nan   # Add NaN to check propagation from an existing NaN is similar
+        dem[5, 5] = np.nan  # Add NaN to check propagation from an existing NaN is similar
 
         # Get TRI method if specified
         if "Wilson" in attribute or "Riley" in attribute:
@@ -157,12 +159,22 @@ class TestTerrainAttribute:
             tri_method = "Wilson"
 
         attrs_vectorized = xdem.terrain.window._get_windowed_indexes(
-            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="scipy",
-            force_scipy_backend="vectorized"
+            dem=dem,
+            window_size=3,
+            resolution=1,
+            windowed_indexes=[attribute],
+            tri_method=tri_method,
+            engine="scipy",
+            force_scipy_backend="vectorized",
         )
         attrs_generic = xdem.terrain.window._get_windowed_indexes(
-            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="scipy",
-            force_scipy_backend="generic"
+            dem=dem,
+            window_size=3,
+            resolution=1,
+            windowed_indexes=[attribute],
+            tri_method=tri_method,
+            engine="scipy",
+            force_scipy_backend="generic",
         )
 
         assert np.allclose(attrs_vectorized, attrs_generic, equal_nan=True)
