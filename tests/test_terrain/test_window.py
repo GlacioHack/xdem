@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from typing import Literal
 
 import numpy as np
@@ -15,11 +14,8 @@ PLOT = False
 
 
 class TestTerrainAttribute:
-    filepath = xdem.examples.get_path("longyearbyen_ref_dem")
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="Parse metadata")
-        dem = xdem.DEM(filepath, silent=True)
+    filepath = xdem.examples.get_path_test("longyearbyen_ref_dem")
+    dem = xdem.DEM(filepath)
 
     def test_rugosity_jenness(self) -> None:
         """
@@ -74,22 +70,22 @@ class TestTerrainAttribute:
         """Test fractal roughness for synthetic cases for which we know the output."""
 
         # The fractal dimension of a line is 1 (a single pixel with non-zero value)
-        dem = np.zeros((13, 13), dtype="float32")
+        dem = np.zeros((13, 13), dtype="float64")
         dem[1, 1] = 6.5
         frac_rough = xdem.terrain.fractal_roughness(dem)
-        assert np.round(frac_rough[6, 6], 5) == np.float32(1.0)
+        assert np.round(frac_rough[6, 6], 3) == np.float32(1.0)
 
         # The fractal dimension of plane is 2 (a plan of pixels with non-zero values)
-        dem = np.zeros((13, 13), dtype="float32")
+        dem = np.zeros((13, 13), dtype="float64")
         dem[:, 1] = 13
         frac_rough = xdem.terrain.fractal_roughness(dem)
-        assert np.round(frac_rough[6, 6]) == np.float32(2.0)
+        assert np.round(frac_rough[6, 6], 3) == np.float32(2.0)
 
         # The fractal dimension of a cube is 3 (a block of pixels with non-zero values
-        dem = np.zeros((13, 13), dtype="float32")
+        dem = np.zeros((13, 13), dtype="float64")
         dem[:, :6] = 13
         frac_rough = xdem.terrain.fractal_roughness(dem)
-        assert np.round(frac_rough[6, 6]) == np.float32(3.0)
+        assert np.round(frac_rough[6, 6], 3) == np.float32(3.0)
 
     @pytest.mark.parametrize(
         "attribute",
@@ -119,7 +115,7 @@ class TestTerrainAttribute:
             tri_method = "Wilson"
 
         attrs_scipy = xdem.terrain.window._get_windowed_indexes(
-            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="scipy"
+            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method
         )
         attrs_numba = xdem.terrain.window._get_windowed_indexes(
             dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="numba"

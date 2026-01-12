@@ -30,7 +30,7 @@ class TestRobustFitting:
         pytest.importorskip("sklearn")
 
         # Define x vector
-        x = np.linspace(-50, 50, 10000)
+        x = np.linspace(-50, 50, 1000)
         # Define exact polynomial
         true_coefs = [-100, 5, 3, 2]
         y = np.polyval(np.flip(true_coefs), x).astype(np.float32)
@@ -143,7 +143,7 @@ class TestRobustFitting:
         y = xdem.fit.sumsin_1d(x, *true_coefs)
 
         # Check that the function runs (we passed a small niter to reduce the computing time of the test)
-        coefs, deg = xdem.fit.robust_nfreq_sumsin_fit(x, y, random_state=42, niter=40)
+        coefs, deg = xdem.fit.robust_nfreq_sumsin_fit(x, y, random_state=42, niter=10)
 
         # Check that the estimated sum of sinusoid correspond to the input, with better tolerance on the highest
         # amplitude sinusoid

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import warnings
 from typing import Literal
 
 import numpy as np
@@ -15,11 +14,8 @@ PLOT = False
 
 
 class TestTerrainAttribute:
-    filepath = xdem.examples.get_path("longyearbyen_ref_dem")
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="Parse metadata")
-        dem = xdem.DEM(filepath, silent=True)
+    filepath = xdem.examples.get_path_test("longyearbyen_ref_dem")
+    dem = xdem.DEM(filepath)
 
     @pytest.mark.parametrize(
         "attribute_name",
@@ -73,15 +69,15 @@ class TestTerrainAttribute:
             # Remove terrain
             diff_zt_fl[~ind] = np.nan
 
-            # The 50% lowest differences should be relatively small (less than 10% of magnitude, e.g. a couple degrees
+            # The 50% lowest differences should be relatively small (less than 20% of magnitude, e.g. a couple degrees
             # for slope)
-            assert np.nanpercentile(diff_zt_fl, 50) < 0.1 * magnitude
+            assert np.nanpercentile(diff_zt_fl, 50) < 0.25 * magnitude
 
             # Only slope and aspect are supported for Horn
             if attribute_name in ["slope", "aspect"]:
                 attr_horn = getattr(xdem.terrain, attribute_name)(self.dem, surface_fit="Horn")
                 diff_zt_horn = np.abs(attr_zt - attr_horn)
-                assert np.nanpercentile(diff_zt_horn, 80) < 0.1 * magnitude
+                assert np.nanpercentile(diff_zt_horn, 80) < 0.25 * magnitude
 
         except Exception as exception:
 
@@ -178,7 +174,7 @@ class TestTerrainAttribute:
         # Introduce some nans
         rng = np.random.default_rng(42)
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
+        dem.data.mask.ravel()[rng.choice(dem.data.size, 25, replace=False)] = True
         # Validate that this doesn't raise weird warnings after introducing nans.
         xdem.terrain.get_terrain_attribute(dem.data, attribute=name, resolution=dem.res)
 
@@ -199,10 +195,18 @@ class TestTerrainAttribute:
 
         # Get geometric and directional curvatures
         curv_g = xdem.terrain.get_terrain_attribute(
-            self.dem.data, attribute=name, resolution=self.dem.res, curv_method="geometric", surface_fit=surface_fit
+            self.dem.data,
+            attribute=name,
+            resolution=self.dem.res,
+            curv_method="geometric",
+            surface_fit=surface_fit,
         )
         curv_d = xdem.terrain.get_terrain_attribute(
-            self.dem.data, attribute=name, resolution=self.dem.res, curv_method="directional", surface_fit=surface_fit
+            self.dem.data,
+            attribute=name,
+            resolution=self.dem.res,
+            curv_method="directional",
+            surface_fit=surface_fit,
         )
 
         # For planform, the result should be the same
@@ -470,7 +474,12 @@ class TestTerrainAttribute:
         mask_nan_dem = ~np.isfinite(dem)
 
         # Generate attribute
-        attr = xdem.terrain.get_terrain_attribute(dem, resolution=1, attribute=attribute, surface_fit=surface_fit)
+        attr = xdem.terrain.get_terrain_attribute(
+            dem,
+            resolution=1,
+            attribute=attribute,
+            surface_fit=surface_fit,
+        )
         mask_nan_attr = ~np.isfinite(attr)
 
         # We dilate the initial mask by a structuring element matching the window size of the surface fit

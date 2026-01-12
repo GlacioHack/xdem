@@ -50,6 +50,22 @@ class Topo(Workflows):
 
         super().__init__(config_dem, output)
 
+        self.config_attributes = self.config["terrain_attributes"]
+        if isinstance(self.config_attributes, dict):
+            self.list_attributes = list(self.config_attributes.keys())
+        else:
+            self.list_attributes = self.config_attributes
+
+        yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
+        Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
+
+        self.config = self.remove_none(self.config)  # type: ignore
+
+    def _load_data(self) -> None:
+        """
+        Load data defined in config file.
+        """
+
         self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
         self.generate_plot(self.dem, filename="elev_map", title="Elevation", cmap="terrain", cbar_title="Elevation (m)")
 
@@ -62,17 +78,6 @@ class Topo(Workflows):
                 cmap="terrain",
                 cbar_title="Elevation (m)",
             )
-
-        self.config_attributes = self.config["terrain_attributes"]
-        if isinstance(self.config_attributes, dict):
-            self.list_attributes = list(self.config_attributes.keys())
-        else:
-            self.list_attributes = self.config_attributes
-
-        yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
-        Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
-
-        self.config = self.remove_none(self.config)  # type: ignore
 
     def generate_terrain_attributes_tiff(self) -> None:
         """
@@ -173,6 +178,8 @@ class Topo(Workflows):
         """
 
         t0 = time.time()
+
+        self._load_data()
 
         # Global information
         dem_informations = {

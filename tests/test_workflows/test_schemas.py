@@ -81,7 +81,7 @@ def test_wrong_path(get_topo_inputs_config):
             {
                 "inputs": {
                     "reference_elev": {
-                        "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
+                        "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
                         "downsample": "10",
                     }
                 }
@@ -93,7 +93,7 @@ def test_wrong_path(get_topo_inputs_config):
             {
                 "inputs": {
                     "reference_elev": {
-                        "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
+                        "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
                         "downsample": 0,
                     }
                 }

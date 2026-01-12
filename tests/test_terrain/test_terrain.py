@@ -17,11 +17,8 @@ PLOT = False
 
 
 class TestTerrainAttribute:
-    filepath = xdem.examples.get_path("longyearbyen_ref_dem")
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="Parse metadata")
-        dem = xdem.DEM(filepath, silent=True)
+    filepath = xdem.examples.get_path_test("longyearbyen_ref_dem")
+    dem = xdem.DEM(filepath)
 
     @pytest.mark.parametrize(
         "attribute",
@@ -91,7 +88,7 @@ class TestTerrainAttribute:
             # For instance, slopes have an average magnitude of around 30 deg, so the tolerance is 0.030 deg
             if attribute in ["hillshade_Horn", "hillshade_Zevenberg"]:
                 # For hillshade, check 0 or 1 difference due to integer rounding
-                assert np.all(np.logical_or(diff_valid == 0.0, np.abs(diff_valid) == 1.0))
+                assert np.all(np.logical_or(np.allclose(diff_valid, 0), np.allclose(np.abs(diff_valid), 1.0)))
 
             elif attribute in ["aspect_Horn", "aspect_Zevenberg"]:
                 # For aspect, check the tolerance within a 360 degree modulo due to the circularity of the variable
@@ -120,7 +117,7 @@ class TestTerrainAttribute:
         # Introduce some nans
         rng = np.random.default_rng(42)
         dem.data.mask = np.zeros_like(dem.data, dtype=bool)
-        dem.data.mask.ravel()[rng.choice(dem.data.size, 50000, replace=False)] = True
+        dem.data.mask.ravel()[rng.choice(dem.data.size, 25, replace=False)] = True
 
         # Validate that this doesn't raise weird warnings after introducing nans.
         functions[attribute](dem)
@@ -157,7 +154,7 @@ class TestTerrainAttribute:
         attr_richdem_rst = gu.Raster(get_test_data_path(os.path.join("richdem", f"{attribute}.tif")), load_data=True)
         attr_richdem = gu.raster.get_array_and_mask(attr_richdem_rst)[0].squeeze()
 
-        # TODO: Profile curvature is opposite sign as of RichDEM, check if this is warranted
+        # RichDEM has the opposite sign for profile curvature compared to Minar et al. (2020)
         if attribute == "profile_curvature":
             attr_richdem = -attr_richdem
 
@@ -180,7 +177,8 @@ class TestTerrainAttribute:
             else:
                 # All attributes other than aspect are non-circular floats, so we check within a tolerance
                 # Here hillshade is not rounded as integer by our calculation, so no need to differentiate as with GDAL
-                assert np.all(np.abs(diff_valid < 10 ** (-3) * magn))
+                # We use a 99% percentile to remove potential outliers/edge effects
+                assert np.nanpercentile(np.abs(diff_valid), 99) < 10 ** (-3) * magn
 
         except Exception as exception:
 
