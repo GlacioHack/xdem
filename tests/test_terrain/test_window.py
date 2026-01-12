@@ -73,19 +73,19 @@ class TestTerrainAttribute:
         dem = np.zeros((13, 13), dtype="float64")
         dem[1, 1] = 6.5
         frac_rough = xdem.terrain.fractal_roughness(dem)
-        assert np.round(frac_rough[6, 6], 5) == np.float32(1.0)
+        assert np.round(frac_rough[6, 6], 3) == np.float32(1.0)
 
         # The fractal dimension of plane is 2 (a plan of pixels with non-zero values)
         dem = np.zeros((13, 13), dtype="float64")
         dem[:, 1] = 13
         frac_rough = xdem.terrain.fractal_roughness(dem)
-        assert np.round(frac_rough[6, 6]) == np.float32(2.0)
+        assert np.round(frac_rough[6, 6], 3) == np.float32(2.0)
 
         # The fractal dimension of a cube is 3 (a block of pixels with non-zero values
         dem = np.zeros((13, 13), dtype="float64")
         dem[:, :6] = 13
         frac_rough = xdem.terrain.fractal_roughness(dem)
-        assert np.round(frac_rough[6, 6]) == np.float32(3.0)
+        assert np.round(frac_rough[6, 6], 3) == np.float32(3.0)
 
     @pytest.mark.parametrize(
         "attribute",
