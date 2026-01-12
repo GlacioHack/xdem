@@ -1687,15 +1687,15 @@ def fractal_roughness(
     :raises ValueError: If the inputs are poorly formatted.
 
     :examples:
-        >>> dem = np.zeros((13, 13), dtype='float32')
+        >>> dem = np.zeros((13, 13), dtype='float64')
         >>> dem[1, 1] = 6.5
         >>> np.round(fractal_roughness(dem)[6, 6], 5) # The fractal dimension of a line is 1
         np.float32(1.0)
-        >>> dem = np.zeros((13, 13), dtype='float32')
+        >>> dem = np.zeros((13, 13), dtype='float64')
         >>> dem[:, 1] = 13
         >>> np.round(fractal_roughness(dem)[6, 6]) # The fractal dimension of plane is 2
         np.float32(2.0)
-        >>> dem = np.zeros((13, 13), dtype='float32')
+        >>> dem = np.zeros((13, 13), dtype='float64')
         >>> dem[:, :6] = 13
         >>> np.round(fractal_roughness(dem)[6, 6]) # The fractal dimension of cube is 3
         np.float32(3.0)

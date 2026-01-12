@@ -70,19 +70,19 @@ class TestTerrainAttribute:
         """Test fractal roughness for synthetic cases for which we know the output."""
 
         # The fractal dimension of a line is 1 (a single pixel with non-zero value)
-        dem = np.zeros((13, 13), dtype="float32")
+        dem = np.zeros((13, 13), dtype="float64")
         dem[1, 1] = 6.5
         frac_rough = xdem.terrain.fractal_roughness(dem)
         assert np.round(frac_rough[6, 6], 5) == np.float32(1.0)
 
         # The fractal dimension of plane is 2 (a plan of pixels with non-zero values)
-        dem = np.zeros((13, 13), dtype="float32")
+        dem = np.zeros((13, 13), dtype="float64")
         dem[:, 1] = 13
         frac_rough = xdem.terrain.fractal_roughness(dem)
         assert np.round(frac_rough[6, 6]) == np.float32(2.0)
 
         # The fractal dimension of a cube is 3 (a block of pixels with non-zero values
-        dem = np.zeros((13, 13), dtype="float32")
+        dem = np.zeros((13, 13), dtype="float64")
         dem[:, :6] = 13
         frac_rough = xdem.terrain.fractal_roughness(dem)
         assert np.round(frac_rough[6, 6]) == np.float32(3.0)
