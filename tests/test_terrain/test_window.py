@@ -49,7 +49,7 @@ class TestTerrainAttribute:
         # eight triangles have the same surface area, see Jenness (2004).
 
         # Derive rugosity from the function
-        dem = np.array([[1, 1, 1], [1, 1 + dh, 1], [1, 1, 1]], dtype="float32")
+        dem = np.array([[1, 1, 1], [1, 1 + dh, 1], [1, 1, 1]], dtype="float64")
 
         rugosity = xdem.terrain.rugosity(dem, resolution=resolution)
 
