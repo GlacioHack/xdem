@@ -228,9 +228,7 @@ class TestTerrainAttribute:
         assert np.array_equal(slope, slope2, equal_nan=True)
 
         # A slope map with a lower resolution (higher value) should have gentler slopes.
-        slope_lowres = xdem.terrain.get_terrain_attribute(
-            self.dem.data, "slope", resolution=self.dem.res[0] * 2
-        )
+        slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
     @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])  # type: ignore
@@ -287,9 +285,7 @@ class TestTerrainAttribute:
         )
 
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
-        xdem.terrain.get_terrain_attribute(
-            self.dem, "slope", mp_config=mp_config, resolution=self.dem.res
-        )
+        xdem.terrain.get_terrain_attribute(self.dem, "slope", mp_config=mp_config, resolution=self.dem.res)
         assert os.path.exists(outfile)
         slope = gu.Raster(outfile, load_data=True)
         assert isinstance(slope, gu.Raster)
