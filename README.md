@@ -18,7 +18,7 @@
 
 It aims at **providing modular and robust tools for the most common analyses needed with elevation data**, including geospatial
 operations (vertical referencing), terrain analysis/geomorphometry (e.g., slope, aspect, curvatures, roughness indexes), 3D coregistration, corrections
-and uncertainty analysis from a wide range of peer-reviewed studies (see :ref:`methods` below for the full list).
+and uncertainty analysis from a wide range of peer-reviewed studies (see [Methods section](#methods-implemented-in-the-package) below for the full list).
 
 The core manipulation of elevation data is **conveniently centered around `DEM` and `EPC` classes**. Terrain analysis
 is implemented in a modular way to support state-of-the art methods (and, notably, re-implements all tools
@@ -28,8 +28,9 @@ modular `Coreg` objects that easily interface between themselves**.
 Additionally, for raster and point cloud functionalities, xDEM inherits many convenient functionalities from [GeoUtils](https://github.com/GlacioHack/geoutils).
 Those include **implicit loading**, **numerical interfacing** and **convenient object-based geospatial methods** to easily perform
 the most common higher-level tasks needed by geospatial users (e.g., reprojection, cropping, vector masking). Through [GeoUtils](https://github.com/GlacioHack/geoutils), xDEM
-relies on [Rasterio](https://github.com/rasterio/rasterio), [GeoPandas](https://github.com/geopandas/geopandas) and [Pyproj](https://github.com/pyproj4/pyproj) for georeferenced calculations, and on [NumPy](https://github.com/numpy/numpy). It allows easy access to
-the functionalities of these packages through interfacing or composition, and quick inter-operability through object conversion.
+relies on [Rasterio](https://github.com/rasterio/rasterio), [GeoPandas](https://github.com/geopandas/geopandas) and [Pyproj](https://github.com/pyproj4/pyproj) for georeferenced calculations, and on [NumPy](https://github.com/numpy/numpy), [SciPy](https://scipy.org/)
+(and optionally [Numba](https://numba.pydata.org/))  for efficient numerics. It allows easy access to the functionalities of
+these packages through interfacing or composition, and quick inter-operability through object conversion.
 
 If you are looking for an accessible Python package to write the Python equivalent of your [GDAL](https://gdal.org/) command lines, or of your
 [QGIS](https://www.qgis.org/en/site/) analysis pipeline **without a steep learning curve** on Python GIS syntax, xDEM is perfect for you! For more advanced
@@ -54,7 +55,6 @@ See [mamba's documentation](https://mamba.readthedocs.io/en/latest/) to install 
 pip install xdem
 ```
 
-(methods=)
 ## Methods implemented in the package
 
 Below is a summary of the methods implemented in xDEM.
