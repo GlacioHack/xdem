@@ -124,3 +124,11 @@ class TestExamples:
         os.remove(path_epc)
         examples.get_path("longyearbyen_ref_dem", output_dir=temp_dir.name, overwrite=True)
         assert nbFile_needed == sum([len(files) for _, _, files in os.walk(temp_dir.name)])
+
+    def test_get_path_test_longyearbyen(self) -> None:
+        """Let's ensure that the data are successfully downloaded in case call from the test."""
+
+        path = examples.get_path_test("longyearbyen_ref_dem")
+        longyearbyen_dir = os.path.dirname(os.path.dirname(path))
+        assert sum([len(files) for _, _, files in os.walk(os.path.join(longyearbyen_dir, "data"))]) == 26
+        assert sum([len(files) for _, _, files in os.walk(os.path.join(longyearbyen_dir, "processed"))]) == 4
