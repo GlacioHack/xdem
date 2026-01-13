@@ -203,14 +203,12 @@ def _crop_lonyearbyen_test_examples(output_dir: str, overwrite: bool = False) ->
     :param output_dir: Path of the directory to save the data.
     :param overwrite: Whether to overwrite the files if they already exist.
     """
+    for k in _FILEPATHS_TEST.keys():
 
-    for k in _FILEPATHS_ALL.keys():
-
-        if not k.lower().startswith("longyearbyen"):
-            return
-
-        # Verify non cropped data are already here
-        if os.path.exists(os.path.join(output_dir, _FILEPATHS_TEST[k])) and not overwrite:
+        # Verify if data is longyearbyen and need to be computed
+        if not k.lower().startswith("longyearbyen") or (
+            os.path.exists(os.path.join(output_dir, _FILEPATHS_TEST[k])) and not overwrite
+        ):
             continue
 
         # Get geometry to crop to
@@ -226,9 +224,9 @@ def _crop_lonyearbyen_test_examples(output_dir: str, overwrite: bool = False) ->
             cropped = gu.PointCloud(os.path.join(output_dir, _FILEPATHS_ALL[k]), data_column="h_li").crop(crop_geom)
         # For vectors:
         else:
-            cropped = gu.Vector(_FILEPATHS_ALL[k]).crop(crop_geom)
+            cropped = gu.Vector(os.path.join(output_dir, _FILEPATHS_ALL[k])).crop(crop_geom)
 
-        cropped.to_file(_FILEPATHS_TEST[k])
+        cropped.to_file(os.path.join(output_dir, _FILEPATHS_TEST[k]))
 
 
 def get_path_test(name: str) -> str:
@@ -238,8 +236,8 @@ def get_path_test(name: str) -> str:
     :param name: Name of test data.
     :return:
     """
-    if name in list(_FILEPATHS_TEST.keys()):
 
+    if name in list(_FILEPATHS_TEST.keys()):
         # Download Longyearbyen raw data
         _download_data_examples(name="longyearbyen_ref_dem", output_dir=_EXAMPLES_DIRECTORY.name)
 

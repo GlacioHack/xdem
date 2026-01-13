@@ -26,6 +26,7 @@ def get_test_data_path() -> Callable[[str], str]:
         """Get file from test_data"""
         file_path = os.path.join(_TESTDATA_DIRECTORY, filename)
         file_exists = os.path.exists(file_path)
+
         if overwrite or not file_exists:
             _download_and_extract_tarball(dir="test_data", target_dir=_TESTDATA_DIRECTORY)
 
