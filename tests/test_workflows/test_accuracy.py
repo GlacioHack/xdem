@@ -231,7 +231,6 @@ def test_run_prepa_data(get_accuracy_inputs_config, tmp_path, config):
     """
 
     process, sampling_grid, dem_to_crop = config
-    print(process, sampling_grid, dem_to_crop)
     user_config = get_accuracy_inputs_config
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
     user_config["coregistration"] = {"process": process}
@@ -239,7 +238,6 @@ def test_run_prepa_data(get_accuracy_inputs_config, tmp_path, config):
 
     if dem_to_crop is not None:
         dem = xdem.DEM(user_config["inputs"][dem_to_crop]["path_to_elev"])
-        print(user_config["inputs"][dem_to_crop]["path_to_elev"], dem.shape)
         nrows, ncols = dem.shape
 
         dem_crop = dem.icrop((0, 0, ncols - 3, nrows - 3))

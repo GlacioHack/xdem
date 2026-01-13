@@ -2,7 +2,7 @@
 <head><meta charset='UTF-8'><title>Qualify elevation results</title></head>
 <body>
 <h1>Accuracy assessment report — xDEM</h1>
-<p>xDEM version: 0.1.7a4.dev47</p><p>Date: 07/01/2026 19:30:51</p><p>Computing time: 4.31 seconds</p><h2>Elevation datasets</h2>
+<p>xDEM version: 0.1.dev729</p><p>Date: 13/01/2026 15:02:39</p><p>Computing time: 23.89 seconds</p><h2>Elevation datasets</h2>
 <div style='display: flex; gap: 10px;'>
   <img src='plots/reference_elev_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
   <img src='plots/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
@@ -13,6 +13,7 @@
 <tr><th>Information</th><th>Value</th></tr>
 <tr><td>reference_elev</td><td>{'path_to_elev': '../../../xdem/example_data/Longyearbyen/data/DEM_2009_ref.tif', 'from_vcrs': 'None', 'to_vcrs': 'None', 'downsample': '1'}</td></tr>
 <tr><td>to_be_aligned_elev</td><td>{'path_to_elev': '../../../xdem/example_data/Longyearbyen/data/DEM_1990.tif', 'path_to_mask': '../../../xdem/example_data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp', 'from_vcrs': 'None', 'to_vcrs': 'None', 'downsample': '1'}</td></tr>
+<tr><td>sampling_grid</td><td>reference_elev</td></tr>
 </table>
 </div>
 <div style='clear: both; margin-bottom: 30px;'>
@@ -20,7 +21,6 @@
 <table border='1' cellspacing='0' cellpadding='5'>
 <tr><th>Information</th><th>Value</th></tr>
 <tr><td>step_one</td><td>{'method': 'LZD', 'extra_information': "{'subsample': 10000}"}</td></tr>
-<tr><td>sampling_grid</td><td>reference_elev</td></tr>
 <tr><td>process</td><td>True</td></tr>
 </table>
 </div>
