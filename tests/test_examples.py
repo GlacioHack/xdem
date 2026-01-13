@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+
 import glob
 import os
 
@@ -11,24 +14,31 @@ import pytest
 from geoutils import PointCloud, Raster, Vector
 from rasterio.coords import BoundingBox
 
-from xdem import examples
+from xdem import EPC, examples
 from xdem._typing import NDArrayf
 
 
-def load_examples() -> tuple[Raster, Raster, Vector, Raster]:
-    """Load example files to try coregistration methods with."""
+def load_examples_longyearbyen() -> tuple[Raster, Raster, Vector, Raster, EPC]:
+    """Load Longyearbyen example."""
 
     ref_dem = Raster(examples.get_path("longyearbyen_ref_dem"))
     tba_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
     ddem = Raster(examples.get_path("longyearbyen_ddem"))
+    epc = EPC(examples.get_path("longyearbyen_epc"), data_column="h_li")
+    return ref_dem, tba_dem, glacier_mask, ddem, epc
 
-    return ref_dem, tba_dem, glacier_mask, ddem
+
+def load_examples_gizeh() -> Raster:
+    """Load Gizeh example."""
+
+    return Raster(examples.get_path("gizeh_dem"))
 
 
 class TestExamples:
 
-    ref_dem, tba_dem, glacier_mask, ddem = load_examples()
+    ref_dem, tba_dem, glacier_mask, ddem, epc = load_examples_longyearbyen()
+    gizeh_dem = load_examples_gizeh()
 
     @pytest.mark.parametrize(
         "rst_truevals_abs",
@@ -36,6 +46,7 @@ class TestExamples:
             (ref_dem, np.array([465.11816, 207.3236, 208.30563, 748.7337, 797.28644], dtype=np.float32), None),
             (tba_dem, np.array([464.6715, 213.7554, 207.8788, 760.8192, 797.3268], dtype=np.float32), None),
             (ddem, np.array([1.37, -1.67, 0.13, -10.10, 2.49], dtype=np.float32), 10e-3),
+            (gizeh_dem, np.array([-32768.0, 80.30466, -32768.0, -32768.0, -32768.0], dtype=np.float32), None),
         ],
     )
     def test_array_content(self, rst_truevals_abs: tuple[Raster, NDArrayf, float]) -> None:
@@ -47,7 +58,6 @@ class TestExamples:
 
         rng = np.random.default_rng(42)
         values = rng.choice(rst.data.data.flatten(), size=5, replace=False)
-
         assert values == pytest.approx(truevals, abs=abs)
 
     # Note: Following PR #329, no gaps on DEM edges after coregistration
@@ -60,6 +70,64 @@ class TestExamples:
         mask = gu.raster.get_array_and_mask(rst)[1]
 
         assert np.sum(mask) == truenodata
+
+    @pytest.mark.parametrize(
+        "epc_truevals_abs",
+        [
+            (epc, 176022, np.array([665.5882, 115.510376, 428.50583, 223.51405, 740.5497], dtype=None), None),
+        ],
+    )  # type: ignore
+    def test_epc_content(self, epc_truevals_abs: tuple[Raster, int, NDArrayf, float]) -> None:
+        """Let's ensure the data dataframe in the examples are always the same by checking randomly some values"""
+
+        epc = epc_truevals_abs[0]
+        nbvals = epc_truevals_abs[1]
+        truevals = epc_truevals_abs[2]
+        abs = epc_truevals_abs[3]
+
+        assert len(epc.ds) == nbvals
+
+        rng = np.random.default_rng(42)
+        values = rng.choice(epc.data, size=5, replace=False)
+        assert values == pytest.approx(truevals, abs=abs)
+
+    @pytest.mark.parametrize(
+        "nb_files_data",
+        [
+            ("longyearbyen_ref_dem", 13),
+            ("longyearbyen_tba_dem", 13),
+            ("longyearbyen_glacier_outlines", 13),
+            ("longyearbyen_ddem", 15),
+            ("longyearbyen_epc", 13),
+            ("gizeh_dem", 1),
+        ],
+    )  # type: ignore
+    def test_download(self, nb_files_data: tuple[str, int]) -> None:
+        """Let's ensure that the data are successfully downloaded in output_dir."""
+
+        data = nb_files_data[0]
+        nb_files = nb_files_data[1]
+        temp_dir = tempfile.TemporaryDirectory()
+        examples.get_path(data, output_dir=temp_dir.name)
+        assert nb_files == sum([len(files) for _, _, files in os.walk(temp_dir.name)])
+
+    def test_missing_or_overwrite_data(self) -> None:
+        """Let's ensure that the data are successfully downloaded in case of a missing data and overwrite config."""
+
+        temp_dir = tempfile.TemporaryDirectory()
+        examples.get_path("longyearbyen_epc", output_dir=temp_dir.name)
+        nbFile_needed = sum([len(files) for _, _, files in os.walk(temp_dir.name)])
+        path_epc = temp_dir.name + "/Longyearbyen/data/EPC_IS2.gpkg"
+
+        # Test download if missing file
+        os.remove(path_epc)
+        examples.get_path("longyearbyen_epc", output_dir=temp_dir.name)
+        assert nbFile_needed == sum([len(files) for _, _, files in os.walk(temp_dir.name)])
+
+        # Test overwrite
+        os.remove(path_epc)
+        examples.get_path("longyearbyen_ref_dem", output_dir=temp_dir.name, overwrite=True)
+        assert nbFile_needed == sum([len(files) for _, _, files in os.walk(temp_dir.name)])
 
     def test_get_path_test_longyearbyen(self) -> None:
         """Let's ensure that the cropped data are successfully downloaded in case call from the test."""
