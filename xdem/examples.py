@@ -177,7 +177,7 @@ def get_path(name: str, output_dir: str | None = None, overwrite: bool = False) 
 
     if output_dir is None:
         with as_file(_EXAMPLES_DIRECTORY) as examples_directory:
-            output_dir = examples_directory.abspath()
+            output_dir = str(examples_directory)
 
     output_dir = _EXAMPLES_DIRECTORY.name if output_dir is None else output_dir
 
@@ -241,7 +241,7 @@ def get_path_test(name: str, output_dir: str | None = None) -> str:
     """
     if output_dir is None:
         with as_file(_EXAMPLES_DIRECTORY) as examples_directory:
-            output_dir = examples_directory.abspath()
+            output_dir = str(examples_directory)
 
     if name in list(_FILEPATHS_TEST.keys()):
         # Download Longyearbyen raw data
