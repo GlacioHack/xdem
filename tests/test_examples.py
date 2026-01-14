@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import glob
 import os
 import tempfile
 
@@ -133,6 +134,8 @@ class TestExamples:
 
     def test_get_path_test_longyearbyen(self) -> None:
         """Let's ensure that the cropped data are successfully downloaded in case call from the test."""
+
+        temp_dir = tempfile.TemporaryDirectory()
 
         path = examples.get_path_test("longyearbyen_ref_dem")
 
