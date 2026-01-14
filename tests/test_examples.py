@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import glob
 import os
 import tempfile
 
@@ -130,7 +131,13 @@ class TestExamples:
     def test_get_path_test_longyearbyen(self) -> None:
         """Let's ensure that the data are successfully downloaded in case call from the test."""
 
-        path = examples.get_path_test("longyearbyen_ref_dem")
+        temp_dir = tempfile.TemporaryDirectory()
+        path = examples.get_path_test("longyearbyen_ref_dem", output_dir=temp_dir.name)
+
         longyearbyen_dir = os.path.dirname(os.path.dirname(path))
+
         assert sum([len(files) for _, _, files in os.walk(os.path.join(longyearbyen_dir, "data"))]) == 26
         assert sum([len(files) for _, _, files in os.walk(os.path.join(longyearbyen_dir, "processed"))]) == 4
+
+        for test_file in glob.glob(os.path.join(longyearbyen_dir, "*", "*_test.tif")):
+            assert Raster(test_file).shape == (54, 50)
