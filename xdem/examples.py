@@ -221,10 +221,10 @@ def _crop_lonyearbyen_test_examples(output_dir: str, overwrite: bool = False) ->
 
         if "DEM" in name_split or "dDEM" in name_split:
             cropped = gu.Raster(input_file).crop(crop_geom)
-        # For point cloud
+        # For point clouds
         elif "EPC" in name_split:
             cropped = gu.PointCloud(input_file, data_column="h_li").crop(crop_geom)
-        # For vectors:
+        # For vectors
         else:
             cropped = gu.Vector(input_file).crop(crop_geom)
 

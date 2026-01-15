@@ -26,7 +26,7 @@ def load_examples_longyearbyen() -> tuple[Raster, Raster, Vector, Raster, EPC]:
     tba_dem = Raster(examples.get_path("longyearbyen_tba_dem"))
     glacier_mask = Vector(examples.get_path("longyearbyen_glacier_outlines"))
     ddem = Raster(examples.get_path("longyearbyen_ddem"))
-    epc = EPC(examples.get_path("longyearbyen_epc"), data_column="h_li")
+    epc = PointCloud(examples.get_path("longyearbyen_epc"), data_column="h_li")
     return ref_dem, tba_dem, glacier_mask, ddem, epc
 
 
