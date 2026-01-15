@@ -395,6 +395,9 @@ class Accuracy(Workflows):
             if self.level > 1:
                 self.diff_before.to_file(self.outputs_folder / "rasters" / "diff_elev_before_coreg_map.tif")
                 self.diff_after.to_file(self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
+        else:
+            if self.level > 1:
+                self.diff.to_file(self.outputs_folder / "rasters" / "diff_elev.tif")
 
         t1 = time.time()
         self.elapsed = t1 - t0
