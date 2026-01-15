@@ -213,6 +213,58 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
 
 
 @pytest.mark.parametrize(
+    "level",
+    [1, 2],
+)
+def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
+    """
+    Test run function
+    """
+
+    user_config = get_accuracy_inputs_config
+    user_config["outputs"] = {"path": str(tmp_path), "level": level}
+    user_config["coregistration"] = {"process": False}
+    workflows = Accuracy(user_config)
+    workflows.run()
+
+    assert Path(tmp_path / "tables").joinpath("diff_elev_stats.csv").exists()
+
+    assert Path(tmp_path / "plots").joinpath("diff_elev.png").exists()
+    assert not Path(tmp_path / "plots").joinpath("diff_elev_before_coreg.png").exists()
+    assert not Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
+    assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
+
+    assert not Path(tmp_path / "rasters").joinpath("aligned_elev.tif").exists()
+
+    assert Path(tmp_path).joinpath("report.html").exists()
+    # sometimes the PDF creation fails for no reason
+    # assert Path(tmp_path).joinpath("report.pdf").exists()
+    assert Path(tmp_path).joinpath("used_config.yaml").exists()
+
+    csv_files = [
+        "diff_elev_stats.csv",
+        "reference_elev_stats.csv",
+        "to_be_aligned_elev_stats.csv",
+    ]
+
+    raster_files = ["diff_elev.tif"]
+
+    if level == 1:
+        for file in csv_files:
+            assert (Path(tmp_path) / "tables" / file).exists()
+        for file in raster_files:
+            assert not (Path(tmp_path) / "rasters" / file).exists()
+
+    if level == 2:
+        for file in csv_files:
+            assert (Path(tmp_path) / "tables" / file).exists()
+        for file in raster_files:
+            assert (Path(tmp_path) / "rasters" / file).exists()
+
+
+@pytest.mark.parametrize(
     "config",
     [
         (True, "reference_elev", "reference_elev"),
