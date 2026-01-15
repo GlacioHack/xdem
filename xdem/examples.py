@@ -70,7 +70,7 @@ _FILEPATHS_TEST = {
 available_test = list(_FILEPATHS_TEST.keys())
 
 # IF MODIFIED, NEED TO BE ADJUSTED IN XDEM-DATA TO PRODUCE GDAL OUTPUTS AS WELL
-_TEST_ICROP_BOUNDS = (137, 21, 187, 75)
+_TEST_ICROP_BOUNDS = (55, 21, 105, 75)
 
 
 def _download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = False) -> None:
@@ -180,17 +180,19 @@ def _crop_lonyearbyen_test_examples(overwrite: bool = False) -> None:
             continue
 
         # Get geometry to crop to
-        crop_geom = gu.Raster(_FILEPATHS_ALL["longyearbyen_ref_dem"]).icrop(_TEST_ICROP_BOUNDS).bounds
+        ref_dem_cropped = xdem.DEM(_FILEPATHS_ALL["longyearbyen_ref_dem"]).icrop(_TEST_ICROP_BOUNDS)
 
         # For rasters
         if os.path.basename(_FILEPATHS_ALL[k]).split("_")[0] in ["DEM", "dDEM"]:
-            cropped = gu.Raster(_FILEPATHS_ALL[k]).crop(crop_geom)
+            cropped = gu.Raster(_FILEPATHS_ALL[k]).crop(ref_dem_cropped.bounds)
         # For point cloud
         elif os.path.basename(_FILEPATHS_ALL[k]).split("_")[0] == "EPC":
-            cropped = gu.PointCloud(_FILEPATHS_ALL[k], data_column="h_li").crop(crop_geom)
-        # For vectors:
+            pc = gu.PointCloud(_FILEPATHS_ALL[k], data_column="h_li")
+            reprojected_dem_cropped = ref_dem_cropped.reproject(crs=pc.crs)
+            cropped = pc.crop(reprojected_dem_cropped.bounds)
+        # For vectors
         else:
-            cropped = gu.Vector(_FILEPATHS_ALL[k]).crop(crop_geom)
+            cropped = gu.Vector(_FILEPATHS_ALL[k]).crop(ref_dem_cropped.bounds)
 
         cropped.to_file(_FILEPATHS_TEST[k])
 
