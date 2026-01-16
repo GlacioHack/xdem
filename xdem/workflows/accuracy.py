@@ -169,7 +169,7 @@ class Accuracy(Workflows):
 
         return aligned_elev
 
-    def _prepare_datas_for_coreg(self) -> None:
+    def _prepare_datas(self) -> None:
         """
         Compute reprojection.
         """
@@ -195,6 +195,7 @@ class Accuracy(Workflows):
         # Intersection
         logging.info("Computing intersection")
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
+        print(coord_intersection)
         if sampling_source == "reference_elev":
             self.reference_elev = self.reference_elev.crop(coord_intersection)
             self.generate_plot(
@@ -309,8 +310,7 @@ class Accuracy(Workflows):
 
         # Reprojection step
         if "sampling_grid" in self.config["inputs"]:
-            print(self.config["inputs"]["sampling_grid"])
-            self._prepare_datas_for_coreg()
+            self._prepare_datas()
 
         if self.compute_coreg:
             # Coregistration step
