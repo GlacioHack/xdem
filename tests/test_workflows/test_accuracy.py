@@ -267,14 +267,14 @@ def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
 @pytest.mark.parametrize(
     "config",
     [
-        (True, "reference_elev", "reference_elev"),
-        (False, "reference_elev", "reference_elev"),
-        (True, "to_be_aligned_elev", "to_be_aligned_elev"),
-        (False, "to_be_aligned_elev", "to_be_aligned_elev"),
-        (True, None, None),
-        (True, None, "reference_elev"),
-        (False, None, None),
-        (False, None, "reference_elev"),
+        (True, "reference_elev", "reference_elev", None),
+        (False, "reference_elev", "reference_elev", None),
+        (True, "to_be_aligned_elev", "to_be_aligned_elev", None),
+        (False, "to_be_aligned_elev", "to_be_aligned_elev", None),
+        (True, None, None, "must be set to"),
+        (True, None, "reference_elev", "must be set to"),
+        (False, None, None, None),
+        (False, None, "reference_elev", "same shape, transform and CRS"),
     ],
 )
 def test_run_prepa_data(get_accuracy_inputs_config, tmp_path, config):
@@ -282,7 +282,7 @@ def test_run_prepa_data(get_accuracy_inputs_config, tmp_path, config):
     Test preparation data with all sampling_grid values in a coreg/no coreg process.
     """
 
-    process, sampling_grid, dem_to_crop = config
+    process, sampling_grid, dem_to_crop, error = config
     user_config = get_accuracy_inputs_config
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
     user_config["coregistration"] = {"process": process}
@@ -296,12 +296,12 @@ def test_run_prepa_data(get_accuracy_inputs_config, tmp_path, config):
         dem_crop.to_file(Path(tmp_path / "reference_elev_crop.tif"))
         user_config["inputs"][dem_to_crop]["path_to_elev"] = Path(tmp_path / "reference_elev_crop.tif").as_posix()
 
-    workflows = Accuracy(user_config)
-
-    if dem_to_crop != sampling_grid:
-        with pytest.raises(ValueError, match="same shape, transform and CRS"):
+    if error is not None:
+        with pytest.raises(ValueError, match=error):
+            workflows = Accuracy(user_config)
             workflows.run()
     else:
+        workflows = Accuracy(user_config)
         workflows.run()
 
         if sampling_grid is not None:
