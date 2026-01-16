@@ -62,6 +62,12 @@ class Accuracy(Workflows):
 
         if not self.compute_coreg:
             del self.config["coregistration"]["step_one"]
+        else:
+            if self.config["inputs"]["sampling_grid"] is None:
+                raise ValueError(
+                    'In case of a coregistration process, "sampling grid" must be set to '
+                    '"reference_elev" or "to_be_aligned_elev"'
+                )
 
         yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
         Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")

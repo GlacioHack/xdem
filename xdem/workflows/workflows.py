@@ -121,6 +121,7 @@ class Workflows(ABC):
     def load_config(self) -> Dict[str, Any]:
         """
         Load a configuration file
+        Warning: all null value in the .yaml are translated to None in the dict
         :return: Configuration dictionary
         """
         yaml = import_optional("yaml", package_name="pyyaml")
