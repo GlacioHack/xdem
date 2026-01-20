@@ -21,14 +21,30 @@ To find an example about a specific functionality, jump directly to {ref}`quick-
 
 ## Download data samples
 
-The south of Longyearbyen, the capital of Svalbard, a Norwegian archipelago, is the most used dataset. It is composed by:
-- two DEMs of the same area `"longyearbyen_ref_dem"` (2009) and `"longyearbyen_ref_tba"` (1990) that can be easily compared
-- both dates had a corresponding vector file representing the glacier outlines in the Svalbard: `"longyearbyen_glacier_outlines"` (1990) and `"longyearbyen_glacier_outlines_2010"` (2010)
-- a point cloud data `"longyearbyen_epc"` is also available in the same area
+The south of Longyearbyen, capital of Svalbard, a Norwegian archipelago, is the most used dataset in xDEM examples and
+tests. It is composed by:
+- two DEMs of the same area `"longyearbyen_ref_dem"` (DEM_2009_ref.tif) and `"longyearbyen_ref_tba"` (DEM_1990.tif) that can be easily compared
+- both dates had a corresponding vector file representing the glacier outlines in the Svalbard: `"longyearbyen_glacier_outlines"` (CryoClim_GAO_SJ_1990.shp) and `"longyearbyen_glacier_outlines_2010"` (CryoClim_GAO_SJ_2010.shp)
+- a point cloud data `"longyearbyen_epc"` (EPC_IS.gpkg) is also available in the same area
 
-Also, a new DEM over the Giza pyramid complex "gizeh_dem" was recently added to have another raster example.
 
-The function `xdem.examples.get_path(alias, output_dir)` downloads the entire dataset of the alias and return the path of the data behind the alias. It can be use like this:
+```{note}
+All of these data can be used under open licence and if you need other information
+about all of these, you can see the [README.md](https://github.com/GlacioHack/xdem-data/blob/main/README.md)
+of the [xdem-data github project](https://github.com/GlacioHack/xdem-data) where they are stored.
+```
+
+
+To download and extract the data samples, you can run:
+
+```bash
+mkdir examples_data
+tar -xvz -C examples_data  --wildcards  "*/data" --strip-components 2 -f <(wget -q -O - https://github.com/marinebcht/xdem-data/archive/1338aaa06842f9e6b3182069a295618eb54914a5.tar.gz)
+```
+
+You can also use the function `xdem.examples.get_path(alias, output_dir)`. It downloads the entire dataset of the alias
+and return the path of the data behind the alias. It can be use like this:
+
 
 ```{code-cell} ipython3
 import xdem
@@ -39,11 +55,6 @@ path = xdem.examples.get_path("longyearbyen_ref_dem", output_dir)
 ```
 
 
-```{note}
-:class: margin
-The data samples from this tutorial can be used under open licence and if you need other information
-about all of these, you can see the [README.md](https://github.com/GlacioHack/xdem-data/blob/main/README.md) of the [xdem-data github project](https://github.com/GlacioHack/xdem-data) where they are stored.
-```
 
 
 ## Python example
