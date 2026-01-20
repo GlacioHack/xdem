@@ -54,8 +54,7 @@ output_dir = "my_directory"
 path = xdem.examples.get_path("longyearbyen_ref_dem", output_dir)
 ```
 
-
-
+If no `output_dir` is given, xDem will take xdem/example_data repository by default.
 
 ## Python example
 
