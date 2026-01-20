@@ -70,7 +70,7 @@ _FILEPATHS_TEST = {
 available_test = list(_FILEPATHS_TEST.keys())
 
 # IF MODIFIED, NEED TO BE ADJUSTED IN XDEM-DATA TO PRODUCE GDAL OUTPUTS AS WELL
-_TEST_ICROP_BOUNDS = (55, 21, 105, 75)
+_TEST_ICROP_BOUNDS = (475, 600, 545, 654)
 
 
 def _download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = False) -> None:
