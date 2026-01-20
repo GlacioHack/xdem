@@ -19,6 +19,32 @@ kernelspec:
 Below is a short example show-casing some of the core functionalities of xDEM.
 To find an example about a specific functionality, jump directly to {ref}`quick-gallery`.
 
+## Download data samples
+
+Longyearbyen dataset is the most used. It is composed by:
+- two DEMs of the same area "longyearbyen_ref_dem" (2009) and "longyearbyen_ref_tba" (1990) that can be easily compared
+- both dates had a corresponding vector file representing the glacier outlines in the Svalbard: "longyearbyen_glacier_outlines" (1990) and "longyearbyen_glacier_outlines_2010" (2010)
+- a pointcloud data "longyearbyen_epc" is is also available in the same area
+
+Plus, a new DEM over the Gizeh Pyrapydes "gizeh_dem" was recently added to use ... data.
+
+To download and have an access to all of these rasters, vectors and pointcloud, you need to call this python function: examples.get_path(alias, output_dir) like in this example:
+
+```{code-cell} ipython3
+import xdem
+
+# To download Longyearbyen dataset in output_dir and return the path of the 2010 raster DEM
+path = xdem.examples.get_path("longyearbyen_ref_dem", output_dir)
+```
+
+
+```{note}
+:class: margin
+Data samples from this tutorial can be used under open licence and if you need other information
+about all of these, you can see the README.md of the xdme-data repository where they are stored.
+```
+
+
 ## Python example
 
 ```{note}
