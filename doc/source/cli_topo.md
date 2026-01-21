@@ -103,50 +103,44 @@ The parameters to pass to the `topo` workflow are divided into four categories:
 
 These categories and detailed parameter values are further detailed below:
 
-## Configuration
-
-```{tab-set}
-
-```{}
-
-### `inputs`
+:::::{tab-set}
+::::{tab-item} `inputs`
 
 **Required:** Yes
 
 Elevation input information.
 
-```{csv-table} Inputs parameters for elevation
-:header: "Name", "Description", "Type", "Default value", "Required"
+:::{table} Inputs parameters for elevation
 :widths: 20, 40, 20, 10, 10
 
-"``path_to_elev``", "Path to reference elevation", "str", "", "Yes"
-"``force_source_nodata``", "No data elevation", "int", "", "No"
-"``path_to_mask``", "Path to mask associated to the elevation", "str", "", "No"
-"``from_vcrs``", "Original vcrs", "int, str", None, "No"
-"``to_vcrs``", "Destination vcrs", "int, str", None, "No"
-"``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
-```
+| Name                  | Description                        | Type       | Default | Required |
+|-----------------------|-----------------------------------|-----------|--------------|---------|
+| `path_to_elev`        | Path to reference elevation        | str       |              | Yes     |
+| `force_source_nodata` | No data elevation                  | int       |              | No      |
+| `path_to_mask`        | Path to mask associated to the elevation | str |              | No      |
+| `from_vcrs`           | Original vcrs                      | int, str  | None         | No      |
+| `to_vcrs`             | Destination vcrs                   | int, str  | None         | No      |
+| `downsample`          | Downsampling elevation factor >= 1 | int, float| 1            | No      |
+:::
 
-```{note}
-For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
+:::{note}
+For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to {ref}`vertical-ref`.
 The ``downsample`` parameter allows the user to resample the elevation by a round factor.
 The default value of 1 means no downsampling.
-```
+:::
 
-```{code-block} yaml
+:::{code-block} yaml
 inputs:
   reference_elev:
     path_to_elev: "path_to/reference_elev.tif"
     force_source_nodata: -32768
     from_vcrs: None
     to_vcrs: None
-```
+:::
 
-```
+::::
 
-```{}
-
-### `statistics`
+::::{tab-item} `statistics`
 
 **Required:** No
 
@@ -160,39 +154,37 @@ Statistics step information. This section relates to the computed statistics:
 
 3. If a block is specified and some statistics are provided, then only these statistics are computed.
 
-```{code-block} yaml
+:::{code-block} yaml
 statistics:
   - min
   - max
   - mean
-```
+:::
 
 If a mask is provided, the statistics are also computed inside the mask.
 
-```
+::::
 
-```{}
-
-### `terrain_attributes`
+::::{tab-item} `terrain_attributes`
 
 **Required:** No
 
 List or set of dictionaries for extra information.
 
-```{note}
+:::{note}
 - If no block is specified, slope, aspect, and curvature attributes are calculated by default.
 - If a block is specified but no information is provided, then no attributes will be calculated.
-```
+:::
 
-```{code-block} yaml
+:::{code-block} yaml
 terrain_attributes:
   - hillshade
   - slope
-```
+:::
 
 or
 
-```{code-block} yaml
+:::{code-block} yaml
 terrain_attributes:
   hillshade:
       extra_information:
@@ -201,18 +193,16 @@ terrain_attributes:
   aspect:
       extra_information:
           degrees: False
-```
+:::
 
-```{note}
+:::{note}
 The data provided in extra_information is not checked for errors before executing the code.
 Its use is entirely the responsibility of the user.
-```
+:::
 
-```
+::::
 
-```{}
-
-### `outputs`
+::::{tab-item} `outputs`
 
 **Required:** No
 
@@ -221,23 +211,24 @@ Outputs information. Operates by levels:
 1. Level 1 → aligned elevation only
 2. Level 2 → more detailed output
 
-```{csv-table} Output parameters
-:header: "Name", "Description", "Type", "Default value", "Available Value", "Required"
+:::{table} Output parameters
 :widths: 20, 40, 10, 10, 10, 10
 
-"``path``", "Path for outputs", "str", "outputs", "", "No"
-"``level``", "Level for detailed outputs", "int", "1", "1 or 2", "No"
-```
+| Name    | Description                | Type | Default value | Available Value                       | Required |
+|---------|----------------------------|------|---------------|--------------------------------------|---------|
+| `path`  | Path for outputs           | str  | outputs       |                                      | No      |
+| `level` | Level for detailed outputs | int  | 1             | 1 or 2                               | No      |
+:::
 
-```{code-block} yaml
+:::{code-block} yaml
 outputs:
   level: 1
   path: "path_to/outputs"
-```
+:::
 
 Tree of outputs for level 1:
 
-```{code-block} text
+:::{code-block} text
 - root
   ├─ tables
   │   ├─ elev_stats.csv
@@ -250,11 +241,11 @@ Tree of outputs for level 1:
   ├─ report.html
   ├─ report.pdf
   └─ used_config.yaml
-```
+:::
 
 Tree of outputs for level 2:
 
-```{code-block} text
+:::{code-block} text
 - root
   ├─ tables
   │   ├─ elev_stats.csv
@@ -274,4 +265,8 @@ Tree of outputs for level 2:
   ├─ report.html
   ├─ report.pdf
   └─ used_config.yaml
-```
+:::
+
+::::
+
+:::::
