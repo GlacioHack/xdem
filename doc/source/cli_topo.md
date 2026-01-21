@@ -218,7 +218,7 @@ Its use is entirely the responsibility of the user.
 
 Outputs information. Operates by levels:
 
-1. Level 1 → aligned elevation only  
+1. Level 1 → aligned elevation only
 2. Level 2 → more detailed output
 
 ```{csv-table} Output parameters
@@ -275,5 +275,3 @@ Tree of outputs for level 2:
   ├─ report.pdf
   └─ used_config.yaml
 ```
-
-

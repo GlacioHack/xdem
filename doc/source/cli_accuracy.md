@@ -346,4 +346,3 @@ Tree of outputs for level 2 (including coregistration step):
   ├─ report.pdf
   └─ used_config.yaml
 ```
-
