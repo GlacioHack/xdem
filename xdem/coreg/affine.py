@@ -33,7 +33,7 @@ import rasterio as rio
 import scipy.optimize
 import scipy.spatial
 from geoutils._typing import Number
-from geoutils.interface.interpolate import _interp_points
+from geoutils.interface.interpolation import _interp_points
 from geoutils.raster.georeferencing import _coords, _res
 from geoutils.stats import nmad
 
