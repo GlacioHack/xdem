@@ -35,6 +35,7 @@ import xdem
 from xdem import DEM
 from xdem._misc import import_optional
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
+from xdem.examples import _FILEPATHS_ALL
 from xdem.workflows.schemas import validate_configuration
 
 # Inheritance of optional dependency class
@@ -188,7 +189,13 @@ class Workflows(ABC):
         """
         mask_path = None
         if config_dem is not None:
-            dem = xdem.DEM(config_dem["path_to_elev"], downsample=config_dem.get("downsample", 1))
+
+            path_to_elev = config_dem["path_to_elev"]
+            # If alias, get its path
+            if path_to_elev in list(_FILEPATHS_ALL.keys()):
+                path_to_elev = xdem.examples.get_path(path_to_elev)
+
+            dem = xdem.DEM(path_to_elev, downsample=config_dem.get("downsample", 1))
             inlier_mask = None
             from_vcrs = config_dem.get("from_vcrs", None)
             to_vcrs = config_dem.get("to_vcrs", None)
@@ -206,6 +213,10 @@ class Workflows(ABC):
                 dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
             if config_dem.get("path_to_mask") is not None:
                 mask_path = config_dem["path_to_mask"]
+                # If alias, get its path
+                if mask_path in list(_FILEPATHS_ALL.keys()):
+                    mask_path = xdem.examples.get_path(mask_path)
+
                 mask = gu.Vector(mask_path)
                 inlier_mask = ~mask.create_mask(dem)
 
