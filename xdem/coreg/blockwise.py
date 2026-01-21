@@ -35,7 +35,7 @@ import rasterio as rio
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
-from geoutils.raster.distributed_computing import (
+from geoutils.raster.chunked import (
     MultiprocConfig,
     map_multiproc_collect,
     map_overlap_multiproc_save,
