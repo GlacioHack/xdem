@@ -250,7 +250,7 @@ def test_load_dem(get_dem_config, from_vcrs, to_vcrs):
         assert inlier_mask == ~mask.create_mask(input_dem)
 
 
-def test_load_dem_alias(self):
+def test_load_dem_alias():
     """
     Test load_dem function with alias
     """
