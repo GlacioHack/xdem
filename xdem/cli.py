@@ -124,8 +124,13 @@ def main() -> None:
 
     if args.command == "topo":
         if args.template_config:
-            yaml_string = yaml.dump(COMPLETE_CONFIG_TOPO, sort_keys=False, allow_unicode=True)
-            logging.info("\n" + yaml_string)
+            if args.output:
+                with open(args.output, "w") as yaml_file:
+                    yaml.dump(COMPLETE_CONFIG_TOPO, yaml_file, sort_keys=False, allow_unicode=True)
+                logging.info("Default config saved in" + args.output)
+            else:
+                yaml_string = yaml.dump(COMPLETE_CONFIG_TOPO, sort_keys=False, allow_unicode=True)
+                logging.info("\n" + yaml_string)
         elif args.config:
             logger.info("Running topo workflow")
             workflow = Topo(args.config, args.output)
