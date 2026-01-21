@@ -301,6 +301,7 @@ COMPLETE_CONFIG_ACCURACY = {
             "method": None,
             "extra_information": None,
         },
+        "process": True,
     },
     "statistics": [
         "mean",
