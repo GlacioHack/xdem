@@ -13,9 +13,9 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.13'
       - name: Install project with documentation dependencies
-        run: python -m pip install -e .[doc,opt] -vv
+        run: python -m pip install -e .[doc,opt]
       - name: Sphinx build with full traceback
         run: |
           cd doc
