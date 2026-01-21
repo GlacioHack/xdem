@@ -56,7 +56,6 @@ extensions = [
     "sphinx.ext.intersphinx",
     # "myst_parser",  !! Not needed with myst_nb !! # Form of Markdown that works with sphinx, used a lot by the Sphinx Book Theme
     "myst_nb",  # MySt for rendering Jupyter notebook in documentation
-    "sphinx_tabs.tabs",  # Include tabs
     "sphinx_design",
 ]
 
