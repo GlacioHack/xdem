@@ -53,7 +53,6 @@ dependencies:
   - graphviz
   - myst-nb
   - numpydoc
-  - sphinx-tabs
 
   - pip:
       # Optional dependencies with Pip

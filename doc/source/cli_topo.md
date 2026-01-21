@@ -103,157 +103,177 @@ The parameters to pass to the `topo` workflow are divided into four categories:
 
 These categories and detailed parameter values are further detailed below:
 
-```{eval-rst}
-.. tabs::
+## Configuration
 
-   .. tab:: ``inputs``
+```{tab-set}
 
-     **Required:** Yes
+```{}
 
-     Elevation input information.
+### `inputs`
 
-     .. csv-table:: Inputs parameters for elevation
-        :header: "Name", "Description", "Type", "Default value", "Required"
-        :widths: 20, 40, 20, 10, 10
+**Required:** Yes
 
-        "``path_to_elev``", "Path to reference elevation", "str", "", "Yes"
-        "``force_source_nodata``", "No data elevation", "int", "", "No"
-        "``path_to_mask``", "Path to mask associated to the elevation", "str", "", "No"
-        "``from_vcrs``", "Original vcrs", "int, str", None, "No"
-        "``to_vcrs``", "Destination vcrs", "int, str", None, "No"
-        "``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
+Elevation input information.
 
-     .. note::
-        For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
-        The ``downsample`` parameter allows the user to resample the elevation by a round factor. The default value of 1 means no downsampling.
+```{csv-table} Inputs parameters for elevation
+:header: "Name", "Description", "Type", "Default value", "Required"
+:widths: 20, 40, 20, 10, 10
 
-
-     .. code-block:: yaml
-
-         inputs:
-           reference_elev:
-             path_to_elev: "path_to/reference_elev.tif"
-             force_source_nodata: -32768
-             from_vcrs: None
-             to_vcrs: None
-
-   .. tab:: ``statistics``
-
-      **Required:** No
-
-      Statistics step information. This section relates to the computed statistics:
-        1. If no block is specified, all available statistics are calculated by default.
-        [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
-        percentage valid points, inter quartile range]
-
-        2. If a block is specified but no statistics are provided, then no statistics will be computed.
-
-        3. If a block is specified and some statistics are provided, then only these statistics are computed.
-
-      .. code-block:: yaml
-
-         statistics:
-           - min
-           - max
-           - mean
-
-      If a mask is provided, the statistics are also computed inside the mask.
-
-   .. tab:: ``terrain_attributes``
-
-      **Required:** No
-
-      List or set of dictionaries for extra information.
-
-      .. note::
-          - If no block is specified, slope, aspect, and curvature attributes are calculated by default.
-          - If a block is specified but no information is provided, then no attributes will be calculated.
-
-      .. code-block:: yaml
-
-         terrain_attributes:
-           - hillshade
-           - slope
-
-      or
-
-      .. code-block:: yaml
-
-         terrain_attributes:
-           hillshade:
-               extra_information:
-           slope:
-              extra_information:
-           aspect:
-            extra_information:
-                degrees: False
-
-      .. note::
-        The data provided in extra_information is not checked for errors before executing the code.
-        Its use is entirely the responsibility of the user.
-
-   .. tab:: ``outputs``
-
-    **Required:** No
-
-    Outputs information.
-
-    Operates by levels:
-
-    1. Level 1 → aligned elevation only
-    2. Level 2 → more detailed output
-
-    .. csv-table:: Output parameters
-       :header: "Name", "Description", "Type", "Default value", "Available Value", "Required"
-       :widths: 20, 40, 10, 10, 10, 10
-
-       "``path``", "Path for outputs", "str", "outputs", "", "No"
-       "``level``", "Level for detailed outputs", "int", "1", "1 or 2", "No"
-
-    .. code-block:: yaml
-
-      outputs:
-          level : 1
-          path : "path_to/outputs"
-
-    Tree of outputs for level 1
-
-    .. code-block:: text
-
-      - root
-        ├─ tables
-        │   ├─ elev_stats.csv
-        │   └─ elev_with_mask_stats.csv
-        ├─ plots
-        │   ├─ elev_map.png
-        │   ├─ masked_elev_map.png (if mask_elev is given in input)
-        │   └─ terrain_attributes_map.png
-        ├─ rasters
-        ├─ report.html
-        ├─ report.pdf
-        └─ used_config.yaml
-
-    Tree of outputs for level 2
-
-    .. code-block:: text
-
-      - root
-        ├─ tables
-        │   ├─ elev_stats.csv
-        │   └─ elev_with_mask_stats.csv
-        ├─ plots
-        │   ├─ elev_map.png
-        │   ├─ masked_elev_map.png (if mask_elev is given in input)
-        │   └─ terrain_attributes_map.png
-        ├─ rasters
-        │   ├─ aspect.tif
-        │   ├─ curvature.tif
-        │   ├─ hillshade.tif
-        │   ├─ rugosity.tif
-        │   ├─ slope.tif
-        │   ├─ terrain_ruggedness_index.tif
-        │   └─ ...
-        ├─ report.html
-        ├─ report.pdf
-        └─ used_config.yaml
+"``path_to_elev``", "Path to reference elevation", "str", "", "Yes"
+"``force_source_nodata``", "No data elevation", "int", "", "No"
+"``path_to_mask``", "Path to mask associated to the elevation", "str", "", "No"
+"``from_vcrs``", "Original vcrs", "int, str", None, "No"
+"``to_vcrs``", "Destination vcrs", "int, str", None, "No"
+"``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
 ```
+
+```{note}
+For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
+The ``downsample`` parameter allows the user to resample the elevation by a round factor.
+The default value of 1 means no downsampling.
+```
+
+```{code-block} yaml
+inputs:
+  reference_elev:
+    path_to_elev: "path_to/reference_elev.tif"
+    force_source_nodata: -32768
+    from_vcrs: None
+    to_vcrs: None
+```
+
+```
+
+```{}
+
+### `statistics`
+
+**Required:** No
+
+Statistics step information. This section relates to the computed statistics:
+
+1. If no block is specified, all available statistics are calculated by default:
+   [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
+   percentage valid points, inter quartile range]
+
+2. If a block is specified but no statistics are provided, then no statistics will be computed.
+
+3. If a block is specified and some statistics are provided, then only these statistics are computed.
+
+```{code-block} yaml
+statistics:
+  - min
+  - max
+  - mean
+```
+
+If a mask is provided, the statistics are also computed inside the mask.
+
+```
+
+```{}
+
+### `terrain_attributes`
+
+**Required:** No
+
+List or set of dictionaries for extra information.
+
+```{note}
+- If no block is specified, slope, aspect, and curvature attributes are calculated by default.
+- If a block is specified but no information is provided, then no attributes will be calculated.
+```
+
+```{code-block} yaml
+terrain_attributes:
+  - hillshade
+  - slope
+```
+
+or
+
+```{code-block} yaml
+terrain_attributes:
+  hillshade:
+      extra_information:
+  slope:
+      extra_information:
+  aspect:
+      extra_information:
+          degrees: False
+```
+
+```{note}
+The data provided in extra_information is not checked for errors before executing the code.
+Its use is entirely the responsibility of the user.
+```
+
+```
+
+```{}
+
+### `outputs`
+
+**Required:** No
+
+Outputs information. Operates by levels:
+
+1. Level 1 → aligned elevation only  
+2. Level 2 → more detailed output
+
+```{csv-table} Output parameters
+:header: "Name", "Description", "Type", "Default value", "Available Value", "Required"
+:widths: 20, 40, 10, 10, 10, 10
+
+"``path``", "Path for outputs", "str", "outputs", "", "No"
+"``level``", "Level for detailed outputs", "int", "1", "1 or 2", "No"
+```
+
+```{code-block} yaml
+outputs:
+  level: 1
+  path: "path_to/outputs"
+```
+
+Tree of outputs for level 1:
+
+```{code-block} text
+- root
+  ├─ tables
+  │   ├─ elev_stats.csv
+  │   └─ elev_with_mask_stats.csv
+  ├─ plots
+  │   ├─ elev_map.png
+  │   ├─ masked_elev_map.png (if mask_elev is given in input)
+  │   └─ terrain_attributes_map.png
+  ├─ rasters
+  ├─ report.html
+  ├─ report.pdf
+  └─ used_config.yaml
+```
+
+Tree of outputs for level 2:
+
+```{code-block} text
+- root
+  ├─ tables
+  │   ├─ elev_stats.csv
+  │   └─ elev_with_mask_stats.csv
+  ├─ plots
+  │   ├─ elev_map.png
+  │   ├─ masked_elev_map.png (if mask_elev is given in input)
+  │   └─ terrain_attributes_map.png
+  ├─ rasters
+  │   ├─ aspect.tif
+  │   ├─ curvature.tif
+  │   ├─ hillshade.tif
+  │   ├─ rugosity.tif
+  │   ├─ slope.tif
+  │   ├─ terrain_ruggedness_index.tif
+  │   └─ ...
+  ├─ report.html
+  ├─ report.pdf
+  └─ used_config.yaml
+```
+
+
