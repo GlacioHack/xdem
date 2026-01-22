@@ -71,7 +71,9 @@ def main() -> None:
         description="Run the topography workflow using a YAML configuration file.",
         epilog="examples:\n"
         "  xdem topo --config config.yaml --output myoutputfolder\n"
-        "  xdem topo --template-config --output template_config.yaml",
+        "  xdem topo --config config.yaml\n"
+        "  xdem topo --template-config\n"
+        "  xdem topo --template-config template_config.yaml",
         add_help=False,
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -85,10 +87,16 @@ def main() -> None:
     )
     topo_parser.add_argument(
         "--output",
-        help="(Optional) Path to output folder with --config (overrides configuration file)"
-        "or file with --template-config",
+        help="(Optional) Path to output folder (with --config, overrides configuration file)",
     )
-    topo_group.add_argument("--template-config", action="store_true", help="Show template of YAML configuration file")
+    topo_group.add_argument(
+        "--template-config",
+        help="Show or save template of YAML configuration file",
+        const=None,
+        default=False,
+        action="store",
+        nargs="?",
+    )
 
     # Subcommand: accuracy
     diff_parser = subparsers.add_parser(
@@ -96,8 +104,10 @@ def main() -> None:
         help="Run accuracy workflow",
         description="Run the accuracy assessment workflow for elevation data using a YAML configuration file.",
         epilog="examples:\n"
+        "  xdem accuracy --config config.yaml\n"
         "  xdem accuracy --config config.yaml --output myoutputfolder\n"
-        "  xdem accuracy --template-config --output template_config.yaml",
+        "  xdem accuracy --template-config\n"
+        "  xdem accuracy --template-config template_config.yaml",
         add_help=False,
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -106,11 +116,17 @@ def main() -> None:
     )
     diff_group = diff_parser.add_mutually_exclusive_group(required=True)
     diff_group.add_argument("--config", help="Path to YAML configuration file")
-    diff_group.add_argument("--template-config", action="store_true", help="Show template of YAML configuration file")
+    diff_group.add_argument(
+        "--template-config",
+        help="Show template of YAML configuration file",
+        const=None,
+        default=False,
+        action="store",
+        nargs="?",
+    )
     diff_parser.add_argument(
         "--output",
-        help="(Optional) Path to output folder with --config (overrides configuration file)"
-        "or file with --template-config",
+        help="(Optional) Path to output folder (with --config, overrides configuration file)",
     )
     args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
 
@@ -122,29 +138,32 @@ def main() -> None:
     logging.getLogger("fontTools").setLevel(logging.WARNING)
     logging.getLogger("fontTools").propagate = False
 
+    if args.output and not args.config:
+        parser.error("Argument --output requires --config.")
+
     if args.command == "topo":
-        if args.template_config:
-            if args.output:
-                with open(args.output, "w") as yaml_file:
-                    yaml.dump(COMPLETE_CONFIG_TOPO, yaml_file, sort_keys=False, allow_unicode=True)
-                logging.info("Default config saved in" + args.output)
-            else:
+        if args.template_config or args.template_config is None:
+            if args.template_config is None:
                 yaml_string = yaml.dump(COMPLETE_CONFIG_TOPO, sort_keys=False, allow_unicode=True)
                 logging.info("\n" + yaml_string)
+            else:
+                with open(args.template_config, "w") as yaml_file:
+                    yaml.dump(COMPLETE_CONFIG_TOPO, yaml_file, sort_keys=False, allow_unicode=True)
+                logging.info("Default config saved in " + args.template_config)
         elif args.config:
             logger.info("Running topo workflow")
             workflow = Topo(args.config, args.output)
             workflow.run()
 
     elif args.command == "accuracy":
-        if args.template_config:
-            if args.output:
-                with open(args.output, "w") as yaml_file:
-                    yaml.dump(COMPLETE_CONFIG_ACCURACY, yaml_file, sort_keys=False, allow_unicode=True)
-                logging.info("Default config saved in" + args.output)
-            else:
+        if args.template_config or args.template_config is None:
+            if args.template_config is None:
                 yaml_string = yaml.dump(COMPLETE_CONFIG_ACCURACY, sort_keys=False, allow_unicode=True)
                 logging.info("\n" + yaml_string)
+            else:
+                with open(args.template_config, "w") as yaml_file:
+                    yaml.dump(COMPLETE_CONFIG_ACCURACY, yaml_file, sort_keys=False, allow_unicode=True)
+                logging.info("Default config saved in " + args.template_config)
         elif args.config:
             logger.info("Running accuracy workflow")
             workflow = Accuracy(args.config, args.output)  # type: ignore
