@@ -163,7 +163,33 @@ The ``downsample`` parameter allows the user to resample the elevation by a roun
 The default value of 1 means no downsampling.
 :::
 
-:::{code-block} yaml
+
+
+::::
+
+::::{tab-item} `sampling_grid`
+
+:::{table} Possible values for ``sampling_grid``
+:widths: 30, 10, 10, 10, 40
+
+| Value                | Default | Coreg process | No Coreg | Description |
+|----------------------|---------|---------------|----------|---------|
+| `reference_elev`     | Yes     | X             | X        | To-be-aligned elevation will be reproject to the reference elevation     |
+| `to_be_aligned_elev` | No      | X             | X        | Reference elevation will be reproject to the to-be-aligned elevation      |
+| None                 | No      |              | X        | No reprojection with coregistration process or not      |
+:::
+
+:::{note}
+If no reprojection is chosen, the workflow can raises an error if the two inputs have not the same shape, transform and CRS.
+:::
+
+
+::::
+
+
+:::::
+
+:::::{code-block} yaml
 inputs:
     reference_elev:
         path_to_elev: "path_to/reference_elev.tif"
@@ -173,10 +199,7 @@ inputs:
     to_be_aligned_elev:
         path_to_elev: "path_to/to_be_aligned_elev.tif"
         path_to_mask: "path_to/mask.tif"
-:::
-
-::::
-
+    sampling_grid: "reference_elev"
 :::::
 
 ::::::
@@ -204,7 +227,6 @@ To disable coregistration, set ``process: False`` in the configuration file.
 |--------------------------|-------------------------|----------------------------------|-------|----------------|-------------------------------------|---------|
 | `step_[one, two, three]` | `method`                | Name of coregistration method    | str   | NuthKaab        | Every available coregistration method | No      |
 |                          | `extra_information`     | Extra parameters fitting with the method | dict  |                |                                     | No      |
-| `sampling_grid`          |                         | Destination elevation for reprojection | str   | reference_elev | reference_elev or to_be_aligned_elev | No      |
 | `process`                |                         | Activate the coregistration       | bool  | True           | True or False                        | No      |
 :::
 
@@ -220,7 +242,6 @@ coregistration:
     extra_information: {"max_iterations": 10}
   step_two:
     method: "DHMinimize"
-  sampling_grid: "reference_elev"
   process: True
 :::
 
