@@ -19,6 +19,7 @@
 """
 Topo class from workflows.
 """
+
 import logging
 import math
 import time

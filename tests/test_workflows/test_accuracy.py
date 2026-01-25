@@ -18,6 +18,7 @@
 """
 Test DiffAnalysis class
 """
+
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
 

@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Spatial statistical tools to estimate uncertainties related to DEMs"""
+
 from __future__ import annotations
 
 import inspect

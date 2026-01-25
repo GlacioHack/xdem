@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """This module defines the DEM class."""
+
 from __future__ import annotations
 
 import pathlib

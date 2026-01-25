@@ -3,6 +3,7 @@ from __future__ import annotations
 import os.path
 import re
 import warnings
+from typing import Any, Callable
 
 import geoutils as gu
 import numpy as np
@@ -35,7 +36,9 @@ class TestTerrainAttribute:
             "roughness",
         ],
     )  # type: ignore
-    def test_attribute_functions_against_gdaldem(self, attribute: str, get_test_data_path) -> None:
+    def test_attribute_functions_against_gdaldem(
+        self, attribute: str, get_test_data_path: Callable[[str], str]
+    ) -> None:
         """
         Test that all attribute functions give the same results as those of GDALDEM within a small tolerance.
 
@@ -126,7 +129,9 @@ class TestTerrainAttribute:
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "profile_curvature", "planform_curvature"],
     )  # type: ignore
-    def test_attribute_functions_against_richdem(self, attribute: str, get_test_data_path) -> None:
+    def test_attribute_functions_against_richdem(
+        self, attribute: str, get_test_data_path: Callable[[str], str]
+    ) -> None:
         """
         Test that all attribute functions give the same results as those of RichDEM within a small tolerance.
 
@@ -233,7 +238,7 @@ class TestTerrainAttribute:
 
     @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])  # type: ignore
     @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)  # type: ignore
-    def test_attributes__multiproc(self, attribute, surfit_windowsize) -> None:
+    def test_attributes__multiproc(self, attribute: str, surfit_windowsize: tuple[str, int]) -> None:
         """
         Test that terrain attributes are exactly equal in multiprocessing or in normal processing, and for varying
         window sizes/surface fit methods, to verify that the depth (overlap) of the map_overlap is properly defined."""
@@ -254,6 +259,7 @@ class TestTerrainAttribute:
 
         # Unpack argument of surface fit/window size
         surface_fit, window_size = surfit_windowsize
+        kwargs: dict[str, Any]
         if attribute in xdem.terrain.list_requiring_surface_fit:
             kwargs = {"surface_fit": surface_fit}
         elif attribute in xdem.terrain.list_requiring_windowed_index and attribute != "rugosity":

@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Module for the EPC class for elevation point clouds."""
+
 from __future__ import annotations
 
 import pathlib
