@@ -150,8 +150,9 @@ class TestTerrainAttribute:
         dem = self.dem.copy()
 
         # Derive curvature without any gaps
-        curvature = xdem.terrain.get_terrain_attribute(dem.data, surface_fit="ZevenbergThorne", attribute=name,
-                                                       resolution=dem.res)
+        curvature = xdem.terrain.get_terrain_attribute(
+            dem.data, surface_fit="ZevenbergThorne", attribute=name, resolution=dem.res
+        )
 
         # Validate that the array has the same shape as the input and that all non-edge values are finite.
         assert curvature.shape == dem.data.shape
@@ -160,6 +161,7 @@ class TestTerrainAttribute:
         except Exception:
             if PLOT:
                 import matplotlib.pyplot as plt
+
                 plt.imshow(curvature.squeeze())
                 plt.show()
 
