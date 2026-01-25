@@ -19,6 +19,7 @@
 """
 Accuracy class from workflow
 """
+
 import logging
 import time
 from datetime import datetime
@@ -375,7 +376,7 @@ class Accuracy(Workflows):
             if (level > self.level and self.compute_coreg) or self.config["statistics"] is None:
                 continue
             stats = self._get_stats(data, fname)
-            self.save_stat_as_csv(stats, fname)
+            self.save_stat_as_csv(stats, fname)  # type: ignore
 
             df = pd.DataFrame(data=stats, index=[i])
             df.insert(loc=0, column="Data", value=[title])

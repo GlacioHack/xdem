@@ -19,6 +19,7 @@
 """
 test for schema files
 """
+
 import logging
 
 import pyproj

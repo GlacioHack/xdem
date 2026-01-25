@@ -61,7 +61,7 @@ For this reason, xDEM includes {ref}`tools to easily set a vertical CRS<vref-set
 ## The interpretation of pixel value for DEMs
 
 Among the elevation data types listed above, DEMs are the only gridded dataset. While gridded datasets have become
-ubiquitous for quantitative anaysis, they also suffer from a problem of pixel interpretation.
+ubiquitous for quantitative analysis, they also suffer from a problem of pixel interpretation.
 
 Pixel interpretation describes how a grid cell value should be interpreted, and has two definitions:
 - **“Area” (the most common)** where the value represents a sampling over the region of the pixel (and typically refers to the upper-left corner coordinate), or

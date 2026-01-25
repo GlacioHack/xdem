@@ -18,6 +18,7 @@
 """
 Fixtures for test_workflows
 """
+
 # mypy: disable-error-code=no-untyped-def
 
 import pytest

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os.path
 import warnings
+from typing import Callable
 
 import geopandas as gpd
 import geoutils
@@ -78,7 +79,9 @@ class TestAffineCoreg:
         "xoff_yoff",
         [(ref.res[0], ref.res[1]), (10 * ref.res[0], 10 * ref.res[1]), (-1.2 * ref.res[0], -1.2 * ref.res[1])],
     )  # type: ignore
-    def test_reproject_horizontal_shift_samecrs__gdal(self, xoff_yoff: tuple[float, float], get_test_data_path) -> None:
+    def test_reproject_horizontal_shift_samecrs__gdal(
+        self, xoff_yoff: tuple[float, float], get_test_data_path: Callable[[str], str]
+    ) -> None:
         """Check that the same-CRS reprojection based on SciPy (replacing Rasterio due to subpixel errors)
         is accurate by comparing to GDAL."""
 
@@ -160,12 +163,12 @@ class TestAffineCoreg:
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     @pytest.mark.parametrize("shifts", [(20, 5, 2), (-20, 50, 2)])  # type: ignore
     @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.ICP, coreg.LZD])  # type: ignore
-    def test_coreg_translations__synthetic(self, fit_args, shifts, coreg_method) -> None:
+    def test_coreg_translations__synthetic(self, fit_args, shifts, coreg_method) -> None:  # type: ignore
         """
         Test the horizontal/vertical shift coregistrations with synthetic shifted data. These tests include NuthKaab,
         ICP and DhMinimize.
 
-        We test all combinaison of inputs: raster-raster, point-raster and raster-point.
+        We test all combination of inputs: raster-raster, point-raster and raster-point.
 
         We verify that the shifts found by the coregistration are within 1% of the synthetic shifts with opposite sign
         of the ones introduced, and that applying the coregistration to the shifted elevations corrects more than
@@ -266,11 +269,11 @@ class TestAffineCoreg:
 
     @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
     @pytest.mark.parametrize("vshift", [0.2, 10.0, 1000.0])  # type: ignore
-    def test_coreg_vertical_translation__synthetic(self, fit_args, vshift) -> None:
+    def test_coreg_vertical_translation__synthetic(self, fit_args, vshift) -> None:  # type: ignore
         """
         Test the vertical shift coregistration with synthetic shifted data. These tests include VerticalShift.
 
-        We test all combinaison of inputs: raster-raster, point-raster and raster-point.
+        We test all combination of inputs: raster-raster, point-raster and raster-point.
         """
 
         # Create a vertical shift correction instance
@@ -352,11 +355,11 @@ class TestAffineCoreg:
         "shifts_rotations", [(20, 5, 0.1, 0.1, 0.05, 0.01), (-50, 100, 0.1, 1, 0.5, 0.01)]
     )  # type: ignore
     @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.LZD, coreg.CPD])  # type: ignore
-    def test_coreg_rigid__synthetic(self, fit_args, shifts_rotations, coreg_method) -> None:
+    def test_coreg_rigid__synthetic(self, fit_args, shifts_rotations, coreg_method) -> None:  # type: ignore
         """
         Test the rigid coregistrations with synthetic misaligned (shifted and rotated) data.
 
-        We test all combinaison of inputs: raster-raster, point-raster and raster-point.
+        We test all combination of inputs: raster-raster, point-raster and raster-point.
 
         We verify that the matrix found by the coregistration is within 1% of the synthetic matrix, and inverted from
         the one introduced, and that applying the coregistration to the misaligned elevations corrects more than
@@ -482,7 +485,7 @@ class TestAffineCoreg:
             coreg.CPD(weight=0.5),
         ],
     )  # type: ignore
-    def test_coreg_rigid__specific_args(self, rigid_coreg) -> None:
+    def test_coreg_rigid__specific_args(self, rigid_coreg: coreg.Coreg) -> None:
         """
         Check that all specific arguments (non-fitting and binning, subsampling, iterative) of rigid coregistrations
         run correctly.
@@ -502,7 +505,7 @@ class TestAffineCoreg:
         rigid_coreg.fit(ref, ref_shifted_rotated, random_state=42, subsample=subsample_size)
 
     @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD, coreg.LZD])  # type: ignore
-    def test_coreg_rigid__only_translation(self, coreg_method) -> None:
+    def test_coreg_rigid__only_translation(self, coreg_method: coreg.Coreg) -> None:
 
         # Get reference elevation
         ref = self.ref
@@ -532,7 +535,7 @@ class TestAffineCoreg:
             assert np.allclose(invert_fit_shifts_translations[:3], shifts_rotations[:3], rtol=10e-1)
 
     @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD])  # type: ignore
-    def test_coreg_rigid__standardize(self, coreg_method) -> None:
+    def test_coreg_rigid__standardize(self, coreg_method: coreg.Coreg) -> None:
 
         # Get reference elevation
         ref = self.ref

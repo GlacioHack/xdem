@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Terrain submodule on windowed attributes: independent calculations in a varying window size."""
+
 from __future__ import annotations
 
 import warnings
