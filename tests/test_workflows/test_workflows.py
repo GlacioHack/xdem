@@ -20,6 +20,7 @@
 
 test for workflow class
 """
+
 # mypy: disable-error-code=no-untyped-def
 import csv
 

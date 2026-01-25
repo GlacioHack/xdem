@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Small functions for testing, examples, and other miscellaneous uses."""
+
 from __future__ import annotations
 
 import copy

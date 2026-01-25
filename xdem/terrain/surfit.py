@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Terrain submodule on surface fit attributes: deriving and combining co-dependent fit coefficients."""
+
 from __future__ import annotations
 
 import warnings

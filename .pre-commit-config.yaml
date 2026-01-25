@@ -3,7 +3,7 @@ ci:
     autoupdate_schedule: quarterly
 repos:
         - repo: https://github.com/pre-commit/pre-commit-hooks
-          rev: v5.0.0
+          rev: v6.0.0
           hooks:
                 - id: check-yaml
                 - id: end-of-file-fixer
@@ -13,7 +13,7 @@ repos:
 
         # Fix common spelling mistakes
         - repo: https://github.com/codespell-project/codespell
-          rev: v2.3.0
+          rev: v2.4.1
           hooks:
                 - id: codespell
                   args: [
@@ -32,14 +32,14 @@ repos:
 
         # Format the code aggressively using black
         - repo: https://github.com/psf/black
-          rev: 24.10.0
+          rev: 26.1.0
           hooks:
                   - id: black
                     args: [--line-length=120]
 
         # Lint the code using flake8
         - repo: https://github.com/pycqa/flake8
-          rev: 7.1.1
+          rev: 7.3.0
           hooks:
                 - id: flake8
                   # More than one argument in the second list, so need to pass arguments as below (and -- to finish)
@@ -55,7 +55,7 @@ repos:
 
         # Lint the code using mypy
         - repo: https://github.com/pre-commit/mirrors-mypy
-          rev: v1.13.0
+          rev: v1.19.1
           hooks:
                 - id: mypy
                   args: [
@@ -78,14 +78,14 @@ repos:
 
         # Sort imports using isort
         - repo: https://github.com/PyCQA/isort
-          rev: 5.13.2
+          rev: 7.0.0
           hooks:
                   - id: isort
                     args: ["--profile", "black"]
 
         # Automatically upgrade syntax to a minimum version
         - repo: https://github.com/asottile/pyupgrade
-          rev: v3.19.0
+          rev: v3.21.2
           hooks:
                 - id: pyupgrade
                   args: [--py37-plus]

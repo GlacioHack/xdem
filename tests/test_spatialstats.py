@@ -501,7 +501,7 @@ class TestVariogram:
     @pytest.mark.skipif(
         find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
     )  # type: ignore
-    def test_sample_empirical_variogram__missing_dep(self):
+    def test_sample_empirical_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 
         with pytest.raises(ImportError, match="Optional dependency 'scikit-gstat' required.*"):
@@ -645,7 +645,7 @@ class TestVariogram:
     @pytest.mark.parametrize(
         "subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"]
     )  # type: ignore
-    def test_sample_multirange_variogram_methods(self, subsample_method) -> None:
+    def test_sample_multirange_variogram_methods(self, subsample_method: str) -> None:
         """Verify that all other methods run"""
 
         # Import optional skgstat or skip test

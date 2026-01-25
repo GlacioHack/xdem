@@ -1,4 +1,4 @@
-""" Functions to test the DEM tools."""
+"""Functions to test the DEM tools."""
 
 from __future__ import annotations
 

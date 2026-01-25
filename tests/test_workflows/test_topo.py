@@ -18,6 +18,7 @@
 """
 Test Topo class
 """
+
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
 

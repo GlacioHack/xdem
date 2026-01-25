@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Terrain attribute core module, for surface fits (slope, aspect) and windowed indexes (TPI, roughness)."""
+
 from __future__ import annotations
 
 import warnings
