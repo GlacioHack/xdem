@@ -1,5 +1,6 @@
 import os
-from typing import Callable
+from typing import Callable, Any
+import logging
 
 import pytest
 
@@ -33,3 +34,50 @@ def get_test_data_path() -> Callable[[str], str]:
         return file_path
 
     return _get_test_data_path
+
+
+class LoggingWarningCollector(logging.Handler):
+    """Helper class to collect logging warnings."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.records = []
+
+    def emit(self, record: Any) -> None:
+        self.records.append(record)
+
+
+@pytest.fixture(autouse=True)  # type: ignore
+def fail_on_logging_warnings(request: Any) -> Any:
+    """Fixture used automatically in all tests to fail when a logging exceptions of WARNING or above is raised."""
+
+    # The collector is required to avoid teardown, hookwrapper or plugin issues (we collect and fail later)
+    collector = LoggingWarningCollector()
+    root = logging.getLogger()
+    root.addHandler(collector)
+
+    # Run test
+    yield
+
+    root.removeHandler(collector)
+
+    # Allow opt-out
+    if request.node.get_closest_marker("allow_logging_warnings"):
+        return
+
+    # Categorize bad tests
+    # IGNORED = ("rasterio",)   # If we want to add a list of "IGNORED" packages in the future
+    bad = [
+        r
+        for r in collector.records
+        if r.levelno >= logging.WARNING
+        # and not r.name.startswith(IGNORED)
+    ]
+
+    # Fail on those exceptions and report exception level, name and message
+    if bad:
+        msgs = "\n".join(f"{r.levelname}:{r.name}:{r.getMessage()}" for r in bad)
+        pytest.fail(
+            "Logging warning/error detected:\n" + msgs,
+            pytrace=False,
+        )
