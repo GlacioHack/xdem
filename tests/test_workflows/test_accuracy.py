@@ -19,9 +19,10 @@
 Test DiffAnalysis class
 """
 
+import logging
+
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
-import logging
 
 import geoutils as gu
 import pytest

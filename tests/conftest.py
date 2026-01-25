@@ -84,13 +84,14 @@ def fail_on_logging_warnings(request: Any) -> Any:
             pytrace=False,
         )
 
+
 def _assert_and_allow_log(
-    caplog,
+    caplog: Any,
     *,
     level: int = logging.WARNING,
     match: Union[str, Pattern[str]],
     logger: str | None = None,
-):
+) -> None:
     """Helper function to capture and check logging exceptions, avoiding failures from the global collector above."""
 
     # Compile regex match
@@ -99,29 +100,25 @@ def _assert_and_allow_log(
 
     # Find matches
     matches = [
-        r for r in caplog.records
-        if r.levelno == level
-        and match.search(r.getMessage())
-        and (logger is None or r.name == logger)
+        r
+        for r in caplog.records
+        if r.levelno == level and match.search(r.getMessage()) and (logger is None or r.name == logger)
     ]
 
-    # Asser matches, otherwise return a helpful message for debugging
+    # Assert matches, otherwise return a helpful message for debugging
     assert matches, (
         f"Expected log not found.\n"
         f"  level: {logging.getLevelName(level)}\n"
         f"  logger: {logger or '*'}\n"
         f"  pattern: {match.pattern}\n"
-        f"Logs seen:\n"
-        + "\n".join(
-            f"{r.levelname}:{r.name}:{r.getMessage()}"
-            for r in caplog.records
-        )
+        f"Logs seen:\n" + "\n".join(f"{r.levelname}:{r.name}:{r.getMessage()}" for r in caplog.records)
     )
 
     # If assertion passed, set warnings as expected for the global collector (function above)
     for r in matches:
         r.expected = True
 
-@pytest.fixture
-def assert_and_allow_log():
+
+@pytest.fixture  # type: ignore
+def assert_and_allow_log() -> Any:
     return _assert_and_allow_log
