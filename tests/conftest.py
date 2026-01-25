@@ -1,6 +1,6 @@
-import os
-from typing import Callable, Any
 import logging
+import os
+from typing import Any, Callable
 
 import pytest
 
