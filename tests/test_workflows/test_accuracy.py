@@ -19,6 +19,8 @@
 Test DiffAnalysis class
 """
 
+import logging
+
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
 
@@ -50,7 +52,7 @@ def test_init_diff_analysis(get_accuracy_object_with_run, tmp_path):
     assert workflows.inlier_mask == inlier_mask
 
 
-def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path):
+def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path, caplog, assert_and_allow_log):
     """
     Test _get_reference_elevation function
     """
@@ -67,9 +69,13 @@ def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path):
     user_config["outputs"] = {"path": str(tmp_path)}
     user_config["inputs"]["reference_elev"] = None
 
-    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
-        workflows = Accuracy(user_config)
-        workflows._load_data()
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
+            workflows = Accuracy(user_config)
+            workflows._load_data()
+
+    # Check logging warning exists and tag as expected
+    assert_and_allow_log(caplog, match="No DEM provided", level=logging.WARNING)
 
 
 @pytest.mark.skip("Not implemented")

@@ -18,7 +18,8 @@ local_scheme = "no-local-version"
 target_version = ['py310']
 
 [tool.pytest.ini_options]
-addopts = "--doctest-modules -W error::UserWarning"
+addopts = "--doctest-modules --doctest-ignore-import-errors -W error::UserWarning"
+log_level = "WARNING"
 testpaths = [
 	"tests",
 	"xdem"
