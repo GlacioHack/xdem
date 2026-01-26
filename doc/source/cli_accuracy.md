@@ -122,15 +122,15 @@ Elevation input information, split between reference and to-be-aligned elevation
 ::::{tab-item} `reference_elev`
 
 :::{table} Inputs parameters for `reference_elev`
-:widths: 20, 40, 20, 10, 10
+:widths: 20, 35, 17, 18, 10
 
 | Name               | Description                              | Type       | Default | Required |
 |-------------------|------------------------------------------|-----------|--------------|---------|
 | `path_to_elev`     | Path to reference elevation              | str       |              | Yes     |
 | `force_source_nodata` | No data elevation                        | int       |              | No      |
 | `path_to_mask`     | Path to mask associated to the elevation | str |              | No      |
-| `from_vcrs`        | Original vcrs                            | int, str  | None         | No      |
-| `to_vcrs`          | Destination vcrs                         | int, str  | None         | No      |
+| `from_vcrs`        | Original vcrs                            | int, str  | `None`/`null`         | No      |
+| `to_vcrs`          | Destination vcrs                         | int, str  | `None`/`null`         | No      |
 | `downsample`       | Downsampling elevation factor >= 1       | int, float| 1            | No      |
 :::
 
@@ -160,15 +160,15 @@ inputs:
 ::::{tab-item} `to_be_aligned_elev`
 
 :::{table} Inputs parameters for `to_be_aligned_elev`
-:widths: 20, 40, 20, 10, 10
+:widths: 20, 35, 17, 18, 10
 
-| Name                  | Description                        | Type       | Default | Required |
-|-----------------------|-----------------------------------|-----------|--------------|---------|
-| `path_to_elev`         | Path to to-be-aligned elevation   | str       |              | Yes     |
-| `force_source_nodata`  | No data elevation                 | int       |              | No      |
-| `path_to_mask`         | Path to mask associated to the elevation | str |              | No      |
-| `from_vcrs`            | Original vcrs                     | int, str  | None         | No      |
-| `to_vcrs`              | Destination vcrs                  | int, str  | None         | No      |
+| Name                  | Description                        | Type       | Default     | Required |
+|-----------------------|-----------------------------------|-----------|-------------|---------|
+| `path_to_elev`         | Path to to-be-aligned elevation   | str       |             | Yes     |
+| `force_source_nodata`  | No data elevation                 | int       |             | No      |
+| `path_to_mask`         | Path to mask associated to the elevation | str |             | No      |
+| `from_vcrs`            | Original vcrs                     | int, str  | `None`/`null` | No      |
+| `to_vcrs`              | Destination vcrs                  | int, str  | `None`/`null`       | No      |
 | `downsample`           | Downsampling elevation factor >= 1 | int, float| 1           | No      |
 :::
 
@@ -187,14 +187,14 @@ Please refer to {ref}`data-example` to have more information.
 
 ::::{tab-item} `sampling_grid`
 
-:::{table} Possible values for ``sampling_grid``
-:widths: 30, 10, 10, 10, 40
+:::{table} Values for ``sampling_grid``
+:widths: 30, 40, 10, 10, 10
 
-| Value                | Default | Coreg process | No Coreg | Description |
-|----------------------|---------|---------------|----------|---------|
-| `reference_elev`     | Yes     | X             | X        | To-be-aligned elevation will be reproject to the reference elevation     |
-| `to_be_aligned_elev` | No      | X             | X        | Reference elevation will be reproject to the to-be-aligned elevation      |
-| None                 | No      |              | X        | No reprojection with coregistration process or not      |
+| Value                |  Description | Default | Coreg process | No Coreg |
+|----------------------|---------|---------|----------|---------|
+| `reference_elev`     | To-be-aligned elevation will be reproject to the reference elevation     | Yes     | X             | X        |
+| `to_be_aligned_elev` |  Reference elevation will be reproject to the to-be-aligned elevation      | No      | X             | X        |
+| `None`/`null`        | No reprojection with coregistration process or not      | No      |               | X        |
 :::
 
 :::{note}
@@ -212,12 +212,17 @@ inputs:
     reference_elev:
         path_to_elev: "path_to/reference_elev.tif"
         force_source_nodata: -32768
-        from_vcrs: None
-        to_vcrs: None
+        from_vcrs: null
+        to_vcrs: null
     to_be_aligned_elev:
         path_to_elev: "path_to/to_be_aligned_elev.tif"
         path_to_mask: "path_to/mask.tif"
     sampling_grid: "reference_elev"
+:::::
+
+:::::{note}
+The value `None`, representing the absence of a value or a null value, is used in the dictionary and needs to be replaced
+by `null` in the YAML file.
 :::::
 
 ::::::

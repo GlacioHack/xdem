@@ -111,16 +111,16 @@ These categories and detailed parameter values are further detailed below:
 Elevation input information.
 
 :::{table} Inputs parameters for elevation
-:widths: 20, 40, 20, 10, 10
+:widths: 20, 35, 17, 18, 10
 
-| Name                  | Description                        | Type       | Default | Required |
-|-----------------------|-----------------------------------|-----------|--------------|---------|
-| `path_to_elev`        | Path to reference elevation        | str       |              | Yes     |
-| `force_source_nodata` | No data elevation                  | int       |              | No      |
-| `path_to_mask`        | Path to mask associated to the elevation | str |              | No      |
-| `from_vcrs`           | Original vcrs                      | int, str  | None         | No      |
-| `to_vcrs`             | Destination vcrs                   | int, str  | None         | No      |
-| `downsample`          | Downsampling elevation factor >= 1 | int, float| 1            | No      |
+| Name                  | Description                        | Type       | Default   | Required |
+|-----------------------|-----------------------------------|-----------|-----------|---------|
+| `path_to_elev`        | Path to reference elevation        | str       |           | Yes     |
+| `force_source_nodata` | No data elevation                  | int       |           | No      |
+| `path_to_mask`        | Path to mask associated to the elevation | str |           | No      |
+| `from_vcrs`           | Original vcrs                      | int, str  | None/null | No      |
+| `to_vcrs`             | Destination vcrs                   | int, str  | None/null     | No      |
+| `downsample`          | Downsampling elevation factor >= 1 | int, float| 1         | No      |
 :::
 
 :::{note}
@@ -137,11 +137,17 @@ inputs:
   reference_elev:
     path_to_elev: "path_to/reference_elev.tif"
     force_source_nodata: -32768
-    from_vcrs: None
-    to_vcrs: None
+    from_vcrs: null
+    to_vcrs: null
+:::
+
+:::{note}
+The value `None`, representing the absence of a value or a null value, is used in the dictionary and needs to be replaced
+by `null` in the YAML file.
 :::
 
 ::::
+
 
 ::::{tab-item} `statistics`
 
