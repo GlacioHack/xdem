@@ -1,8 +1,8 @@
-(data-example)=
+(data-examples)=
 
-# Data example
+# Data examples
 
-xDEM uses and proposes several data example to manipulate and test the features and workflows.
+xDEM uses and proposes several data examples to manipulate and test the features and workflows.
 
 ## Description
 
@@ -25,7 +25,7 @@ Another data is available over the Giza pyramid complex:
 
 | Alias         | Filename |  Type  |             Description |
 |---------------|:--------:|:------:|------------------------:|
-| `"gizeh_dem"` | DSM.tif  | Raster | Dem of the area in 2013 |
+| `"gizeh_dem"` | DSM.tif  | Raster | Dem of the area in 2023 |
 
 
 ```{note}
@@ -41,8 +41,8 @@ of the [xdem-data github project](https://github.com/GlacioHack/xdem-data) where
 To download the data samples, you can run:
 
 ```bash
-mkdir examples_data
-tar -xvz -C examples_data  --wildcards  "*/data" --strip-components 2 -f <(wget -q -O - https://github.com/marinebcht/xdem-data/archive/1338aaa06842f9e6b3182069a295618eb54914a5.tar.gz)
+mkdir data_examples
+tar -xvz -C data_examples  --wildcards  "*/data" --strip-components 2 -f <(wget -q -O - https://github.com/marinebcht/xdem-data/archive/1338aaa06842f9e6b3182069a295618eb54914a5.tar.gz)
 ```
 
 ### Python
@@ -51,6 +51,8 @@ In your code, to download all the data, you can use the function and return the 
 
 ```{code-cell} ipython3
 import xdem
+
+# Download the data
 output_dir = xdem.examples.get_all_data()
 ```
 
@@ -71,7 +73,7 @@ path = xdem.examples.get_path("longyearbyen_ref_dem", output_dir=output_dir)
 
 ### Command line interface
 
-To experiment the {ref}`cli`, you can also use the alias to refer data example in the configuration file:
+To experiment the {ref}`cli`, you can also use the alias to refer data examples in the configuration file:
 
 ```{code-cell} ipython3
 inputs:
