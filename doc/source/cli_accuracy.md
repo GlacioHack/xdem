@@ -44,8 +44,8 @@ Only the **paths to the two elevation datasets** in the `inputs` section are **r
 By default, the `accuracy` workflow **reprojects on the reference elevation dataset**, performs a **{ref}`nuthkaab` coregistration (horizontal and vertical translations) on all terrain**, computes **15 different statistics**, and saves **level-1 (intermediate) outputs in `./outputs`** .
 
 In the example of configuration file below, we define:
-- The **paths to the two elevation datasets** which are **required**,
-- The **path to a vector of unstable surfaces** to exclude terrain during the analysis (polygon interior is excluded),
+- The **paths (or alias if default examples) to the two elevation datasets** which are **required**,
+- The **path (or alias if default examples) to a vector of unstable surfaces** to exclude terrain during the analysis (polygon interior is excluded),
 - The **path to an output directory** where the results will be written,
 - The **name of the coregistration** method to run, and the subsample size to use,
 - The **specific list of statistics** to compute after/before coregistration.
@@ -135,6 +135,12 @@ Elevation input information, split between reference and to-be-aligned elevation
 :::
 
 :::{note}
+Make sure that ``path_to_elev`` and ``path_to_mask`` points to existing data.
+If you want to test the CLI with example data, they can also refer to data alias.
+Please refer to {ref}`data-example` to have more information.
+:::
+
+:::{note}
 For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to {ref}`vertical-ref`.
 The ``downsample`` parameter allows the user to resample the elevation by a round factor.
 The default value of 1 means no downsampling.
@@ -156,6 +162,13 @@ The default value of 1 means no downsampling.
 | `to_vcrs`              | Destination vcrs                  | int, str  | None         | No      |
 | `downsample`           | Downsampling elevation factor >= 1 | int, float| 1           | No      |
 :::
+
+:::{note}
+Make sure that ``path_to_elev`` and ``path_to_mask`` points to existing data.
+If you want to test the CLI with example data, they can also refer to data alias.
+Please refer to {ref}`data-example` to have more information.
+:::
+
 
 :::{note}
 For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to {ref}`vertical-ref`.

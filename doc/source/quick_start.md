@@ -21,40 +21,15 @@ To find an example about a specific functionality, jump directly to {ref}`quick-
 
 ## Download data samples
 
-The south of Longyearbyen, capital of Svalbard, a Norwegian archipelago, is the most used dataset in xDEM examples and
-tests. It is composed by:
-- two DEMs of the same area `"longyearbyen_ref_dem"` (DEM_2009_ref.tif) and `"longyearbyen_ref_tba"` (DEM_1990.tif) that can be easily compared
-- both dates had a corresponding vector file representing the glacier outlines in the Svalbard: `"longyearbyen_glacier_outlines"` (CryoClim_GAO_SJ_1990.shp) and `"longyearbyen_glacier_outlines_2010"` (CryoClim_GAO_SJ_2010.shp)
-- a point cloud data `"longyearbyen_epc"` (EPC_IS.gpkg) is also available in the same area
+Example data from xDEM is automatically downloaded when calling `xdem.example.get_all_data()` as shown below.
 
-
-```{note}
-All of these data can be used under open licence and if you need other information
-about all of these, you can see the [README.md](https://github.com/GlacioHack/xdem-data/blob/main/README.md)
-of the [xdem-data github project](https://github.com/GlacioHack/xdem-data) where they are stored.
-```
-
-
-To download and extract the data samples, you can run:
-
-```bash
-mkdir examples_data
-tar -xvz -C examples_data  --wildcards  "*/data" --strip-components 2 -f <(wget -q -O - https://github.com/marinebcht/xdem-data/archive/1338aaa06842f9e6b3182069a295618eb54914a5.tar.gz)
-```
-
-You can also use the function `xdem.examples.get_path(alias, output_dir)`. It downloads the entire dataset of the alias
-and return the path of the data behind the alias. It can be use like this:
-
+See the example-summary page to learn more about all our example data and different download options.
 
 ```{code-cell} ipython3
 import xdem
 
-# To download Longyearbyen dataset in output_dir and return the path of the 2010 raster DEM
-output_dir = "my_directory"
-path = xdem.examples.get_path("longyearbyen_ref_dem", output_dir)
+output_dir = xdem.examples.get_all_data()
 ```
-
-If no `output_dir` is given, xDem will take xdem/example_data repository by default.
 
 ## Python example
 

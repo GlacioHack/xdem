@@ -96,7 +96,7 @@ The `topo` workflow, including its **inputs**, **outputs**, **processing steps**
 ### Configuration parameters
 
 The parameters to pass to the `topo` workflow are divided into four categories:
-- The `inputs` define file opening and pre-processing, including **one required path to elevation data**, but also optional masking, CRS, nodata over-riding, and downsampling factor,
+- The `inputs` define file opening and pre-processing, including **one required path (or alias if default example) to elevation data**, but also optional masking, CRS, nodata over-riding, and downsampling factor,
 - The `outputs` define file writing and report generation, with various **levels** of detail for the produced outputs,
 - The `terrain_attributes` define steps for coregistration, directly **interfacing with the {ref}`terrain-attributes` module** of xDEM,
 - The `statistics` define steps for computing statistics before/after coregistration, directly **interfacing with the [Statistics](https://geoutils.readthedocs.io/en/stable/stats.html) module** of GeoUtils.
@@ -121,6 +121,12 @@ Elevation input information.
 | `from_vcrs`           | Original vcrs                      | int, str  | None         | No      |
 | `to_vcrs`             | Destination vcrs                   | int, str  | None         | No      |
 | `downsample`          | Downsampling elevation factor >= 1 | int, float| 1            | No      |
+:::
+
+:::{note}
+Make sure that ``path_to_elev`` and ``path_to_mask`` points to existing data.
+If you want to test the CLI with example data, they can also refer to data alias.
+Please refer to {ref}`data-example` to have more information.
 :::
 
 :::{note}

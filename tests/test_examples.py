@@ -114,6 +114,14 @@ class TestExamples:
         examples.get_path(data, output_dir=temp_dir.name)
         assert nb_files == sum([len(files) for _, _, files in os.walk(temp_dir.name)])
 
+    def test_download_all_data(self) -> None:
+        """Let's ensure that the all the data are successfully downloaded."""
+
+        temp_dir = tempfile.TemporaryDirectory()
+        output_dir = examples.get_all_data(output_dir=temp_dir.name)
+        print(output_dir)
+        assert sum([len(files) for _, _, files in os.walk(output_dir)]) == 16
+
     def test_missing_or_overwrite_data(self) -> None:
         """Let's ensure that the data are successfully downloaded in case of a missing data and overwrite config."""
 

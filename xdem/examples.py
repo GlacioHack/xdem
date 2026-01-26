@@ -69,6 +69,15 @@ available_test = list(_FILEPATHS_TEST.keys())
 _TEST_ICROP_BOUNDS = (475, 600, 545, 654)
 
 
+def _get_default_output_dir() -> str:
+    """
+    Return the output directory by default
+    :return output directory path
+    """
+    with as_file(_EXAMPLES_DIRECTORY) as examples_directory:
+        return str(examples_directory)
+
+
 def _download_and_extract_tarball(dir: str, target_dir: str) -> None:
     """
     Helper function to download and extract a tarball from a given URL.
@@ -176,10 +185,7 @@ def get_path(name: str, output_dir: str | None = None, overwrite: bool = False) 
     """
 
     if output_dir is None:
-        with as_file(_EXAMPLES_DIRECTORY) as examples_directory:
-            output_dir = str(examples_directory)
-
-    output_dir = _EXAMPLES_DIRECTORY.name if output_dir is None else output_dir
+        output_dir = _get_default_output_dir()
 
     if name in list(_FILEPATHS_DATA.keys()):
         _download_data_examples(name, output_dir, overwrite)
@@ -193,6 +199,17 @@ def get_path(name: str, output_dir: str | None = None, overwrite: bool = False) 
             + '".'
         )
     return op.join(output_dir, _FILEPATHS_ALL[name])
+
+
+def get_all_data(output_dir: str | None = None) -> str:
+
+    if output_dir is None:
+        output_dir = _get_default_output_dir()
+
+    _process_longyearbyen_coreg_examples(output_dir)
+    get_path("gizeh_dem", output_dir)
+    print(output_dir)
+    return output_dir
 
 
 def _crop_lonyearbyen_test_examples(output_dir: str, overwrite: bool = False) -> None:
@@ -240,8 +257,7 @@ def get_path_test(name: str, output_dir: str | None = None) -> str:
     :return:
     """
     if output_dir is None:
-        with as_file(_EXAMPLES_DIRECTORY) as examples_directory:
-            output_dir = str(examples_directory)
+        output_dir = _get_default_output_dir()
 
     if name in list(_FILEPATHS_TEST.keys()):
         # Download Longyearbyen raw data
