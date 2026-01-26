@@ -19,11 +19,11 @@ kernelspec:
 Below is a short example show-casing some of the core functionalities of xDEM.
 To find an example about a specific functionality, jump directly to {ref}`quick-gallery`.
 
-## Download data samples
+## Download data examples
 
 Example data from xDEM is automatically downloaded when calling `xdem.example.get_all_data()` as shown below.
 
-See the example-summary page to learn more about all our example data and different download options.
+See the {ref}`data-example` page to learn more about all our example data and different download options.
 
 ```{code-cell} ipython3
 import xdem

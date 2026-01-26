@@ -119,8 +119,8 @@ class TestExamples:
 
         temp_dir = tempfile.TemporaryDirectory()
         output_dir = examples.get_all_data(output_dir=temp_dir.name)
-        print(output_dir)
-        assert sum([len(files) for _, _, files in os.walk(output_dir)]) == 16
+        assert temp_dir.name == output_dir
+        assert sum([len(files) for _, _, files in os.walk(temp_dir.name)]) == 14
 
     def test_missing_or_overwrite_data(self) -> None:
         """Let's ensure that the data are successfully downloaded in case of a missing data and overwrite config."""

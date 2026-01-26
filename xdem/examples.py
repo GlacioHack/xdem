@@ -206,9 +206,9 @@ def get_all_data(output_dir: str | None = None) -> str:
     if output_dir is None:
         output_dir = _get_default_output_dir()
 
-    _process_longyearbyen_coreg_examples(output_dir)
-    get_path("gizeh_dem", output_dir)
-    print(output_dir)
+    for k in _FILEPATHS_DATA.keys():
+        _download_data_examples(k, output_dir)
+
     return output_dir
 
 
