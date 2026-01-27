@@ -1,4 +1,4 @@
-(data-examples)=
+(data)=
 
 # Data examples
 
@@ -57,15 +57,18 @@ output_dir = xdem.examples.get_all_data()
 ```
 
 If you can to only get a specific data, you can use this function with the data alias needed:
+
 ```{code-cell} ipython3
 import xdem
 
 # Download the 2010 raster DEM Longyearbyen dataset in output_dir and return its path
 path = xdem.examples.get_path("longyearbyen_ref_dem")
 ```
+
 It downloads the entire dataset of the alias if it was not already available and returns its absolute file path.
 
 In both case, you case specify the `output_dir` where you want that data need to be download or searched:
+
 ```{code-cell} ipython3
 import xdem
 output_dir = "/dir/my_output_dir"

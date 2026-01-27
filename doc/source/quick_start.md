@@ -23,7 +23,7 @@ To find an example about a specific functionality, jump directly to {ref}`quick-
 
 Example data from xDEM is automatically downloaded when calling `xdem.example.get_all_data()` as shown below.
 
-See the {ref}`data-example` page to learn more about all our example data and different download options.
+See the {ref}`data` page to learn more about all our example data and different download options.
 
 ```{code-cell} ipython3
 import xdem
