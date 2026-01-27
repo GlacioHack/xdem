@@ -139,7 +139,7 @@ advanced_examples/index.rst
 api
 cli
 config
-data-examples
+data
 release_notes
 ```
 
