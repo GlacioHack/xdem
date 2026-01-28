@@ -23,12 +23,14 @@ test for workflow class
 
 # mypy: disable-error-code=no-untyped-def
 import csv
+from pathlib import Path
 
 import geoutils as gu
 import numpy as np
 import pytest
 
 import xdem
+from xdem.workflows.accuracy import Accuracy
 from xdem.workflows.topo import Topo
 from xdem.workflows.workflows import Workflows
 
@@ -125,6 +127,46 @@ def test_load_config(get_topo_inputs_config, tmp_path):
     # Fail
     with pytest.raises(FileNotFoundError, match=f"{tmp_path}/tempconfig.yaml does not exist"):
         _ = Topo(str(tmp_path / "tempconfig.yaml"))
+
+
+def test_load_config_none(get_topo_inputs_config, get_accuracy_inputs_config, tmp_path):
+    """
+    Test None values in yaml reading function
+    """
+
+    # Topo workflow
+
+    # Change values
+    cfg = get_topo_inputs_config
+    cfg["inputs"]["reference_elev"]["from_vcrs"] = "None"
+    cfg["inputs"]["reference_elev"]["to_vcrs"] = "None"
+
+    # Read working config
+    yaml_str = yaml.dump(cfg, allow_unicode=True)
+    Path(tmp_path / "temp_config.yaml").write_text(yaml_str, encoding="utf-8")
+    workflow_topo = Topo(str(tmp_path / "temp_config.yaml"))
+    config_output = workflow_topo.load_config()
+    assert config_output["inputs"]["reference_elev"]["from_vcrs"] is None
+    assert config_output["inputs"]["reference_elev"]["to_vcrs"] is None
+
+    # Accuracy workflow
+
+    # Change values
+    cfg = get_accuracy_inputs_config
+    cfg["inputs"]["reference_elev"]["from_vcrs"] = "None"
+    cfg["inputs"]["reference_elev"]["to_vcrs"] = "None"
+    cfg["inputs"]["sampling_grid"] = "None"
+    cfg["coregistration"] = {}
+    cfg["coregistration"]["process"] = False
+
+    # Read working config
+    yaml_str = yaml.dump(cfg, allow_unicode=True)
+    Path(tmp_path / "temp_config.yaml").write_text(yaml_str, encoding="utf-8")
+    workflow_accuracy = Accuracy(str(tmp_path / "temp_config.yaml"))
+    config_output = workflow_accuracy.load_config()
+    assert config_output["inputs"]["reference_elev"]["from_vcrs"] is None
+    assert config_output["inputs"]["reference_elev"]["to_vcrs"] is None
+    assert config_output["inputs"]["sampling_grid"] is None
 
 
 def test_generate_graph(get_topo_inputs_config, tmp_path):
