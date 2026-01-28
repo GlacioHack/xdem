@@ -122,16 +122,16 @@ Elevation input information, split between reference and to-be-aligned elevation
 ::::{tab-item} `reference_elev`
 
 :::{table} Inputs parameters for `reference_elev`
-:widths: 20, 40, 20, 10, 10
+:widths: 20, 35, 17, 18, 10
 
-| Name               | Description                              | Type       | Default | Required |
-|-------------------|------------------------------------------|-----------|--------------|---------|
-| `path_to_elev`     | Path to reference elevation              | str       |              | Yes     |
-| `force_source_nodata` | No data elevation                        | int       |              | No      |
-| `path_to_mask`     | Path to mask associated to the elevation | str |              | No      |
-| `from_vcrs`        | Original vcrs                            | int, str  | None         | No      |
-| `to_vcrs`          | Destination vcrs                         | int, str  | None         | No      |
-| `downsample`       | Downsampling elevation factor >= 1       | int, float| 1            | No      |
+| Name                  | Description                              | Type       | Default | Required |
+|-----------------------|------------------------------------------|------------|---------|----------|
+| `path_to_elev`        | Path to reference elevation              | str        |         | Yes      |
+| `force_source_nodata` | No data elevation                        | int        |         | No       |
+| `path_to_mask`        | Path to mask associated to the elevation | str        |         | No       |
+| `from_vcrs`           | Original vcrs                            | int, str   | `null`  | No       |
+| `to_vcrs`             | Destination vcrs                         | int, str   | `null`  | No       |
+| `downsample`          | Downsampling elevation factor >= 1       | int, float | 1       | No       |
 :::
 
 :::{note}
@@ -145,16 +145,16 @@ The default value of 1 means no downsampling.
 ::::{tab-item} `to_be_aligned_elev`
 
 :::{table} Inputs parameters for `to_be_aligned_elev`
-:widths: 20, 40, 20, 10, 10
+:widths: 20, 35, 17, 18, 10
 
-| Name                  | Description                        | Type       | Default | Required |
-|-----------------------|-----------------------------------|-----------|--------------|---------|
-| `path_to_elev`         | Path to to-be-aligned elevation   | str       |              | Yes     |
-| `force_source_nodata`  | No data elevation                 | int       |              | No      |
-| `path_to_mask`         | Path to mask associated to the elevation | str |              | No      |
-| `from_vcrs`            | Original vcrs                     | int, str  | None         | No      |
-| `to_vcrs`              | Destination vcrs                  | int, str  | None         | No      |
-| `downsample`           | Downsampling elevation factor >= 1 | int, float| 1           | No      |
+| Name                   | Description                              | Type       | Default  | Required |
+|------------------------|------------------------------------------|------------|----------|----------|
+| `path_to_elev`         | Path to to-be-aligned elevation          | str        |          | Yes      |
+| `force_source_nodata`  | No data elevation                        | int        |          | No       |
+| `path_to_mask`         | Path to mask associated to the elevation | str        |          | No       |
+| `from_vcrs`            | Original vcrs                            | int, str   | `null`   | No       |
+| `to_vcrs`              | Destination vcrs                         | int, str   | `null`   | No       |
+| `downsample`           | Downsampling elevation factor >= 1       | int, float | 1        | No       |
 :::
 
 :::{note}
@@ -163,20 +163,51 @@ The ``downsample`` parameter allows the user to resample the elevation by a roun
 The default value of 1 means no downsampling.
 :::
 
-:::{code-block} yaml
+
+
+::::
+
+::::{tab-item} `sampling_grid`
+
+Raster to match for reprojection.
+
+:::{table} Values for ``sampling_grid``
+:widths: 30, 40, 10, 10, 10
+
+| Value                | Description                                                            | Default | Coreg process | No Coreg |
+|----------------------|------------------------------------------------------------------------|---------|---------------|----------|
+| `reference_elev`     | To-be-aligned elevation will be reprojected to the reference elevation | Yes     | X             | X        |
+| `to_be_aligned_elev` | Reference elevation will be reprojected to the to-be-aligned elevation | No      | X             | X        |
+| `null`        | No reprojection with coregistration process or not                     | No      |               | X        |
+:::
+
+:::{note}
+For no reprojection (`sampling grid: null`), the workflow raises an error if the two inputs do not have the same shape,
+transform and CRS
+.:::
+
+
+::::
+
+
+:::::
+
+:::::{code-block} yaml
 inputs:
     reference_elev:
         path_to_elev: "path_to/reference_elev.tif"
         force_source_nodata: -32768
-        from_vcrs: None
-        to_vcrs: None
+        from_vcrs: null
+        to_vcrs: null
     to_be_aligned_elev:
         path_to_elev: "path_to/to_be_aligned_elev.tif"
         path_to_mask: "path_to/mask.tif"
-:::
+    sampling_grid: "reference_elev"
+:::::
 
-::::
-
+:::::{note}
+The value `null` in the YAML file, representing the absence of a value or a null value, is serialized as `None`
+in the dictionary.
 :::::
 
 ::::::
@@ -204,7 +235,6 @@ To disable coregistration, set ``process: False`` in the configuration file.
 |--------------------------|-------------------------|----------------------------------|-------|----------------|-------------------------------------|---------|
 | `step_[one, two, three]` | `method`                | Name of coregistration method    | str   | NuthKaab        | Every available coregistration method | No      |
 |                          | `extra_information`     | Extra parameters fitting with the method | dict  |                |                                     | No      |
-| `sampling_grid`          |                         | Destination elevation for reprojection | str   | reference_elev | reference_elev or to_be_aligned_elev | No      |
 | `process`                |                         | Activate the coregistration       | bool  | True           | True or False                        | No      |
 :::
 
@@ -220,7 +250,6 @@ coregistration:
     extra_information: {"max_iterations": 10}
   step_two:
     method: "DHMinimize"
-  sampling_grid: "reference_elev"
   process: True
 :::
 
