@@ -107,7 +107,6 @@ class Workflows(ABC):
         """
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-
             if not _HAS_YAML:
                 import_optional("yaml", package_name="pyyaml")
             super().__init__(*args, **kwargs)
@@ -129,7 +128,19 @@ class Workflows(ABC):
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"File not found : {self.config_path}")
         with open(self.config_path) as f:
-            return yaml.safe_load(f)
+
+            def replace_none_str_with_none_type(some_dict: Dict[str, Any]) -> Dict[str, Any]:
+                """Replace all "None" (None after serialization) values to None"""
+                for k, v in some_dict.items():
+                    if isinstance(v, dict):
+                        some_dict[k] = replace_none_str_with_none_type(v)
+                    elif v == "None":
+                        some_dict[k] = None
+                    else:
+                        some_dict[k] = v
+                return some_dict
+
+            return replace_none_str_with_none_type(yaml.safe_load(f))
 
     def generate_plot(self, dem: RasterType, title: str, filename: str, mask_path: str = None, **kwargs: Any) -> None:
         """
