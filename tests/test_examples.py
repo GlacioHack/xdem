@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import glob
 import os
-import tempfile
+from pathlib import Path
 
 import glob
 import os
@@ -105,52 +105,49 @@ class TestExamples:
             ("gizeh_dem", 1),
         ],
     )  # type: ignore
-    def test_download(self, nb_files_data: tuple[str, int]) -> None:
+    def test_download(self, nb_files_data: tuple[str, int], tmp_path: Path) -> None:
         """Let's ensure that the data are successfully downloaded in output_dir."""
 
         data = nb_files_data[0]
         nb_files = nb_files_data[1]
-        temp_dir = tempfile.TemporaryDirectory()
-        examples.get_path(data, output_dir=temp_dir.name)
-        assert nb_files == sum([len(files) for _, _, files in os.walk(temp_dir.name)])
+        examples.get_path(data, output_dir=str(tmp_path))
+        assert nb_files == sum([len(files) for _, _, files in os.walk(tmp_path)])
 
-    def test_download_all_data(self) -> None:
+    def test_download_all_data(self, tmp_path: Path) -> None:
         """Let's ensure that the all the data are successfully downloaded."""
 
         # Verify if all the data are well download in a new directory
-        temp_dir = tempfile.TemporaryDirectory()
-        output_dir = examples.get_all_data(output_dir=temp_dir.name)
-        assert temp_dir.name == output_dir
-        assert sum([len(files) for _, _, files in os.walk(temp_dir.name)]) == 14
+        output_dir = examples.get_all_data(output_dir=str(tmp_path))
+        assert str(tmp_path) == output_dir
+        assert sum([len(files) for _, _, files in os.walk(tmp_path)]) == 14
 
         # Verify if all the data are well present in the default path (can be more)
         output_dir = examples.get_all_data()
-        for path, _, files in os.walk(temp_dir.name):
+        for path, _, files in os.walk(tmp_path):
             for f in files:
-                assert os.path.exists(os.path.join(output_dir, path[len(temp_dir.name) + 1 :], f))
+                assert os.path.exists(os.path.join(output_dir, path[len(str(tmp_path)) + 1 :], f))
 
-    def test_missing_or_overwrite_data(self) -> None:
+    def test_missing_or_overwrite_data(self, tmp_path: Path) -> None:
         """Let's ensure that the data are successfully downloaded in case of a missing data and overwrite config."""
 
-        temp_dir = tempfile.TemporaryDirectory()
-        examples.get_path("longyearbyen_epc", output_dir=temp_dir.name)
-        nbFile_needed = sum([len(files) for _, _, files in os.walk(temp_dir.name)])
-        path_epc = temp_dir.name + "/Longyearbyen/data/EPC_IS2.gpkg"
+        examples.get_path("longyearbyen_epc", output_dir=str(tmp_path))
+        nbFile_needed = sum([len(files) for _, _, files in os.walk(tmp_path)])
+        path_epc = tmp_path / "Longyearbyen" / "data" / "EPC_IS2.gpkg"
 
         # Test download if missing file
         os.remove(path_epc)
-        examples.get_path("longyearbyen_epc", output_dir=temp_dir.name)
-        assert nbFile_needed == sum([len(files) for _, _, files in os.walk(temp_dir.name)])
+        examples.get_path("longyearbyen_epc", output_dir=str(tmp_path))
+        assert nbFile_needed == sum([len(files) for _, _, files in os.walk(str(tmp_path))])
 
         # Test overwrite
         os.remove(path_epc)
-        examples.get_path("longyearbyen_ref_dem", output_dir=temp_dir.name, overwrite=True)
-        assert nbFile_needed == sum([len(files) for _, _, files in os.walk(temp_dir.name)])
+        examples.get_path("longyearbyen_ref_dem", output_dir=str(tmp_path), overwrite=True)
+        assert nbFile_needed == sum([len(files) for _, _, files in os.walk(tmp_path)])
 
-    def test_get_path_test_longyearbyen(self) -> None:
+    def test_get_path_test_longyearbyen(self, tmp_path: Path) -> None:
         """Let's ensure that the cropped data are successfully downloaded in case call from the test."""
 
-        temp_dir = tempfile.TemporaryDirectory()
+        path = examples.get_path_test("longyearbyen_ref_dem", output_dir=str(tmp_path))
 
         path = examples.get_path_test("longyearbyen_ref_dem")
 
@@ -162,13 +159,12 @@ class TestExamples:
         assert sum([len(files) for _, _, files in os.walk(os.path.join(longyearbyen_dir, "processed"))]) == 4
 
         # Verify Raster files: shape and bounds
-
         for test_file in glob.glob(os.path.join(longyearbyen_dir, "*", "*_test.tif")):
             assert Raster(test_file).shape == dest_shape
             assert Raster(test_file).bounds == dest_bounds
 
-        # Verify EPC file: number of rpoints
-        path = examples.get_path_test("longyearbyen_epc")
+        # Verify EPC file: number of points
+        path = examples.get_path_test("longyearbyen_epc", output_dir=str(tmp_path))
         assert len(PointCloud(path, data_column="h_li").ds) == 793
 
         # Verify Vectors files: geometries intersect the raster bound

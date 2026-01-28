@@ -124,7 +124,7 @@ Elevation input information.
 :::
 
 :::{note}
-Make sure that ``path_to_elev`` and ``path_to_mask`` points to existing data.
+Make sure that ``path_to_elev`` and ``path_to_mask`` point to existing data.
 If you want to test the CLI with xDEM example data, they can also refer to data alias.
 Please refer to {ref}`data-example` to have more information.
 :::

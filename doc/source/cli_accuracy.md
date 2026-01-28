@@ -135,7 +135,7 @@ Elevation input information, split between reference and to-be-aligned elevation
 :::
 
 :::{note}
-Make sure that ``path_to_elev`` and ``path_to_mask`` points to existing data.
+Make sure that ``path_to_elev`` and ``path_to_mask`` point to existing data.
 If you want to test the CLI with xDEM example data, they can also refer to data alias.
 Please refer to {ref}`data-example` to have more information.
 :::
@@ -164,7 +164,7 @@ The default value of 1 means no downsampling.
 :::
 
 :::{note}
-Make sure that ``path_to_elev`` and ``path_to_mask`` points to existing data.
+Make sure that ``path_to_elev`` and ``path_to_mask`` point to existing data.
 If you want to test the CLI with xDEM example data, they can also refer to data alias.
 Please refer to {ref}`data-example` to have more information.
 :::

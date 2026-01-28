@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import os
-import tempfile
 import warnings
 from importlib.util import find_spec
+from pathlib import Path
 from typing import Any
 
 import geoutils as gu
@@ -74,7 +73,7 @@ class TestDEM:
                 nodata=None,
             )
 
-    def test_init__vcrs(self) -> None:
+    def test_init__vcrs(self, tmp_path: Path) -> None:
         """Test that vcrs is set properly during instantiation."""
 
         # Tests 1: instantiation with a file that has a 2D CRS
@@ -94,8 +93,7 @@ class TestDEM:
         dem_reproj = dem.reproject(crs=4979)
 
         # Save to temporary folder
-        temp_dir = tempfile.TemporaryDirectory()
-        temp_file = os.path.join(temp_dir.name, "test.tif")
+        temp_file = tmp_path / "test.tif"
         dem_reproj.to_file(temp_file)
 
         # Check opening a DEM with a 3D CRS sets the vcrs
