@@ -135,6 +135,12 @@ Elevation input information, split between reference and to-be-aligned elevation
 :::
 
 :::{note}
+Make sure that ``path_to_elev`` and ``path_to_mask`` point to existing data.
+If you want to test the CLI with xDEM example data, they can also refer to data alias.
+Please refer to {ref}`data-example` to have more information.
+:::
+
+:::{note}
 For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to {ref}`vertical-ref`.
 The ``downsample`` parameter allows the user to resample the elevation by a round factor.
 The default value of 1 means no downsampling.
@@ -156,6 +162,13 @@ The default value of 1 means no downsampling.
 | `to_vcrs`              | Destination vcrs                  | int, str  | None         | No      |
 | `downsample`           | Downsampling elevation factor >= 1 | int, float| 1           | No      |
 :::
+
+:::{note}
+Make sure that ``path_to_elev`` and ``path_to_mask`` point to existing data.
+If you want to test the CLI with xDEM example data, they can also refer to data alias.
+Please refer to {ref}`data-example` to have more information.
+:::
+
 
 :::{note}
 For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to {ref}`vertical-ref`.
