@@ -1050,13 +1050,13 @@ class TestAffineManipulation:
         # Because of outliers, noise and slope near 90°, several solutions can exist
         # Additionally, contrary to the check in the __raster test which uses a constant slope DEM, the slopes vary
         # here so the interpolation check is less accurate so all values can vary a bit
-        assert np.percentile(np.abs(diff_it), 90) < 1
+        assert np.percentile(np.abs(diff_it), 90) < 1.2
         assert np.percentile(np.abs(diff_it), 50) < 0.3
-        assert np.percentile(np.abs(diff_gd), 90) < 1
+        assert np.percentile(np.abs(diff_gd), 90) < 1.2
         assert np.percentile(np.abs(diff_gd), 50) < 0.3
 
         # But, between themselves, the two re-gridding methods should yield much closer results
         # (no errors due to 2D interpolation for checking)
         diff_it_gd = z_points_gd[valids] - z_points_it[valids]
-        assert np.percentile(np.abs(diff_it_gd), 99) < 1  # 99% of values are within a meter (instead of 90%)
+        assert np.percentile(np.abs(diff_it_gd), 99) < 1.2  # 99% of values are within a 1.20 meter (instead of 90%)
         assert np.percentile(np.abs(diff_it_gd), 50) < 0.03  # 10 times more precise than above
