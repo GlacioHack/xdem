@@ -260,7 +260,7 @@ def test_load_dem_alias():
     config_dem["path_to_elev"] = "longyearbyen_ref_dem"
     output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
 
-    assert output_dem == xdem.DEM(xdem.examples.get_path(config_dem["path_to_elev"]))
+    assert output_dem.raster_equal(xdem.DEM(xdem.examples.get_path(config_dem["path_to_elev"])))
     assert inlier_mask is None
     assert mask_path is None
 
