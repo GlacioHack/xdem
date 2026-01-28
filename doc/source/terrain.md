@@ -144,10 +144,10 @@ $$
 where $x$ and $y$ are Cartesian coordinates. First- and second-order partial derivatives of elevation are defined as follows:
 
 $$
-\begin{align*}
+\begin{aligned}
 z_{x} &= \frac{\partial z}{\partial x}, & z_{y} &= \frac{\partial z}{\partial y}, \\
 z_{xx} &= \frac{\partial^2 z}{\partial x^2}, & z_{yy} &= \frac{\partial^2 z}{\partial y^2}, & z_{xy} &= \frac{\partial^2 z}{\partial x \, \partial y}.
-\end{align*}
+\end{aligned}
 $$
 
 xDEM offers multiple methods of calculating these partial derivatives, which can be set using the `surface_fit` parameter:
