@@ -113,14 +113,14 @@ Elevation input information.
 :::{table} Inputs parameters for elevation
 :widths: 20, 35, 17, 18, 10
 
-| Name                  | Description                        | Type       | Default   | Required |
-|-----------------------|-----------------------------------|-----------|-----------|---------|
-| `path_to_elev`        | Path to reference elevation        | str       |           | Yes     |
-| `force_source_nodata` | No data elevation                  | int       |           | No      |
-| `path_to_mask`        | Path to mask associated to the elevation | str |           | No      |
-| `from_vcrs`           | Original vcrs                      | int, str  | None/null | No      |
-| `to_vcrs`             | Destination vcrs                   | int, str  | None/null     | No      |
-| `downsample`          | Downsampling elevation factor >= 1 | int, float| 1         | No      |
+| Name                  | Description                              | Type       | Default | Required |
+|-----------------------|------------------------------------------|------------|---------|----------|
+| `path_to_elev`        | Path to reference elevation              | str        |         | Yes      |
+| `force_source_nodata` | No data elevation                        | int        |         | No       |
+| `path_to_mask`        | Path to mask associated to the elevation | str        |         | No       |
+| `from_vcrs`           | Original vcrs                            | int, str   | `null`  | No       |
+| `to_vcrs`             | Destination vcrs                         | int, str   | `null`  | No       |
+| `downsample`          | Downsampling elevation factor >= 1       | int, float | 1       | No       |
 :::
 
 :::{note}
@@ -142,8 +142,8 @@ inputs:
 :::
 
 :::{note}
-The value `None`, representing the absence of a value or a null value, is used in the dictionary and needs to be replaced
-by `null` in the YAML file.
+The value `null` in the YAML file, representing the absence of a value or a null value, is serialized as `None`
+in the dictionary.
 :::
 
 ::::
