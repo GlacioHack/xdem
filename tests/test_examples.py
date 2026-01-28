@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import glob
+import os
+
 import geoutils as gu
 import numpy as np
 import pytest
-from geoutils import Raster, Vector
+from geoutils import PointCloud, Raster, Vector
+from rasterio.coords import BoundingBox
 
 from xdem import examples
 from xdem._typing import NDArrayf
@@ -56,3 +60,36 @@ class TestExamples:
         mask = gu.raster.get_array_and_mask(rst)[1]
 
         assert np.sum(mask) == truenodata
+
+    def test_get_path_test_longyearbyen(self) -> None:
+        """Let's ensure that the cropped data are successfully downloaded in case call from the test."""
+
+        path = examples.get_path_test("longyearbyen_ref_dem")
+
+        dest_shape = (54, 70)
+        dest_bounds = BoundingBox(left=512310.0, bottom=8660950.0, right=513710.0, top=8662030.0)
+        longyearbyen_dir = os.path.dirname(os.path.dirname(path))
+
+        assert sum([len(files) for _, _, files in os.walk(os.path.join(longyearbyen_dir, "data"))]) == 26
+        assert sum([len(files) for _, _, files in os.walk(os.path.join(longyearbyen_dir, "processed"))]) == 4
+
+        # Verify Raster files: shape and bounds
+
+        for test_file in glob.glob(os.path.join(longyearbyen_dir, "*", "*_test.tif")):
+            assert Raster(test_file).shape == dest_shape
+            assert Raster(test_file).bounds == dest_bounds
+
+        # Verify EPC file: number of rpoints
+        path = examples.get_path_test("longyearbyen_epc")
+        assert len(PointCloud(path, data_column="h_li").ds) == 793
+
+        # Verify Vectors files: geometries intersect the raster bound
+        path = examples.get_path_test("longyearbyen_glacier_outlines")
+        vec = gu.Vector(path)
+
+        # Verify that geometries intersect with raster bound
+        rst_poly = gu.projtools.bounds2poly(dest_bounds)
+        intersects_new = []
+        for poly in vec.ds.geometry:
+            intersects_new.append(poly.intersects(rst_poly))
+        assert np.all(intersects_new)

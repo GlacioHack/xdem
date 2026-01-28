@@ -168,7 +168,7 @@ class TestBlockwiseCoreg:
             equal_nan=True,
         )
 
-    @pytest.mark.parametrize("block_size", [32, 56])
+    @pytest.mark.parametrize("block_size", [30, 72])
     def test_blockwise_coreg_pipeline(self, step, example_data, tmp_path, block_size):
         """Test end-to-end blockwise coregistration and validate output."""
         ref, tba, mask = example_data
