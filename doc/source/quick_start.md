@@ -21,15 +21,9 @@ To find an example about a specific functionality, jump directly to {ref}`quick-
 
 ## Download data examples
 
-Example data from xDEM is automatically downloaded when calling `xdem.example.get_all_data()` as shown below.
+Example data from xDEM can be automatically downloaded with the function `xdem.examples.get_path()` as shown below.
 
 See the {ref}`data` page to learn more about all our example data and different download options.
-
-```{code-cell} ipython3
-import xdem
-
-output_dir = xdem.examples.get_all_data()
-```
 
 ## Python example
 
