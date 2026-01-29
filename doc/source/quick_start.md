@@ -19,6 +19,12 @@ kernelspec:
 Below is a short example show-casing some of the core functionalities of xDEM.
 To find an example about a specific functionality, jump directly to {ref}`quick-gallery`.
 
+## Download data examples
+
+Example data from xDEM can be automatically downloaded with the function `xdem.examples.get_path()` as shown below.
+
+See the {ref}`data` page to learn more about all our example data and different download options.
+
 ## Python example
 
 ```{note}

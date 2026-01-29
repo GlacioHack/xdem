@@ -248,3 +248,28 @@ def test_load_dem(get_dem_config, from_vcrs, to_vcrs):
         assert mask_path == config_dem["path_to_mask"]
         mask = gu.Vector(mask_path)
         assert inlier_mask == ~mask.create_mask(input_dem)
+
+
+def test_load_dem_alias():
+    """
+    Test load_dem function with alias
+    """
+
+    # Test with no mask
+    config_dem = dict()
+    config_dem["path_to_elev"] = "longyearbyen_ref_dem"
+    output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+
+    assert output_dem.raster_equal(xdem.DEM(xdem.examples.get_path(config_dem["path_to_elev"])))
+    assert inlier_mask is None
+    assert mask_path is None
+
+    # Test with mask
+    config_dem = dict()
+    config_dem["path_to_elev"] = "longyearbyen_tba_dem"
+    config_dem["path_to_mask"] = "longyearbyen_glacier_outlines"
+    output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+
+    assert output_dem == xdem.DEM(xdem.examples.get_path(config_dem["path_to_elev"]))
+    assert inlier_mask == ~gu.Vector(mask_path).create_mask(output_dem)
+    assert mask_path == xdem.examples.get_path("longyearbyen_glacier_outlines")
