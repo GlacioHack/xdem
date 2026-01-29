@@ -1,3 +1,17 @@
+---
+file_format: mystnb
+mystnb:
+  execution_timeout: 60
+jupytext:
+  formats: md:myst
+  text_representation:
+    extension: .md
+    format_name: myst
+kernelspec:
+  display_name: xdem-env
+  language: python
+  name: xdem
+---
 (data)=
 
 # Data examples
@@ -39,9 +53,7 @@ of the [xdem-data github project](https://github.com/GlacioHack/xdem-data) where
 
 ### Python
 
-
-
-If you want to only get a specific data, you can use this function with the data alias needed:
+If you want to use one of the example data, you can run this function with the corresponding data alias:
 
 ```{code-cell} ipython3
 import xdem
@@ -57,13 +69,13 @@ Also, you can download all the data, no matter the area by running:
 ```{code-cell} ipython3
 import xdem
 
-# Download the data (Longyearbyen and Gizeh dataset) and return the output directory path
+# Download the all of the xDEM data (Longyearbyen and Gizeh dataset) and return the output directory path
 output_dir = xdem.examples.get_all_data()
 ```
 
 In both case, you can specify the `output_dir` where you want that data to be download or searched:
 
-```{code-cell} ipython3
+```{code-cell}
 import xdem
 output_dir = "/dir/my_output_dir"
 path = xdem.examples.get_path("longyearbyen_ref_dem", output_dir=output_dir)
@@ -74,7 +86,7 @@ output_dir = xdem.examples.get_all_data(output_dir=output_dir)
 
 To experiment the {ref}`cli`, you can also use the alias to refer data examples in the configuration file:
 
-```{code-cell} ipython3
+```{code-cell}
 inputs:
   reference_elev:
     path_to_elev: "longyearbyen_ref_dem"
