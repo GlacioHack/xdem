@@ -119,12 +119,12 @@ def test_validate_topo_configuration_with_errors(get_topo_inputs_config, new_par
     "new_param_config, expected",
     [
         pytest.param(
-            {"coregistration": {"sampling_grid": 3}},
+            {"inputs": {"sampling_grid": 3}},
             "must be of string type",
             id="sampling_grid",
         ),
         pytest.param(
-            {"coregistration": {"sampling_grid": "not_a_dem"}},
+            {"inputs": {"sampling_grid": "not_a_dem"}},
             "unallowed value not_a_dem",
             id="sampling_grid",
         ),

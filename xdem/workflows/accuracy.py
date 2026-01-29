@@ -61,8 +61,13 @@ class Accuracy(Workflows):
         self.compute_coreg = self.config["coregistration"]["process"]
 
         if not self.compute_coreg:
-            del self.config["coregistration"]["sampling_grid"]
             del self.config["coregistration"]["step_one"]
+        else:
+            if self.config["inputs"]["sampling_grid"] is None:
+                raise ValueError(
+                    'In case of a coregistration process, "sampling grid" must be set to '
+                    '"reference_elev" or "to_be_aligned_elev"'
+                )
 
         yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
         Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
@@ -164,11 +169,11 @@ class Accuracy(Workflows):
 
         return aligned_elev
 
-    def _prepare_datas_for_coreg(self) -> None:
+    def _prepare_datas(self) -> None:
         """
         Compute reprojection.
         """
-        sampling_source = self.config["coregistration"]["sampling_grid"]
+        sampling_source = self.config["inputs"]["sampling_grid"]
 
         # Reprojection
         if sampling_source == "reference_elev":
@@ -302,9 +307,11 @@ class Accuracy(Workflows):
 
         self._load_data()
 
+        # Reprojection step
+        if "sampling_grid" in self.config["inputs"]:
+            self._prepare_datas()
+
         if self.compute_coreg:
-            # Reprojection step
-            self._prepare_datas_for_coreg()
             # Coregistration step
             aligned_elev = self._compute_coregistration()
         else:
@@ -393,6 +400,9 @@ class Accuracy(Workflows):
             if self.level > 1:
                 self.diff_before.to_file(self.outputs_folder / "rasters" / "diff_elev_before_coreg_map.tif")
                 self.diff_after.to_file(self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
+        else:
+            if self.level > 1:
+                self.diff.to_file(self.outputs_folder / "rasters" / "diff_elev.tif")
 
         t1 = time.time()
         self.elapsed = t1 - t0
