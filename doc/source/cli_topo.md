@@ -142,8 +142,7 @@ inputs:
 :::
 
 :::{note}
-The value `null` in the YAML file, representing the absence of a value or a null value, is serialized as `None`
-in the dictionary.
+The `null` and `None` values are both accepted in YAML files, which correspond to `None` in the Python API.
 :::
 
 ::::
