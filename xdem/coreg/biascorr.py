@@ -31,7 +31,7 @@ import scipy
 
 import xdem.spatialstats
 from xdem._typing import NDArrayb, NDArrayf
-from xdem.coreg.base import Coreg, fit_workflows
+from xdem.coreg.base import Coreg, InRandomDict, _subsample_rst_pts, fit_workflows
 from xdem.fit import polynomial_2d
 
 BiasCorrType = TypeVar("BiasCorrType", bound="BiasCorr")
@@ -169,30 +169,40 @@ class BiasCorr(Coreg):
         ref_elev: NDArrayf | gpd.GeoDataFrame,
         tba_elev: NDArrayf | gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        ref_transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
+        z_name: str | None = None,
         bias_vars: None | dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         **kwargs,
     ) -> None:
         """Function for fitting raster-raster and raster-point for bias correction methods."""
 
+        # Get random parameters
+        params_random: InRandomDict = self._meta["inputs"]["random"]
+
         # Pre-process raster-point input
-        sub_ref, sub_tba, sub_bias_vars = self._preprocess_rst_pts_subsample(
+        sub_ref, sub_tba, sub_bias_vars = _subsample_rst_pts(
+            params_random=params_random,
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
+            sampling_strategy="same_xy",  # The "same_xy" sampling strategy has to be enforced for bias corrections (always same coordinates)
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
             aux_vars=bias_vars,
         )
 
-        # Derive difference to get dh
-        diff = sub_ref - sub_tba
+        # Write final subsample to class
+        self._meta["outputs"]["random"] = {"subsample_final": len(sub_ref)}
+
+        # Derive difference of Z axis to get dh
+        diff = sub_ref[2, :] - sub_tba[2, :]
 
         # Send to bin and fit
         self._bin_or_and_fit_nd(
@@ -207,10 +217,10 @@ class BiasCorr(Coreg):
         ref_elev: NDArrayf,
         tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -221,10 +231,10 @@ class BiasCorr(Coreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
-            z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
             **kwargs,
@@ -249,7 +259,7 @@ class BiasCorr(Coreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
@@ -356,10 +366,10 @@ class DirectionalBias(BiasCorr):
         ref_elev: NDArrayf,
         tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         **kwargs,
@@ -368,7 +378,7 @@ class DirectionalBias(BiasCorr):
         logging.info("Estimating rotated coordinates.")
 
         x, _ = gu.raster.get_xy_rotated(
-            raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=transform, nodata=-9999),
+            raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=ref_transform, nodata=-9999),
             along_track_angle=self._meta["inputs"]["specific"]["angle"],
         )
 
@@ -377,10 +387,10 @@ class DirectionalBias(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"angle": x},
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
-            z_name=z_name,
             weights=weights,
             **kwargs,
         )
@@ -420,7 +430,7 @@ class DirectionalBias(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"angle": x},
-            transform=transform,
+            ref_transform=transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
@@ -508,10 +518,10 @@ class TerrainBias(BiasCorr):
         ref_elev: NDArrayf,
         tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         **kwargs,
@@ -530,7 +540,7 @@ class TerrainBias(BiasCorr):
                 attr = xdem.terrain.get_terrain_attribute(
                     dem=ref_elev,
                     attribute=self._meta["inputs"]["specific"]["terrain_attribute"],
-                    resolution=(transform[0], abs(transform[4])),
+                    resolution=(ref_transform[0], abs(ref_transform[4])),
                 )
 
         # Run the parent function
@@ -539,10 +549,10 @@ class TerrainBias(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={self._meta["inputs"]["specific"]["terrain_attribute"]: attr},
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
-            z_name=z_name,
             weights=weights,
             **kwargs,
         )
@@ -586,7 +596,7 @@ class TerrainBias(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={self._meta["inputs"]["specific"]["terrain_attribute"]: attr},
-            transform=transform,
+            ref_transform=transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
@@ -671,10 +681,10 @@ class Deramp(BiasCorr):
         ref_elev: NDArrayf,
         tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
         bias_vars: dict[str, NDArrayf] | None = None,
         weights: None | NDArrayf = None,
         **kwargs,
@@ -691,10 +701,10 @@ class Deramp(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"xx": xx, "yy": yy},
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
-            z_name=z_name,
             weights=weights,
             p0=p0,
             **kwargs,
@@ -728,7 +738,7 @@ class Deramp(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"xx": xx, "yy": yy},
-            transform=transform,
+            ref_transform=transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
