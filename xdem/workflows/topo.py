@@ -168,6 +168,7 @@ class Topo(Workflows):
             ax.set_xticks([])
             ax.set_yticks([])
 
+        [fig.delaxes(ax) for ax in axes.flatten() if not ax.has_data()]
         plt.tight_layout()
         plt.savefig(self.outputs_folder / "plots" / "terrain_attributes_map.png", dpi=300)
         plt.close()

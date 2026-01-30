@@ -323,25 +323,9 @@ class Accuracy(Workflows):
 
         vmin = vmax = None
 
-        if self.compute_coreg:
-            diff_pairs = [("before", self.to_be_aligned_elev), ("after", aligned_elev.reproject(ref_elev))]
-        else:
-            diff_pairs = [("", self.to_be_aligned_elev)]
+        stats_keys = ["min", "max", "nmad", "median"]
 
-        for label, dem in diff_pairs:
-            diff = dem - ref_elev
-            stats_keys = ["min", "max", "nmad", "median"]
-            stats = diff.get_stats(stats_keys)
-
-            if label == "before":
-                self.diff_before, self.stats_before = diff, stats
-                vmin, vmax = -(stats["median"] + 3 * stats["nmad"]), stats["median"] + 3 * stats["nmad"]
-            elif label == "after":
-                self.diff_after, self.stats_after = diff, stats
-            else:
-                self.diff = diff
-                vmin, vmax = -(stats["median"] + 3 * stats["nmad"]), (stats["median"] + 3 * stats["nmad"])
-
+        def generate_plot_diff(label: str, diff: RasterType, vmin: float, vmax: float) -> None:
             suffix = f"_elev_{label}_coreg_map" if label else "_elev"
             self.generate_plot(
                 diff,
@@ -352,6 +336,34 @@ class Accuracy(Workflows):
                 cmap="RdBu",
                 cbar_title="Elevation differences (m)",
             )
+
+        if self.compute_coreg:
+
+            self.diff_before = self.to_be_aligned_elev - ref_elev
+            self.stats_before = self.diff_before.get_stats(stats_keys)
+
+            self.diff_after = aligned_elev.reproject(ref_elev) - ref_elev
+            self.stats_after = self.diff_after.get_stats(stats_keys)
+
+            vmin_bf, vmax_bf = (
+                -(self.stats_before["median"] + 3 * self.stats_before["nmad"]),
+                self.stats_before["median"] + 3 * self.stats_before["nmad"],
+            )
+            vmin_af, vmax_af = (
+                -(self.stats_after["median"] + 3 * self.stats_after["nmad"]),
+                self.stats_after["median"] + 3 * self.stats_after["nmad"],
+            )
+            vmin = vmin_af if vmin_af < vmin_bf else vmin_bf
+            vmax = vmax_af if vmax_af > vmax_bf else vmax_bf
+            generate_plot_diff("before", self.diff_before, vmin, vmax)
+            generate_plot_diff("after", self.diff_after, vmin, vmax)
+
+        else:
+            self.diff = [self.to_be_aligned_elev - ref_elev]
+            self.stats = self.diff.get_stats(stats_keys)
+
+            vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
+            generate_plot_diff("", self.diff, vmin, vmax)
 
         if self.compute_coreg:
             stat_items = [
