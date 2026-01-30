@@ -18,6 +18,9 @@
 """
 Test DiffAnalysis class
 """
+
+import logging
+
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
 
@@ -29,6 +32,7 @@ from xdem.workflows import Accuracy
 from xdem.workflows.workflows import Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
+pytest.importorskip("cerberus")
 
 
 def test_init_diff_analysis(get_accuracy_object_with_run, tmp_path):
@@ -42,13 +46,13 @@ def test_init_diff_analysis(get_accuracy_object_with_run, tmp_path):
     assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
-    mask = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+    dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
+    mask = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
     inlier_mask = ~mask.create_mask(dem)
     assert workflows.inlier_mask == inlier_mask
 
 
-def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path):
+def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path, caplog, assert_and_allow_log):
     """
     Test _get_reference_elevation function
     """
@@ -56,16 +60,22 @@ def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path):
     user_config = get_accuracy_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Accuracy(user_config)
+    workflows._load_data()
 
-    with pytest.raises(NotImplementedError, match="For now it doesn't working, please add a reference DEM"):
+    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
         workflows._get_reference_elevation()
 
     user_config = get_accuracy_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     user_config["inputs"]["reference_elev"] = None
 
-    with pytest.raises(NotImplementedError, match="For now it doesn't working, please add a reference DEM"):
-        _ = Accuracy(user_config)
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
+            workflows = Accuracy(user_config)
+            workflows._load_data()
+
+    # Check logging warning exists and tag as expected
+    assert_and_allow_log(caplog, match="No DEM provided", level=logging.WARNING)
 
 
 @pytest.mark.skip("Not implemented")
@@ -73,22 +83,6 @@ def test__compute_coregistration():
     """
     Test _compute_coregistration function
     """
-
-
-def test__compute_reproj(get_accuracy_inputs_config, tmp_path):
-    """
-    Test _compute_reproj function
-    """
-    user_config = get_accuracy_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
-    user_config["coregistration"] = {"process": False}
-    user_config["coregistration"]["sampling_grid"] = "to_be_aligned_elev"
-    workflows = Accuracy(user_config)
-    workflows.run()
-    src, target = workflows.reference_elev, workflows.to_be_aligned_elev
-    gt_reprojected = src.reproject(target, silent=True)
-
-    assert workflows.reference_elev == gt_reprojected
 
 
 def test__get_stats(get_accuracy_inputs_config, tmp_path):
@@ -99,7 +93,7 @@ def test__get_stats(get_accuracy_inputs_config, tmp_path):
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Accuracy(user_config)
 
-    dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+    dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
     stats_gt = dem.get_stats(
         [
             "mean",
@@ -169,8 +163,8 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
 
     assert Path(tmp_path / "tables").joinpath("aligned_elev_stats.csv").exists()
 
-    assert Path(tmp_path / "plots").joinpath("diff_elev_after_coreg.png").exists()
-    assert Path(tmp_path / "plots").joinpath("diff_elev_before_coreg.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_after_coreg_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_before_coreg_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
@@ -193,7 +187,12 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
         "to_be_aligned_elev_stats.csv",
     ]
 
-    raster_files = ["diff_elev_after_coreg.tif", "diff_elev_before_coreg.tif", "to_be_aligned_elev_reprojected.tif"]
+    raster_files = [
+        "diff_elev_after_coreg_map.tif",
+        "diff_elev_before_coreg_map.tif",
+        "to_be_aligned_elev_reprojected.tif",
+        "reference_elev_reprojected.tif",
+    ]
 
     if level == 1:
         for file in csv_files_level_1:
@@ -281,8 +280,9 @@ def test_mask_init(tmp_path, get_accuracy_inputs_config):
     user_config["outputs"] = {"path": str(tmp_path)}
     del user_config["inputs"]["reference_elev"]["path_to_mask"]
     workflows = Accuracy(user_config)
-    dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
-    mask = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+    workflows._load_data()
+    dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
+    mask = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
     inlier_mask = ~mask.create_mask(dem)
     assert workflows.inlier_mask == inlier_mask
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()

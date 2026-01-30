@@ -18,6 +18,7 @@
 """
 Test Topo class
 """
+
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
 
@@ -32,6 +33,8 @@ from xdem.workflows.workflows import Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
+pytest.importorskip("cerberus")
+
 
 def test_init_topo_summary(get_topo_inputs_config, tmp_path, list_default_terrain_attributes):
     """
@@ -40,6 +43,7 @@ def test_init_topo_summary(get_topo_inputs_config, tmp_path, list_default_terrai
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Topo(user_config)
+    workflows._load_data()
 
     assert isinstance(workflows, Workflows)
     assert isinstance(workflows, Topo)
@@ -72,7 +76,7 @@ def test_generate_terrain_attributes(tmp_path, get_topo_inputs_config, list_defa
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Topo(user_config)
-
+    workflows._load_data()
     workflows.generate_terrain_attributes_tiff()
 
     for attr in list_default_terrain_attributes:
@@ -86,6 +90,7 @@ def test_generate_terrain_attributes_level_2(tmp_path, get_topo_inputs_config, l
     user_config = get_topo_inputs_config
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
     workflows = Topo(user_config)
+    workflows._load_data()
     workflows.run()
 
     for attr in list_default_terrain_attributes:
@@ -139,10 +144,11 @@ def test_run(get_topo_inputs_config, tmp_path):
         "Information about inputs",
         {
             "reference_elev": {
-                "path_to_elev": xdem.examples.get_path("longyearbyen_tba_dem"),
+                "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
                 "from_vcrs": None,
-                "path_to_mask": xdem.examples.get_path("longyearbyen_glacier_outlines"),
+                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
                 "to_vcrs": None,
+                "downsample": 1,
             }
         },
     )
@@ -152,16 +158,16 @@ def test_run(get_topo_inputs_config, tmp_path):
         {
             "Data types": "float32",
             "Driver": "GTiff",
-            "Filename": xdem.examples.get_path("longyearbyen_tba_dem"),
+            "Filename": xdem.examples.get_path_test("longyearbyen_tba_dem"),
             "Grid size": None,
-            "Height": 985,
+            "Height": 54,
             "Nodata Value": -9999.0,
             "Number of band": (1,),
             "Pixel interpretation": "Area",
             "Pixel size": (20.0, 20.0),
-            "Transform": Affine(20.0, 0.0, 502810.0, 0.0, -20.0, 8674030.0),
-            "Width": 1332,
-            "Bounds": BoundingBox(left=502810.0, bottom=8654330.0, right=529450.0, top=8674030.0),
+            "Transform": Affine(20.0, 0.0, 505550.0, 0.0, -20.0, 8673610.0),
+            "Width": 50,
+            "Bounds": BoundingBox(left=505550.0, bottom=8672530.0, right=506550.0, top=8673610.0),
         },
     )
     # 3/ Statistics names

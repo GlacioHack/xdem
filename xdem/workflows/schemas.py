@@ -19,17 +19,41 @@
 """
 Schema constants and validation function
 """
+
+from __future__ import (
+    annotations,  # Required to have Validator=object (when cerberus missing) understood for typing
+)
+
 import logging
 import os
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError, URLError
 
-from cerberus import Validator
-
+from xdem._misc import import_optional
 from xdem.vcrs import _vcrs_from_user_input
+
+if TYPE_CHECKING:
+    # Only used for type checking
+    from cerberus import Validator
+else:
+    # Inheritance of optional dependency class
+    try:
+        from cerberus import Validator
+
+        _HAS_CERBERUS = True
+    except ImportError:
+        Validator = object
+        _HAS_CERBERUS = False
 
 
 class CustomValidator(Validator):  # type: ignore
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        # Raise error if package does not exist
+        if not _HAS_CERBERUS:
+            import_optional("cerberus")
+        super().__init__(*args, **kwargs)
+
     def _validate_path_exists(self, path_exists: bool, field: str, value: str) -> bool:
         """
         {'type': 'boolean'}
@@ -61,6 +85,7 @@ INPUTS_DEM = {
     "path_to_mask": {"type": "string", "required": False, "path_exists": True, "nullable": True},
     "from_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
     "to_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
+    "downsample": {"type": ["integer", "float"], "required": False, "default": 1, "min": 1},
 }
 
 COREG_METHODS = ["NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD", None]
@@ -100,6 +125,7 @@ TERRAIN_ATTRIBUTES = [
     "roughness",
     "rugosity",
     "fractal_roughness",
+    "texture_shading",
 ]
 
 
@@ -127,7 +153,7 @@ def make_coreg_step(required: bool = False, default_method: str = None) -> Valid
     return step_schema
 
 
-def validate_configuration(user_config: dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
+def validate_configuration(user_config: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     """
     Validate the configuration:
     :param user_config: Configuration dict or YAML string
@@ -137,7 +163,7 @@ def validate_configuration(user_config: dict[str, Any], schema: Dict[str, Any]) 
     validator = CustomValidator(schema)
     if not validator.validate(user_config):
         for field, errors in validator.errors.items():
-            raise ValueError(f"User configuration mistakes in '{field}': {errors}")
+            raise ValueError(f"User configuration invalid for '{field}': {errors}")
 
     if "statistics" not in validator.document:
         validator.document["statistics"] = STATS_METHODS
@@ -242,6 +268,7 @@ COMPLETE_CONFIG_ACCURACY = {
             "force_source_nodata": None,
             "from_vcrs": None,
             "to_vcrs": None,
+            "downsample": 1,
         },
         "to_be_aligned_elev": {
             "path_to_elev": "",
@@ -249,6 +276,7 @@ COMPLETE_CONFIG_ACCURACY = {
             "from_vcrs": None,
             "to_vcrs": None,
             "path_to_mask": None,
+            "downsample": 1,
         },
     },
     "outputs": {
@@ -298,6 +326,7 @@ COMPLETE_CONFIG_TOPO = {
             "from_vcrs": None,
             "to_vcrs": None,
             "path_to_mask": None,
+            "downsample": 1,
         },
     },
     "outputs": {"level": 1, "path": "outputs"},

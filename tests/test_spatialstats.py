@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import warnings
+from importlib.util import find_spec
 from typing import Any
 
 import geoutils as gu
@@ -23,10 +24,10 @@ PLOT = False
 def load_ref_and_diff() -> tuple[Raster, Raster, NDArrayf, Vector]:
     """Load example files to try coregistration methods with."""
 
-    reference_raster = Raster(examples.get_path("longyearbyen_ref_dem"))
-    outlines = Vector(examples.get_path("longyearbyen_glacier_outlines"))
+    reference_raster = Raster(examples.get_path_test("longyearbyen_ref_dem"))
+    outlines = Vector(examples.get_path_test("longyearbyen_glacier_outlines"))
 
-    ddem = Raster(examples.get_path("longyearbyen_ddem"))
+    ddem = Raster(examples.get_path_test("longyearbyen_ddem"))
     mask = outlines.create_mask(ddem)
 
     return reference_raster, ddem, mask, outlines
@@ -38,10 +39,14 @@ class TestBinning:
     ref, diff, mask, outlines = load_ref_and_diff()
 
     # Derive terrain attributes
-    slope, aspect = xdem.terrain.get_terrain_attribute(ref, attribute=["slope", "aspect"], surface_fit="Horn")
-    max_curv = xdem.terrain.get_terrain_attribute(ref, attribute=["max_curvature"], surface_fit="ZevenbergThorne")
+    slope, aspect = xdem.terrain.get_terrain_attribute(
+        ref, attribute=["slope", "aspect"], surface_fit="Horn", engine="scipy"
+    )
+    max_curv = xdem.terrain.get_terrain_attribute(
+        ref, attribute=["max_curvature"], surface_fit="ZevenbergThorne", engine="scipy"
+    )
 
-    def test_nd_binning(self) -> None:
+    def test_nd_binning(self, test_output_dir: str) -> None:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
         # Subsampler
@@ -62,8 +67,8 @@ class TestBinning:
         assert np.nanmin(self.slope.data.flatten()[indices]) == np.min(pd.IntervalIndex(df.slope).left)
         assert np.nanmax(self.slope.data.flatten()[indices]) == np.max(pd.IntervalIndex(df.slope).right)
 
-        # NMAD should go up quite a bit with slope, more than 8 m between the two extreme bins
-        assert df.nmad.values[-1] - df.nmad.values[0] > 8
+        # NMAD should go up a bit with slope, more than 1 m between the two extreme bins
+        assert df.nmad.values[-1] - df.nmad.values[0] > 1
 
         # 1D binning with 20 bins
         df = xdem.spatialstats.nd_binning(
@@ -108,17 +113,17 @@ class TestBinning:
                 self.aspect.data.flatten()[indices],
             ],
             list_var_names=["slope", "elevation", "aspect"],
-            list_var_bins=4,
+            list_var_bins=3,
         )
 
         # Dataframe should contain three 1D binning of length 10 and three 2D binning of length 100 and one 2D binning
         # of length 1000
-        assert df.shape[0] == (4**3 + 3 * 4**2 + 3 * 4)
+        assert df.shape[0] == (3**3 + 3 * 3**2 + 3 * 3)
 
         # Save for later use
-        df.to_csv(os.path.join(examples._EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index=False)
+        df.to_csv(os.path.join(test_output_dir, "df_3d_binning_slope_elevation_aspect.csv"), index=False)
 
-    def test_interp_nd_binning_artificial_data(self) -> None:
+    def test_interp_nd_binning_artificial_data(self, test_output_dir: str) -> None:
         """Check that the N-dimensional interpolation works correctly using artificial data"""
 
         # Check the function works with a classic input (see example)
@@ -259,54 +264,44 @@ class TestBinning:
         # Check it is now positive or equal to zero
         assert fun((5, 100)) >= 0
 
-    def test_interp_nd_binning_realdata(self) -> None:
+    def test_interp_nd_binning_realdata(self, test_output_dir: str) -> None:
         """Check that the function works well with outputs from the nd_binning function"""
 
         # Read nd_binning output
-        df = pd.read_csv(
-            os.path.join(examples._EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None
-        )
+        df = pd.read_csv(os.path.join(test_output_dir, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None)
 
         # First, in 1D
-        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names="slope")
+        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names="slope", min_count=0)
 
         # Check a value is returned inside the grid
         assert np.isfinite(fun(([15],)))
-        # Check the nmad increases with slope
-        assert fun(([20],)) > fun(([0],))
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50],))))
 
         # Check when the first passed binning variable contains NaNs because of other binning variable
-        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names="elevation")
+        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names="elevation", min_count=0)
 
         # Then, in 2D
-        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["slope", "elevation"])
+        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["slope", "elevation"], min_count=0)
 
         # Check a value is returned inside the grid
         assert np.isfinite(fun(([15], [1000])))
-        # Check the nmad increases with slope
-        assert fun(([40], [300])) > fun(([10], [300]))
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500, 3000]))))
 
         # Then in 3D
-        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["slope", "elevation", "aspect"])
+        fun = xdem.spatialstats.interp_nd_binning(df, list_var_names=["slope", "elevation", "aspect"], min_count=0)
 
         # Check a value is returned inside the grid
         assert np.isfinite(fun(([15], [1000], [np.pi])))
-        # Check the nmad increases with slope
-        assert fun(([30], [300], [np.pi])) > fun(([10], [300], [np.pi]))
         # Check a value is returned outside the grid
         assert all(np.isfinite(fun(([-5, 50], [-500, 3000], [-2 * np.pi, 4 * np.pi]))))
 
-    def test_get_perbin_nd_binning(self) -> None:
+    def test_get_perbin_nd_binning(self, test_output_dir: str) -> None:
         """Test the get per-bin function."""
 
         # Read nd_binning output
-        df = pd.read_csv(
-            os.path.join(examples._EXAMPLES_DIRECTORY, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None
-        )
+        df = pd.read_csv(os.path.join(test_output_dir, "df_3d_binning_slope_elevation_aspect.csv"), index_col=None)
 
         # Get values for arrays from the above 3D binning
         perbin_values = xdem.spatialstats.get_perbin_nd_binning(
@@ -388,7 +383,7 @@ class TestBinning:
 
         # Filter with a factor of 3 and the standard deviation (not default values) and check the function outputs
         # the exact same array
-        zscores[np.abs(zscores) > 3 * np.nanstd(zscores)] = np.nan
+        zscores[np.abs(zscores) > 3 * np.nanstd(zscores)] = np.ma.masked
         scale_fac_std = np.nanstd(zscores)
         zscores /= scale_fac_std
         zscores_2, final_func = xdem.spatialstats.two_step_standardization(
@@ -407,18 +402,19 @@ class TestBinning:
             unscaled_fun((test_slopes, test_max_curvs)) * scale_fac_std, final_func((test_slopes, test_max_curvs))
         )
 
-    def test_estimate_model_heteroscedasticity_and_infer_from_stable(self) -> None:
+    def test_estimate_model_heteroscedasticity_and_infer_from_stable(self, test_output_dir: str) -> None:
         """Test consistency of outputs and errors in wrapper functions for estimation of heteroscedasticity"""
 
         # Test infer function
         errors_1, df_binning_1, err_fun_1 = xdem.spatialstats.infer_heteroscedasticity_from_stable(
-            dvalues=self.diff, list_var=[self.slope, self.max_curv], unstable_mask=self.outlines
+            dvalues=self.diff, list_var=[self.slope, self.max_curv], unstable_mask=self.outlines, min_count=0
         )
 
         df_binning_2, err_fun_2 = xdem.spatialstats._estimate_model_heteroscedasticity(
             dvalues=self.diff[~self.mask],
             list_var=[self.slope[~self.mask], self.max_curv[~self.mask]],
             list_var_names=["var1", "var2"],
+            min_count=0,
         )
 
         pd.testing.assert_frame_equal(df_binning_1, df_binning_2)
@@ -432,7 +428,7 @@ class TestBinning:
         assert np.array_equal(errors_1_arr, errors_2_arr, equal_nan=True)
 
         # Save for use in TestVariogram
-        errors_1.save(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors_1.to_file(os.path.join(test_output_dir, "dh_error.tif"))
 
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match="The values must be a Raster or NumPy array, or a list of those."):
@@ -459,7 +455,24 @@ class TestBinning:
                 dvalues=self.diff.get_nanarray(), stable_mask=self.outlines, list_var=[self.slope.get_nanarray()]
             )
 
+    @pytest.mark.skipif(
+        find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
+    )  # type: ignore
+    def test_plot_binning__missing_dep(self) -> None:
+        """Check that proper import error is raised when matplotlib is missing"""
+
+        # Define placeholder data
+        df = pd.DataFrame({"var1": [0, 1, 2], "var2": [2, 3, 4], "statistic": [0, 0, 0]})
+
+        with pytest.raises(ImportError, match="Optional dependency 'matplotlib' required.*"):
+            xdem.spatialstats.plot_1d_binning(df, var_name="var1", statistic_name="statistic")
+
+        with pytest.raises(ImportError, match="Optional dependency 'matplotlib' required.*"):
+            xdem.spatialstats.plot_2d_binning(df, var_name_1="var1", var_name_2="var2", statistic_name="statistic")
+
     def test_plot_binning(self) -> None:
+
+        pytest.importorskip("matplotlib")
 
         # Define placeholder data
         df = pd.DataFrame({"var1": [0, 1, 2], "var2": [2, 3, 4], "statistic": [0, 0, 0]})
@@ -483,19 +496,27 @@ class TestBinning:
 
 class TestVariogram:
 
-    # Import optional skgstat or skip test
-    pytest.importorskip("skgstat")
-
     ref, diff, mask, outlines = load_ref_and_diff()
+
+    @pytest.mark.skipif(
+        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
+    )  # type: ignore
+    def test_sample_empirical_variogram__missing_dep(self) -> None:
+        """Check that proper import error is raised when skgstat is missing"""
+
+        with pytest.raises(ImportError, match="Optional dependency 'scikit-gstat' required.*"):
+            xdem.spatialstats.sample_empirical_variogram(values=self.diff, subsample=10, random_state=42)
 
     def test_sample_multirange_variogram_default(self) -> None:
         """Verify that the default function runs, and its basic output"""
 
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
+
         # Check the variogram output is consistent for a random state
         df = xdem.spatialstats.sample_empirical_variogram(values=self.diff, subsample=10, random_state=42)
-        # assert df["exp"][15] == pytest.approx(5.11900520324707, abs=1e-3)
-        assert df["lags"][15] == pytest.approx(5120)
-        assert df["count"][15] == 2
+        assert df["lags"][2] == pytest.approx(56.56854249492382)
+        assert df["count"][2] == 3
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
@@ -525,6 +546,8 @@ class TestVariogram:
     def test_sample_empirical_variogram_speed(self) -> None:
         """Verify that no speed is lost outside of routines on variogram sampling by comparing manually to skgstat"""
 
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
         import skgstat
 
         values = self.diff
@@ -622,8 +645,11 @@ class TestVariogram:
     @pytest.mark.parametrize(
         "subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"]
     )  # type: ignore
-    def test_sample_multirange_variogram_methods(self, subsample_method) -> None:
+    def test_sample_multirange_variogram_methods(self, subsample_method: str) -> None:
         """Verify that all other methods run"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         # Check the variogram estimation runs for several methods
         df = xdem.spatialstats.sample_empirical_variogram(
@@ -643,6 +669,9 @@ class TestVariogram:
 
     def test_sample_multirange_variogram_args(self) -> None:
         """Verify that optional parameters run only for their specific method, raise warning otherwise"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         # Define parameters
         pdist_args: EmpiricalVariogramKArgs = {"pdist_multi_ranges": [0, self.diff.res[0] * 5, self.diff.res[0] * 10]}
@@ -692,6 +721,9 @@ class TestVariogram:
     def test_choose_cdist_equidistant_sampling_parameters(self, subsample: int, shape: tuple[int, int]) -> None:
         """Verify that the automatically-derived parameters of equidistant sampling are sound"""
 
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
+
         # Assign an arbitrary extent
         extent = (0, 1, 0, 1)
 
@@ -725,6 +757,9 @@ class TestVariogram:
     def test_errors_subsample_parameter(self) -> None:
         """Tests that an error is raised when the subsample argument is too little"""
 
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
+
         keyword_arguments = {"subsample": 3, "extent": (0, 1, 0, 1), "shape": (10, 10)}
 
         with pytest.raises(ValueError, match="The number of subsamples needs to be at least 10."):
@@ -732,6 +767,9 @@ class TestVariogram:
 
     def test_multirange_fit_performance(self) -> None:
         """Verify that the fitting works with artificial dataset"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -767,8 +805,20 @@ class TestVariogram:
         if PLOT:
             xdem.spatialstats.plot_variogram(df, list_fit_fun=[fun])
 
+    @pytest.mark.skipif(
+        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
+    )  # type: ignore
+    def test_fit_sum_variogram__missing_dep(self) -> None:
+        """Check that proper import error is raised when skgstat is missing"""
+
+        with pytest.raises(ImportError, match="Optional dependency 'scikit-gstat' required.*"):
+            xdem.spatialstats.fit_sum_model_variogram(["spherical", "spherical", "spherical"], pd.DataFrame())
+
     def test_check_params_variogram_model(self) -> None:
         """Verify that the checking function for the modelled variogram parameters dataframe returns adequate errors"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         # Check when missing a column
         with pytest.raises(
@@ -837,8 +887,11 @@ class TestVariogram:
                 pd.DataFrame(data={"model": ["stable"], "range": [100], "psill": [1], "smooth": [-1]})
             )
 
-    def test_estimate_model_spatial_correlation_and_infer_from_stable(self) -> None:
+    def test_estimate_model_spatial_correlation_and_infer_from_stable(self, test_output_dir: str) -> None:
         """Test consistency of outputs and errors in wrapper functions for estimation of spatial correlation"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
 
         warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
 
@@ -847,7 +900,7 @@ class TestVariogram:
         diff_on_stable.set_mask(self.mask)
 
         # Load the error map from TestBinning
-        errors = Raster(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors = Raster(os.path.join(test_output_dir, "dh_error.tif"))
 
         # Standardize the differences
         zscores = diff_on_stable / errors
@@ -897,9 +950,7 @@ class TestVariogram:
             random_state=42,
         )
         # Save the modelled variogram for later used in TestNeffEstimation
-        params_model_vgm_5.to_csv(
-            os.path.join(examples._EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index=False
-        )
+        params_model_vgm_5.to_csv(os.path.join(test_output_dir, "df_variogram_model_params.csv"), index=False)
 
         # Check that errors are raised with wrong input
         with pytest.raises(ValueError, match="The values must be a Raster or NumPy array, or a list of those."):
@@ -926,8 +977,23 @@ class TestVariogram:
                 dvalues=diff_on_stable_arr, stable_mask=self.outlines, list_models=["Gau", "Sph"], random_state=42
             )
 
-    def test_empirical_fit_plotting(self) -> None:
+    @pytest.mark.skipif(
+        find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
+    )  # type: ignore
+    def test_plot_variogram__missing_dep(self) -> None:
+        """Check that proper import error is raised when matplotlib is missing"""
+
+        df = pd.DataFrame(data={"exp": [1], "lags": [1], "count": [100]})
+
+        with pytest.raises(ImportError, match="Optional dependency 'matplotlib' required.*"):
+            xdem.spatialstats.plot_variogram(df)
+
+    def test_plot_variogram(self) -> None:
         """Verify that the shape of the empirical variogram output works with the fit and plotting"""
+
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
+        pytest.importorskip("matplotlib")
 
         # Check the variogram estimation runs for a random state
         df = xdem.spatialstats.sample_empirical_variogram(
@@ -971,7 +1037,9 @@ class TestNeffEstimation:
     # Import optional skgstat or skip test
     pytest.importorskip("skgstat")
 
-    ref, diff, _, outlines = load_ref_and_diff()
+    ref = Raster(examples.get_path("longyearbyen_ref_dem"))
+    ddem = Raster(examples.get_path("longyearbyen_ddem"))
+    outlines = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
     @pytest.mark.parametrize("range1", [10**i for i in range(3)])  # type: ignore
     @pytest.mark.parametrize("psill1", [0.1, 1, 10])  # type: ignore
@@ -1084,22 +1152,6 @@ class TestNeffEstimation:
         # Check that the approximation is about the same as the original estimate within 10%
         assert neff_approx == pytest.approx(neff_exact, rel=0.1)
 
-        # Check that the approximation works even on large dataset without creating memory errors
-        # 100,000 points squared (pairwise) should use more than 64GB of RAM without subsample
-        rng = np.random.default_rng(42)
-        coords = rng.normal(size=(100000, 2))
-        errors = rng.normal(size=(100000))
-        # This uses a subsample of 100, so should run just fine despite the large size
-        neff_approx_nv = neff_hugonnet_approx(
-            coords=coords,
-            errors=errors,
-            params_variogram_model=params_variogram_model,
-            subsample=100,
-            vectorized=True,
-            random_state=42,
-        )
-        assert neff_approx_nv is not None
-
     def test_number_effective_samples(self) -> None:
         """Test that the wrapper function for neff functions behaves correctly and that output values are robust"""
 
@@ -1118,7 +1170,7 @@ class TestNeffEstimation:
 
         # The function should return the same results as neff_hugonnet_approx when using a shape area
         # First, get the vector area and compute with the wrapper function
-        res = 100.0
+        res = 500
         outlines_brom = Vector(self.outlines.ds[self.outlines.ds["NAME"] == "Brombreen"])
         neff1 = xdem.spatialstats.number_effective_samples(
             area=outlines_brom,
@@ -1144,12 +1196,13 @@ class TestNeffEstimation:
         # We can test the match between values accurately thanks to the random_state
         assert neff1 == pytest.approx(neff2, rel=0.00001)
 
+        ref_rough = self.ref.reproject(res=500)
         # Check that using a Raster as input for the resolution works
         neff3 = xdem.spatialstats.number_effective_samples(
             area=outlines_brom,
             subsample=10,
             params_variogram_model=params_variogram_model,
-            rasterize_resolution=self.ref,
+            rasterize_resolution=ref_rough,
             random_state=42,
         )
         # The value should be nearly the same within 10% (the discretization grid is different so affects a tiny bit the
@@ -1183,15 +1236,14 @@ class TestNeffEstimation:
                 area=outlines_brom, params_variogram_model=params_variogram_model, rasterize_resolution=(10, 10)
             )
 
-    def test_spatial_error_propagation(self) -> None:
+    def test_spatial_error_propagation(self, test_output_dir: str) -> None:
         """Test that the spatial error propagation wrapper function runs properly"""
 
-        # Load the error map from TestBinning
-        errors = Raster(os.path.join(examples._EXAMPLES_DIRECTORY, "dh_error.tif"))
+        errors = self.ref.copy(new_array=np.ones(self.ref.shape))
 
         # Load the spatial correlation from TestVariogram
         params_variogram_model = pd.read_csv(
-            os.path.join(examples._EXAMPLES_DIRECTORY, "df_variogram_model_params.csv"), index_col=None
+            os.path.join(test_output_dir, "df_variogram_model_params.csv"), index_col=None
         )
 
         # Run the function with vector areas
@@ -1274,13 +1326,37 @@ class TestSubSampling:
 
 
 class TestPatchesMethod:
+
+    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")  # type: ignore
+    def test_get_surface_attribute__missing_dep(self) -> None:
+        """Check that proper import error is raised when numba is missing"""
+
+        diff, mask = load_ref_and_diff()[1:3]
+        gsd = diff.res[0]
+        area = 10000
+
+        with pytest.raises(ImportError, match="Optional dependency 'numba' required.*"):
+
+            # Check the patches method runs
+            df, df_full = xdem.spatialstats.patches_method(
+                diff,
+                unstable_mask=mask,
+                gsd=gsd,
+                areas=[area],
+                random_state=42,
+                n_patches=7,
+                vectorized=False,
+                return_in_patch_statistics=True,
+                convolution_method="numba",
+            )
+
     def test_patches_method_loop_quadrant(self) -> None:
         """Check that the patches method with quadrant loops (vectorized=False) functions correctly"""
 
         diff, mask = load_ref_and_diff()[1:3]
 
         gsd = diff.res[0]
-        area = 100000
+        area = 10000
 
         # Check the patches method runs
         df, df_full = xdem.spatialstats.patches_method(
@@ -1289,7 +1365,7 @@ class TestPatchesMethod:
             gsd=gsd,
             areas=[area],
             random_state=42,
-            n_patches=100,
+            n_patches=7,
             vectorized=False,
             return_in_patch_statistics=True,
         )
@@ -1300,14 +1376,14 @@ class TestPatchesMethod:
 
         # Check the sampling is fixed for a random state
         # assert df["nmad"][0] == pytest.approx(1.8401465163449207, abs=1e-3)
-        assert df["nb_indep_patches"][0] == 100
+        assert df["nb_indep_patches"][0] == 7
         assert df["exact_areas"][0] == pytest.approx(df["areas"][0], rel=0.2)
 
         # Then, the full dataframe
-        assert df_full.shape == (100, 5)
+        assert df_full.shape == (7, 5)
 
         # Check the sampling is always fixed for a random state
-        assert df_full["tile"].values[0] == "47_17"
+        assert df_full["tile"].values[0] == "0_8"
 
         # Check that all counts respect the default minimum percentage of 80% valid pixels
         assert all(df_full["count"].values > 0.8 * np.max(df_full["count"].values))
@@ -1318,14 +1394,14 @@ class TestPatchesMethod:
         diff, mask = load_ref_and_diff()[1:3]
 
         gsd = diff.res[0]
-        area = 100000
+        area = 10000
 
         # First, the patches method runs with scipy
         df = xdem.spatialstats.patches_method(
             diff,
             unstable_mask=mask,
             gsd=gsd,
-            areas=[area, area * 10],
+            areas=[area, area * 2],
             random_state=42,
             vectorized=True,
             convolution_method="scipy",

@@ -19,15 +19,16 @@
 """
 Topo class from workflows.
 """
+
 import logging
 import math
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
-import matplotlib.pyplot as plt
-import yaml  # type: ignore
-
 import xdem
+from xdem._misc import import_optional
 from xdem.workflows.schemas import TOPO_SCHEMA
 from xdem.workflows.workflows import Workflows
 
@@ -37,27 +38,18 @@ class Topo(Workflows):
     Topo class from workflows.
     """
 
-    def __init__(self, config_dem: str | Dict[str, Any]):
+    def __init__(self, config_dem: str | Dict[str, Any], output: str | None = None) -> None:
         """
         Initialize Topo class
         :param config_dem: Path to a user configuration file
         """
 
+        yaml = import_optional("yaml", package_name="pyyaml")
+
+        self.elapsed: float | None = None
         self.schema = TOPO_SCHEMA
 
-        super().__init__(config_dem)
-
-        self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
-        self.generate_plot(self.dem, "elev_map", cmap="terrain", cbar_title="Elevation (m)")
-
-        if self.inlier_mask is not None:
-            self.generate_plot(
-                self.dem,
-                "masked_elev_map",
-                mask_path=path_to_mask,
-                cmap="terrain",
-                cbar_title="Elevation (m)",
-            )
+        super().__init__(config_dem, output)
 
         self.config_attributes = self.config["terrain_attributes"]
         if isinstance(self.config_attributes, dict):
@@ -69,6 +61,24 @@ class Topo(Workflows):
         Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
 
         self.config = self.remove_none(self.config)  # type: ignore
+
+    def _load_data(self) -> None:
+        """
+        Load data defined in config file.
+        """
+
+        self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
+        self.generate_plot(self.dem, filename="elev_map", title="Elevation", cmap="terrain", cbar_title="Elevation (m)")
+
+        if self.inlier_mask is not None:
+            self.generate_plot(
+                self.dem,
+                title="Masked elevation",
+                filename="masked_elev_map",
+                mask_path=path_to_mask,
+                cmap="terrain",
+                cbar_title="Elevation (m)",
+            )
 
     def generate_terrain_attributes_tiff(self) -> None:
         """
@@ -91,6 +101,7 @@ class Topo(Workflows):
             "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(**attribute_extra),
             "roughness": lambda: self.dem.roughness(**attribute_extra),
             "rugosity": lambda: self.dem.rugosity(**attribute_extra),
+            "texture_shading": lambda: self.dem.texture_shading(**attribute_extra),
             "fractal_roughness": lambda: self.dem.fractal_roughness(**attribute_extra),
         }
         for attr in self.list_attributes:
@@ -98,7 +109,7 @@ class Topo(Workflows):
                 attribute_extra = self.config_attributes.get(attr).get("extra_information", {})  # type: ignore
             attribute = from_str_to_fun[attr]()
             logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
-            attribute.save(self.outputs_folder / "rasters" / f"{attr}.tif")
+            attribute.to_file(self.outputs_folder / "rasters" / f"{attr}.tif")
 
     def generate_terrain_attributes_png(self) -> None:
         """
@@ -109,8 +120,7 @@ class Topo(Workflows):
         logging.info(f"Computing attributes : {self.list_attributes}")
 
         attributes = xdem.terrain.get_terrain_attribute(
-            self.dem.data,
-            resolution=self.dem.res,
+            self.dem,
             attribute=self.list_attributes,
         )
 
@@ -119,14 +129,11 @@ class Topo(Workflows):
         ncols = 2
         nrows = math.ceil(n / ncols)
 
-        plt.figure(figsize=(8, 6.5))
-
-        plt_extent = [self.dem.bounds.left, self.dem.bounds.right, self.dem.bounds.bottom, self.dem.bounds.top]
-
-        attribute_params = {
-            "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (None, None)},
-            "slope": {"label": "Slope (°)", "cmap": "Reds", "vlim": (None, None)},
-            "aspect": {"label": "Aspect (°)", "cmap": "twilight", "vlim": (None, None)},
+        attribute_params: dict[str, dict[str, Any]] = {
+            "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (0, 255)},
+            "texture_shading": {"label": "Texture shading", "cmap": "Greys_r", "vlim": (-20, 20)},
+            "slope": {"label": "Slope (°)", "cmap": "Reds", "vlim": (0, 90)},
+            "aspect": {"label": "Aspect (°)", "cmap": "twilight", "vlim": (0, 360)},
             "profile_curvature": {"label": "Profile curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
             "tangential_curvature": {"label": "Tangential curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
             "planform_curvature": {"label": "Planform curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
@@ -144,29 +151,36 @@ class Topo(Workflows):
             "fractal_dimension": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
         }
 
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
+
+        fig, axes = plt.subplots(nrows, ncols)
+
+        axes = axes.flatten()
         for i, attr in enumerate(self.list_attributes):
-            plt.subplot(nrows, ncols, i + 1)
 
-            params = attribute_params.get(attr, {})
-            cmap = params.get("cmap", "viridis")
-            label = params.get("label", f"Attribute {i + 1}")
-            vmin, vmax = params.get("vlim", (None, None))
-
-            plt.imshow(attributes[i].squeeze(), cmap=cmap, extent=plt_extent, vmin=vmin, vmax=vmax)
-            cbar = plt.colorbar()
-            cbar.set_label(label)
-            plt.xticks([])
-            plt.yticks([])
+            ax = axes[i]
+            params = attribute_params[attr]
+            cmap = params["cmap"]
+            label = params["label"]
+            vmin, vmax = params["vlim"]
+            attributes[i].plot(ax=ax, cmap=cmap, vmin=vmin, vmax=vmax, cbar_title=label)
+            ax.set_xticks([])
+            ax.set_yticks([])
 
         plt.tight_layout()
-        plt.savefig(self.outputs_folder / "plots" / "terrain_attributes_map.png")
+        plt.savefig(self.outputs_folder / "plots" / "terrain_attributes_map.png", dpi=300)
         plt.close()
 
     def run(self) -> None:
         """
-        Run function for the coregistration workflow
+        Run function for the topography workflow.
         :return: None
         """
+
+        t0 = time.time()
+
+        self._load_data()
 
         # Global information
         dem_informations = {
@@ -183,15 +197,18 @@ class Topo(Workflows):
             "Transform": self.dem.transform,
             "Bounds": self.dem.bounds,
         }
+        self.dico_to_show.append(("Elevation information", dem_informations))
 
         # Statistics
         list_metrics = self.config["statistics"]
         if list_metrics is not None:
             stats_dem = self.dem.get_stats(list_metrics)
             self.save_stat_as_csv(stats_dem, "stats_elev")
+            self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
             stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
             if self.inlier_mask is not None:
                 self.save_stat_as_csv(stats_dem_mask, "stats_elev_mask")
+                self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
             logging.info(f"Computing metrics on reference elevation: {list_metrics}")
 
         # Terrain attributes
@@ -202,12 +219,8 @@ class Topo(Workflows):
         else:
             logging.info("Computing terrain attributes: None")
 
-        # Generate HTML
-        self.dico_to_show.append(("Elevation information", dem_informations))
-        if list_metrics is not None:
-            self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
-        if self.inlier_mask is not None:
-            self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
+        t1 = time.time()
+        self.elapsed = t1 - t0
 
         self.create_html(self.dico_to_show)
 
@@ -228,12 +241,19 @@ class Topo(Workflows):
 
         html = "<html>\n<head><meta charset='UTF-8'><title>Topographic summary results</title></head>\n<body>\n"
 
-        html += "<h2>Elevation Model</h2>\n"
+        # Title and version/date/time summary
+        html += "<h1>Topography summary report — xDEM</h1>\n"
+
+        html += f"<p>xDEM version: {xdem.__version__}</p>"
+        html += f"<p>Date: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</p>"
+        html += f"<p>Computing time: {self.elapsed:.2f} seconds</p>"
+
+        html += "<h2>Elevation data</h2>\n"
         html += "<img src='plots/elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         if self.inlier_mask is not None:
-            html += "<h2>Masked elevation Model</h2>\n"
-            html += "<img src='plots/masked_elevation.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+            html += "<h2>Masked elevation data</h2>\n"
+            html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
 
         for title, dictionary in list_dict:
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"  # type: ignore

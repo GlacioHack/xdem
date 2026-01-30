@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         os: ["ubuntu-latest", "macos-latest"]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         dep-level: ["base", "opt"]
 
     # Run all shells using bash (including Windows)
@@ -46,7 +46,7 @@ jobs:
       shell: bash
 
     - name: Cache conda env
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ env.CONDA }}/envs
         key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ matrix.dep-level }}-${{ env.cache_date }}-${{ hashFiles('dev-environment.yml') }}-${{ env.CACHE_NUMBER }}
@@ -79,20 +79,13 @@ jobs:
     - name: Check import works with base environment
       run: python -c "import xdem"
 
-    - name: Lint with flake8
-      run: |
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
     - name: Print conda environment (for debugging)
       run: |
         conda info
         conda list
 
     - name: Test with pytest
-      run: pytest -ra --cov=xdem/ --cov-report=lcov
+      run: pytest -ra --cov=xdem/ --cov-report=lcov --durations=0
 
     - name: Upload coverage to Coveralls
       uses: coverallsapp/github-action@v2

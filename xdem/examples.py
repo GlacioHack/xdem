@@ -17,41 +17,63 @@
 # limitations under the License.
 
 """Utility functions to download and find example data."""
+
 import os
 import shutil
 import tarfile
 import tempfile
 import urllib.request
+from importlib.resources import as_file, files
 
 import geoutils as gu
 
 import xdem
 
-_DATA_REPO_URL = "https://github.com/GlacioHack/xdem-data/tarball/main"
-_COMMIT_HASH = "98004a09f84def4c78b253d41b212baca2b3cccb"
+_DATA_REPO_URL = "https://github.com/GlacioHack/xdem-data/"
+_COMMIT_HASH = "f8b252cca1f9dc60fa6ccef3df93211b83803a44"
 
-_EXAMPLES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples", "data"))
-# Absolute filepaths to the example files.
-_FILEPATHS_DATA = {
-    "longyearbyen_ref_dem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_2009_ref.tif"),
-    "longyearbyen_tba_dem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data", "DEM_1990.tif"),
-    "longyearbyen_glacier_outlines": os.path.join(
-        _EXAMPLES_DIRECTORY, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_1990.shp"
-    ),
-    "longyearbyen_glacier_outlines_2010": os.path.join(
-        _EXAMPLES_DIRECTORY, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_2010.shp"
-    ),
+# This directory needs to be created within xdem/ so that it works for an installed package as well
+# importlib.resources.files helps take care of the relative path, no matter if package is dev-local or installed
+_EXAMPLES_DIRECTORY = files("xdem").joinpath("example_data")
+
+# Absolute filepaths to the example files, need to convert the Trasversable above to Path with as_file context manager
+with as_file(_EXAMPLES_DIRECTORY) as examples_directory:
+    _FILEPATHS_DATA = {
+        "longyearbyen_ref_dem": os.path.join(examples_directory, "Longyearbyen", "data", "DEM_2009_ref.tif"),
+        "longyearbyen_tba_dem": os.path.join(examples_directory, "Longyearbyen", "data", "DEM_1990.tif"),
+        "longyearbyen_glacier_outlines": os.path.join(
+            examples_directory, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_1990.shp"
+        ),
+        "longyearbyen_glacier_outlines_2010": os.path.join(
+            examples_directory, "Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_2010.shp"
+        ),
+        "longyearbyen_epc": os.path.join(examples_directory, "Longyearbyen", "data", "EPC_IS2.gpkg"),
+    }
+
+    _FILEPATHS_PROCESSED = {
+        "longyearbyen_ddem": os.path.join(examples_directory, "Longyearbyen", "processed", "dDEM_2009_minus_1990.tif"),
+        "longyearbyen_tba_dem_coreg": os.path.join(
+            examples_directory, "Longyearbyen", "processed", "DEM_1990_coreg.tif"
+        ),
+    }
+    _FILEPATHS_ALL = _FILEPATHS_DATA.copy()
+    _FILEPATHS_ALL.update(_FILEPATHS_PROCESSED)
+
+available = list(_FILEPATHS_ALL.keys())
+_FILEPATHS_TEST = {
+    k: os.path.join(
+        os.path.dirname(v),
+        os.path.splitext(os.path.basename(v))[0] + "_test" + os.path.splitext(os.path.basename(v))[1],
+    )
+    for k, v in _FILEPATHS_ALL.items()
 }
+available_test = list(_FILEPATHS_TEST.keys())
 
-_FILEPATHS_PROCESSED = {
-    "longyearbyen_ddem": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "processed", "dDEM_2009_minus_1990.tif"),
-    "longyearbyen_tba_dem_coreg": os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "processed", "DEM_1990_coreg.tif"),
-}
-
-available = list(_FILEPATHS_DATA.keys()) + list(_FILEPATHS_PROCESSED.keys())
+# IF MODIFIED, NEED TO BE ADJUSTED IN XDEM-DATA TO PRODUCE GDAL OUTPUTS AS WELL
+_TEST_ICROP_BOUNDS = (137, 21, 187, 75)
 
 
-def download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = False) -> None:
+def _download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = False) -> None:
     """
     Helper function to download and extract a tarball from a given URL.
 
@@ -73,7 +95,7 @@ def download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = Fa
     tar_path = os.path.join(temp_dir.name, "data.tar.gz")
 
     # Construct the URL with the commit hash
-    url = f"{_DATA_REPO_URL}#commit={_COMMIT_HASH}"
+    url = f"{_DATA_REPO_URL}/archive/{_COMMIT_HASH}.tar.gz"
 
     # Download the tarball
     response = urllib.request.urlopen(url)
@@ -98,33 +120,28 @@ def download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = Fa
     shutil.copytree(extracted_dir, target_dir)
 
 
-def download_longyearbyen_examples(overwrite: bool = False) -> None:
+def _download_longyearbyen_examples(overwrite: bool = False) -> None:
     """
     Fetch the Longyearbyen example files.
 
-    :param overwrite: Do not download the files again if they already exist.
+    :param overwrite: Whether to overwrite the files if they already exist.
     """
-    target_dir = os.path.join(_EXAMPLES_DIRECTORY, "Longyearbyen", "data")
-    download_and_extract_tarball(dir="data/Longyearbyen", target_dir=target_dir, overwrite=overwrite)
+    with as_file(_EXAMPLES_DIRECTORY) as ed:
+        target_dir = os.path.join(ed, "Longyearbyen", "data")
+    _download_and_extract_tarball(dir="data/Longyearbyen", target_dir=target_dir, overwrite=overwrite)
 
 
-def process_coregistered_examples(name: str, overwrite: bool = False) -> None:
+def _process_coregistered_examples(overwrite: bool = False) -> None:
     """
     Process the Longyearbyen example files into a dDEM (to avoid repeating this in many test/documentation steps).
 
-    :param name: Name of test data
     :param overwrite: Do not download the files again if they already exist.
     """
 
-    # If the file called already exists and overwrite is False, do nothing
-    if not overwrite and os.path.isfile(_FILEPATHS_PROCESSED[name]):
-        return
-
-    # Check that data is downloaded before attempting processing
-    download_longyearbyen_examples(overwrite=False)
+    _download_longyearbyen_examples()
 
     # If the ddem file does not exist, create it
-    if not os.path.isfile(_FILEPATHS_PROCESSED["longyearbyen_ddem"]):
+    if not os.path.isfile(_FILEPATHS_PROCESSED["longyearbyen_ddem"]) or overwrite:
         reference_raster = gu.Raster(_FILEPATHS_DATA["longyearbyen_ref_dem"])
         to_be_aligned_raster = gu.Raster(_FILEPATHS_DATA["longyearbyen_tba_dem"])
         glacier_mask = gu.Vector(_FILEPATHS_DATA["longyearbyen_glacier_outlines"])
@@ -139,16 +156,43 @@ def process_coregistered_examples(name: str, overwrite: bool = False) -> None:
 
         # Save it so that future calls won't need to recreate the file
         os.makedirs(os.path.dirname(_FILEPATHS_PROCESSED["longyearbyen_ddem"]), exist_ok=True)
-        diff.save(_FILEPATHS_PROCESSED["longyearbyen_ddem"])
+        diff.to_file(_FILEPATHS_PROCESSED["longyearbyen_ddem"])
 
     # If the tba_dem_coreg file does not exist, create it
-    if not os.path.isfile(_FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"]):
-
-        dem_2009 = xdem.DEM(get_path("longyearbyen_ref_dem"), silent=True)
-        ddem = xdem.DEM(get_path("longyearbyen_ddem"), silent=True)
+    if not os.path.isfile(_FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"]) or overwrite:
+        dem_2009 = xdem.DEM(_FILEPATHS_DATA["longyearbyen_ref_dem"], silent=True)
+        ddem = xdem.DEM(_FILEPATHS_PROCESSED["longyearbyen_ddem"], silent=True)
 
         # Save it so that future calls won't need to recreate the file
-        (dem_2009 - ddem).save(_FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"])
+        (dem_2009 - ddem).to_file(_FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"])
+
+
+def _crop_lonyearbyen_test_examples(overwrite: bool = False) -> None:
+    """
+    Crop the Longyearbyen examples to use for fast tests.
+
+    :param overwrite: Whether to overwrite the files if they already exist.
+    """
+
+    for k in _FILEPATHS_ALL.keys():
+
+        if os.path.exists(_FILEPATHS_TEST[k]) and not overwrite:
+            continue
+
+        # Get geometry to crop to
+        crop_geom = gu.Raster(_FILEPATHS_ALL["longyearbyen_ref_dem"]).icrop(_TEST_ICROP_BOUNDS).bounds
+
+        # For rasters
+        if os.path.basename(_FILEPATHS_ALL[k]).split("_")[0] in ["DEM", "dDEM"]:
+            cropped = gu.Raster(_FILEPATHS_ALL[k]).crop(crop_geom)
+        # For point cloud
+        elif os.path.basename(_FILEPATHS_ALL[k]).split("_")[0] == "EPC":
+            cropped = gu.PointCloud(_FILEPATHS_ALL[k], data_column="h_li").crop(crop_geom)
+        # For vectors:
+        else:
+            cropped = gu.Vector(_FILEPATHS_ALL[k]).crop(crop_geom)
+
+        cropped.to_file(_FILEPATHS_TEST[k])
 
 
 def get_path(name: str) -> str:
@@ -159,10 +203,10 @@ def get_path(name: str) -> str:
     """
 
     if name in list(_FILEPATHS_DATA.keys()):
-        download_longyearbyen_examples()
+        _download_longyearbyen_examples()
         return _FILEPATHS_DATA[name]
     elif name in list(_FILEPATHS_PROCESSED.keys()):
-        process_coregistered_examples(name)
+        _process_coregistered_examples()
         return _FILEPATHS_PROCESSED[name]
     else:
         raise ValueError(
@@ -170,3 +214,19 @@ def get_path(name: str) -> str:
             + '" , "'.join(list(_FILEPATHS_DATA.keys()) + list(_FILEPATHS_PROCESSED.keys()))
             + '".'
         )
+
+
+def get_path_test(name: str) -> str:
+    """
+    Get path of test data (reduced size). List of available files can be found in "examples.available".
+
+    :param name: Name of test data.
+    :return:
+    """
+    if name in list(_FILEPATHS_TEST.keys()):
+        _download_longyearbyen_examples()
+        _process_coregistered_examples()
+        _crop_lonyearbyen_test_examples()
+        return _FILEPATHS_TEST[name]
+    else:
+        raise ValueError('Data name should be one of "' + '" , "'.join(list(_FILEPATHS_TEST.keys())) + '".')

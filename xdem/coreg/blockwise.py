@@ -42,13 +42,7 @@ from geoutils.raster.distributed_computing import (
 )
 from geoutils.raster.tiling import compute_tiling
 
-try:
-    from sklearn.linear_model import LinearRegression, RANSACRegressor
-
-    _has_sklearn = True
-except ImportError:
-    _has_sklearn = False
-
+from xdem._misc import import_optional
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg.affine import NuthKaab
 from xdem.coreg.base import Coreg, CoregPipeline
@@ -252,8 +246,9 @@ class BlockwiseCoreg:
         :param max_iterations: Maximum number of iterations to run the RANSAC algorithm.
         :return: Estimated transformation coefficients (a, b, c) such as shift = a * x + b * y + c.
         """
-        if not _has_sklearn:
-            raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
+
+        import_optional("sklearn", package_name="scikit-learn")
+        from sklearn.linear_model import LinearRegression, RANSACRegressor
 
         # Stack and squeeze
         points = np.dstack([x_coords, y_coords, shifts])
@@ -295,12 +290,13 @@ class BlockwiseCoreg:
 
         return a, b, c
 
+    @staticmethod
     def _wrapper_apply_epc(
-        self,
         tba_dem_tile: RasterType,
         coeff_x: tuple[float, float, float],
         coeff_y: tuple[float, float, float],
         coeff_z: tuple[float, float, float],
+        apply_z_correction: bool = False,
         resampling: str | rio.warp.Resampling = "linear",
     ) -> RasterType:
         """
@@ -337,7 +333,7 @@ class BlockwiseCoreg:
 
         trans_epc = gpd.GeoDataFrame(
             geometry=gpd.points_from_xy(x_new, y_new, crs=epc.crs),
-            data={"z": z_new if self.apply_z_correction else z},
+            data={"z": z_new if apply_z_correction else z},
         )
 
         with warnings.catch_warnings():
@@ -405,6 +401,7 @@ class BlockwiseCoreg:
             coeff_x,
             coeff_y,
             coeff_z,
+            self.apply_z_correction,
             depth=math.ceil(depth),
         )
 

@@ -26,7 +26,7 @@ import xdem
 # -- Project information -----------------------------------------------------
 
 project = "xDEM"
-copyright = "2025, xDEM developers"
+copyright = "2026, xDEM developers"
 author = "Romain Hugonnet, Erik Mannerfelt, Amaury Dehecq and others"
 
 # The full version, including alpha/beta/rc tags
@@ -56,7 +56,6 @@ extensions = [
     "sphinx.ext.intersphinx",
     # "myst_parser",  !! Not needed with myst_nb !! # Form of Markdown that works with sphinx, used a lot by the Sphinx Book Theme
     "myst_nb",  # MySt for rendering Jupyter notebook in documentation
-    "sphinx_tabs.tabs",  # Include tabs
     "sphinx_design",
 ]
 
@@ -69,6 +68,7 @@ nb_execution_raise_on_error = True  # To fail documentation build on notebook ex
 nb_execution_show_tb = True  # To show full traceback on notebook execution error
 nb_output_stderr = "warn"  # To warn if an error is raised in a notebook cell (if intended, override to "show" in cell)
 nb_execution_mode = "cache"
+html_allow_html = True  # To allow HTML embedding, to add "Workflows" HTML report in documentation
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/", None),
@@ -176,10 +176,10 @@ html_theme_options = {
     "logo": {
         "image_dark": "_static/xdem_logo_dark.svg",
     },
-    "announcement": (
-        "⚠️ Our 0.1 release refactored several early-development functions for long-term stability, "
-        "to update your code see the release notes. ⚠️"
-    ),
+    # "announcement": (
+    #     "⚠️ Our 0.1 release refactored several early-development functions for long-term stability, "
+    #     "to update your code see the release notes. ⚠️"
+    # ),
 }
 
 # For dark mode
@@ -188,11 +188,10 @@ html_context = {
     "default_mode": "auto"
 }
 
-
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ["imgs", "_static"]  # Commented out as we have no custom static data
+html_static_path = ["_static", "imgs", "_workflows"]
 
 html_css_files = [
     "css/custom.css",

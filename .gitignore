@@ -145,9 +145,10 @@ dmypy.json
 # Version file
 xdem/_version.py
 
-# Example data downloaded/produced during tests
-examples/data/
+# Example and test data downloaded or produced during tests
+xdem/example_data/
 tests/test_data/
+tests/test_output/
 
 doc/source/basic_examples/
 doc/source/advanced_examples/
@@ -155,6 +156,18 @@ doc/source/gen_modules/
 doc/source/sg_execution_times.rst
 examples/basic/temp.tif
 examples/advanced/aligned_dem.tif
+doc/source/_workflows/outputs_accuracy/
+doc/source/_workflows/outputs_topo/
+
+# Should be cleaned during Sphinx execution but could be left in case of error
+doc/source/profile_output
+
+# PDF to keep to display in documentation
+!doc/source/_workflows/outputs_accuracy/report.pdf
+!doc/source/_workflows/outputs_topo/report.pdf
+# HTML to keep to do a diff change for CI
+!doc/source/_workflows/outputs_accuracy/report.html
+!doc/source/_workflows/outputs_topo/report.html
 
 # Directory where myst_nb executes jupyter code and cache
 doc/jupyter_execute/

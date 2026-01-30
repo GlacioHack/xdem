@@ -19,12 +19,14 @@
 """
 Functions to perform normal, weighted and robust fitting.
 """
+
 from __future__ import annotations
 
 import inspect
 import logging
 import warnings
-from typing import Any, Callable, Literal
+
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 import numpy as np
 import scipy
@@ -32,21 +34,11 @@ from geoutils.stats.sampling import subsample_array
 from numpy.polynomial.polynomial import polyval, polyval2d
 
 from geoutils.stats import nmad
+from xdem._misc import import_optional
 from xdem._typing import NDArrayf, NDArrayb
 
-try:
-    from sklearn.linear_model import (
-        HuberRegressor,
-        LinearRegression,
-        RANSACRegressor,
-        TheilSenRegressor,
-    )
-    from sklearn.pipeline import make_pipeline
+if TYPE_CHECKING:
     from sklearn.preprocessing import PolynomialFeatures
-
-    _has_sklearn = True
-except ImportError:
-    _has_sklearn = False
 
 def index_trimmed(res: NDArrayf, central_estimator=np.nanmedian, spread_estimator=nmad, spread_coverage: float = 2,
                   iterative: bool = False) -> NDArrayb:
@@ -66,7 +58,7 @@ def index_trimmed(res: NDArrayf, central_estimator=np.nanmedian, spread_estimato
         sig = spread_estimator(res_step)
 
         # Get index of values that won't be trimmed
-        ind_trimmed = np.abs(res_step - mu) > spread_trim * sig
+        ind_trimmed = np.abs(res_step - mu) > spread_coverage * sig
 
         # Compute number of newly trimmed points
         nb_trimmed = np.count_nonzero(ind_trimmed)
@@ -315,6 +307,16 @@ def _wrapper_sklearn_robustlinear(
     :param estimator_name: Linear estimator to use (one of "Linear", "Theil-Sen", "RANSAC" and "Huber")
     :return:
     """
+
+    import_optional("sklearn", package_name="scikit-learn")
+    from sklearn.linear_model import (
+        HuberRegressor,
+        LinearRegression,
+        RANSACRegressor,
+        TheilSenRegressor,
+    )
+    from sklearn.pipeline import make_pipeline
+
     # Select sklearn estimator
     dict_estimators = {
         "Linear": LinearRegression,
@@ -382,7 +384,7 @@ def robust_norder_polynomial_fit(
     ydata: NDArrayf,
     sigma: NDArrayf | None = None,
     max_order: int = 6,
-    estimator_name: str = "Theil-Sen",
+    estimator_name: str = "Huber",
     cost_func: Callable[[NDArrayf, NDArrayf], float] = soft_loss,
     margin_improvement: float = 20.0,
     subsample: float | int = 1,
@@ -460,8 +462,8 @@ def robust_norder_polynomial_fit(
 
         else:
             # Otherwise, we use sklearn
-            if not _has_sklearn:
-                raise ValueError("Optional dependency needed. Install 'scikit-learn'.")
+            import_optional("sklearn", package_name="scikit-learn")
+            from sklearn.preprocessing import PolynomialFeatures
 
             # Define the polynomial model to insert in the pipeline
             model = PolynomialFeatures(degree=deg)

@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Spatial statistical tools to estimate uncertainties related to DEMs"""
+
 from __future__ import annotations
 
 import inspect
@@ -25,14 +26,10 @@ import logging
 import math as m
 import multiprocessing as mp
 import warnings
-from typing import Any, Callable, Iterable, Literal, TypedDict, overload
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, TypedDict, overload
 
 import geopandas as gpd
 import geoutils as gu
-import matplotlib
-import matplotlib.colors as colors
-import matplotlib.pyplot as plt
-import numba
 import numpy as np
 import pandas as pd
 import scipy.ndimage
@@ -40,7 +37,6 @@ from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
 from geoutils.stats.sampling import subsample_array
 from geoutils.vector.vector import Vector, VectorType
-from numba import prange
 from numpy.typing import ArrayLike
 from packaging.version import Version
 from scipy import integrate
@@ -49,20 +45,29 @@ from scipy.optimize import curve_fit
 from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 
+from xdem._misc import deprecate, import_optional
 from xdem._typing import NDArrayb, NDArrayf
-from xdem.misc import deprecate
 
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
+if TYPE_CHECKING:
+    import matplotlib
 
-    try:
-        import skgstat as skg
+# Manage numba as an optional dependency
+try:
+    from numba import njit, prange
 
-        _has_skgstat = True
-        if Version(skg.__version__) < Version("1.0.18"):
-            raise ImportWarning(f"scikit-gstat>=1.0.18 is recommended, current version is {skg.__version__}.")
-    except ImportError:
-        _has_skgstat = False
+    _HAS_NUMBA = True
+except ImportError:
+    _HAS_NUMBA = False
+
+    def njit(*args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """
+        Fake jit decorator if numba is not installed
+        """
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            return func
+
+        return decorator
 
 
 @deprecate(
@@ -549,7 +554,10 @@ def two_step_standardization(
     # Set large outliers that might have been created by the standardization to NaN, central tendency should already be
     # around zero so only need to take the absolute value
     if fac_spread_outliers is not None:
-        zscores[np.abs(zscores) > fac_spread_outliers * spread_statistic(zscores)] = np.nan
+        if np.ma.isMaskedArray(zscores):
+            zscores[np.abs(zscores) > fac_spread_outliers * spread_statistic(zscores)] = np.ma.masked
+        else:
+            zscores[np.abs(zscores) > fac_spread_outliers * spread_statistic(zscores)] = np.nan
 
     # Re-compute the spread statistic to re-standardize, as dividing by the function will not necessarily bring the
     # z-score exactly equal to one due to approximations of N-D binning, interpolating and due to the outlier filtering
@@ -671,7 +679,7 @@ def _preprocess_values_with_mask_to_array(
         isinstance(values, list) and not all(isinstance(val, (Raster, np.ndarray)) for val in values)
     ):
         raise ValueError("The values must be a Raster or NumPy array, or a list of those.")
-    # Rasters need to be an array, Vector or GeoPandas dataframe
+    # Mask needs to be an array, Vector or GeoPandas dataframe
     if include_mask is not None and not isinstance(include_mask, (np.ndarray, Vector, Raster, gpd.GeoDataFrame)):
         raise ValueError("The stable mask must be a Vector, Raster, GeoDataFrame or NumPy array.")
     if exclude_mask is not None and not isinstance(exclude_mask, (np.ndarray, Vector, Raster, gpd.GeoDataFrame)):
@@ -1063,6 +1071,8 @@ def _get_pdist_empirical_variogram(values: NDArrayf, coords: NDArrayf, **kwargs:
 
     """
 
+    skg = import_optional("skgstat", package_name="scikit-gstat")
+
     # Remove random_state keyword argument that is not used
     kwargs.pop("random_state")
 
@@ -1185,6 +1195,8 @@ def _get_cdist_empirical_variogram(
     :return: Empirical variogram (variance, upper bound of lag bin, counts)
 
     """
+
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     if subsample_method == "cdist_equidistant":
 
@@ -1348,8 +1360,7 @@ def sample_empirical_variogram(
     :return: Empirical variogram (variance, upper bound of lag bin, counts)
     """
 
-    if not _has_skgstat:
-        raise ValueError("Optional dependency needed. Install 'scikit-gstat'.")
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     # First, check all that the values provided are OK
     if isinstance(values, Raster):
@@ -1538,13 +1549,12 @@ def sample_empirical_variogram(
 def _get_skgstat_variogram_model_name(model: str | Callable[[NDArrayf, float, float], NDArrayf]) -> str:
     """Function to identify a SciKit-GStat variogram model from a string or a function"""
 
-    if not _has_skgstat:
-        raise ValueError("Optional dependency needed. Install 'scikit-gstat'.")
+    skg = import_optional("skgstat", package_name="scikit-gstat")  # noqa
 
     list_supported_models = ["spherical", "gaussian", "exponential", "cubic", "stable", "matern"]
 
     if callable(model):
-        if inspect.getmodule(model).__name__ == "skgstat.models":  # type: ignore
+        if inspect.getmodule(model).__name__ == "skg.models":  # type: ignore
             model_name = model.__name__
         else:
             raise ValueError("Variogram models can only be passed as functions of the skgstat.models package.")
@@ -1581,6 +1591,8 @@ def get_variogram_model_func(params_variogram_model: pd.DataFrame) -> Callable[[
 
     :return: Function of sum of variogram with spatial lags.
     """
+
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     # Check input dataframe
     _check_validity_params_variogram(params_variogram_model)
@@ -1690,6 +1702,8 @@ def fit_sum_model_variogram(
 
     :return: Function of sum of variogram, Dataframe of optimized coefficients.
     """
+
+    skg = import_optional("skgstat", package_name="scikit-gstat")
 
     # Define a function of a sum of variogram model forms, with undetermined arguments
     def variogram_sum(h: float, *args: list[float]) -> float:
@@ -2368,7 +2382,7 @@ def number_effective_samples(
         elif isinstance(rasterize_resolution, Raster):
 
             # With a Raster we can get the coordinates directly
-            mask = V.create_mask(ref=rasterize_resolution, as_array=True).squeeze()
+            mask = V.create_mask(rasterize_resolution, as_array=True).squeeze()
             coords = np.array(rasterize_resolution.coords())
             coords_on_mask = coords[:, mask].T
 
@@ -2511,7 +2525,7 @@ def _scipy_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> N
             )
 
 
-@numba.njit(parallel=True)  # type: ignore
+@njit(parallel=True)  # type: ignore
 def _numba_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> NDArrayf:
     """
     Numba convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2.
@@ -2563,6 +2577,9 @@ def convolution(imgs: NDArrayf, filters: NDArrayf, method: str = "scipy") -> NDA
     if method.lower() == "scipy":
         _scipy_convolution(imgs=imgs, filters=filters, output=output)
     elif "numba" in method.lower():
+
+        import_optional("numba")
+
         half_M1 = int((M1 - 1) / 2)
         half_M2 = int((M2 - 1) / 2)
         imgs_pad = np.pad(imgs, pad_width=((0, 0), (half_M1, half_M1), (half_M2, half_M2)), constant_values=np.nan)
@@ -3063,6 +3080,9 @@ def plot_variogram(
     :return:
     """
 
+    matplotlib = import_optional("matplotlib")
+    import matplotlib.pyplot as plt
+
     # Create axes if they are not passed
     if ax is None:
         fig = plt.figure()
@@ -3242,6 +3262,9 @@ def plot_1d_binning(
     :param out_fname: File to save the variogram plot to
     """
 
+    matplotlib = import_optional("matplotlib")
+    import matplotlib.pyplot as plt
+
     # Create axes
     if ax is None:
         fig = plt.figure()
@@ -3341,7 +3364,7 @@ def plot_2d_binning(
     label_var_name_1: str | None = None,
     label_var_name_2: str | None = None,
     label_statistic: str | None = None,
-    cmap: matplotlib.colors.Colormap = plt.cm.Reds,
+    cmap: matplotlib.colors.Colormap = "Reds",
     min_count: int = 30,
     scale_var_1: str = "linear",
     scale_var_2: str = "linear",
@@ -3372,6 +3395,9 @@ def plot_2d_binning(
     :param ax: Plotting ax to use, creates a new one by default
     :param out_fname: File to save the variogram plot to
     """
+
+    matplotlib = import_optional("matplotlib")
+    import matplotlib.pyplot as plt
 
     # Create axes
     if ax is None:
@@ -3530,8 +3556,8 @@ def plot_2d_binning(
     cb = []
     cb_val = np.linspace(0, 1, len(col_bounds))
     for j in range(len(cb_val)):
-        cb.append(cmap(cb_val[j]))
-    cmap_cus = colors.LinearSegmentedColormap.from_list(
+        cb.append(matplotlib.cm.get_cmap(cmap)(cb_val[j]))
+    cmap_cus = matplotlib.colors.LinearSegmentedColormap.from_list(
         "my_cb", list(zip((col_bounds - min(col_bounds)) / (max(col_bounds - min(col_bounds))), cb)), N=1000
     )
 
@@ -3581,7 +3607,7 @@ def plot_2d_binning(
     cbaxes = axcmap.inset_axes([0, 0.75, 1, 0.2], label="cmap")
 
     # Create colormap object and plot
-    norm = colors.Normalize(vmin=min(col_bounds), vmax=max(col_bounds))
+    norm = matplotlib.colors.Normalize(vmin=min(col_bounds), vmax=max(col_bounds))
     sm = plt.cm.ScalarMappable(cmap=cmap_cus, norm=norm)
     sm.set_array([])
     cb = plt.colorbar(sm, cax=cbaxes, orientation="horizontal", extend="both", shrink=0.8)

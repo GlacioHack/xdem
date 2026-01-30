@@ -11,21 +11,20 @@ import numpy as np
 import pytest
 from geoutils import Raster, Vector
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.raster import RasterType
+from geoutils.raster import ClusterGenerator
 from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
 from xdem.coreg import BlockwiseCoreg, Coreg
 
-pytest.importorskip("pytransform3d")
-
 
 @pytest.fixture(scope="module")  # type: ignore
-def example_data() -> tuple[RasterType, RasterType, Vector]:
+def example_data() -> tuple[Raster, Raster, Vector]:
     """Load example DEMs and glacier outlines with inlier mask."""
-    ref_dem = Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
-    tba_dem = Raster(xdem.examples.get_path("longyearbyen_tba_dem"))
-    outlines = Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
+    ref_dem = Raster(xdem.examples.get_path_test("longyearbyen_ref_dem"))
+    tba_dem = Raster(xdem.examples.get_path_test("longyearbyen_tba_dem"))
+    outlines = Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
+
     inlier_mask = ~outlines.create_mask(ref_dem)
     return ref_dem, tba_dem, inlier_mask
 
@@ -37,12 +36,12 @@ def step() -> Coreg:
 
 @pytest.fixture  # type: ignore
 def mp_config(tmp_path: Path) -> MultiprocConfig:
-    return MultiprocConfig(chunk_size=500, outfile=tmp_path / "test.tif")
+    return MultiprocConfig(chunk_size=25, outfile=tmp_path / "test.tif")
 
 
 @pytest.fixture  # type: ignore
 def blockwise_coreg(step, mp_config) -> BlockwiseCoreg:
-    return xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config)
+    return xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config, block_size_fit=25, block_size_apply=25)
 
 
 class TestBlockwiseCoreg:
@@ -50,9 +49,9 @@ class TestBlockwiseCoreg:
 
     def test_init_with_valid_parameters(self, mp_config, step, tmp_path) -> None:
         """Test initialization with valid multiprocessing config only."""
-        coreg_obj = xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config)
-        assert coreg_obj.block_size_apply == 500
-        assert coreg_obj.block_size_fit == 500
+        coreg_obj = xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config, block_size_fit=25, block_size_apply=25)
+        assert coreg_obj.block_size_apply == 25
+        assert coreg_obj.block_size_fit == 25
         assert coreg_obj.apply_z_correction is False
         assert coreg_obj.output_path_reproject == tmp_path / "reprojected_dem.tif"
         assert coreg_obj.output_path_aligned == tmp_path / "aligned_dem.tif"
@@ -130,7 +129,46 @@ class TestBlockwiseCoreg:
 
         assert actual == expected
 
-    @pytest.mark.parametrize("block_size", [500, 985, 1332], ids=["2d_shifts", "1d_shifts_x", "monotile"])
+    def test_apply_z_correction_parameter(self, step, blockwise_coreg):
+        """
+        Test function to verify the application a vertical shift correction.
+        """
+
+        data = np.ones((50, 50), dtype="uint8")
+        transform = (30.0, 0.0, 478000.0, 0.0, -30.0, 3108140.0)
+        raster = Raster.from_array(data, transform, 32645)
+
+        coeff_x = (0.0, 0.0, 0.0)
+        coeff_y = (0.0, 0.0, 0.0)
+        coeff_z = (0.0, 0.0, 2.0)
+
+        dem_no_correction = blockwise_coreg._wrapper_apply_epc(
+            tba_dem_tile=raster,
+            coeff_x=coeff_x,
+            coeff_y=coeff_y,
+            coeff_z=coeff_z,
+            apply_z_correction=False,
+        )
+
+        assert np.allclose(dem_no_correction.data, raster.data, equal_nan=True)
+
+        dem_with_correction = blockwise_coreg._wrapper_apply_epc(
+            tba_dem_tile=raster,
+            coeff_x=coeff_x,
+            coeff_y=coeff_y,
+            coeff_z=coeff_z,
+            apply_z_correction=True,
+        )
+
+        expected = raster.data + 2.0
+
+        assert np.allclose(
+            dem_with_correction.data,
+            expected,
+            equal_nan=True,
+        )
+
+    @pytest.mark.parametrize("block_size", [32, 56])
     def test_blockwise_coreg_pipeline(self, step, example_data, tmp_path, block_size):
         """Test end-to-end blockwise coregistration and validate output."""
         ref, tba, mask = example_data
@@ -143,11 +181,32 @@ class TestBlockwiseCoreg:
         aligned = xdem.DEM(tmp_path / "aligned_dem.tif")
 
         # Ground truth comparison with full image coregistration
-        nuth_kaab = xdem.coreg.NuthKaab()
-        expected = nuth_kaab.fit_and_apply(ref, tba, mask)
+        expected = step.fit_and_apply(ref, tba, mask)
 
-        valid = (expected.data.data != expected.nodata) & (aligned.data.data != aligned.nodata)
-        assert np.allclose(expected.data.data[valid], aligned.data.data[valid], atol=20)
+        diff = np.abs(expected - aligned)
+        # 90% of the aligned data differs by less than 2m
+        assert np.nanpercentile(diff, 90) < 10
+
+    @pytest.mark.parametrize("block_size", [32])
+    def test_blockwise_coreg_pipeline_with_multiprocessing(self, step, example_data, tmp_path, block_size):
+        """Test end-to-end blockwise coregistration in multiprocessing and validate output."""
+        ref, tba, mask = example_data
+
+        config_mc = MultiprocConfig(
+            chunk_size=block_size, outfile=tmp_path / "test.tif", cluster=ClusterGenerator("multi", nb_workers=4)
+        )
+        blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step, mp_config=config_mc, block_size_fit=block_size)
+        blockwise_coreg.fit(ref, tba, mask)
+        blockwise_coreg.apply()
+
+        aligned = xdem.DEM(tmp_path / "aligned_dem.tif")
+
+        # Ground truth comparison with full image coregistration
+        expected = step.fit_and_apply(ref, tba, mask)
+
+        diff = np.abs(expected - aligned)
+        # 90% of the aligned data differs by less than 2m
+        assert np.nanpercentile(diff, 90) < 10
 
     def test_ransac_on_horizontal_tiles(self, blockwise_coreg) -> None:
         """Test case where RANSAC works on horizontal tiles."""

@@ -2,30 +2,34 @@ name: xdem-dev
 channels:
   - conda-forge
 dependencies:
-  - python>=3.10,<3.14
+  - python>=3.10,<3.15
+  # Core dependencies
+  - geoutils=0.2.5
+  # First-order dependency on the above
   - geopandas>=0.12.0
-  - numba=0.*
-  - numpy>=1,<3
-  - matplotlib=3.*
-  - pyproj>=3.4,<4
   - rasterio>=1.3,<2
   - scipy=1.*
-  - tqdm
-  - geoutils=0.2.0
+  # Second-order or plus dependency on the above
+  - numpy>=1,<3
+  - pyproj>=3.4,<4
   - affine
   - pandas
   - pyogrio
   - shapely
-  - cerberus
-  - pyyaml
-  - weasyprint
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
 
   # Optional dependencies
-  - pytransform3d
-  - scikit-learn
+  - numba=0.*  # For fast numerical operations (terrain, filters)
+  - matplotlib=3.*  # For plotting
+  - scikit-learn  # For optimizations
+  - laspy  # For LAS file support
+  - lazrs-python  # For LAZ file support
+  - cerberus  # For CLI
+  - pyyaml  # For CLI
+  - weasyprint  # For CLI
+  - tqdm  # For progress bars
 
   # Test dependencies
   - pytest
@@ -49,7 +53,6 @@ dependencies:
   - graphviz
   - myst-nb
   - numpydoc
-  - sphinx-tabs
 
   - pip:
       # Optional dependencies with Pip

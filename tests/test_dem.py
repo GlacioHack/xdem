@@ -1,10 +1,11 @@
-""" Functions to test the DEM tools."""
+"""Functions to test the DEM tools."""
 
 from __future__ import annotations
 
 import os
 import tempfile
 import warnings
+from importlib.util import find_spec
 from typing import Any
 
 import geoutils as gu
@@ -23,9 +24,10 @@ DO_PLOT = False
 
 
 class TestDEM:
+
     def test_init(self) -> None:
         """Test that inputs work properly in DEM class init."""
-        fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_img = xdem.examples.get_path_test("longyearbyen_ref_dem")
 
         # From filename
         dem = DEM(fn_img)
@@ -78,7 +80,7 @@ class TestDEM:
         # Tests 1: instantiation with a file that has a 2D CRS
 
         # First, check a DEM that does not have any vertical CRS set
-        fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_img = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_img)
         assert dem.vcrs is None
 
@@ -94,7 +96,7 @@ class TestDEM:
         # Save to temporary folder
         temp_dir = tempfile.TemporaryDirectory()
         temp_file = os.path.join(temp_dir.name, "test.tif")
-        dem_reproj.save(temp_file)
+        dem_reproj.to_file(temp_file)
 
         # Check opening a DEM with a 3D CRS sets the vcrs
         dem_3d = DEM(temp_file)
@@ -175,7 +177,7 @@ class TestDEM:
         - if r is copied, r.data changed, r2.data should be unchanged
         """
         # Open dataset, update data and make a copy
-        r = xdem.dem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+        r = xdem.DEM(xdem.examples.get_path_test("longyearbyen_ref_dem"))
         r.data += 5
         r2 = r.copy()
 
@@ -183,7 +185,7 @@ class TestDEM:
         assert r is not r2
 
         # Check the object is a DEM
-        assert isinstance(r2, xdem.dem.DEM)
+        assert isinstance(r2, xdem.DEM)
 
         # Check all immutable attributes are equal
         # raster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'bands', 'nodata',
@@ -215,7 +217,7 @@ class TestDEM:
     def test_set_vcrs(self) -> None:
         """Tests to set the vertical CRS."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
         # -- Test 1: we check with names --
@@ -263,7 +265,7 @@ class TestDEM:
     def test_to_vcrs(self) -> None:
         """Tests the conversion of vertical CRS."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
         # Reproject in WGS84 2D
@@ -307,7 +309,7 @@ class TestDEM:
     def test_to_vcrs__equal_warning(self) -> None:
         """Test that DEM.to_vcrs() does not transform if both 3D CRS are equal."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
         # With both inputs as names
@@ -361,13 +363,67 @@ class TestDEM:
     def test_terrain_attributes_wrappers(self, terrain_attribute: str) -> None:
         """Check the terrain attributes corresponds to the ones derived in the terrain module."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
+        # Crop to tiny DEM for speed
+        dem = dem.icrop((0, 0, 20, 20))
 
         dem_class_attr = getattr(dem, terrain_attribute)()
         terrain_module_attr = getattr(xdem.terrain, terrain_attribute)(dem)
 
         assert dem_class_attr.raster_equal(terrain_module_attr)
+
+    def test_info_2dcrs(self) -> None:
+        """Tests info function with the new Coordinate system line on dem with 2D CRS"""
+
+        dem_path = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        raster = gu.Raster(dem_path)
+        dem = xdem.dem.DEM(dem_path)
+        crs_key = "Coordinate system:"
+
+        # Test info() with stats or not
+        for stats in [True, False]:
+            raster_infos_arrays = raster.info(stats=stats, verbose=False).split("\n")
+            dem_infos_array = dem.info(stats=stats, verbose=False).split("\n")
+
+            # Same number of lines
+            assert len(dem_infos_array) == len(raster_infos_arrays)
+
+            # Find Coordinate system line
+            crs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith(crs_key)]
+            assert len(crs_line) == 1
+            complete_line = dem_infos_array[crs_line[0]]
+
+            # Verify infos except Coordinate system
+            del raster_infos_arrays[crs_line[0]]
+            del dem_infos_array[crs_line[0]]
+            for line in range(len(raster_infos_arrays)):
+                assert raster_infos_arrays[line] == dem_infos_array[line]
+
+            # Verify Coordinate system value
+            assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'None']"
+
+        # Verify new VCRS value with this 2D CRS DEM
+        dem.set_vcrs(new_vcrs="EGM96")
+        dem_infos_array = dem.info(verbose=False).split("\n")
+        complete_line = dem_infos_array[crs_line[0]]
+        assert complete_line.startswith(crs_key)
+        assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'EPSG:5773']"
+
+    @pytest.mark.skip()  # type: ignore
+    def test_info_3dcrs(self) -> None:
+        """Tests info function with the new Coordinate system line on dem with 3D CRS"""
+
+        dem_path = xdem.examples.get_path_test("gizeh")
+        dem = xdem.dem.DEM(dem_path)
+        dem_infos_array = dem.info(verbose=False).split("\n")
+
+        crs_key = "Coordinate system:"
+        crs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith(crs_key)]
+
+        complete_line = dem_infos_array[crs_line[0]]
+        assert complete_line.startswith(crs_key)
+        assert complete_line[len(crs_key) :].strip() == "['WGS 84 / UTM zone 36N + EGM96 height']"
 
     @staticmethod
     @pytest.mark.parametrize(  # type: ignore
@@ -400,8 +456,11 @@ class TestDEM:
         """
         Test coregister_3d functionality
         """
-        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+
+        warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated.*")
+
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
@@ -446,8 +505,8 @@ class TestDEM:
         Test coregister_3d initial and output shift
         """
 
-        dem_ref = DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-        dem_tba = DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
+        dem_ref = DEM(xdem.examples.get_path_test("longyearbyen_ref_dem"))
+        dem_tba = DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
 
         if expected_message is not None:
             # Init coreg method and catch error
@@ -510,8 +569,8 @@ class TestDEM:
         # Import optional skgstat or skip test
         pytest.importorskip("skgstat")
 
-        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
@@ -520,3 +579,26 @@ class TestDEM:
 
         assert isinstance(sig_h, gu.Raster)
         assert callable(corr_sig)
+
+    @pytest.mark.skipif(
+        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
+    )  # type: ignore
+    def test_estimate_uncertainty__missing_dep(self) -> None:
+        """Check that proper import error is raised when skgstat is missing"""
+
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
+
+        dem_ref = DEM(fn_ref)
+        dem_tba = DEM(fn_tba)
+
+        with pytest.raises(ImportError, match="Optional dependency 'scikit-gstat' required.*"):
+            dem_tba.estimate_uncertainty(dem_ref)
+
+    def test_to_pointcloud__type_override(self) -> None:
+
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        dem_ref = DEM(fn_ref)
+        epc_ref = dem_ref.to_pointcloud(subsample=500)
+
+        assert isinstance(epc_ref, xdem.EPC)

@@ -27,17 +27,24 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 
 import geoutils as gu
-import matplotlib.pyplot as plt
 import numpy as np
-import yaml  # type: ignore
 from geoutils import Raster
 from geoutils.raster import RasterType
-from yaml.dumper import SafeDumper  # type: ignore
 
 import xdem
 from xdem import DEM
+from xdem._misc import import_optional
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
 from xdem.workflows.schemas import validate_configuration
+
+# Inheritance of optional dependency class
+try:
+    from yaml.dumper import SafeDumper  # type: ignore
+
+    _HAS_YAML = True
+except ImportError:
+    SafeDumper = object
+    _HAS_YAML = False
 
 
 class Workflows(ABC):
@@ -45,12 +52,19 @@ class Workflows(ABC):
     Abstract Class for workflows
     """
 
-    def __init__(self, user_config: str | Dict[str, Any]) -> None:
+    def __init__(self, user_config: str | Dict[str, Any], output: str | None = None) -> None:
         """
         Initialize the workflows class
-        :param user_config: str path to a config file or dict as config
+
+        :param user_config: Path to a config file or dict as config.
+
         :return: None
         """
+
+        mpl = import_optional("matplotlib")
+
+        # Default parameters for plots
+        mpl.rcParams["font.size"] = "10"
 
         # Load configuration
         if isinstance(user_config, str):
@@ -69,8 +83,15 @@ class Workflows(ABC):
         self.config = validate_configuration(config_not_verify, self.schema)
         self.level = self.config["outputs"]["level"]
 
-        self.outputs_folder = Path(self.config["outputs"]["path"])
+        # If output folder was forced by user CLI argument, override the one in the config file
+        if output is not None:
+            self.outputs_folder = Path(output)
+        else:
+            self.outputs_folder = Path(self.config["outputs"]["path"])
+
+        logging.info(f"Outputs folder: {self.outputs_folder.absolute()}")
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
+        logging.info(f"Outputs will be saved at {self.outputs_folder}")
 
         for folder in ["plots", "rasters", "tables"]:
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
@@ -84,9 +105,15 @@ class Workflows(ABC):
         NoAliasDumper to avoid id in YAML file
         """
 
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+
+            if not _HAS_YAML:
+                import_optional("yaml", package_name="pyyaml")
+            super().__init__(*args, **kwargs)
+
         def ignore_aliases(self, data: Any) -> bool:
             """
-            avoid id in YAML file
+            Avoid id in YAML file
             """
             return True
 
@@ -95,32 +122,40 @@ class Workflows(ABC):
         Load a configuration file
         :return: Configuration dictionary
         """
+        yaml = import_optional("yaml", package_name="pyyaml")
+
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"File not found : {self.config_path}")
         with open(self.config_path) as f:
             return yaml.safe_load(f)
 
-    def generate_plot(self, dem: RasterType, title: str, mask_path: str = None, **kwargs: Any) -> None:
+    def generate_plot(self, dem: RasterType, title: str, filename: str, mask_path: str = None, **kwargs: Any) -> None:
         """
-        Generate plot from a DEM
-        :param dem: Digital Elevation model
-        :param title: title of graph
-        :param mask_path: Path to mask
+        Generate plot from a DEM.
+
+        :param dem: Input digital elevation model.
+        :param title: Title of figure.
+        :param filename: Filename of figure.
+        :param mask_path: Path to mask file.
+
         :return: None
         """
 
-        plot_title = title.replace("_", " ")
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
 
         if mask_path is None:
-            dem.plot(title=plot_title, **kwargs)
-            plt.savefig(self.outputs_folder / "plots" / f"{title}.png")
+            dem.plot(**kwargs)
+            plt.title(title)
+            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300)
             plt.close()
         else:
             mask = gu.Vector(mask_path)
             mask = mask.crop(dem)
-            dem.plot(title=plot_title, **kwargs)
+            dem.plot(**kwargs)
             mask.plot(dem, ec="k", fc="none")
-            plt.savefig(self.outputs_folder / "plots" / f"{title}.png")
+            plt.title(title)
+            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300)
             plt.close()
 
     def floats_process(
@@ -145,23 +180,30 @@ class Workflows(ABC):
     @staticmethod
     def load_dem(config_dem: Dict[str, Any] | None) -> tuple[DEM, Raster, str | None]:
         """
-        Generate DEM from user configuration dictionary
-        :param config_dem: Configuration dictionary
-        :return: DEM
+        Generate DEM from user configuration dictionary.
+
+        :param config_dem: Configuration dictionary.
+
+        :return: DEM.
         """
         mask_path = None
         if config_dem is not None:
-            dem = xdem.DEM(config_dem["path_to_elev"])
+            dem = xdem.DEM(config_dem["path_to_elev"], downsample=config_dem.get("downsample", 1))
             inlier_mask = None
-            from_vcrs = config_dem["from_vcrs"]
-            to_vcrs = config_dem["to_vcrs"]
+            from_vcrs = config_dem.get("from_vcrs", None)
+            to_vcrs = config_dem.get("to_vcrs", None)
             if from_vcrs:
                 dem.set_vcrs(from_vcrs)
             if to_vcrs:
+                if dem.vcrs is None and from_vcrs is None:
+                    raise ValueError(
+                        "You provided a 'to_vcrs' value, but the corresponding DEM does not have a current VCRS "
+                        "(either in the metadata or entered via the 'from_vcrs' value)."
+                    )
                 if from_vcrs != to_vcrs:
-                    dem.to_vcrs(to_vcrs)
+                    dem.to_vcrs(to_vcrs, inplace=True)
             if config_dem.get("force_source_nodata") is not None:
-                dem.set_nodata(config_dem["force_source_nodata"])
+                dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
             if config_dem.get("path_to_mask") is not None:
                 mask_path = config_dem["path_to_mask"]
                 mask = gu.Vector(mask_path)
@@ -174,33 +216,48 @@ class Workflows(ABC):
 
     def remove_none(self, dico: Union[Dict[str, Any], List[Any]]) -> Union[Dict[str, Any], List[Any]]:
         """
-        Recursively remove all keys whose values are None from a dictionary.
-        :param dico: dictionary to clean
-        :return: cleaned dictionary
+        Recursively remove all keys whose values are None from a dictionary, except for the key 'statistics'.
+
+        :param dico: Dictionary to clean.
+
+        :return: Cleaned dictionary.
         """
         if isinstance(dico, dict):
-            return {
-                k: self.remove_none(v) for k, v in dico.items() if v is not None and self.remove_none(v) is not None
-            }
+            cleaned_dict = {}
+            for k, v in dico.items():
+
+                if k == "statistics":
+                    cleaned_dict[k] = v
+                    continue
+
+                cleaned_value = self.remove_none(v) if v is not None else None
+                if cleaned_value is not None:
+                    cleaned_dict[k] = cleaned_value
+
+            return cleaned_dict
+
         elif isinstance(dico, list):
             cleaned_list = [self.remove_none(v) for v in dico if v is not None]
             return [v for v in cleaned_list if v is not None]
+
         else:
             return dico
 
     @abstractmethod
     def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
         """
-        Create HTML page from png files and table
-        :param list_dict: list containing tuples of title and various dictionaries
+        Create HTML page from png files and table.
+
+        :param list_dict: List containing tuples of title and various dictionaries.
         :return: None
         """
 
     def save_stat_as_csv(self, data: dict[str, float], file_name: str) -> None:
         """
-        Save the statistics into a CSV file
-        :param data: Statistics dictionary
-        :param file_name: Name of csv file
+        Save the statistics into a CSV file.
+
+        :param data: Statistics dictionary.
+        :param file_name: Name of csv file.
         """
         cleaned_data = {k: float(v) if isinstance(v, (np.float32, np.float64)) else v for k, v in data.items()}
 
