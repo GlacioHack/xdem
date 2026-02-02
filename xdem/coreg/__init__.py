@@ -17,7 +17,7 @@
 # limitations under the License.
 
 """
-DEM coregistration classes and functions, including affine methods, bias corrections (i.e. non-affine) and filters.
+DEM coregistration classes and functions, including affine methods, bias corrections (i.e. non-affine).
 """
 
 from xdem.coreg.affine import (  # noqa
