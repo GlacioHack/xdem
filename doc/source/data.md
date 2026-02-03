@@ -37,18 +37,21 @@ So, `"longyearbyen_ref_dem"` (for "reference" dem) can be compared to `"longyear
 ```
 
 
-Another data is available over the Giza pyramid complex:
+Another data is available over the Gizeh pyramid complex:
 
 | Alias         | Filename |  Type  |             Description |
 |---------------|:--------:|:------:|------------------------:|
 | `"gizeh_dem"` | DSM.tif  | Raster | DEM of the area in 2013 |
 
 
+
 ```{note}
-:class: margin
-All of these data can be used under open licence and if you need other information
-about all of these, you can read the [README.md](https://github.com/GlacioHack/xdem-data/blob/main/README.md)
-of the [xdem-data github project](https://github.com/GlacioHack/xdem-data) where they are stored.
+If you need more information about the data, you can read this [page](https://github.com/GlacioHack/xdem-data/blob/main/README.md)
+of the [xdem-data github project](https://github.com/GlacioHack/xdem-data) where they are stored or the documentation associated with their Digital Object Identifier:
+
+1. DOI: [10.21334/NPOLAR.2014.DCE53A47](https://doi.org/10.21334/npolar.2014.dce53a47)
+2. DOI: [10.21334/NPOLAR.2013.89F430F8](https://doi.org/10.21334/npolar.2013.89f430f8)
+3. DOI: [10.21334/NPOLAR.2013.89F430F8](https://doi.org/10.21334/npolar.2013.89f430f8)
 ```
 
 ## Access to data
@@ -103,11 +106,3 @@ To download the data samples, you can run:
 mkdir data_examples
 tar -xvz -C data_examples  --wildcards  "*/data" --strip-components 2 -f <(wget -q -O - https://github.com/marinebcht/xdem-data/archive/1338aaa06842f9e6b3182069a295618eb54914a5.tar.gz)
 ```
-
-## DOI references
-
-If you need more information about the data, you can read this [page](https://github.com/GlacioHack/xdem-data/blob/main/README.md) or their Digital Object Identifier:
-
-1. DOI: [10.21334/NPOLAR.2014.DCE53A47](https://doi.org/10.21334/npolar.2014.dce53a47)
-2. DOI: [10.21334/NPOLAR.2013.89F430F8](https://doi.org/10.21334/npolar.2013.89f430f8)
-3. DOI: [10.21334/NPOLAR.2013.89F430F8](https://doi.org/10.21334/npolar.2013.89f430f8)
