@@ -21,7 +21,7 @@ dependencies:
   - pip
 
   # Optional dependencies
-  - numba=0.*  # For fast numerical operations (terrain, filters)
+  - numba=0.*  # For fast numerical operations (terrain)
   - matplotlib=3.*  # For plotting
   - scikit-learn  # For optimizations
   - laspy  # For LAS file support
