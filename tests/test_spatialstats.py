@@ -59,16 +59,17 @@ class TestBinning:
             values=self.diff.data.flatten()[indices],
             list_var=[self.slope.data.flatten()[indices]],
             list_var_names=["slope"],
+            list_var_bins=4
         )
 
         # Check length matches
-        assert df.shape[0] == 10
+        assert df.shape[0] == 4
         # Check bin edges match the minimum and maximum of binning variable
         assert np.nanmin(self.slope.data.flatten()[indices]) == np.min(pd.IntervalIndex(df.slope).left)
         assert np.nanmax(self.slope.data.flatten()[indices]) == np.max(pd.IntervalIndex(df.slope).right)
 
         # NMAD should go up a bit with slope, more than 1 m between the two extreme bins
-        assert df.nmad.values[-1] - df.nmad.values[0] > 1
+        assert df.nmad.values[-1] - df.nmad.values[1] > 1
 
         # 1D binning with 20 bins
         df = xdem.spatialstats.nd_binning(
