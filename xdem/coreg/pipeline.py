@@ -167,37 +167,40 @@ class CoregPipeline(Coreg):
             # Filter warnings of individual pipelines now that the one above was raised
             warnings.filterwarnings("ignore", message="Subsample argument passed to*", category=UserWarning)
 
+        # TODO: Temporary fix while we decide for final API of fit/apply
+        # If transform is not None, we rebuild the objects, to avoid needing ref_transform + tba_transform
+        # to be redefined throughout Coreg.fit() and apply()
+        if transform is not None and crs is not None:
+            if isinstance(reference_elev, np.ndarray):
+                reference_elev = Raster.from_array(reference_elev, transform=transform, crs=crs, nodata=-9999)
+            if isinstance(to_be_aligned_elev, np.ndarray):
+                to_be_aligned_elev = Raster.from_array(to_be_aligned_elev, transform=transform, crs=crs, nodata=-9999)
+            transform = None
+            crs = None
+
         # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
-        main_args = _preprocess_coreg_fit(
-            reference_elev=reference_elev,
-            to_be_aligned_elev=to_be_aligned_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
-        )
-        tba_elev_mod = main_args["tba_elev"].copy()
-        out_transform = main_args["tba_transform"]
+        main_args_fit = {
+            "reference_elev": reference_elev,
+            "to_be_aligned_elev": None,
+            "inlier_mask": inlier_mask,
+            "transform": transform,
+            "crs": crs,
+            "z_name": z_name,
+            "weights": weights,
+            "subsample": subsample,
+            "random_state": random_state,
+        }
+
+        # Initialize to-be-aligned DEM
+        tba_elev_mod = to_be_aligned_elev
 
         for i, coreg in enumerate(self.pipeline):
             logging.debug("Running pipeline step: %d / %d", i + 1, len(self.pipeline))
 
-            main_args_fit = {
-                "reference_elev": main_args["ref_elev"],
-                "to_be_aligned_elev": tba_elev_mod,
-                "inlier_mask": main_args["inlier_mask"],
-                "ref_transform": main_args["ref_transform"],
-                "tba_transform": out_transform,
-                "crs": main_args["crs"],
-                "z_name": main_args.get("z_name", None),
-                "weights": main_args.get("weight", None),
-                "subsample": subsample,
-                "random_state": random_state,
-            }
+            main_args_fit.update({"to_be_aligned_elev": tba_elev_mod})
 
-            main_args_apply = {"elev": tba_elev_mod, "transform": out_transform, "crs": main_args["crs"],
-                               "z_name": main_args.get("z_name", None)}
+            main_args_apply = {"elev": tba_elev_mod, "crs": main_args_fit["crs"],
+                               "z_name": main_args_fit.get("z_name", None)}
 
             # If non-affine method that expects a bias_vars argument
             if coreg._needs_vars:
@@ -215,7 +218,7 @@ class CoregPipeline(Coreg):
                 if isinstance(tba_elev_mod, gpd.GeoDataFrame):
                     tba_elev_mod = coreg.apply(**main_args_apply)
                 else:
-                    tba_elev_mod, out_transform = coreg.apply(**main_args_apply)
+                    tba_elev_mod = coreg.apply(**main_args_apply)
 
         # Flag that the fitting function has been called.
         self._fit_called = True

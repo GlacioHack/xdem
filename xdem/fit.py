@@ -63,8 +63,6 @@ def index_trimmed(res: NDArrayf, central_estimator=np.nanmedian, spread_estimato
         # Compute number of newly trimmed points
         nb_trimmed = np.count_nonzero(ind_trimmed)
 
-        print(nb_trimmed)
-
         if not iterative:
             ind_final = ind_trimmed
             break

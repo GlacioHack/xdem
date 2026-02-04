@@ -52,11 +52,9 @@ class TestCoregPipeline:
     inlier_mask = ~outlines.create_mask(ref)
 
     fit_params = dict(
-        reference_elev=ref.data,
-        to_be_aligned_elev=tba.data,
+        reference_elev=ref,
+        to_be_aligned_elev=tba,
         inlier_mask=inlier_mask,
-        transform=ref.transform,
-        crs=ref.crs,
     )
     # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
     points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
@@ -240,7 +238,6 @@ class TestCoregPipeline:
         # Many vertical shifts
         many_vshifts = coreg.VerticalShift() + coreg.VerticalShift() + coreg.VerticalShift()
         many_vshifts.fit(**self.fit_params, random_state=42)
-        aligned_dem, _ = many_vshifts.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # The last steps should have shifts of EXACTLY zero
         assert many_vshifts.pipeline[1].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=10e-5)
@@ -249,7 +246,6 @@ class TestCoregPipeline:
         # Many horizontal + vertical shifts
         many_nks = coreg.LZD() + coreg.LZD() + coreg.LZD()
         many_nks.fit(**self.fit_params, random_state=42)
-        aligned_dem, _ = many_nks.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
         # The last steps should have shifts of NEARLY zero, like 0.1 pixel
         abs_trans = 0.1 * self.ref.res[0]
@@ -266,8 +262,71 @@ class TestCoregPipeline:
         vshift_nk = coreg.VerticalShift() + coreg.NuthKaab()
 
         nk_vshift.fit(**self.fit_params, random_state=42)
-        aligned_dem, _ = nk_vshift.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
         vshift_nk.fit(**self.fit_params, random_state=42)
-        aligned_dem, _ = vshift_nk.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
 
-        assert np.allclose(nk_vshift.to_matrix(), vshift_nk.to_matrix(), atol=10e-1)
+        # TODO: See after merge of #890
+        nk_vshift_tr = coreg.translations_rotations_from_matrix(nk_vshift.to_matrix())
+        vshift_nk_tr = coreg.translations_rotations_from_matrix(vshift_nk.to_matrix())
+        assert np.allclose(nk_vshift_tr, vshift_nk_tr)
+
+    def test_subsample_pipeline(self) -> None:
+        """Test that the subsample argument works as intended for pipelines"""
+
+        # Check definition during instantiation
+        pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp(subsample=5000)
+
+        # Check the arguments are properly defined
+        assert pipe.pipeline[0].meta["inputs"]["random"]["subsample"] == 200
+        assert pipe.pipeline[1].meta["inputs"]["random"]["subsample"] == 5000
+
+        # Check definition during fit
+        pipe = coreg.VerticalShift() + coreg.Deramp()
+        pipe.fit(**self.fit_params, subsample=1000)
+        assert pipe.pipeline[0].meta["inputs"]["random"]["subsample"] == 1000
+        assert pipe.pipeline[1].meta["inputs"]["random"]["subsample"] == 1000
+
+    def test_subsample_pipeline__exceptions(self) -> None:
+        """Test that the subsample exceptions work as intended for pipelines"""
+
+        # Same for a pipeline
+        pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp()
+        with pytest.warns(
+                UserWarning,
+                match=re.escape(
+                    "Subsample argument passed to fit() will override non-default "
+                    "subsample values defined for individual steps of the pipeline. "
+                    "To silence this warning: only define 'subsample' in either "
+                    "fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...)."
+                ),
+        ):
+            pipe.fit(**self.fit_params, subsample=1000)
+
+    def test_fit_and_apply__pipeline(self) -> None:
+        """Check if it works for a pipeline"""
+
+        # Initiate two similar coregs
+        coreg_fit_then_apply = coreg.NuthKaab() + coreg.Deramp()
+        coreg_fit_and_apply = coreg.NuthKaab() + coreg.Deramp()
+
+        # Perform fit, then apply
+        coreg_fit_then_apply.fit(**self.fit_params, subsample=10000, random_state=42)
+        aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
+
+        # Perform fit and apply
+        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, subsample=10000, random_state=42)
+
+        assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
+        assert list(coreg_fit_and_apply.pipeline[0].meta.keys()) == list(coreg_fit_then_apply.pipeline[0].meta.keys())
+        assert all(
+            assert_coreg_meta_equal(
+                coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k]  # type: ignore
+            )
+            for k in coreg_fit_and_apply.pipeline[0].meta.keys()
+        )
+        assert list(coreg_fit_and_apply.pipeline[1].meta.keys()) == list(coreg_fit_then_apply.pipeline[1].meta.keys())
+        assert all(
+            assert_coreg_meta_equal(
+                coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k]  # type: ignore
+            )
+            for k in coreg_fit_and_apply.pipeline[1].meta.keys()
+        )

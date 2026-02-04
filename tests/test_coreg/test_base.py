@@ -204,22 +204,6 @@ class TestCoregClass:
         assert coreg_sub.meta["inputs"]["random"]["subsample"] == self.tba.data.size // 10
         coreg_sub.fit(**self.fit_params, random_state=42, **fit_kwargs)
 
-    def test_subsample__pipeline(self) -> None:
-        """Test that the subsample argument works as intended for pipelines"""
-
-        # Check definition during instantiation
-        pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp(subsample=5000)
-
-        # Check the arguments are properly defined
-        assert pipe.pipeline[0].meta["inputs"]["random"]["subsample"] == 200
-        assert pipe.pipeline[1].meta["inputs"]["random"]["subsample"] == 5000
-
-        # Check definition during fit
-        pipe = coreg.VerticalShift() + coreg.Deramp()
-        pipe.fit(**self.fit_params, subsample=1000)
-        assert pipe.pipeline[0].meta["inputs"]["random"]["subsample"] == 1000
-        assert pipe.pipeline[1].meta["inputs"]["random"]["subsample"] == 1000
-
     def test_subsample__errors(self) -> None:
         """Check proper errors are raised when using the subsample argument"""
 
@@ -236,19 +220,6 @@ class TestCoregClass:
             ),
         ):
             vshift.fit(**self.fit_params, subsample=1000)
-
-        # Same for a pipeline
-        pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp()
-        with pytest.warns(
-            UserWarning,
-            match=re.escape(
-                "Subsample argument passed to fit() will override non-default "
-                "subsample values defined for individual steps of the pipeline. "
-                "To silence this warning: only define 'subsample' in either "
-                "fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...)."
-            ),
-        ):
-            pipe.fit(**self.fit_params, subsample=1000)
 
     def test_coreg_raster_and_ndarray_args(self) -> None:
 
@@ -402,36 +373,6 @@ class TestCoregClass:
                 assert_coreg_meta_equal(coreg_fit_and_apply.meta[k], coreg_fit_then_apply.meta[k])
                 for k in coreg_fit_and_apply.meta.keys()
             )
-
-    def test_fit_and_apply__pipeline(self) -> None:
-        """Check if it works for a pipeline"""
-
-        # Initiate two similar coregs
-        coreg_fit_then_apply = coreg.NuthKaab() + coreg.Deramp()
-        coreg_fit_and_apply = coreg.NuthKaab() + coreg.Deramp()
-
-        # Perform fit, then apply
-        coreg_fit_then_apply.fit(**self.fit_params, subsample=10000, random_state=42)
-        aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
-
-        # Perform fit and apply
-        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, subsample=10000, random_state=42)
-
-        assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
-        assert list(coreg_fit_and_apply.pipeline[0].meta.keys()) == list(coreg_fit_then_apply.pipeline[0].meta.keys())
-        assert all(
-            assert_coreg_meta_equal(
-                coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k]  # type: ignore
-            )
-            for k in coreg_fit_and_apply.pipeline[0].meta.keys()
-        )
-        assert list(coreg_fit_and_apply.pipeline[1].meta.keys()) == list(coreg_fit_then_apply.pipeline[1].meta.keys())
-        assert all(
-            assert_coreg_meta_equal(
-                coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k]  # type: ignore
-            )
-            for k in coreg_fit_and_apply.pipeline[1].meta.keys()
-        )
 
     @pytest.mark.parametrize(
         "combination",

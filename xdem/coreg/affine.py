@@ -650,7 +650,6 @@ def nuth_kaab(
     This function subsamples input data, then runs Nuth and Kääb iteration steps to optimize its fit function until
     convergence or a maximum of iterations is reached.
 
-
     :return: Final estimated offset: east, north, vertical (in georeferenced units).
     """
     logging.info("Running Nuth and Kääb (2011) coregistration")
@@ -2836,7 +2835,7 @@ class VerticalShift(AffineCoreg):
         """Convert the vertical shift to a transform matrix."""
         empty_matrix = np.diag(np.ones(4, dtype=float))
 
-        empty_matrix[2, 3] += self._meta["outputs"]["affine"]["shift_z"]
+        empty_matrix[2, 3] = self._meta["outputs"]["affine"]["shift_z"]
 
         return empty_matrix
 
