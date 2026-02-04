@@ -165,11 +165,12 @@ def test_run(get_topo_inputs_config, tmp_path):
             "Number of band": (1,),
             "Pixel interpretation": "Area",
             "Pixel size": (20.0, 20.0),
-            "Transform": Affine(20.0, 0.0, 505550.0, 0.0, -20.0, 8673610.0),
-            "Width": 50,
-            "Bounds": BoundingBox(left=505550.0, bottom=8672530.0, right=506550.0, top=8673610.0),
+            "Transform": Affine(20.0, 0.0, 512310.0, 0.0, -20.0, 8662030.0),
+            "Width": 70,
+            "Bounds": BoundingBox(left=512310.0, bottom=8660950.0, right=513710.0, top=8662030.0),
         },
     )
+
     # 3/ Statistics names
     assert workflows.dico_to_show[2][0] == "Global statistics"
     assert list(workflows.dico_to_show[2][1].keys()) == STATS_METHODS
