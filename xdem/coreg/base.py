@@ -34,6 +34,7 @@ from typing import (
     TypedDict,
     TypeVar,
     overload,
+    TYPE_CHECKING
 )
 
 import affine
@@ -66,6 +67,9 @@ from xdem.fit import (
     sumsin_1d,
 )
 from xdem.spatialstats import nd_binning
+
+if TYPE_CHECKING:
+    from xdem.coreg.pipeline import CoregPipeline
 
 # Map each workflow name to a function and optimizer
 fit_workflows = {
@@ -155,6 +159,7 @@ def _preprocess_coreg_fit_raster_raster(
                 raise ValueError("Input mask array can't be a different size array as input elevation.")
 
     # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
+    tba_transform = None
     if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
         # Only reproject to the same grid if required, otherwise simply reproject to the same CRS
         if reproj_same_grid:
@@ -204,6 +209,11 @@ def _preprocess_coreg_fit_raster_raster(
     # Override transform, CRS and pixel interpretation
     if new_transform is not None:
         transform = new_transform
+    if tba_transform is None:
+        if new_transform is None:
+            tba_transform = transform
+        else:
+            tba_transform = new_transform
     if new_crs is not None:
         crs = new_crs
     if new_aop is not None:
@@ -1206,6 +1216,18 @@ def _bin_or_and_fit_nd(
         else:
             bin_sizes = params_fit_or_bin["bin_sizes"]
 
+    # If fit minimizer is default least_squares, and x0 not passed, set initial vector to ones (like in curve_fit)
+    if ("fit_minimizer" in params_fit_or_bin and
+            params_fit_or_bin["fit_minimizer"] == scipy.optimize.least_squares
+            and "x0" not in kwargs):
+        sig = inspect.signature(params_fit_or_bin["fit_func"])
+        nb_params = len(sig.parameters) - 1
+        x0 = np.ones(nb_params)
+        kwargs.update({"x0": x0})
+
+    # Custom optimizers that trigger slightly different behaviour below
+    custom_minimizer = [v["optimizer"] for v in fit_workflows.values()]
+
     # Option 1: Run fit and save optimized function parameters
     if fit_or_bin == "fit":
         logging.debug(
@@ -1219,17 +1241,24 @@ def _bin_or_and_fit_nd(
         xdata = np.array([var.flatten() for var in bias_vars.values()]).squeeze()
         ydata = values.flatten()
 
-        def func_wrapped(params):
-            return params_fit_or_bin["fit_func"](xdata, *params) - ydata
+        # If custom fits are passed, such as "robust_norder_polynomial_fit"
+        if params_fit_or_bin["fit_minimizer"] in custom_minimizer:
+            results = params_fit_or_bin["fit_minimizer"](xdata, ydata, **kwargs)
 
-        # Add loss argument if it is supported
-        sig = inspect.getfullargspec(params_fit_or_bin["fit_minimizer"])
-        if "loss" in sig.args:
-            kwargs.update({"loss": params_fit_or_bin["fit_loss_func"]})
-        results = params_fit_or_bin["fit_minimizer"](
-            func_wrapped,
-            **kwargs,
-        ).x
+        # If other minimizers are passed
+        else:
+
+            def func_wrapped(params):
+                return params_fit_or_bin["fit_func"](xdata, *params) - ydata
+
+            # Add loss argument if it is supported
+            sig = inspect.getfullargspec(params_fit_or_bin["fit_minimizer"])
+            if "loss" in sig.args:
+                kwargs.update({"loss": params_fit_or_bin["fit_loss_func"]})
+            results = params_fit_or_bin["fit_minimizer"](
+                func_wrapped,
+                **kwargs,
+            ).x
         df = None
 
     # Option 2: Run binning and save dataframe of result
@@ -1286,18 +1315,24 @@ def _bin_or_and_fit_nd(
         xdata = np.array([var[ind_valid].flatten() for var in new_vars]).squeeze()
         ydata = new_diff[ind_valid].flatten()
 
-        def func_wrapped(params):
-            return params_fit_or_bin["fit_func"](xdata, *params) - ydata
+        # If custom fits are passed, such as "robust_norder_polynomial_fit"
+        if params_fit_or_bin["fit_minimizer"] in custom_minimizer:
+            results = params_fit_or_bin["fit_minimizer"](xdata, ydata, **kwargs)
 
-        # Add loss argument if it is supported
-        sig = inspect.getfullargspec(params_fit_or_bin["fit_minimizer"])
-        if "loss" in sig.args:
-            kwargs.update({"loss": params_fit_or_bin["fit_loss_func"]})
+        # For generic minimizer (including default)
+        else:
+            def func_wrapped(params):
+                return params_fit_or_bin["fit_func"](xdata, *params) - ydata
 
-        results = params_fit_or_bin["fit_minimizer"](
-            func_wrapped,
-            **kwargs,
-        ).x
+            # Add loss argument if it is supported
+            sig = inspect.getfullargspec(params_fit_or_bin["fit_minimizer"])
+            if "loss" in sig.args:
+                kwargs.update({"loss": params_fit_or_bin["fit_loss_func"]})
+
+            results = params_fit_or_bin["fit_minimizer"](
+                func_wrapped,
+                **kwargs,
+            ).x
     logging.debug("%dD bias estimated.", nd)
 
     return df, results
@@ -2274,6 +2309,9 @@ class Coreg:
 
     def __add__(self, other: CoregType) -> CoregPipeline:
         """Return a pipeline consisting of self and the other processing function."""
+
+        from xdem.coreg.pipeline import CoregPipeline  # Local import to avoid circularity
+
         if not isinstance(other, Coreg):
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
 
@@ -2511,6 +2549,7 @@ class Coreg:
         # Pre-process the inputs, by reprojecting and converting to arrays
         # For an affine alignment, overlap is not necessary, so rasters are not reprojected to the same grid
         if self._is_affine:
+            # TODO: CHANGE THIS TO FALSE AND ADAPT
             reproj_same_grid = True
         else:
             reproj_same_grid = True
@@ -3081,325 +3120,3 @@ class Coreg:
 
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
         raise NotImplementedCoregApply("This should have been implemented by subclassing.")
-
-
-class CoregPipeline(Coreg):
-    """
-    A sequential set of co-registration processing steps.
-    """
-
-    def __init__(self, pipeline: list[Coreg]) -> None:
-        """
-        Instantiate a new processing pipeline.
-
-        :param: Processing steps to run in the sequence they are given.
-        """
-        self.pipeline = pipeline
-
-        super().__init__()
-
-    def __repr__(self) -> str:
-        return f"Pipeline: {self.pipeline}"
-
-    @overload
-    def info(self, as_str: Literal[False] = ...) -> None: ...
-
-    @overload
-    def info(self, as_str: Literal[True]) -> str: ...
-
-    def info(self, as_str: bool = False) -> None | str:
-        """Summarize information about this coregistration."""
-
-        # Get the pipeline information for each step as a string
-        final_str = []
-        for i, step in enumerate(self.pipeline):
-            final_str.append(f"Pipeline step {i}:\n" f"################\n")
-            step_str = step.info(as_str=True)
-            final_str.append(step_str)
-
-        # Return as string or print (default)
-        if as_str:
-            return "".join(final_str)
-        else:
-            print("".join(final_str))
-            return None
-
-    def copy(self: CoregType) -> CoregType:
-        """Return an identical copy of the class."""
-        new_coreg = self.__new__(type(self))
-
-        new_coreg.__dict__ = {key: copy.deepcopy(value) for key, value in self.__dict__.items() if key != "pipeline"}
-        new_coreg.pipeline = [step.copy() for step in self.pipeline]
-
-        return new_coreg
-
-    def _parse_bias_vars(self, step: int, bias_vars: dict[str, NDArrayf] | None) -> dict[str, NDArrayf]:
-        """Parse bias variables for a pipeline step requiring them."""
-
-        # Get number of non-affine coregistration requiring bias variables to be passed
-        nb_needs_vars = sum(c._needs_vars for c in self.pipeline)
-
-        # Get step object
-        coreg = self.pipeline[step]
-
-        # Check that all variable names of this were passed
-        var_names = coreg._meta["inputs"]["fitorbin"]["bias_var_names"]
-
-        # Raise error if bias_vars is None
-        if bias_vars is None:
-            msg = f"No `bias_vars` passed to .fit() for bias correction step {coreg.__class__} of the pipeline."
-            if nb_needs_vars > 1:
-                msg += (
-                    " As you are using several bias correction steps requiring `bias_vars`, don't forget to "
-                    "explicitly define their `bias_var_names` during "
-                    "instantiation, e.g. {}(bias_var_names=['slope']).".format(coreg.__class__.__name__)
-                )
-            raise ValueError(msg)
-
-        # Raise error if no variable were explicitly assigned and there is more than 1 step with bias_vars
-        if var_names is None and nb_needs_vars > 1:
-            raise ValueError(
-                "When using several bias correction steps requiring `bias_vars` in a pipeline,"
-                "the `bias_var_names` need to be explicitly defined at each step's "
-                "instantiation, e.g. {}(bias_var_names=['slope']).".format(coreg.__class__.__name__)
-            )
-
-        # Raise error if the variables explicitly assigned don't match the ones passed in bias_vars
-        if not all(n in bias_vars.keys() for n in var_names):
-            raise ValueError(
-                "Not all keys of `bias_vars` in .fit() match the `bias_var_names` defined during "
-                "instantiation of the bias correction step {}: {}.".format(coreg.__class__, var_names)
-            )
-
-        # Add subset dict for this pipeline step to args of fit and apply
-        return {n: bias_vars[n] for n in var_names}
-
-    # Need to override base Coreg method to work on pipeline steps
-    def fit(
-        self: CoregType,
-        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
-        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
-        inlier_mask: NDArrayb | Raster | None = None,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        weights: NDArrayf | None = None,
-        subsample: float | int | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-        z_name: str | None = None,
-        random_state: int | np.random.Generator | None = None,
-        **kwargs: Any,
-    ) -> CoregType:
-
-        # Check if subsample arguments are different from their default value for any of the coreg steps:
-        # get default value in argument spec and "subsample" stored in meta, and compare both are consistent
-        argspec = [inspect.getfullargspec(c.__class__) for c in self.pipeline]
-        sub_meta = [c.meta["inputs"]["random"]["subsample"] for c in self.pipeline]
-        sub_is_default = [
-            argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]  # type: ignore
-            for i in range(len(argspec))
-        ]
-        if subsample is not None and not all(sub_is_default):
-            warnings.warn(
-                "Subsample argument passed to fit() will override non-default subsample values defined for"
-                " individual steps of the pipeline. To silence this warning: only define 'subsample' in "
-                "either fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...)."
-            )
-            # Filter warnings of individual pipelines now that the one above was raised
-            warnings.filterwarnings("ignore", message="Subsample argument passed to*", category=UserWarning)
-
-        # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
-        ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point, z_name = _preprocess_coreg_fit(
-            reference_elev=reference_elev,
-            to_be_aligned_elev=to_be_aligned_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
-        )
-        tba_dem_mod = tba_dem.copy()
-        out_transform = transform
-
-        for i, coreg in enumerate(self.pipeline):
-            logging.debug("Running pipeline step: %d / %d", i + 1, len(self.pipeline))
-
-            main_args_fit = {
-                "reference_elev": ref_dem,
-                "to_be_aligned_elev": tba_dem_mod,
-                "inlier_mask": inlier_mask,
-                "transform": out_transform,
-                "crs": crs,
-                "z_name": z_name,
-                "weights": weights,
-                "subsample": subsample,
-                "random_state": random_state,
-            }
-
-            main_args_apply = {"elev": tba_dem_mod, "transform": out_transform, "crs": crs, "z_name": z_name}
-
-            # If non-affine method that expects a bias_vars argument
-            if coreg._needs_vars:
-                step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
-
-                main_args_fit.update({"bias_vars": step_bias_vars})
-                main_args_apply.update({"bias_vars": step_bias_vars})
-
-            # Perform the step fit
-            coreg.fit(**main_args_fit)
-
-            # Step apply: one output for a geodataframe, two outputs for array/transform
-            # We only run this step if it's not the last, otherwise it is unused!
-            if i != (len(self.pipeline) - 1):
-                if isinstance(tba_dem_mod, gpd.GeoDataFrame):
-                    tba_dem_mod = coreg.apply(**main_args_apply)
-                else:
-                    tba_dem_mod, out_transform = coreg.apply(**main_args_apply)
-
-        # Flag that the fitting function has been called.
-        self._fit_called = True
-
-        return self
-
-    @overload
-    def apply(
-        self,
-        elev: MArrayf,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        z_name: str | None = None,
-        **kwargs: Any,
-    ) -> tuple[MArrayf, rio.transform.Affine]: ...
-
-    @overload
-    def apply(
-        self,
-        elev: NDArrayf,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        z_name: str | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]: ...
-
-    @overload
-    def apply(
-        self,
-        elev: RasterType | gpd.GeoDataFrame | PointCloudType,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        z_name: str | None = None,
-        **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame | gu.PointCloud: ...
-
-    # Need to override base Coreg method to work on pipeline steps
-    def apply(
-        self,
-        elev: MArrayf | NDArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        z_name: str | None = None,
-        **kwargs: Any,
-    ) -> (
-        RasterType
-        | gpd.GeoDataFrame
-        | gu.PointCloud
-        | tuple[NDArrayf, rio.transform.Affine]
-        | tuple[MArrayf, rio.transform.Affine]
-    ):
-
-        # First step and preprocessing
-        if not self._fit_called and self._meta["outputs"]["affine"].get("matrix") is None:
-            raise AssertionError(".fit() does not seem to have been called yet")
-
-        elev_array, transform, crs, z_name = _preprocess_coreg_apply(
-            elev=elev, transform=transform, crs=crs, z_name=z_name
-        )
-
-        elev_mod = elev_array.copy()
-        out_transform = copy.copy(transform)
-
-        # Apply each step of the coregistration
-        for i, coreg in enumerate(self.pipeline):
-
-            main_args_apply = {
-                "elev": elev_mod,
-                "transform": out_transform,
-                "crs": crs,
-                "z_name": z_name,
-                "resample": resample,
-                "resampling": resampling,
-            }
-
-            # If non-affine method that expects a bias_vars argument
-            if coreg._needs_vars:
-                step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
-                main_args_apply.update({"bias_vars": step_bias_vars})
-
-            # Step apply: one return for a geodataframe, two returns for array/transform
-            if isinstance(elev_mod, gpd.GeoDataFrame):
-                elev_mod = coreg.apply(**main_args_apply, **kwargs)
-            else:
-                elev_mod, out_transform = coreg.apply(**main_args_apply, **kwargs)
-
-        # Post-process output depending on input type
-        applied_elev, out_transform = _postprocess_coreg_apply(
-            elev=elev,
-            applied_elev=elev_mod,
-            transform=transform,
-            out_transform=out_transform,
-            crs=crs,
-            resample=resample,
-            resampling=resampling,
-        )
-
-        # Only return object if raster or geodataframe, also return transform if object was an array
-        if isinstance(applied_elev, (gu.Raster, gpd.GeoDataFrame, gu.PointCloud)):
-            return applied_elev
-        else:
-            return applied_elev, out_transform
-
-    def __iter__(self) -> Generator[Coreg]:
-        """Iterate over the pipeline steps."""
-        yield from self.pipeline
-
-    def __add__(self, other: list[Coreg] | Coreg | CoregPipeline) -> CoregPipeline:
-        """Append a processing step or a pipeline to the pipeline."""
-        if not isinstance(other, Coreg):
-            other = list(other)
-        else:
-            other = [other]
-
-        pipelines = self.pipeline + other
-
-        # Cancel possible initial shift(s) in CoregPipeline case
-        for method in pipelines:
-            if "affine" in method.meta["inputs"] and "initial_shift" in method.meta["inputs"]["affine"]:
-                del method.meta["inputs"]["affine"]["initial_shift"]
-
-        return CoregPipeline(pipelines)
-
-    def to_matrix(self) -> NDArrayf:
-        """Convert the transform to a 4x4 transformation matrix."""
-        return self._to_matrix_func()
-
-    def _to_matrix_func(self) -> NDArrayf:
-        """Try to join the coregistration steps to a single transformation matrix."""
-
-        total_transform = np.eye(4)
-        for coreg in self.pipeline:
-            new_matrix = coreg.to_matrix()
-            total_transform = new_matrix @ total_transform
-
-        return total_transform

@@ -346,7 +346,10 @@ def _get_centroid_scale(
         # Derive centroid
         centroid_x = np.nanmedian(coords_x)
         centroid_y = np.nanmedian(coords_y)
-        centroid_z = np.nanmedian(ref_elev)
+        if np.ma.isMaskedArray(ref_elev):
+            centroid_z = np.ma.median(ref_elev)
+        else:
+            centroid_z = np.nanmedian(ref_elev)
         centroid = (centroid_x, centroid_y, centroid_z)
 
         # Derive standardization factor
@@ -457,7 +460,7 @@ def _nuth_kaab_bin_fit(
         y = dh / slope_tan
 
     # Trim if required
-    if params_fit_or_bin["trim_residuals"]:
+    if "trim_residuals" in params_fit_or_bin.keys() and params_fit_or_bin["trim_residuals"]:
         ind = index_trimmed(y, central_estimator=params_fit_or_bin["trim_central_statistic"],
                             spread_estimator=params_fit_or_bin["trim_spread_statistic"],
                             spread_coverage=params_fit_or_bin["trim_spread_coverage"],
@@ -1427,7 +1430,7 @@ def _cpd_fit(
         try:
             U, _, V = np.linalg.svd(A, full_matrices=True)
         except np.linalg.LinAlgError:
-            raise ValueError("CPD coregistration numerics during np.linalg.svd(), try setting standardize=True.")
+            raise ValueError("CPD coregistration numerics failed during np.linalg.svd(), try setting standardize=True.")
         C = np.ones((D,))
         C[D - 1] = np.linalg.det(np.dot(U, V))
 
@@ -2495,6 +2498,22 @@ class AffineCoreg(Coreg):
             self._meta["outputs"]["affine"] = {"matrix": valid_matrix}
 
         self._is_affine = True
+
+    def _fit_any_rst_pts(
+        self,
+        ref_elev: NDArrayf | gpd.GeoDataFrame,
+        tba_elev: NDArrayf | gpd.GeoDataFrame,
+        inlier_mask: NDArrayb,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
+        crs: rio.crs.CRS,
+        area_or_point: Literal["Area", "Point"] | None,
+        z_name: str | None = None,
+        weights: NDArrayf | None = None,
+        bias_vars: dict[str, NDArrayf] | None = None,
+        ** kwargs: Any,
+    ) -> None:
+        raise NotImplementedError("This method is meant to be subclassed.")
 
     def _fit_rst_rst(
         self,

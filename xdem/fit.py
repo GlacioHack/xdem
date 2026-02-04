@@ -26,7 +26,7 @@ import inspect
 import logging
 import warnings
 
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import scipy
