@@ -45,7 +45,8 @@ from geoutils.raster.tiling import compute_tiling
 from xdem._misc import import_optional
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg.affine import NuthKaab
-from xdem.coreg.base import Coreg, CoregPipeline
+from xdem.coreg.base import Coreg
+from xdem.coreg.pipeline import CoregPipeline
 
 
 class BlockwiseCoreg:
