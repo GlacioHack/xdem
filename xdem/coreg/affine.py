@@ -458,20 +458,25 @@ def _nuth_kaab_bin_fit(
     # Slope tangents near zero were removed beforehand, so errors should never happen here
     with np.errstate(divide="ignore", invalid="ignore"):
         y = dh / slope_tan
+        valids = np.isfinite(y)
+        y = y[valids]
+        dh = dh[valids]
 
     # Trim if required
     if "trim_residuals" in params_fit_or_bin.keys() and params_fit_or_bin["trim_residuals"]:
-        ind = index_trimmed(y, central_estimator=params_fit_or_bin["trim_central_statistic"],
+        ind = index_trimmed(dh,
+                            central_estimator=params_fit_or_bin["trim_central_statistic"],
                             spread_estimator=params_fit_or_bin["trim_spread_statistic"],
                             spread_coverage=params_fit_or_bin["trim_spread_coverage"],
                             iterative=params_fit_or_bin["trim_iterative"])
-        logging.info(f"Trimmed {np.count_nonzero(~ind)} residuals.")
+        logging.info(f"Trimmed {np.count_nonzero(ind)} residuals.")
         # Keep data not trimmed
-        y = y[ind]
-        aspect = aspect[ind]
+        y = y[~ind]
+        aspect = aspect[~ind]
+        dh = dh[~ind]
 
     # Make an initial guess of the a, b, and c parameters
-    x0 = (3 * np.nanstd(y) / (2**0.5), 0.0, np.nanmean(y))
+    x0 = (1, 1, np.nanmedian(dh))
 
     # For this type of method, the procedure can only be fit, or bin + fit (binning alone does not estimate parameters)
     if params_fit_or_bin["fit_or_bin"] not in ["fit", "bin_and_fit"]:
@@ -1020,11 +1025,11 @@ def _icp_fit(
                             spread_estimator=params_fit_or_bin["trim_spread_statistic"],
                             spread_coverage=params_fit_or_bin["trim_spread_coverage"],
                             iterative=params_fit_or_bin["trim_iterative"])
-        logging.info(f"Trimmed {np.count_nonzero(~ind)} residuals.")
+        logging.info(f"Trimmed {np.count_nonzero(ind)} residuals.")
         # Keep data not trimmed
-        ref = ref[:, ind]
-        tba = tba[:, ind]
-        norms = norms[:, ind]
+        ref = ref[:, ~ind]
+        tba = tba[:, ~ind]
+        norms = norms[:, ~ind]
 
     # Group inputs into a single array
     inputs = (ref, tba, norms)
@@ -2121,17 +2126,17 @@ def _lzd_fit(
                             spread_estimator=params_fit_or_bin["trim_spread_statistic"],
                             spread_coverage=params_fit_or_bin["trim_spread_coverage"],
                             iterative=params_fit_or_bin["trim_iterative"])
-        logging.info(f"Trimmed {np.count_nonzero(~ind)} residuals.")
+        logging.info(f"Trimmed {np.count_nonzero(ind)} residuals.")
         # Keep data not trimmed
-        x = x[ind]
-        y = y[ind]
-        z = z[ind]
-        dh = dh[ind]
-        gradx = gradx[ind]
-        grady = grady[ind]
+        x = x[~ind]
+        y = y[~ind]
+        z = z[~ind]
+        dh = dh[~ind]
+        gradx = gradx[~ind]
+        grady = grady[~ind]
         if errors is not None:
-            sig_other = errors[0][ind] if errors[0] is not None else None
-            sig_grid = errors[2][ind] if errors[2] is not None else None
+            sig_other = errors[0][~ind] if errors[0] is not None else None
+            sig_grid = errors[2][~ind] if errors[2] is not None else None
             errors = (sig_other, errors[1], sig_grid, errors[3])
 
     # Inputs that are not parameters to optimize

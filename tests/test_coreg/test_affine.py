@@ -14,6 +14,7 @@ import rasterio as rio
 import scipy.optimize
 from geoutils import Raster, Vector
 from geoutils.raster.geotransformations import _translate
+from geoutils.stats import nmad
 from scipy.ndimage import binary_dilation
 
 from xdem import coreg, examples
@@ -568,12 +569,57 @@ class TestAffineCoreg:
         invert_fit_shifts_translations3 = translations_rotations_from_matrix(invert_fit_matrix3)
 
         # TODO: Add checks depending on magnitude of translation/rotation
-        #  ("independent" should perform better for large magnitude, "same_xy" better for small, and "iterative_same_xy" best for all)
+        #  ("independent" should perform better for large magnitude, "same_xy" better for small,
+        #  and "iterative_same_xy" best for all)
 
         # Check that rotations are not far from expected values, skipping Z axis which is harder to get
         assert np.allclose(invert_fit_shifts_translations[3:5], shifts_rotations[3:5], rtol=2e-1)
         assert np.allclose(invert_fit_shifts_translations2[3:5], shifts_rotations[3:5], rtol=2e-1)
         assert np.allclose(invert_fit_shifts_translations3[3:5], shifts_rotations[3:5], rtol=2e-1)
+
+    @pytest.mark.parametrize("trim_central_statistic", [np.nanmean, np.nanmedian])  # type: ignore
+    @pytest.mark.parametrize("trim_spread_statistic", [np.nanstd, nmad])  # type: ignore
+    @pytest.mark.parametrize("trim_spread_coverage", [3, 5])  # type: ignore
+    @pytest.mark.parametrize("trim_iterative", [True, False])  # type: ignore
+    @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.LZD, coreg.ICP])  # type: ignore
+    def test_coreg_rigid__trimming(self, coreg_method, trim_central_statistic, trim_spread_statistic,
+                                   trim_spread_coverage,trim_iterative) -> None:
+        """Test trimming schemes."""
+
+        # Get reference elevation
+        ref = self.ref
+
+        # Add artificial shift and rotations
+        # (Define small rotations on purpose, so that the "translation only" coregistration is not affected)
+        shifts_rotations = (50, 50, 50, 0, 0, 0)
+        matrix = matrix_from_translations_rotations(*shifts_rotations)
+        centroid = (ref.bounds.left, ref.bounds.bottom, np.nanmean(ref))
+        ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
+
+        # Due to small sample sizes, no binning
+        if coreg_method == coreg.NuthKaab:
+            kwargs = {"bin_before_fit": False}
+        else:
+            kwargs = {}
+
+        # Run co-registration
+        subsample_size = 50000
+        c = coreg_method(subsample=subsample_size, trim_residuals=True, trim_central_statistic=trim_central_statistic,
+                         trim_spread_statistic=trim_spread_statistic, trim_spread_coverage=trim_spread_coverage,
+                         trim_iterative=trim_iterative, **kwargs)
+        c.fit(ref, ref_shifted_rotated, random_state=42)
+
+        # Get invert of resulting matrices
+        invert_fit_matrix = invert_matrix(c.to_matrix())
+        invert_fit_shifts_translations = translations_rotations_from_matrix(invert_fit_matrix)
+        # Check translations and rotations, tolerance 0.1 pixel for NK/LZD and 1 pixel for ICP
+        if coreg_method in [coreg.NuthKaab, coreg.LZD]:
+            atol_px = 0.1
+        else:
+            atol_px = 1
+        assert np.allclose(invert_fit_shifts_translations[0:3], shifts_rotations[0:3], atol=atol_px*ref.res[0])
+
+
 
     @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD])  # type: ignore
     def test_coreg_rigid__standardize(self, coreg_method: coreg.Coreg) -> None:
