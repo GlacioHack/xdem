@@ -31,6 +31,8 @@ import xdem
 
 _DATA_REPO_URL = "https://github.com/GlacioHack/xdem-data/"
 _COMMIT_HASH = "f8b252cca1f9dc60fa6ccef3df93211b83803a44"
+_DATA_REPO_URL = "https://github.com/marinebcht/xdem-data/tarball/6_mod_crop_test_data"  # TODO
+_COMMIT_HASH = "98004a09f84def4c78b253d41b212baca2b3cccb"  # TODO
 
 # This directory needs to be created within xdem/ so that it works for an installed package as well
 # importlib.resources.files helps take care of the relative path, no matter if package is dev-local or installed
@@ -96,6 +98,7 @@ def _download_and_extract_tarball(dir: str, target_dir: str, overwrite: bool = F
 
     # Construct the URL with the commit hash
     url = f"{_DATA_REPO_URL}/archive/{_COMMIT_HASH}.tar.gz"
+    url = f"{_DATA_REPO_URL}"  # commit={_COMMIT_HASH}" # TOD
 
     # Download the tarball
     response = urllib.request.urlopen(url)
