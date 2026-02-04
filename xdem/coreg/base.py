@@ -2555,7 +2555,7 @@ class Coreg:
         # For an affine alignment, overlap is not necessary, so rasters are not reprojected to the same grid
         if self._is_affine:
             # TODO: CHANGE THIS TO FALSE AND ADAPT
-            reproj_same_grid = True
+            reproj_same_grid = False
         else:
             reproj_same_grid = True
 
