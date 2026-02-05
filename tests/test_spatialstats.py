@@ -457,7 +457,7 @@ class TestBinning:
 
     @pytest.mark.skipif(
         find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
-    )  # type: ignore
+    )
     def test_plot_binning__missing_dep(self) -> None:
         """Check that proper import error is raised when matplotlib is missing"""
 
@@ -500,7 +500,7 @@ class TestVariogram:
 
     @pytest.mark.skipif(
         find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
-    )  # type: ignore
+    )
     def test_sample_empirical_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 
@@ -644,7 +644,7 @@ class TestVariogram:
 
     @pytest.mark.parametrize(
         "subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"]
-    )  # type: ignore
+    )
     def test_sample_multirange_variogram_methods(self, subsample_method: str) -> None:
         """Verify that all other methods run"""
 
@@ -716,8 +716,8 @@ class TestVariogram:
         )
 
     # N is the number of samples in an ensemble
-    @pytest.mark.parametrize("subsample", [10, 100, 1000, 10000])  # type: ignore
-    @pytest.mark.parametrize("shape", [(50, 50), (100, 100), (500, 500)])  # type: ignore
+    @pytest.mark.parametrize("subsample", [10, 100, 1000, 10000])
+    @pytest.mark.parametrize("shape", [(50, 50), (100, 100), (500, 500)])
     def test_choose_cdist_equidistant_sampling_parameters(self, subsample: int, shape: tuple[int, int]) -> None:
         """Verify that the automatically-derived parameters of equidistant sampling are sound"""
 
@@ -807,7 +807,7 @@ class TestVariogram:
 
     @pytest.mark.skipif(
         find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
-    )  # type: ignore
+    )
     def test_fit_sum_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 
@@ -979,7 +979,7 @@ class TestVariogram:
 
     @pytest.mark.skipif(
         find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
-    )  # type: ignore
+    )
     def test_plot_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when matplotlib is missing"""
 
@@ -1041,10 +1041,10 @@ class TestNeffEstimation:
     ddem = Raster(examples.get_path("longyearbyen_ddem"))
     outlines = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
-    @pytest.mark.parametrize("range1", [10**i for i in range(3)])  # type: ignore
-    @pytest.mark.parametrize("psill1", [0.1, 1, 10])  # type: ignore
-    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])  # type: ignore
-    @pytest.mark.parametrize("area", [10 ** (2 * i) for i in range(3)])  # type: ignore
+    @pytest.mark.parametrize("range1", [10**i for i in range(3)])
+    @pytest.mark.parametrize("psill1", [0.1, 1, 10])
+    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])
+    @pytest.mark.parametrize("area", [10 ** (2 * i) for i in range(3)])
     def test_neff_circular_single_range(self, range1: float, psill1: float, model1: float, area: float) -> None:
         """Test the accuracy of numerical integration for one to three models of spherical, gaussian or exponential
         forms to get the number of effective samples"""
@@ -1063,11 +1063,11 @@ class TestNeffEstimation:
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
 
-    @pytest.mark.parametrize("range1", [10**i for i in range(2)])  # type: ignore
-    @pytest.mark.parametrize("range2", [10**i for i in range(2)])  # type: ignore
-    @pytest.mark.parametrize("range3", [10**i for i in range(2)])  # type: ignore
-    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])  # type: ignore
-    @pytest.mark.parametrize("model2", ["spherical", "exponential", "gaussian", "cubic"])  # type: ignore
+    @pytest.mark.parametrize("range1", [10**i for i in range(2)])
+    @pytest.mark.parametrize("range2", [10**i for i in range(2)])
+    @pytest.mark.parametrize("range3", [10**i for i in range(2)])
+    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])
+    @pytest.mark.parametrize("model2", ["spherical", "exponential", "gaussian", "cubic"])
     def test_neff_circular_three_ranges(
         self, range1: float, range2: float, range3: float, model1: float, model2: float
     ) -> None:
@@ -1327,7 +1327,7 @@ class TestSubSampling:
 
 class TestPatchesMethod:
 
-    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")  # type: ignore
+    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")
     def test_get_surface_attribute__missing_dep(self) -> None:
         """Check that proper import error is raised when numba is missing"""
 

@@ -332,7 +332,7 @@ class TestDEM:
     geoid96_alaska = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 15}
     isn93_iceland = {"grid": "is_lmi_Icegeoid_ISN93.tif", "lon": -18, "lat": 65, "shift": 68}
 
-    @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])  # type: ignore
+    @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])
     def test_to_vcrs__grids(self, grid_shifts: dict[str, Any]) -> None:
         """Tests grids to convert vertical CRS."""
 
@@ -359,7 +359,7 @@ class TestDEM:
         # Check the shift is the expected one within 10%
         assert z_diff == pytest.approx(grid_shifts["shift"], rel=0.1)
 
-    @pytest.mark.parametrize("terrain_attribute", xdem.terrain.available_attributes)  # type: ignore
+    @pytest.mark.parametrize("terrain_attribute", xdem.terrain.available_attributes)
     def test_terrain_attributes_wrappers(self, terrain_attribute: str) -> None:
         """Check the terrain attributes corresponds to the ones derived in the terrain module."""
 
@@ -410,7 +410,7 @@ class TestDEM:
         assert complete_line.startswith(crs_key)
         assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'EPSG:5773']"
 
-    @pytest.mark.skip()  # type: ignore
+    @pytest.mark.skip()
     def test_info_3dcrs(self) -> None:
         """Tests info function with the new Coordinate system line on dem with 3D CRS"""
 
@@ -426,7 +426,7 @@ class TestDEM:
         assert complete_line[len(crs_key) :].strip() == "['WGS 84 / UTM zone 36N + EGM96 height']"
 
     @staticmethod
-    @pytest.mark.parametrize(  # type: ignore
+    @pytest.mark.parametrize(
         "coreg_method, expected_pipeline_types",
         [
             pytest.param(xdem.coreg.Deramp(), [xdem.coreg.Deramp], id="Custom method: Deramp"),
@@ -452,7 +452,7 @@ class TestDEM:
             ),
         ],
     )
-    def test_coregister_3d(coreg_method, expected_pipeline_types) -> None:  # type: ignore
+    def test_coregister_3d(coreg_method: Any, expected_pipeline_types: Any) -> None:
         """
         Test coregister_3d functionality
         """
@@ -499,8 +499,8 @@ class TestDEM:
                 id="NuthKaab method: (2, 3, 4, 5) initial shift",
             ),
         ],
-    )  # type: ignore
-    def test_nuthkaab_initial_shift(shift, expected_message) -> None:  # type: ignore
+    )
+    def test_nuthkaab_initial_shift(shift: Any, expected_message: Any) -> None:
         """
         Test coregister_3d initial and output shift
         """
@@ -555,8 +555,8 @@ class TestDEM:
             + xdem.coreg.NuthKaab(initial_shift=(10, 5))
             + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
         ],
-    )  # type: ignore
-    def test_nuthkaab_coregpipeline(pipeline) -> None:  # type: ignore
+    )
+    def test_nuthkaab_coregpipeline(pipeline: Any) -> None:
         """
         Test initial shift cancellation in coreg pipeline method
         """
@@ -582,7 +582,7 @@ class TestDEM:
 
     @pytest.mark.skipif(
         find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
-    )  # type: ignore
+    )
     def test_estimate_uncertainty__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 

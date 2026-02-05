@@ -36,7 +36,7 @@ class TestVCRS:
             (CRS("EPSG:32610"), None),
             (CRS("EPSG:32610").to_3d(), "Ellipsoid"),
         ],
-    )  # type: ignore
+    )
     def test_vcrs_from_crs(self, input_output: tuple[CRS, CRS]) -> None:
         """Test the extraction of a vertical CRS from a CRS."""
 
@@ -64,7 +64,7 @@ class TestVCRS:
             3855,
             CRS.from_epsg(5773),
         ],
-    )  # type: ignore
+    )
     def test_vcrs_from_user_input(self, vcrs_input: str | pathlib.Path | int | CRS) -> None:
         """Tests the function _vcrs_from_user_input for varying user inputs, for which it will return a CRS."""
 
@@ -80,7 +80,7 @@ class TestVCRS:
 
     @pytest.mark.parametrize(
         "vcrs_input", ["Ellipsoid", "ellipsoid", "wgs84", 4326, 4979, CRS.from_epsg(4326), CRS.from_epsg(4979)]
-    )  # type: ignore
+    )
     def test_vcrs_from_user_input__ellipsoid(self, vcrs_input: str | int) -> None:
         """Tests the function _vcrs_from_user_input for inputs where it returns "Ellipsoid"."""
 
@@ -121,7 +121,7 @@ class TestVCRS:
 
     @pytest.mark.parametrize(
         "grid", ["us_noaa_geoid06_ak.tif", "is_lmi_Icegeoid_ISN93.tif", "us_nga_egm08_25.tif", "us_nga_egm96_15.tif"]
-    )  # type: ignore
+    )
     def test_build_vcrs_from_grid(self, grid: str) -> None:
         """Test that vertical CRS are correctly built from grid"""
 
@@ -146,8 +146,8 @@ class TestVCRS:
     # Test for WGS84 in 2D and 3D, UTM, CompoundCRS, everything should work
     @pytest.mark.parametrize(
         "crs", [CRS("EPSG:4326"), CRS("EPSG:4979"), CRS("32610"), CRS("EPSG:4326+5773")]
-    )  # type: ignore
-    @pytest.mark.parametrize("vcrs_input", [CRS("EPSG:5773"), "is_lmi_Icegeoid_ISN93.tif", "EGM96"])  # type: ignore
+    )
+    @pytest.mark.parametrize("vcrs_input", [CRS("EPSG:5773"), "is_lmi_Icegeoid_ISN93.tif", "EGM96"])
     def test_build_ccrs_from_crs_and_vcrs(self, crs: CRS, vcrs_input: CRS | str) -> None:
         """Test the function build_ccrs_from_crs_and_vcrs."""
 
@@ -198,7 +198,7 @@ class TestVCRS:
     geoid96_alaska = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 15}
     isn93_iceland = {"grid": "is_lmi_Icegeoid_ISN93.tif", "lon": -18, "lat": 65, "shift": 68}
 
-    @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])  # type: ignore
+    @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])
     def test_transform_zz(self, grid_shifts: dict[str, Any]) -> None:
         """Tests grids to convert vertical CRS."""
 

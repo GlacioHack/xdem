@@ -30,7 +30,7 @@ class TestTerrainAttribute:
             "max_curvature",
             "min_curvature",
         ],
-    )  # type: ignore
+    )
     def test_attribute_consistency_surface_fit(self, attribute_name: str) -> None:
         """Test that surface fit attributes are generally consistent across various fit methods
         (Horn, ZevenbergThorne, Florinsky), testing within a certain tolerance for a % of the data."""
@@ -142,7 +142,7 @@ class TestTerrainAttribute:
             "planform_curvature",
             "flowline_curvature",
         ],
-    )  # type: ignore
+    )
     def test_curvatures__runtime(self, name: str) -> None:
         """Test the curvature functions"""
 
@@ -191,8 +191,8 @@ class TestTerrainAttribute:
             "planform_curvature",
             "flowline_curvature",
         ],
-    )  # type: ignore
-    @pytest.mark.parametrize("surface_fit", ["ZevenbergThorne", "Florinsky"])  # type: ignore
+    )
+    @pytest.mark.parametrize("surface_fit", ["ZevenbergThorne", "Florinsky"])
     def test_curvatures__definition(self, name: str, surface_fit: Literal["ZevenbergThorne", "Florinsky"]) -> None:
         """Test the curvatures definitions 'geometric' versus 'directional' are yielding expected results."""
 
@@ -422,8 +422,8 @@ class TestTerrainAttribute:
             "max_curvature",
             "min_curvature",
         ],
-    )  # type: ignore
-    @pytest.mark.parametrize("surface_fit", ["Horn", "ZevenbergThorne", "Florinsky"])  # type: ignore
+    )
+    @pytest.mark.parametrize("surface_fit", ["Horn", "ZevenbergThorne", "Florinsky"])
     def test_get_surface_attribute__engine(
         self, attribute: str, surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"]
     ) -> None:
@@ -450,7 +450,7 @@ class TestTerrainAttribute:
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
 
-    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")  # type: ignore
+    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")
     def test_get_surface_attribute__missing_dep(self) -> None:
         """Check that proper import error is raised when numba is missing"""
 
@@ -470,8 +470,8 @@ class TestTerrainAttribute:
             for attr in xdem.terrain.available_attributes
             if attr in ["aspect", "slope", "hillshade"] or "curvature" in attr
         ],
-    )  # type: ignore
-    @pytest.mark.parametrize("surface_fit", ["Horn", "ZevenbergThorne", "Florinsky"])  # type: ignore
+    )
+    @pytest.mark.parametrize("surface_fit", ["Horn", "ZevenbergThorne", "Florinsky"])
     def test_surface_fit_attribute__nan_propag(
         self, attribute: str, surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"]
     ) -> None:
@@ -594,8 +594,8 @@ class TestConvolution:
             else:
                 assert all(np.array(list_vals) != 0)
 
-    @pytest.mark.parametrize("coef_arrs", [coef_arrs_h, coef_arrs_zt, coef_arrs_fl])  # type: ignore
-    def test_convolution_equal__engine(self, coef_arrs: list[np.ndarray]) -> None:  # type: ignore
+    @pytest.mark.parametrize("coef_arrs", [coef_arrs_h, coef_arrs_zt, coef_arrs_fl])
+    def test_convolution_equal__engine(self, coef_arrs: list[np.ndarray]) -> None:
         """
         Check that convolution through SciPy or Numba give equal result for all kernels.
         This calls the convolution subfunctions directly (as they need to be chained sequentially with other

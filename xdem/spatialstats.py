@@ -2525,7 +2525,7 @@ def _scipy_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> N
             )
 
 
-@njit(parallel=True)  # type: ignore
+@njit(parallel=True)
 def _numba_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> NDArrayf:
     """
     Numba convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2.

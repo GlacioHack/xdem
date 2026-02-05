@@ -78,7 +78,7 @@ class TestAffineCoreg:
     @pytest.mark.parametrize(
         "xoff_yoff",
         [(ref.res[0], ref.res[1]), (10 * ref.res[0], 10 * ref.res[1]), (-1.2 * ref.res[0], -1.2 * ref.res[1])],
-    )  # type: ignore
+    )
     def test_reproject_horizontal_shift_samecrs__gdal(
         self, xoff_yoff: tuple[float, float], get_test_data_path: Callable[[str], str]
     ) -> None:
@@ -160,10 +160,10 @@ class TestAffineCoreg:
 
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("shifts", [(20, 5, 2), (-20, 50, 2)])  # type: ignore
-    @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.ICP, coreg.LZD])  # type: ignore
-    def test_coreg_translations__synthetic(self, fit_args, shifts, coreg_method) -> None:  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("shifts", [(20, 5, 2), (-20, 50, 2)])
+    @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.ICP, coreg.LZD])
+    def test_coreg_translations__synthetic(self, fit_args: Any, shifts: tuple[float, float, float], coreg_method: coreg.Coreg) -> None:
         """
         Test the horizontal/vertical shift coregistrations with synthetic shifted data. These tests include NuthKaab,
         ICP and DhMinimize.
@@ -244,7 +244,7 @@ class TestAffineCoreg:
             (coreg.LZD, (9.969819, 2.140150, -1.9257709)),
             (coreg.ICP, (5.417970, 1.1282436, -2.0662609)),
         ],
-    )  # type: ignore
+    )
     def test_coreg_translations__example(
         self, coreg_method__shift: tuple[type[AffineCoreg], tuple[float, float, float]]
     ) -> None:
@@ -267,9 +267,9 @@ class TestAffineCoreg:
         shifts = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
         assert shifts == pytest.approx(expected_shifts)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("vshift", [0.2, 10.0, 1000.0])  # type: ignore
-    def test_coreg_vertical_translation__synthetic(self, fit_args, vshift) -> None:  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("vshift", [0.2, 10.0, 1000.0])
+    def test_coreg_vertical_translation__synthetic(self, fit_args: Any, vshift: float) -> None:
         """
         Test the vertical shift coregistration with synthetic shifted data. These tests include VerticalShift.
 
@@ -327,7 +327,7 @@ class TestAffineCoreg:
         assert np.nanmedian(dh) == pytest.approx(0, abs=10e-6)
         assert np.nanvar(dh) == pytest.approx(0, abs=10e-6)
 
-    @pytest.mark.parametrize("coreg_method__vshift", [(coreg.VerticalShift, -2.305015)])  # type: ignore
+    @pytest.mark.parametrize("coreg_method__vshift", [(coreg.VerticalShift, -2.305015)])
     def test_coreg_vertical_translation__example(
         self, coreg_method__vshift: tuple[type[AffineCoreg], tuple[float, float, float]]
     ) -> None:
@@ -350,12 +350,12 @@ class TestAffineCoreg:
         vshift = c.meta["outputs"]["affine"]["shift_z"]
         assert vshift == pytest.approx(expected_vshift)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
     @pytest.mark.parametrize(
         "shifts_rotations", [(20, 5, 0.1, 0.1, 0.05, 0.01), (-50, 100, 0.1, 1, 0.5, 0.01)]
-    )  # type: ignore
-    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.LZD, coreg.CPD])  # type: ignore
-    def test_coreg_rigid__synthetic(self, fit_args, shifts_rotations, coreg_method) -> None:  # type: ignore
+    )
+    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.LZD, coreg.CPD])
+    def test_coreg_rigid__synthetic(self, fit_args: Any, shifts_rotations: tuple[float, ...], coreg_method: coreg.Coreg) -> None:
         """
         Test the rigid coregistrations with synthetic misaligned (shifted and rotated) data.
 
@@ -448,7 +448,7 @@ class TestAffineCoreg:
             (coreg.LZD, (9.969819, 2.140150, -1.925771, 0.0070245, -0.00766, -0.008174)),
             (coreg.CPD, (0.005405, 0.005163, -2.047066, 0.0070245, -0.00755, -0.0000405)),
         ],
-    )  # type: ignore
+    )
     def test_coreg_rigid__example(
         self, coreg_method__shifts_rotations: tuple[type[AffineCoreg], tuple[float, float, float]]
     ) -> None:
@@ -484,7 +484,7 @@ class TestAffineCoreg:
             coreg.ICP(picky=False),
             coreg.CPD(weight=0.5),
         ],
-    )  # type: ignore
+    )
     def test_coreg_rigid__specific_args(self, rigid_coreg: coreg.Coreg) -> None:
         """
         Check that all specific arguments (non-fitting and binning, subsampling, iterative) of rigid coregistrations
@@ -504,7 +504,7 @@ class TestAffineCoreg:
         subsample_size = 50000 if rigid_coreg.__class__.__name__ != "CPD" else 500
         rigid_coreg.fit(ref, ref_shifted_rotated, random_state=42, subsample=subsample_size)
 
-    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD, coreg.LZD])  # type: ignore
+    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD, coreg.LZD])
     def test_coreg_rigid__only_translation(self, coreg_method: coreg.Coreg) -> None:
 
         # Get reference elevation
@@ -534,7 +534,7 @@ class TestAffineCoreg:
         if coreg_method != coreg.CPD:
             assert np.allclose(invert_fit_shifts_translations[:3], shifts_rotations[:3], rtol=10e-1)
 
-    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD])  # type: ignore
+    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD])
     def test_coreg_rigid__standardize(self, coreg_method: coreg.Coreg) -> None:
 
         # Get reference elevation

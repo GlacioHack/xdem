@@ -35,7 +35,7 @@ class TestTerrainAttribute:
             "tpi",
             "roughness",
         ],
-    )  # type: ignore
+    )
     def test_attribute_functions_against_gdaldem(
         self, attribute: str, get_test_data_path: Callable[[str], str]
     ) -> None:
@@ -128,7 +128,7 @@ class TestTerrainAttribute:
     @pytest.mark.parametrize(
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "profile_curvature", "planform_curvature"],
-    )  # type: ignore
+    )
     def test_attribute_functions_against_richdem(
         self, attribute: str, get_test_data_path: Callable[[str], str]
     ) -> None:
@@ -236,8 +236,8 @@ class TestTerrainAttribute:
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
-    @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])  # type: ignore
-    @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)  # type: ignore
+    @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])
+    @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)
     def test_attributes__multiproc(self, attribute: str, surfit_windowsize: tuple[str, int]) -> None:
         """
         Test that terrain attributes are exactly equal in multiprocessing or in normal processing, and for varying

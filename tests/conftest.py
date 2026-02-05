@@ -11,7 +11,7 @@ _TESTDATA_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), ".
 _TESTOUTPUT_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tests", "test_output"))
 
 
-@pytest.fixture(scope="session")  # type: ignore
+@pytest.fixture(scope="session")
 def test_output_dir() -> str:
 
     os.makedirs(_TESTOUTPUT_DIRECTORY, exist_ok=True)
@@ -20,7 +20,7 @@ def test_output_dir() -> str:
     return _TESTOUTPUT_DIRECTORY
 
 
-@pytest.fixture(scope="session")  # type: ignore
+@pytest.fixture(scope="session")
 def get_test_data_path() -> Callable[[str], str]:
     def _get_test_data_path(filename: str, overwrite: bool = False) -> str:
         """Get file from test_data"""
@@ -48,7 +48,7 @@ class LoggingWarningCollector(logging.Handler):
         self.records.append(record)
 
 
-@pytest.fixture(autouse=True)  # type: ignore
+@pytest.fixture(autouse=True)
 def fail_on_logging_warnings(request: Any) -> Any:
     """Fixture used automatically in all tests to fail when a logging exceptions of WARNING or above is raised."""
 
@@ -119,6 +119,6 @@ def _assert_and_allow_log(
         r.expected = True
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def assert_and_allow_log() -> Any:
     return _assert_and_allow_log

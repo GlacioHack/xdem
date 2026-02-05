@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import sys
 import warnings
+from typing import Any
 
 import geopandas as gpd
 import geoutils as gu
@@ -192,18 +193,18 @@ class TestBiasCorr:
 
     @pytest.mark.skipif(
         sys.platform != "linux", reason="Basinhopping from DirectionalBias fails on Mac"
-    )  # type: ignore
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
+    )
+    @pytest.mark.parametrize("fit_args", all_fit_args)
     @pytest.mark.parametrize(
         "fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: x[0] * a + b)
-    )  # type: ignore
+    )
     @pytest.mark.parametrize(
         "fit_optimizer",
         [
             scipy.optimize.curve_fit,
         ],
-    )  # type: ignore
-    def test_biascorr__fit_1d(self, fit_args, fit_func, fit_optimizer, capsys) -> None:  # type: ignore
+    )
+    def test_biascorr__fit_1d(self, fit_args: Any, fit_func: Any, fit_optimizer: Any, capsys: Any) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
 
         # Create a bias correction object
@@ -228,17 +229,17 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_args", [fit_args_rst_pts, fit_args_rst_rst])  # type: ignore
+    @pytest.mark.parametrize("fit_args", [fit_args_rst_pts, fit_args_rst_rst])
     @pytest.mark.parametrize(
         "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c / x[0] + d)
-    )  # type: ignore
+    )
     @pytest.mark.parametrize(
         "fit_optimizer",
         [
             scipy.optimize.curve_fit,
         ],
-    )  # type: ignore
-    def test_biascorr__fit_2d(self, fit_args, fit_func, fit_optimizer) -> None:  # type: ignore
+    )
+    def test_biascorr__fit_2d(self, fit_args: Any, fit_func: Any, fit_optimizer: Any) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
 
         # Create a bias correction object
@@ -259,10 +260,10 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": 20}, {"elevation": (200, 500, 800)}))  # type: ignore
-    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
-    def test_biascorr__bin_1d(self, fit_args, bin_sizes, bin_statistic) -> None:  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": 20}, {"elevation": (200, 500, 800)}))
+    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])
+    def test_biascorr__bin_1d(self, fit_args: Any, bin_sizes: Any, bin_statistic: Any) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
 
         # Create a bias correction object
@@ -282,10 +283,10 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (4, {"elevation": (200, 500, 800), "slope": (0, 20, 40)}))  # type: ignore
-    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
-    def test_biascorr__bin_2d(self, fit_args, bin_sizes, bin_statistic) -> None:  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("bin_sizes", (4, {"elevation": (200, 500, 800), "slope": (0, 20, 40)}))
+    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])
+    def test_biascorr__bin_2d(self, fit_args: Any, bin_sizes: Any, bin_statistic: Any) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
 
         # Create a bias correction object
@@ -307,21 +308,21 @@ class TestBiasCorr:
 
     @pytest.mark.skipif(
         sys.platform != "linux", reason="Basinhopping from DirectionalBias fails on Mac"
-    )  # type: ignore
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
+    )
+    @pytest.mark.parametrize("fit_args", all_fit_args)
     @pytest.mark.parametrize(
         "fit_func", ("norder_polynomial", "nfreq_sumsin", lambda x, a, b: x[0] * a + b)
-    )  # type: ignore
+    )
     @pytest.mark.parametrize(
         "fit_optimizer",
         [
             scipy.optimize.curve_fit,
         ],
-    )  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": np.arange(200, 500, 10)}))  # type: ignore
-    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
-    def test_biascorr__bin_and_fit_1d(  # type: ignore
-        self, fit_args, fit_func, fit_optimizer, bin_sizes, bin_statistic
+    )
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": np.arange(200, 500, 10)}))
+    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])
+    def test_biascorr__bin_and_fit_1d(
+        self, fit_args: Any, fit_func: Any, fit_optimizer: Any, bin_sizes: Any, bin_statistic: Any
     ) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
 
@@ -361,20 +362,20 @@ class TestBiasCorr:
         # Apply the correction
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
     @pytest.mark.parametrize(
         "fit_func", (polynomial_2d, lambda x, a, b, c, d: a * x[0] + b * x[1] + c / x[0] + d)
-    )  # type: ignore
+    )
     @pytest.mark.parametrize(
         "fit_optimizer",
         [
             scipy.optimize.curve_fit,
         ],
-    )  # type: ignore
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (200, 500, 800), "slope": (0, 20, 40)}))  # type: ignore
-    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])  # type: ignore
-    def test_biascorr__bin_and_fit_2d(  # type: ignore
-        self, fit_args, fit_func, fit_optimizer, bin_sizes, bin_statistic
+    )
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (200, 500, 800), "slope": (0, 20, 40)}))
+    @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])
+    def test_biascorr__bin_and_fit_2d(
+        self, fit_args: Any, fit_func: Any, fit_optimizer: Any, bin_sizes: Any, bin_statistic: Any
     ) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
 
@@ -423,10 +424,10 @@ class TestBiasCorr:
         # Check that variable names are defined during instantiation
         assert dirbias.meta["inputs"]["fitorbin"]["bias_var_names"] == ["angle"]
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("angle", [20])  # type: ignore
-    @pytest.mark.parametrize("nb_freq", [3])  # type: ignore
-    def test_directionalbias__synthetic(self, fit_args, angle, nb_freq) -> None:  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("angle", [20])
+    @pytest.mark.parametrize("nb_freq", [3])
+    def test_directionalbias__synthetic(self, fit_args: Any, angle: float, nb_freq: int) -> None:
         """Test the subclass DirectionalBias with synthetic data."""
 
         # Get along track
@@ -512,9 +513,9 @@ class TestBiasCorr:
         # Check that variable names are defined during instantiation
         assert deramp.meta["inputs"]["fitorbin"]["bias_var_names"] == ["xx", "yy"]
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    @pytest.mark.parametrize("order", [1, 2, 3, 4])  # type: ignore
-    def test_deramp__synthetic(self, fit_args, order: int) -> None:  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    @pytest.mark.parametrize("order", [1, 2, 3, 4])
+    def test_deramp__synthetic(self, fit_args: Any, order: int) -> None:
         """Run the deramp for varying polynomial orders using a synthetic elevation difference."""
 
         # Get coordinates
@@ -566,8 +567,8 @@ class TestBiasCorr:
 
         assert tb.meta["inputs"]["fitorbin"]["bias_var_names"] == ["max_curvature"]
 
-    @pytest.mark.parametrize("fit_args", all_fit_args)  # type: ignore
-    def test_terrainbias__synthetic(self, fit_args) -> None:  # type: ignore
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    def test_terrainbias__synthetic(self, fit_args: Any) -> None:
         """Test the subclass TerrainBias."""
 
         # Get maximum curvature
