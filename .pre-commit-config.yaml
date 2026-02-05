@@ -59,7 +59,6 @@ repos:
           hooks:
                 - id: mypy
                   args: [
-                        --config-file=mypy.ini,
                         --strict,
                         --implicit-optional,
                         --ignore-missing-imports,  # Don't warn about stubs since pre-commit runs in a limited env

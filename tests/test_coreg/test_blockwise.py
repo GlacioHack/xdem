@@ -18,7 +18,7 @@ import xdem
 from xdem.coreg import BlockwiseCoreg, Coreg
 
 
-@pytest.fixture(scope="module")  # type: ignore
+@pytest.fixture(scope="module")
 def example_data() -> tuple[Raster, Raster, Vector]:
     """Load example DEMs and glacier outlines with inlier mask."""
     ref_dem = Raster(xdem.examples.get_path_test("longyearbyen_ref_dem"))
@@ -29,17 +29,17 @@ def example_data() -> tuple[Raster, Raster, Vector]:
     return ref_dem, tba_dem, inlier_mask
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def step() -> Coreg:
     return xdem.coreg.NuthKaab(vertical_shift=False)
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def mp_config(tmp_path: Path) -> MultiprocConfig:
     return MultiprocConfig(chunk_size=25, outfile=tmp_path / "test.tif")
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def blockwise_coreg(step, mp_config) -> BlockwiseCoreg:
     return xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config, block_size_fit=25, block_size_apply=25)
 

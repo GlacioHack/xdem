@@ -33,7 +33,7 @@ class TestExamples:
             (tba_dem, np.array([464.6715, 213.7554, 207.8788, 760.8192, 797.3268], dtype=np.float32), None),
             (ddem, np.array([1.37, -1.67, 0.13, -10.10, 2.49], dtype=np.float32), 10e-3),
         ],
-    )  # type: ignore
+    )
     def test_array_content(self, rst_truevals_abs: tuple[Raster, NDArrayf, float]) -> None:
         """Let's ensure the data arrays in the examples are always the same by checking randomly some values"""
 
@@ -47,7 +47,7 @@ class TestExamples:
         assert values == pytest.approx(truevals, abs=abs)
 
     # Note: Following PR #329, no gaps on DEM edges after coregistration
-    @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 0)])  # type: ignore
+    @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 0)])
     def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]) -> None:
         """Let's also check that the data arrays have always the same number of not finite values"""
 

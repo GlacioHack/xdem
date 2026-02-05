@@ -764,7 +764,7 @@ def _preprocess_windowed_indexes(
     return idx_attrs, make_attrs, attrs_size
 
 
-@njit(inline="always", cache=True)  # type: ignore
+@njit(inline="always", cache=True)
 def _make_windowed_indexes(
     dem_window: NDArrayf,
     window_size: int,
@@ -814,7 +814,7 @@ def _make_windowed_indexes(
     return attrs
 
 
-@njit(parallel=True, cache=True)  # type: ignore
+@njit(parallel=True, cache=True)
 def _get_windowed_indexes_numba(
     dem: NDArrayf,
     window_size: int,

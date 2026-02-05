@@ -4,6 +4,7 @@ import os
 import tempfile
 import warnings
 from importlib.util import find_spec
+from typing import Any
 
 import geopandas as gpd
 import geoutils as gu
@@ -92,7 +93,7 @@ class TestEPC:
             ]
         )
 
-    @pytest.mark.skipif(find_spec("laspy") is not None, reason="Only runs if laspy is missing.")  # type: ignore
+    @pytest.mark.skipif(find_spec("laspy") is not None, reason="Only runs if laspy is missing.")
     def test_init__missing_dep(self) -> None:
         """Check that proper import error is raised when laspy is missing"""
 
@@ -304,7 +305,7 @@ class TestEPC:
             epc.to_vcrs(CRS("EPSG:4979"))
 
     @staticmethod
-    @pytest.mark.parametrize(  # type: ignore
+    @pytest.mark.parametrize(
         "coreg_method, expected_pipeline_types",
         [
             pytest.param(
@@ -329,7 +330,7 @@ class TestEPC:
             ),
         ],
     )
-    def test_coregister_3d(coreg_method, expected_pipeline_types) -> None:  # type: ignore
+    def test_coregister_3d(coreg_method: Any, expected_pipeline_types: Any) -> None:
         """
         Test coregister_3d works for an EPC.
         """
@@ -360,7 +361,7 @@ class TestEPC:
         for i, expected_type in enumerate(expected_pipeline_types):
             assert isinstance(pipeline[i], expected_type)
 
-    def test_coregister_3d__raises(self) -> None:  # type: ignore
+    def test_coregister_3d__raises(self) -> None:
         """
         Test coregister_3d functionality raises propers errors for an EPC.
         """
