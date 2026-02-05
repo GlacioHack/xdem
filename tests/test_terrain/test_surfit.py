@@ -9,6 +9,7 @@ import pytest
 from scipy.ndimage import binary_dilation
 
 import xdem
+from xdem._typing import NDArrayf
 from xdem.terrain.surfit import all_coefs
 
 PLOT = False
@@ -595,7 +596,7 @@ class TestConvolution:
                 assert all(np.array(list_vals) != 0)
 
     @pytest.mark.parametrize("coef_arrs", [coef_arrs_h, coef_arrs_zt, coef_arrs_fl])
-    def test_convolution_equal__engine(self, coef_arrs: list[np.ndarray]) -> None:
+    def test_convolution_equal__engine(self, coef_arrs: list[NDArrayf]) -> None:
         """
         Check that convolution through SciPy or Numba give equal result for all kernels.
         This calls the convolution subfunctions directly (as they need to be chained sequentially with other

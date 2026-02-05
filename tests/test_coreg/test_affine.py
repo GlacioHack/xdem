@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os.path
 import warnings
-from typing import Callable
+from typing import Any, Callable
 
 import geopandas as gpd
 import geoutils
@@ -163,7 +163,9 @@ class TestAffineCoreg:
     @pytest.mark.parametrize("fit_args", all_fit_args)
     @pytest.mark.parametrize("shifts", [(20, 5, 2), (-20, 50, 2)])
     @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.ICP, coreg.LZD])
-    def test_coreg_translations__synthetic(self, fit_args: Any, shifts: tuple[float, float, float], coreg_method: coreg.Coreg) -> None:
+    def test_coreg_translations__synthetic(
+        self, fit_args: Any, shifts: tuple[float, float, float], coreg_method: coreg.Coreg
+    ) -> None:
         """
         Test the horizontal/vertical shift coregistrations with synthetic shifted data. These tests include NuthKaab,
         ICP and DhMinimize.
@@ -351,11 +353,14 @@ class TestAffineCoreg:
         assert vshift == pytest.approx(expected_vshift)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)
-    @pytest.mark.parametrize(
-        "shifts_rotations", [(20, 5, 0.1, 0.1, 0.05, 0.01), (-50, 100, 0.1, 1, 0.5, 0.01)]
-    )
+    @pytest.mark.parametrize("shifts_rotations", [(20, 5, 0.1, 0.1, 0.05, 0.01), (-50, 100, 0.1, 1, 0.5, 0.01)])
     @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.LZD, coreg.CPD])
-    def test_coreg_rigid__synthetic(self, fit_args: Any, shifts_rotations: tuple[float, ...], coreg_method: coreg.Coreg) -> None:
+    def test_coreg_rigid__synthetic(
+        self,
+        fit_args: Any,
+        shifts_rotations: tuple[float, float, float, float, float, float],
+        coreg_method: coreg.Coreg,
+    ) -> None:
         """
         Test the rigid coregistrations with synthetic misaligned (shifted and rotated) data.
 

@@ -144,9 +144,7 @@ class TestVCRS:
                 xdem.vcrs._build_vcrs_from_grid(grid="not_a_grid.tif")
 
     # Test for WGS84 in 2D and 3D, UTM, CompoundCRS, everything should work
-    @pytest.mark.parametrize(
-        "crs", [CRS("EPSG:4326"), CRS("EPSG:4979"), CRS("32610"), CRS("EPSG:4326+5773")]
-    )
+    @pytest.mark.parametrize("crs", [CRS("EPSG:4326"), CRS("EPSG:4979"), CRS("32610"), CRS("EPSG:4326+5773")])
     @pytest.mark.parametrize("vcrs_input", [CRS("EPSG:5773"), "is_lmi_Icegeoid_ISN93.tif", "EGM96"])
     def test_build_ccrs_from_crs_and_vcrs(self, crs: CRS, vcrs_input: CRS | str) -> None:
         """Test the function build_ccrs_from_crs_and_vcrs."""

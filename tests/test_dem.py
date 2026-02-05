@@ -580,9 +580,7 @@ class TestDEM:
         assert isinstance(sig_h, gu.Raster)
         assert callable(corr_sig)
 
-    @pytest.mark.skipif(
-        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
-    )
+    @pytest.mark.skipif(find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing.")
     def test_estimate_uncertainty__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 

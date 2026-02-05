@@ -455,9 +455,7 @@ class TestBinning:
                 dvalues=self.diff.get_nanarray(), stable_mask=self.outlines, list_var=[self.slope.get_nanarray()]
             )
 
-    @pytest.mark.skipif(
-        find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
-    )
+    @pytest.mark.skipif(find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing.")
     def test_plot_binning__missing_dep(self) -> None:
         """Check that proper import error is raised when matplotlib is missing"""
 
@@ -498,9 +496,7 @@ class TestVariogram:
 
     ref, diff, mask, outlines = load_ref_and_diff()
 
-    @pytest.mark.skipif(
-        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
-    )
+    @pytest.mark.skipif(find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing.")
     def test_sample_empirical_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 
@@ -642,9 +638,7 @@ class TestVariogram:
         # time_metricspace_variogram = t4 - t3
         # assert time_metricspace_variogram == pytest.approx(time_method_2, rel=0.3)
 
-    @pytest.mark.parametrize(
-        "subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"]
-    )
+    @pytest.mark.parametrize("subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"])
     def test_sample_multirange_variogram_methods(self, subsample_method: str) -> None:
         """Verify that all other methods run"""
 
@@ -805,9 +799,7 @@ class TestVariogram:
         if PLOT:
             xdem.spatialstats.plot_variogram(df, list_fit_fun=[fun])
 
-    @pytest.mark.skipif(
-        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
-    )
+    @pytest.mark.skipif(find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing.")
     def test_fit_sum_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 
@@ -977,9 +969,7 @@ class TestVariogram:
                 dvalues=diff_on_stable_arr, stable_mask=self.outlines, list_models=["Gau", "Sph"], random_state=42
             )
 
-    @pytest.mark.skipif(
-        find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
-    )
+    @pytest.mark.skipif(find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing.")
     def test_plot_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when matplotlib is missing"""
 

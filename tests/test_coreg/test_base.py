@@ -163,9 +163,7 @@ class TestCoregClass:
         coreg.DirectionalBias,
     ]
 
-    @pytest.mark.skipif(
-        sys.platform != "linux", reason="Basinhopping from DirectionalBias fails on Mac"
-    )
+    @pytest.mark.skipif(sys.platform != "linux", reason="Basinhopping from DirectionalBias fails on Mac")
     @pytest.mark.parametrize("coreg_class", all_coregs)
     def test_subsample(self, coreg_class: Any) -> None:
 
@@ -363,9 +361,7 @@ class TestCoregClass:
         with pytest.raises(ValueError, match="'None' is not a valid rasterio.enums.Resampling method.*"):
             coreg_method.apply(tba_dem, resample=True, resampling=None)
 
-    @pytest.mark.skipif(
-        sys.platform != "linux", reason="Basinhopping from DirectionalBias fails on Mac"
-    )
+    @pytest.mark.skipif(sys.platform != "linux", reason="Basinhopping from DirectionalBias fails on Mac")
     @pytest.mark.parametrize("coreg_class", all_coregs)
     def test_fit_and_apply(self, coreg_class: Any) -> None:
         """Check that fit_and_apply returns the same results as using fit, then apply, for any coreg."""

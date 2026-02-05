@@ -54,9 +54,7 @@ class TestRobustFitting:
         for i in range(4):
             assert coefs[i] == pytest.approx(true_coefs[i], abs=error_margins[i])
 
-    @pytest.mark.skipif(
-        find_spec("sklearn") is not None, reason="Only runs if scikit-learn is missing."
-    )
+    @pytest.mark.skipif(find_spec("sklearn") is not None, reason="Only runs if scikit-learn is missing.")
     def test_robust_norder_polynomial_fit__missing_dep(self) -> None:
         """Check that proper import error is raised when sklearn is missing"""
 
