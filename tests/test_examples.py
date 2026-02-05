@@ -30,16 +30,16 @@ def load_examples_longyearbyen() -> tuple[Raster, Raster, Vector, Raster, EPC]:
     return ref_dem, tba_dem, glacier_mask, ddem, epc
 
 
-def load_examples_gizeh() -> Raster:
-    """Load Gizeh example."""
+def load_examples_giza() -> Raster:
+    """Load giza example."""
 
-    return Raster(examples.get_path("gizeh_dem"))
+    return Raster(examples.get_path("giza_dem"))
 
 
 class TestExamples:
 
     ref_dem, tba_dem, glacier_mask, ddem, epc = load_examples_longyearbyen()
-    gizeh_dem = load_examples_gizeh()
+    giza_dem = load_examples_giza()
 
     @pytest.mark.parametrize(
         "rst_truevals_abs",
@@ -47,7 +47,7 @@ class TestExamples:
             (ref_dem, np.array([465.11816, 207.3236, 208.30563, 748.7337, 797.28644], dtype=np.float32), None),
             (tba_dem, np.array([464.6715, 213.7554, 207.8788, 760.8192, 797.3268], dtype=np.float32), None),
             (ddem, np.array([1.37, -1.67, 0.13, -10.10, 2.49], dtype=np.float32), 10e-3),
-            (gizeh_dem, np.array([-32768.0, 80.30466, -32768.0, -32768.0, -32768.0], dtype=np.float32), None),
+            (giza_dem, np.array([-32768.0, 80.30466, -32768.0, -32768.0, -32768.0], dtype=np.float32), None),
         ],
     )
     def test_array_content(self, rst_truevals_abs: tuple[Raster, NDArrayf, float]) -> None:
@@ -63,7 +63,7 @@ class TestExamples:
 
     # Note: Following PR #329, no gaps on DEM edges after coregistration
     @pytest.mark.parametrize(
-        "rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 0), (gizeh_dem, 838023)]
+        "rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 0), (giza_dem, 838023)]
     )  # type: ignore
     def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]) -> None:
         """Let's also check that the data arrays have always the same number of not finite values"""
@@ -102,7 +102,7 @@ class TestExamples:
             ("longyearbyen_glacier_outlines", 13),
             ("longyearbyen_ddem", 15),
             ("longyearbyen_epc", 13),
-            ("gizeh_dem", 1),
+            ("giza_dem", 1),
         ],
     )  # type: ignore
     def test_download(self, nb_files_data: tuple[str, int], tmp_path: Path) -> None:

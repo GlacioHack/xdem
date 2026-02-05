@@ -37,11 +37,11 @@ So, `"longyearbyen_ref_dem"` (for "reference" dem) can be compared to `"longyear
 ```
 
 
-Another data is available over the Gizeh pyramid complex:
+Another data is available over the Giza pyramid complex:
 
-| Alias         | Filename |  Type  |             Description |
-|---------------|:--------:|:------:|------------------------:|
-| `"gizeh_dem"` | DSM.tif  | Raster | DEM of the area in 2013 |
+| Alias        | Filename |  Type  |             Description |
+|--------------|:--------:|:------:|------------------------:|
+| `"giza_dem"` | DSM.tif  | Raster | DEM of the area in 2013 |
 
 
 
@@ -72,7 +72,7 @@ It downloads the entire dataset of the alias if it was not already available and
 Also, you can download all the data, no matter the area by running:
 
 ```
-# Download all the of the xDEM data (Longyearbyen and Gizeh dataset) and return the output directory path
+# Download all the of the xDEM data (Longyearbyen and Giza dataset) and return the output directory path
 output_dir = xdem.examples.get_all_data()
 ```
 

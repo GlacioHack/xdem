@@ -44,7 +44,7 @@ _FILEPATHS_DATA = {
     "longyearbyen_glacier_outlines": op.join("Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_1990.shp"),
     "longyearbyen_glacier_outlines_2010": op.join("Longyearbyen", "data", "glacier_mask", "CryoClim_GAO_SJ_2010.shp"),
     "longyearbyen_epc": op.join("Longyearbyen", "data", "EPC_IS2.gpkg"),
-    "gizeh_dem": op.join("Gizeh", "data", "DSM.tif"),
+    "giza_dem": op.join("Giza", "data", "DSM.tif"),
 }
 
 _FILEPATHS_PROCESSED = {
