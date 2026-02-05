@@ -487,7 +487,7 @@ class Accuracy(Workflows):
             html += "<h2>Statistics</h2>\n"
             html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
             inter_columns = "</td><td>".join(map(str, self.df_stats.T.columns))
-            html += f"<tr><td>{key}</td><td>{inter_columns}</td></tr>\n"
+            html += f"<tr><td>Data</td><td>{inter_columns}</td></tr>\n"
             for key, value in self.df_stats.T.iterrows():
                 inter_line = "</td><td>".join(map(str, value.values))
                 html += f"<tr><td>{key}</td><td>{inter_line}</td></tr>\n"
