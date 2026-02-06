@@ -127,6 +127,9 @@ Elevation input information.
 For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to {ref}`vertical-ref`.
 The ``downsample`` parameter allows the user to resample the elevation by a round factor.
 The default value of 1 means no downsampling.
+
+And, if you want to test the CLI with xDEM example data, they can also refer to data alias.
+Please refer to {ref}`data-example` to have more information.
 :::
 
 :::{code-block} yaml

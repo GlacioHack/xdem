@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError, URLError
 
 from xdem._misc import import_optional
+from xdem.examples import _FILEPATHS_ALL
 from xdem.vcrs import _vcrs_from_user_input
 
 if TYPE_CHECKING:
@@ -59,7 +60,8 @@ class CustomValidator(Validator):  # type: ignore
         {'type': 'boolean'}
         """
         if value is not None:
-            if path_exists and not os.path.exists(value):
+            # if path does not exist and not an alias
+            if (path_exists and not os.path.exists(value)) and (value not in list(_FILEPATHS_ALL.keys())):
                 self._error(field, f"Path does not exist: {value}")
         return True
 
