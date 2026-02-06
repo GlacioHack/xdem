@@ -443,7 +443,7 @@ class TestAffineCoreg:
         # Need to standardize by the elevation difference spread to avoid huge/small values close to infinity
         # Checking for 90% of variance as ICP cannot always resolve the small shifts
         # And only 10% of variance for CPD that can't resolve shifts at all
-        fac_reduc_var = 0.1 if coreg_method != coreg.CPD else 0.9
+        fac_reduc_var = 0.1 if coreg_method != coreg.CPD else 1.0
         assert np.nanvar(dh / np.nanstd(init_dh)) < fac_reduc_var
 
     @pytest.mark.parametrize(

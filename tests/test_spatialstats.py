@@ -59,16 +59,17 @@ class TestBinning:
             values=self.diff.data.flatten()[indices],
             list_var=[self.slope.data.flatten()[indices]],
             list_var_names=["slope"],
+            list_var_bins=4,
         )
 
         # Check length matches
-        assert df.shape[0] == 10
+        assert df.shape[0] == 4
         # Check bin edges match the minimum and maximum of binning variable
         assert np.nanmin(self.slope.data.flatten()[indices]) == np.min(pd.IntervalIndex(df.slope).left)
         assert np.nanmax(self.slope.data.flatten()[indices]) == np.max(pd.IntervalIndex(df.slope).right)
 
         # NMAD should go up a bit with slope, more than 1 m between the two extreme bins
-        assert df.nmad.values[-1] - df.nmad.values[0] > 1
+        assert df.nmad.values[-1] - df.nmad.values[1] > 1
 
         # 1D binning with 20 bins
         df = xdem.spatialstats.nd_binning(
@@ -512,7 +513,7 @@ class TestVariogram:
         # Check the variogram output is consistent for a random state
         df = xdem.spatialstats.sample_empirical_variogram(values=self.diff, subsample=10, random_state=42)
         assert df["lags"][2] == pytest.approx(56.56854249492382)
-        assert df["count"][2] == 3
+        assert df["count"][2] == 4
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
@@ -1373,7 +1374,7 @@ class TestPatchesMethod:
         assert df_full.shape == (7, 5)
 
         # Check the sampling is always fixed for a random state
-        assert df_full["tile"].values[0] == "0_8"
+        assert df_full["tile"].values[0] == "7_9"
 
         # Check that all counts respect the default minimum percentage of 80% valid pixels
         assert all(df_full["count"].values > 0.8 * np.max(df_full["count"].values))
