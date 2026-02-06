@@ -59,7 +59,7 @@ class TestBinning:
             values=self.diff.data.flatten()[indices],
             list_var=[self.slope.data.flatten()[indices]],
             list_var_names=["slope"],
-            list_var_bins=4
+            list_var_bins=4,
         )
 
         # Check length matches
