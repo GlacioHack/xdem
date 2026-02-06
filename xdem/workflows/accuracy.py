@@ -195,21 +195,30 @@ class Accuracy(Workflows):
         # Intersection
         logging.info("Computing intersection")
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
+        print()
+        self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
+        self.reference_elev = self.reference_elev.crop(coord_intersection)
+        coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
+        self.reference_elev = self.reference_elev.crop(coord_intersection)
+
+        coord_intersection = self.to_be_aligned_elev.intersection(self.reference_elev)
+
         if sampling_source == "reference_elev":
-            self.reference_elev = self.reference_elev.crop(coord_intersection)
-            self.generate_plot(
-                self.to_be_aligned_elev,
-                title="Cropped reference DEM",
-                filename="cropped_reference_elev_map",
-                cmap="terrain",
-                cbar_title="Elevation (m)",
-            )
-        else:
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
             self.generate_plot(
                 self.to_be_aligned_elev,
                 title="Cropped to-be-aligned DEM",
                 filename="cropped_to_be_aligned_elev_map",
+                cmap="terrain",
+                cbar_title="Elevation (m)",
+            )
+        else:
+            self.reference_elev = self.reference_elev.crop(coord_intersection)
+
+            self.generate_plot(
+                self.reference_elev,
+                title="Cropped reference DEM",
+                filename="cropped_reference_elev_map",
                 cmap="terrain",
                 cbar_title="Elevation (m)",
             )
@@ -359,7 +368,7 @@ class Accuracy(Workflows):
             generate_plot_diff("after", self.diff_after, vmin, vmax)
 
         else:
-            self.diff = [self.to_be_aligned_elev - ref_elev]
+            self.diff = self.to_be_aligned_elev - ref_elev
             self.stats = self.diff.get_stats(stats_keys)
 
             vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
@@ -459,6 +468,28 @@ class Accuracy(Workflows):
             "50%; height: auto; width: 50%;'>\n"
         )
         html += "</div>\n"
+
+        if self.compute_coreg:
+            html += "<h2>Processed Dataset</h2>\n"
+            html += "<div style='display: flex; gap: 10px;'>\n"
+            sampling_source = self.config["inputs"]["sampling_grid"]
+
+            if sampling_source == "reference_elev":
+                reference_elev_intersection = "plots/reference_elev_map.png"
+                to_be_aligned_elev_intersection = "plots/cropped_to_be_aligned_elev_map.png"
+            elif sampling_source == "to_be_aligned_elev":
+                reference_elev_intersection = "plots/cropped_reference_elev_map.png"
+                to_be_aligned_elev_intersection = "plots/to_be_aligned_elev_map.png"
+
+            html += (
+                "  <img src='" + reference_elev_intersection + "' alt='Image PNG' "
+                "style='max-width: 50%; height: auto; width: 50%;'>\n"
+            )
+            html += (
+                "  <img src='" + to_be_aligned_elev_intersection + "' alt='Image PNG' style='max-width: "
+                "50%; height: auto; width: 50%;'>\n"
+            )
+            html += "</div>\n"
 
         def format_values(val: Any) -> Any:
             """Format values for the dictionary."""
