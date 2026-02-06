@@ -12,7 +12,7 @@ import pytest
 from geoutils import Raster, Vector
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.raster import ClusterGenerator
-from geoutils.raster.distributed_computing import MultiprocConfig
+from geoutils.raster.chunked import MultiprocConfig
 
 import xdem
 from xdem.coreg import BlockwiseCoreg, Coreg
