@@ -6,9 +6,6 @@ import glob
 import os
 from pathlib import Path
 
-import glob
-import os
-
 import geoutils as gu
 import numpy as np
 import pytest
