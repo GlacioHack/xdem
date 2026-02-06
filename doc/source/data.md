@@ -33,7 +33,7 @@ It is composed of:
 
 
 ```{note}
-So, `"longyearbyen_ref_dem"` (for "reference" dem) can be compared to `"longyearbyen_ref_tba"` (for "to-be-aligned" dem).
+So, `"longyearbyen_ref_dem"` (for "reference" dem) can be compared to `"longyearbyen_tba_dem"` (for "to-be-aligned" dem).
 ```
 
 
