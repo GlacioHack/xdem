@@ -146,8 +146,6 @@ class TestExamples:
 
         path = examples.get_path_test("longyearbyen_ref_dem", output_dir=str(tmp_path))
 
-        path = examples.get_path_test("longyearbyen_ref_dem")
-
         dest_shape = (54, 70)
         dest_bounds = BoundingBox(left=512310.0, bottom=8660950.0, right=513710.0, top=8662030.0)
         longyearbyen_dir = os.path.dirname(os.path.dirname(path))

@@ -228,22 +228,21 @@ def _crop_lonyearbyen_test_examples(output_dir: str, overwrite: bool = False) ->
             continue
 
         # Get geometry to crop to
-        crop_geom = (
-            gu.Raster(op.join(output_dir, _FILEPATHS_ALL["longyearbyen_ref_dem"])).icrop(_TEST_ICROP_BOUNDS).bounds
+        ref_dem_cropped = xdem.DEM(op.join(output_dir, _FILEPATHS_ALL["longyearbyen_ref_dem"])).icrop(
+            _TEST_ICROP_BOUNDS
         )
-        name_split = op.basename(op.join(output_dir, _FILEPATHS_ALL[k])).split("_")
 
         # For rasters
-        input_file = op.join(output_dir, _FILEPATHS_ALL[k])
-
-        if "DEM" in name_split or "dDEM" in name_split:
-            cropped = gu.Raster(input_file).crop(crop_geom)
-        # For point clouds
-        elif "EPC" in name_split:
-            cropped = gu.PointCloud(input_file, data_column="h_li").crop(crop_geom)
+        if os.path.basename(op.join(output_dir, _FILEPATHS_ALL[k])).split("_")[0] in ["DEM", "dDEM"]:
+            cropped = gu.Raster(op.join(output_dir, _FILEPATHS_ALL[k])).crop(ref_dem_cropped.bounds)
+        # For point cloud
+        elif os.path.basename(op.join(output_dir, _FILEPATHS_ALL[k])).split("_")[0] == "EPC":
+            pc = gu.PointCloud(op.join(output_dir, _FILEPATHS_ALL[k]), data_column="h_li")
+            reprojected_dem_cropped = ref_dem_cropped.reproject(crs=pc.crs)
+            cropped = pc.crop(reprojected_dem_cropped.bounds)
         # For vectors
         else:
-            cropped = gu.Vector(input_file).crop(crop_geom)
+            cropped = gu.Vector(op.join(output_dir, _FILEPATHS_ALL[k])).crop(ref_dem_cropped.bounds)
 
         cropped.to_file(op.join(output_dir, _FILEPATHS_TEST[k]))
 
