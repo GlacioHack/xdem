@@ -104,5 +104,5 @@ To download the data samples, you can run:
 
 ```bash
 mkdir data_examples
-tar -xvz -C data_examples  --wildcards  "*/data" --strip-components 2 -f <(wget -q -O - https://github.com/marinebcht/xdem-data/archive/1338aaa06842f9e6b3182069a295618eb54914a5.tar.gz)
+tar -xvz -C data_examples  --wildcards  "*/data" --strip-components 2 -f <(wget -q -O - https://github.com/GlacioHack/xdem-data/archive/ca0e87271925d28928526bbce200162f002d6a93.tar.gz)
 ```
