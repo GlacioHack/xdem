@@ -61,8 +61,13 @@ class Accuracy(Workflows):
         self.compute_coreg = self.config["coregistration"]["process"]
 
         if not self.compute_coreg:
-            del self.config["coregistration"]["sampling_grid"]
             del self.config["coregistration"]["step_one"]
+        else:
+            if self.config["inputs"]["sampling_grid"] is None:
+                raise ValueError(
+                    'In case of a coregistration process, "sampling grid" must be set to '
+                    '"reference_elev" or "to_be_aligned_elev"'
+                )
 
         yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
         Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
@@ -164,11 +169,11 @@ class Accuracy(Workflows):
 
         return aligned_elev
 
-    def _prepare_datas_for_coreg(self) -> None:
+    def _prepare_datas(self) -> None:
         """
         Compute reprojection.
         """
-        sampling_source = self.config["coregistration"]["sampling_grid"]
+        sampling_source = self.config["inputs"]["sampling_grid"]
 
         # Reprojection
         if sampling_source == "reference_elev":
@@ -190,21 +195,30 @@ class Accuracy(Workflows):
         # Intersection
         logging.info("Computing intersection")
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
+        print()
+        self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
+        self.reference_elev = self.reference_elev.crop(coord_intersection)
+        coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
+        self.reference_elev = self.reference_elev.crop(coord_intersection)
+
+        coord_intersection = self.to_be_aligned_elev.intersection(self.reference_elev)
+
         if sampling_source == "reference_elev":
-            self.reference_elev = self.reference_elev.crop(coord_intersection)
-            self.generate_plot(
-                self.to_be_aligned_elev,
-                title="Cropped reference DEM",
-                filename="cropped_reference_elev_map",
-                cmap="terrain",
-                cbar_title="Elevation (m)",
-            )
-        else:
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
             self.generate_plot(
                 self.to_be_aligned_elev,
                 title="Cropped to-be-aligned DEM",
                 filename="cropped_to_be_aligned_elev_map",
+                cmap="terrain",
+                cbar_title="Elevation (m)",
+            )
+        else:
+            self.reference_elev = self.reference_elev.crop(coord_intersection)
+
+            self.generate_plot(
+                self.reference_elev,
+                title="Cropped reference DEM",
+                filename="cropped_reference_elev_map",
                 cmap="terrain",
                 cbar_title="Elevation (m)",
             )
@@ -302,9 +316,11 @@ class Accuracy(Workflows):
 
         self._load_data()
 
+        # Reprojection step
+        if "sampling_grid" in self.config["inputs"]:
+            self._prepare_datas()
+
         if self.compute_coreg:
-            # Reprojection step
-            self._prepare_datas_for_coreg()
             # Coregistration step
             aligned_elev = self._compute_coregistration()
         else:
@@ -316,25 +332,9 @@ class Accuracy(Workflows):
 
         vmin = vmax = None
 
-        if self.compute_coreg:
-            diff_pairs = [("before", self.to_be_aligned_elev), ("after", aligned_elev.reproject(ref_elev))]
-        else:
-            diff_pairs = [("", self.to_be_aligned_elev)]
+        stats_keys = ["min", "max", "nmad", "median"]
 
-        for label, dem in diff_pairs:
-            diff = dem - ref_elev
-            stats_keys = ["min", "max", "nmad", "median"]
-            stats = diff.get_stats(stats_keys)
-
-            if label == "before":
-                self.diff_before, self.stats_before = diff, stats
-                vmin, vmax = -(stats["median"] + 3 * stats["nmad"]), stats["median"] + 3 * stats["nmad"]
-            elif label == "after":
-                self.diff_after, self.stats_after = diff, stats
-            else:
-                self.diff = diff
-                vmin, vmax = -(stats["median"] + 3 * stats["nmad"]), (stats["median"] + 3 * stats["nmad"])
-
+        def generate_plot_diff(label: str, diff: RasterType, vmin: float, vmax: float) -> None:
             suffix = f"_elev_{label}_coreg_map" if label else "_elev"
             self.generate_plot(
                 diff,
@@ -345,6 +345,34 @@ class Accuracy(Workflows):
                 cmap="RdBu",
                 cbar_title="Elevation differences (m)",
             )
+
+        if self.compute_coreg:
+
+            self.diff_before = self.to_be_aligned_elev - ref_elev
+            self.stats_before = self.diff_before.get_stats(stats_keys)
+
+            self.diff_after = aligned_elev.reproject(ref_elev) - ref_elev
+            self.stats_after = self.diff_after.get_stats(stats_keys)
+
+            vmin_bf, vmax_bf = (
+                -(self.stats_before["median"] + 3 * self.stats_before["nmad"]),
+                self.stats_before["median"] + 3 * self.stats_before["nmad"],
+            )
+            vmin_af, vmax_af = (
+                -(self.stats_after["median"] + 3 * self.stats_after["nmad"]),
+                self.stats_after["median"] + 3 * self.stats_after["nmad"],
+            )
+            vmin = vmin_af if vmin_af < vmin_bf else vmin_bf
+            vmax = vmax_af if vmax_af > vmax_bf else vmax_bf
+            generate_plot_diff("before", self.diff_before, vmin, vmax)
+            generate_plot_diff("after", self.diff_after, vmin, vmax)
+
+        else:
+            self.diff = self.to_be_aligned_elev - ref_elev
+            self.stats = self.diff.get_stats(stats_keys)
+
+            vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
+            generate_plot_diff("", self.diff, vmin, vmax)
 
         if self.compute_coreg:
             stat_items = [
@@ -384,6 +412,7 @@ class Accuracy(Workflows):
 
         if len(list_df_var) > 0:
             df_stats = pd.concat(list_df_var)
+            df_stats.set_index("Data", inplace=True)
         else:
             df_stats = None
         self.df_stats = df_stats
@@ -393,6 +422,9 @@ class Accuracy(Workflows):
             if self.level > 1:
                 self.diff_before.to_file(self.outputs_folder / "rasters" / "diff_elev_before_coreg_map.tif")
                 self.diff_after.to_file(self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
+        else:
+            if self.level > 1:
+                self.diff.to_file(self.outputs_folder / "rasters" / "diff_elev.tif")
 
         t1 = time.time()
         self.elapsed = t1 - t0
@@ -437,6 +469,28 @@ class Accuracy(Workflows):
         )
         html += "</div>\n"
 
+        if self.compute_coreg:
+            html += "<h2>Processed Dataset</h2>\n"
+            html += "<div style='display: flex; gap: 10px;'>\n"
+            sampling_source = self.config["inputs"]["sampling_grid"]
+
+            if sampling_source == "reference_elev":
+                reference_elev_intersection = "plots/reference_elev_map.png"
+                to_be_aligned_elev_intersection = "plots/cropped_to_be_aligned_elev_map.png"
+            elif sampling_source == "to_be_aligned_elev":
+                reference_elev_intersection = "plots/cropped_reference_elev_map.png"
+                to_be_aligned_elev_intersection = "plots/to_be_aligned_elev_map.png"
+
+            html += (
+                "  <img src='" + reference_elev_intersection + "' alt='Image PNG' "
+                "style='max-width: 50%; height: auto; width: 50%;'>\n"
+            )
+            html += (
+                "  <img src='" + to_be_aligned_elev_intersection + "' alt='Image PNG' style='max-width: "
+                "50%; height: auto; width: 50%;'>\n"
+            )
+            html += "</div>\n"
+
         def format_values(val: Any) -> Any:
             """Format values for the dictionary."""
             if isinstance(val, float):
@@ -462,7 +516,13 @@ class Accuracy(Workflows):
         # Statistics table:
         if self.df_stats is not None:
             html += "<h2>Statistics</h2>\n"
-            html += self.df_stats.to_html(index=False)
+            html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
+            inter_columns = "</td><td>".join(map(str, self.df_stats.T.columns))
+            html += f"<tr><td>Data</td><td>{inter_columns}</td></tr>\n"
+            for key, value in self.df_stats.T.iterrows():
+                inter_line = "</td><td>".join(map(str, value.values))
+                html += f"<tr><td>{key}</td><td>{inter_line}</td></tr>\n"
+            html += "</table>\n"
 
         # Coregistration: Add elevation difference plot and histograms before/after
         if self.compute_coreg:
