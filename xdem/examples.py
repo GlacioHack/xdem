@@ -95,7 +95,7 @@ def _download_and_extract_tarball(dir: str, target_dir: str) -> None:
     tar_path = op.join(temp_dir.name, "data.tar.gz")
 
     # Construct the URL with the commit hash
-    url = f"{_DATA_REPO_URL}"  # commit={_COMMIT_HASH}" # TODO
+    url = f"{_DATA_REPO_URL}/archive/{_COMMIT_HASH}.tar.gz"
 
     # Download the tarball
     response = urllib.request.urlopen(url)
