@@ -205,23 +205,30 @@ class Accuracy(Workflows):
 
         if sampling_source == "reference_elev":
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
-            self.generate_plot(
-                self.to_be_aligned_elev,
-                title="Cropped to-be-aligned DEM",
-                filename="cropped_to_be_aligned_elev_map",
-                cmap="terrain",
-                cbar_title="Elevation (m)",
-            )
         else:
             self.reference_elev = self.reference_elev.crop(coord_intersection)
 
-            self.generate_plot(
-                self.reference_elev,
-                title="Cropped reference DEM",
-                filename="cropped_reference_elev_map",
-                cmap="terrain",
-                cbar_title="Elevation (m)",
-            )
+        vmin = min(self.reference_elev.get_stats("min"), self.to_be_aligned_elev.get_stats("min"))
+        vmax = max(self.reference_elev.get_stats("max"), self.to_be_aligned_elev.get_stats("max"))
+        self.generate_plot(
+            self.to_be_aligned_elev,
+            title="Cropped to-be-aligned DEM",
+            filename="cropped_to_be_aligned_elev_map",
+            cmap="terrain",
+            vmin=vmin,
+            vmax=vmax,
+            cbar_title="Elevation (m)",
+        )
+
+        self.generate_plot(
+            self.reference_elev,
+            title="Cropped reference DEM",
+            filename="cropped_reference_elev_map",
+            cmap="terrain",
+            vmin=vmin,
+            vmax=vmax,
+            cbar_title="Elevation (m)",
+        )
 
         if self.level > 1:
             self.reference_elev.to_file(self.outputs_folder / "rasters" / "reference_elev_reprojected.tif")
@@ -338,7 +345,7 @@ class Accuracy(Workflows):
             suffix = f"_elev_{label}_coreg_map" if label else "_elev"
             self.generate_plot(
                 diff,
-                title=f"Difference\n{label} coregistration",
+                title=f"Difference {label} coregistration",
                 filename=f"diff{suffix}",
                 vmin=vmin,
                 vmax=vmax,
@@ -472,21 +479,13 @@ class Accuracy(Workflows):
         if self.compute_coreg:
             html += "<h2>Processed Dataset</h2>\n"
             html += "<div style='display: flex; gap: 10px;'>\n"
-            sampling_source = self.config["inputs"]["sampling_grid"]
-
-            if sampling_source == "reference_elev":
-                reference_elev_intersection = "plots/reference_elev_map.png"
-                to_be_aligned_elev_intersection = "plots/cropped_to_be_aligned_elev_map.png"
-            elif sampling_source == "to_be_aligned_elev":
-                reference_elev_intersection = "plots/cropped_reference_elev_map.png"
-                to_be_aligned_elev_intersection = "plots/to_be_aligned_elev_map.png"
 
             html += (
-                "  <img src='" + reference_elev_intersection + "' alt='Image PNG' "
+                "  <img src='plots/cropped_reference_elev_map.png' alt='Image PNG' "
                 "style='max-width: 50%; height: auto; width: 50%;'>\n"
             )
             html += (
-                "  <img src='" + to_be_aligned_elev_intersection + "' alt='Image PNG' style='max-width: "
+                "  <img src='plots/cropped_to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: "
                 "50%; height: auto; width: 50%;'>\n"
             )
             html += "</div>\n"
