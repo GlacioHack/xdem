@@ -143,17 +143,6 @@ And, if you want to test the CLI with xDEM example data, they can also refer to 
 Please refer to {ref}`data-example` to have more information.
 :::
 
-:::{code-block} yaml
-inputs:
-    reference_elev:
-        path_to_elev: "path_to/reference_elev.tif"
-        force_source_nodata: -32768
-        from_vcrs: null
-        to_vcrs: null
-    to_be_aligned_elev:
-        path_to_elev: "path_to/to_be_aligned_elev.tif"
-        path_to_mask: "path_to/mask.tif"
-:::
 
 ::::
 
