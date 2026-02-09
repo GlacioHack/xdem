@@ -195,7 +195,6 @@ class Accuracy(Workflows):
         # Intersection
         logging.info("Computing intersection")
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
-        print()
         self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
         self.reference_elev = self.reference_elev.crop(coord_intersection)
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
@@ -474,7 +473,34 @@ class Accuracy(Workflows):
         )
         html += "</div>\n"
 
-        if self.compute_coreg:
+        def format_values(val: Any) -> Any:
+            """Format values for the dictionary."""
+            if isinstance(val, float):
+                return np.format_float_positional(val)
+            elif callable(val):
+                return val.__name__
+            else:
+                return str(val)
+
+        def print_dict(title: str, dictionary: dict[str, Any]) -> str:
+            div_html = "<div style='clear: both; margin-bottom: 30px;'>\n"
+            div_html += f"<h2>{title}</h2>\n"
+            div_html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
+            div_html += "<tr><th>Information</th><th>Value</th></tr>\n"
+            for key, value in dictionary.items():
+                if isinstance(value, dict):
+                    value = {k: format_values(v) for k, v in value.items()}
+                div_html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
+            div_html += "</table>\n"
+            div_html += "</div>\n"
+            return div_html
+
+        # Metadata: Inputs
+        inputs_information = list_dict[0]
+        html += print_dict(inputs_information[0], inputs_information[1])
+
+        # Plot processed data if did
+        if "sampling_grid" in self.config["inputs"] and self.config["inputs"]["sampling_grid"] is not None:
             html += "<h2>Processed Dataset</h2>\n"
             html += "<div style='display: flex; gap: 10px;'>\n"
 
@@ -488,35 +514,23 @@ class Accuracy(Workflows):
             )
             html += "</div>\n"
 
-        def format_values(val: Any) -> Any:
-            """Format values for the dictionary."""
-            if isinstance(val, float):
-                return np.format_float_positional(val)
-            elif callable(val):
-                return val.__name__
-            else:
-                return str(val)
-
-        # Metadata: Inputs, coregistration
-        for title, dictionary in list_dict:  # type: ignore
-            html += "<div style='clear: both; margin-bottom: 30px;'>\n"
-            html += f"<h2>{title}</h2>\n"
-            html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
-            html += "<tr><th>Information</th><th>Value</th></tr>\n"
-            for key, value in dictionary.items():
-                if isinstance(value, dict):
-                    value = {k: format_values(v) for k, v in value.items()}
-                html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
-            html += "</table>\n"
-            html += "</div>\n"
+        # Metadata: Inputs
+        for title, dictionary in list_dict[1:]:  # type: ignore
+            html += print_dict(title, dictionary)
 
         # Statistics table:
         if self.df_stats is not None:
             html += "<h2>Statistics</h2>\n"
             html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
+
+            # Plot one stat by row
             inter_columns = "</td><td>".join(map(str, self.df_stats.T.columns))
             html += f"<tr><td>Data</td><td>{inter_columns}</td></tr>\n"
-            for key, value in self.df_stats.T.iterrows():
+
+            # Rounded to three decimal numbers
+            rounded_stats = self.df_stats.astype(float).round(3)
+
+            for key, value in rounded_stats.T.iterrows():
                 inter_line = "</td><td>".join(map(str, value.values))
                 html += f"<tr><td>{key}</td><td>{inter_line}</td></tr>\n"
             html += "</table>\n"
