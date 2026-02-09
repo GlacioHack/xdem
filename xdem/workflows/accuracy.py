@@ -211,8 +211,8 @@ class Accuracy(Workflows):
         vmax = max(self.reference_elev.get_stats("max"), self.to_be_aligned_elev.get_stats("max"))
         self.generate_plot(
             self.to_be_aligned_elev,
-            title="Cropped to-be-aligned DEM",
-            filename="cropped_to_be_aligned_elev_map",
+            title="Preprocessed to-be-aligned DEM",
+            filename="preprocessed_to_be_aligned_elev_map",
             cmap="terrain",
             vmin=vmin,
             vmax=vmax,
@@ -221,8 +221,8 @@ class Accuracy(Workflows):
 
         self.generate_plot(
             self.reference_elev,
-            title="Cropped reference DEM",
-            filename="cropped_reference_elev_map",
+            title="Preprocessed reference DEM",
+            filename="preprocessed_reference_elev_map",
             cmap="terrain",
             vmin=vmin,
             vmax=vmax,
@@ -499,17 +499,17 @@ class Accuracy(Workflows):
         inputs_information = list_dict[0]
         html += print_dict(inputs_information[0], inputs_information[1])
 
-        # Plot processed data if did
+        # Plot preprocessed data if did
         if "sampling_grid" in self.config["inputs"] and self.config["inputs"]["sampling_grid"] is not None:
-            html += "<h2>Processed Dataset</h2>\n"
+            html += "<h2>Preprocessed Dataset</h2>\n"
             html += "<div style='display: flex; gap: 10px;'>\n"
 
             html += (
-                "  <img src='plots/cropped_reference_elev_map.png' alt='Image PNG' "
+                "  <img src='plots/preprocessed_reference_elev_map.png' alt='Image PNG' "
                 "style='max-width: 50%; height: auto; width: 50%;'>\n"
             )
             html += (
-                "  <img src='plots/cropped_to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: "
+                "  <img src='plots/preprocessed_to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: "
                 "50%; height: auto; width: 50%;'>\n"
             )
             html += "</div>\n"
@@ -524,15 +524,15 @@ class Accuracy(Workflows):
             html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
 
             # Plot one stat by row
-            inter_columns = "</td><td>".join(map(str, self.df_stats.T.columns))
-            html += f"<tr><td>Data</td><td>{inter_columns}</td></tr>\n"
+            df_cols = "".join([f'<td style="font-weight:bold">{col}</td>' for col in self.df_stats.T.columns])
+            html += f'<tr><td style="font-weight:bold">Data</td>{df_cols}</tr>\n'
 
             # Rounded to three decimal numbers
             rounded_stats = self.df_stats.astype(float).round(3)
 
             for key, value in rounded_stats.T.iterrows():
-                inter_line = "</td><td>".join(map(str, value.values))
-                html += f"<tr><td>{key}</td><td>{inter_line}</td></tr>\n"
+                df_values = "".join([f"<td>{str(val)}</td>" for val in value.values])
+                html += f"<tr><td>{key}</td>{df_values}</tr>\n"
             html += "</table>\n"
 
         # Coregistration: Add elevation difference plot and histograms before/after
