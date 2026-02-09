@@ -354,23 +354,21 @@ class Accuracy(Workflows):
             )
 
         if self.compute_coreg:
-
             self.diff_before = self.to_be_aligned_elev - ref_elev
             self.stats_before = self.diff_before.get_stats(stats_keys)
 
             self.diff_after = aligned_elev.reproject(ref_elev) - ref_elev
             self.stats_after = self.diff_after.get_stats(stats_keys)
 
-            vmin_bf, vmax_bf = (
+            vmin = min(
                 -(self.stats_before["median"] + 3 * self.stats_before["nmad"]),
-                self.stats_before["median"] + 3 * self.stats_before["nmad"],
-            )
-            vmin_af, vmax_af = (
                 -(self.stats_after["median"] + 3 * self.stats_after["nmad"]),
+            )
+            vmax = max(
+                self.stats_before["median"] + 3 * self.stats_before["nmad"],
                 self.stats_after["median"] + 3 * self.stats_after["nmad"],
             )
-            vmin = vmin_af if vmin_af < vmin_bf else vmin_bf
-            vmax = vmax_af if vmax_af > vmax_bf else vmax_bf
+
             generate_plot_diff("before", self.diff_before, vmin, vmax)
             generate_plot_diff("after", self.diff_after, vmin, vmax)
 
