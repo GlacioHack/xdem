@@ -278,7 +278,7 @@ def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
         (False, None, "reference_elev", "same shape, transform and CRS"),
     ],
 )
-def test_run_prepa_data(get_accuracy_inputs_config, tmp_path, config):
+def test_run_prepare_datas(get_accuracy_inputs_config, tmp_path, config):
     """
     Test preparation data with all sampling_grid values in a coreg/no coreg process.
     """
@@ -335,7 +335,7 @@ def test_run_prepa_data(get_accuracy_inputs_config, tmp_path, config):
         ("to_be_aligned_elev", ["reference_elev", "to_be_aligned_elev"]),
     ],
 )
-def test_prepa_data(get_accuracy_inputs_config, tmp_path, config):
+def test_prepare_datas(get_accuracy_inputs_config, tmp_path, config):
     """
     Test preparation data with all sampling_grid values
     """
@@ -405,6 +405,7 @@ def test_prepa_data(get_accuracy_inputs_config, tmp_path, config):
             )
         else:
             assert np.isnan(to_be_aligned_elev_reprojected_mean)
+
     else:
 
         # If to_be_aligned_elev is cropped or not

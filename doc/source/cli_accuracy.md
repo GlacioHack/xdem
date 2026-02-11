@@ -181,16 +181,17 @@ Raster to match for reprojection.
 :::{table} Values for ``sampling_grid``
 :widths: 30, 40, 10, 10, 10
 
-| Value                | Description                                                            | Default | Coreg process | No Coreg |
-|----------------------|------------------------------------------------------------------------|---------|---------------|----------|
-| `reference_elev`     | To-be-aligned elevation will be reprojected to the reference elevation | Yes     | X             | X        |
-| `to_be_aligned_elev` | Reference elevation will be reprojected to the to-be-aligned elevation | No      | X             | X        |
-| `null`        | No reprojection with coregistration process or not                     | No      |               | X        |
+| Value                | Description                                                             | Default |
+|----------------------|-------------------------------------------------------------------------|---------|
+| `reference_elev`     | To-be-aligned elevation will be reprojected to the reference elevation  | Yes     |
+| `to_be_aligned_elev` | Reference elevation will be reprojected to the to-be-aligned elevation  | No      |
+| `null`               | No reprojection with coregistration process or not                      | No      |
 :::
 
 :::{note}
-For no reprojection (`sampling grid: null`), the workflow raises an error if the two inputs do not have the same shape,
-transform and CRS
+If the coregistration process is activated, `sampling_grid` must be set.
+Otherwise, the reprojection can be skip (indicated by `sampling grid: null`).
+In that case, the two inputs need to have the same shape, transform and CRS.
 .:::
 
 

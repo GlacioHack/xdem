@@ -91,7 +91,7 @@ def main() -> None:
     )
     topo_group.add_argument(
         "--template-config",
-        help="Show or save template of YAML configuration file",
+        help="Show or save a YAML configuration file template, optionally saving it with a specified filename.",
         const=None,
         default=False,
         action="store",
@@ -118,7 +118,7 @@ def main() -> None:
     diff_group.add_argument("--config", help="Path to YAML configuration file")
     diff_group.add_argument(
         "--template-config",
-        help="Show template of YAML configuration file",
+        help="Show or save a YAML configuration file template, optionally saving it with a specified filename.",
         const=None,
         default=False,
         action="store",
