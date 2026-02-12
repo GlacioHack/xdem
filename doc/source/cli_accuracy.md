@@ -190,7 +190,7 @@ Raster to match for reprojection.
 
 :::{note}
 If the coregistration process is activated, `sampling_grid` must be set.
-Otherwise, the reprojection can be skip (indicated by `sampling grid: null`).
+Otherwise, the reprojection can be skipped (indicated by `sampling grid: null`).
 In that case, the two inputs need to have the same shape, transform and CRS.
 .:::
 
