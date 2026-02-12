@@ -81,9 +81,8 @@ class BlockwiseCoreg:
             raise ValueError(
                 "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
             )
-
         if not step.is_affine:
-            raise ValueError("The 'step' argument must be an affine coregistration method.")
+            raise ValueError("The blockwise coregistration only supports affine coregistration steps.")
 
         self.procstep = step
         self.block_size_fit = block_size_fit

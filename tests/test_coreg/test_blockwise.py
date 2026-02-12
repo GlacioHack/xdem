@@ -205,42 +205,25 @@ class TestBlockwiseCoreg:
 
         assert np.nanpercentile(diff, 90) < 10
 
-    # @pytest.mark.parametrize(
-    #     "step_coreg",
-    #     [
-    #         pytest.param(xdem.coreg.Deramp(), id="Deramp"),
-    #         pytest.param(xdem.coreg.DirectionalBias(), id="DirectionalBias"),
-    #         pytest.param(xdem.coreg.TerrainBias(), id="TerrainBias"),
-    #     ],
-    # )
-    # def test_blockwise_affine_coreg_pipeline(self, step_coreg, example_data, tmp_path, block_size):
-
+    @pytest.mark.parametrize(
+        "step_coreg",
+        [
+            pytest.param(xdem.coreg.Deramp(), id="Deramp"),
+            pytest.param(xdem.coreg.DirectionalBias(), id="DirectionalBias"),
+            pytest.param(xdem.coreg.TerrainBias(), id="TerrainBias"),
+        ],
+    )
     @pytest.mark.parametrize("block_size", [32])
-    def test_blockwise_not_affine_step(self, step, example_data, tmp_path, block_size):
-        """Test end-to-end blockwise coregistration in multiprocessing and validate output."""
-
-        ref, tba, mask = example_data
-        if block_size < ref.shape[1]:
-            ref_crop = ref.icrop(bbox=(0, 0, block_size, block_size))
-            ref = ref_crop.reproject(ref)
-            tba_crop = tba.icrop(bbox=(0, 0, block_size, block_size))
-            tba = tba_crop.reproject(tba)
+    def test_blockwise_not_affine_coreg_pipeline(self, step_coreg, tmp_path, block_size):
+        """
+        Test end-to-end blockwise coregistration for non-affine steps and validate output.
+        """
 
         config_mc = MultiprocConfig(
             chunk_size=block_size, outfile=tmp_path / "test.tif", cluster=ClusterGenerator("multi", nb_workers=4)
         )
-        blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step, mp_config=config_mc, block_size_fit=block_size)
-        blockwise_coreg.fit(ref, tba, mask)
-        blockwise_coreg.apply()
-
-        aligned = xdem.DEM(tmp_path / "aligned_dem.tif")
-
-        # Ground truth comparison with full image coregistration
-        expected = step.fit_and_apply(ref, tba, mask)
-
-        diff = np.abs(expected - aligned)
-        # 90% of the aligned data differs by less than 2m
-        assert np.nanpercentile(diff, 90) < 10
+        with pytest.raises(ValueError, match="The blockwise coregistration only supports affine coregistration steps."):
+            _ = xdem.coreg.BlockwiseCoreg(step=step_coreg, mp_config=config_mc, block_size_fit=block_size)
 
     def test_ransac_on_horizontal_tiles(self, blockwise_coreg) -> None:
         """Test case where RANSAC works on horizontal tiles."""
