@@ -74,17 +74,26 @@ class Accuracy(Workflows):
 
         self.config = self.remove_none(self.config)  # type: ignore
 
-    def _load_data(self) -> None:
-        """Load data."""
+    def _load_data(self) -> tuple[float, float]:
+        """
+        Load data
 
+        :return vmin, vmax: to plot elevation data with the same scale
+        """
         self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"])
         self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"].get("reference_elev", None))
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
+
+        vmin = min(self.reference_elev.get_stats("min"), self.to_be_aligned_elev.get_stats("min"))
+        vmax = max(self.reference_elev.get_stats("max"), self.to_be_aligned_elev.get_stats("max"))
+
         self.generate_plot(
             self.reference_elev,
             title="Reference DEM",
             filename="reference_elev_map",
+            vmin=vmin,
+            vmax=vmax,
             cmap="terrain",
             cbar_title="Elevation (m)",
         )
@@ -92,6 +101,8 @@ class Accuracy(Workflows):
             self.to_be_aligned_elev,
             title="To-be-aligned DEM",
             filename="to_be_aligned_elev_map",
+            vmin=vmin,
+            vmax=vmax,
             cmap="terrain",
             cbar_title="Elevation (m)",
         )
@@ -109,10 +120,14 @@ class Accuracy(Workflows):
                 self.to_be_aligned_elev,
                 title="Masked (inlier) terrain",
                 filename="masked_elev_map",
+                vmin=vmin,
+                vmax=vmax,
                 mask_path=path_mask,
                 cmap="terrain",
                 cbar_title="Elevation (m)",
             )
+
+        return vmin, vmax
 
     def _get_reference_elevation(self) -> float:
         """
@@ -169,9 +184,12 @@ class Accuracy(Workflows):
 
         return aligned_elev
 
-    def _prepare_datas(self) -> None:
+    def _prepare_datas(self, vmin: float, vmax: float) -> None:
         """
         Compute reprojection.
+
+        :param vmin: to plot elevation data with the same scale
+        :param vmax: to plot elevation data with the same scale
         """
         sampling_source = self.config["inputs"]["sampling_grid"]
 
@@ -204,30 +222,26 @@ class Accuracy(Workflows):
 
         if sampling_source == "reference_elev":
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
+            self.generate_plot(
+                self.to_be_aligned_elev,
+                title="Preprocessed to-be-aligned DEM",
+                filename="preprocessed_to_be_aligned_elev_map",
+                vmin=vmin,
+                vmax=vmax,
+                cmap="terrain",
+                cbar_title="Elevation (m)",
+            )
         else:
             self.reference_elev = self.reference_elev.crop(coord_intersection)
-
-        vmin = min(self.reference_elev.get_stats("min"), self.to_be_aligned_elev.get_stats("min"))
-        vmax = max(self.reference_elev.get_stats("max"), self.to_be_aligned_elev.get_stats("max"))
-        self.generate_plot(
-            self.to_be_aligned_elev,
-            title="Preprocessed to-be-aligned DEM",
-            filename="preprocessed_to_be_aligned_elev_map",
-            cmap="terrain",
-            vmin=vmin,
-            vmax=vmax,
-            cbar_title="Elevation (m)",
-        )
-
-        self.generate_plot(
-            self.reference_elev,
-            title="Preprocessed reference DEM",
-            filename="preprocessed_reference_elev_map",
-            cmap="terrain",
-            vmin=vmin,
-            vmax=vmax,
-            cbar_title="Elevation (m)",
-        )
+            self.generate_plot(
+                self.reference_elev,
+                title="Preprocessed reference DEM",
+                filename="preprocessed_reference_elev_map",
+                vmin=vmin,
+                vmax=vmax,
+                cmap="terrain",
+                cbar_title="Elevation (m)",
+            )
 
         if self.level > 1:
             self.reference_elev.to_file(self.outputs_folder / "rasters" / "reference_elev_reprojected.tif")
@@ -320,11 +334,11 @@ class Accuracy(Workflows):
 
         t0 = time.time()
 
-        self._load_data()
+        vmin, vmax = self._load_data()
 
         # Reprojection step
         if "sampling_grid" in self.config["inputs"]:
-            self._prepare_datas()
+            self._prepare_datas(vmin, vmax)
 
         if self.compute_coreg:
             # Coregistration step
@@ -335,8 +349,6 @@ class Accuracy(Workflows):
 
         output_grid = self.config["outputs"]["output_grid"]
         ref_elev = self.reference_elev if output_grid == "reference_elev" else self.to_be_aligned_elev
-
-        vmin = vmax = None
 
         stats_keys = ["min", "max", "nmad", "median"]
 
@@ -353,28 +365,28 @@ class Accuracy(Workflows):
             )
 
         if self.compute_coreg:
+
             self.diff_before = self.to_be_aligned_elev - ref_elev
             self.stats_before = self.diff_before.get_stats(stats_keys)
 
             self.diff_after = aligned_elev.reproject(ref_elev) - ref_elev
             self.stats_after = self.diff_after.get_stats(stats_keys)
 
-            vmin = min(
+            vmin_diff = min(
                 -(self.stats_before["median"] + 3 * self.stats_before["nmad"]),
                 -(self.stats_after["median"] + 3 * self.stats_after["nmad"]),
             )
-            vmax = max(
+            vmax_diff = max(
                 self.stats_before["median"] + 3 * self.stats_before["nmad"],
                 self.stats_after["median"] + 3 * self.stats_after["nmad"],
             )
 
-            generate_plot_diff("before", self.diff_before, vmin, vmax)
-            generate_plot_diff("after", self.diff_after, vmin, vmax)
+            generate_plot_diff("before", self.diff_before, vmin_diff, vmax_diff)
+            generate_plot_diff("after", self.diff_after, vmin_diff, vmax_diff)
 
         else:
             self.diff = self.to_be_aligned_elev - ref_elev
             self.stats = self.diff.get_stats(stats_keys)
-
             vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
             generate_plot_diff("", self.diff, vmin, vmax)
 
@@ -501,15 +513,15 @@ class Accuracy(Workflows):
 
         # Plot preprocessed data if did
         if "sampling_grid" in self.config["inputs"] and self.config["inputs"]["sampling_grid"] is not None:
+            if self.config["inputs"]["sampling_grid"] == "reference_elev":
+                preprocessed_data = "plots/preprocessed_to_be_aligned_elev_map.png"
+            else:
+                preprocessed_data = "plots/preprocessed_reference_elev_map.png"
+
             html += "<h2>Preprocessed Dataset</h2>\n"
             html += "<div style='display: flex; gap: 10px;'>\n"
-
             html += (
-                "  <img src='plots/preprocessed_reference_elev_map.png' alt='Image PNG' "
-                "style='max-width: 50%; height: auto; width: 50%;'>\n"
-            )
-            html += (
-                "  <img src='plots/preprocessed_to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: "
+                "  <img src='" + preprocessed_data + "' alt='Image PNG' style='max-width: "
                 "50%; height: auto; width: 50%;'>\n"
             )
             html += "</div>\n"
@@ -527,12 +539,9 @@ class Accuracy(Workflows):
             df_cols = "".join([f'<td style="font-weight:bold">{col}</td>' for col in self.df_stats.T.columns])
             html += f'<tr><td style="font-weight:bold">Data</td>{df_cols}</tr>\n'
 
-            # Rounded to three decimal numbers
-            rounded_stats = self.df_stats.astype(float).round(3)
-
-            for key, value in rounded_stats.T.iterrows():
+            for key, value in self.df_stats.T.iterrows():
                 df_values = "".join([f"<td>{str(val)}</td>" for val in value.values])
-                html += f"<tr><td>{key}</td>{df_values}</tr>\n"
+                html += f'<tr><td style="font-weight:bold">{key}</td>{df_values}</tr>\n'
             html += "</table>\n"
 
         # Coregistration: Add elevation difference plot and histograms before/after
