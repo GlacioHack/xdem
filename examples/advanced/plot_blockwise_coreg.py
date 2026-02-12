@@ -60,7 +60,7 @@ plt.show()
 
 # Create a configuration without multiprocessing cluster (tasks will be processed sequentially)
 mp_config = MultiprocConfig(chunk_size=500, outfile="aligned_dem.tif", cluster=None)
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), mp_config=mp_config)
+blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.TerrainBias(), mp_config=mp_config)
 
 # %%
 # Coregistration is performed with the ``.fit()`` method.
