@@ -474,14 +474,14 @@ class Accuracy(Workflows):
 
         # Plot input elevation data
         html += "<h2>Elevation datasets</h2>\n"
-        html += "<div style='display: flex; gap: 10px;'>\n"
+        html += "<div style='display: flex'>\n"
         html += (
-            "  <img src='plots/reference_elev_map.png' alt='Image PNG' "
-            "style='max-width: 50%; height: auto; width: 50%;'>\n"
+            "<img src='plots/reference_elev_map.png' alt='Image PNG' "
+            "style='max-width: 50%; height: auto; width: 50%;'>"
         )
         html += (
-            "  <img src='plots/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: "
-            "50%; height: auto; width: 50%;'>\n"
+            "<img src='plots/to_be_aligned_elev_map.png' alt='Image PNG' "
+            "style='max-width: 50%; height: auto; width: 50%;'>"
         )
         html += "</div>\n"
 
@@ -518,8 +518,8 @@ class Accuracy(Workflows):
             else:
                 preprocessed_data = "plots/preprocessed_reference_elev_map.png"
 
-            html += "<h2>Preprocessed Dataset</h2>\n"
-            html += "<div style='display: flex; gap: 10px;'>\n"
+            html += "<h2>Preprocessed DEM</h2>\n"
+            html += "<div style='display: flex'>\n"
             html += (
                 "  <img src='" + preprocessed_data + "' alt='Image PNG' style='max-width: "
                 "50%; height: auto; width: 50%;'>\n"
