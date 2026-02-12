@@ -136,6 +136,7 @@ class Accuracy(Workflows):
             "DirectionalBias": xdem.coreg.DirectionalBias,
             "TerrainBias": xdem.coreg.TerrainBias,
             "LZD": xdem.coreg.LZD,
+            "ICP": xdem.coreg.ICP,
         }
 
         for step in coreg_steps:

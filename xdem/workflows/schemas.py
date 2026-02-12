@@ -90,7 +90,7 @@ INPUTS_DEM = {
     "downsample": {"type": ["integer", "float"], "required": False, "default": 1, "min": 1},
 }
 
-COREG_METHODS = ["NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD", None]
+COREG_METHODS = ["NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD", "ICP", None]
 
 STATS_METHODS = [
     "mean",

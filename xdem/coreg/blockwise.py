@@ -82,7 +82,7 @@ class BlockwiseCoreg:
                 "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
             )
         if not step.is_affine:
-            raise ValueError("The blockwise coregistration only supports affine coregistration steps.")
+            raise ValueError("The blockwise coregistration only supports affine coregistration methods.")
 
         self.procstep = step
         self.block_size_fit = block_size_fit
@@ -201,9 +201,9 @@ class BlockwiseCoreg:
 
         for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
 
-            shift_x = coreg.meta["outputs"]["affine"].get("shift_x", 0)
-            shift_y = coreg.meta["outputs"]["affine"].get("shift_y", 0)
-            shift_z = coreg.meta["outputs"]["affine"].get("shift_z", 0)
+            shift_x = coreg.meta["outputs"]["affine"].get("shift_x", np.nan)
+            shift_y = coreg.meta["outputs"]["affine"].get("shift_y", np.nan)
+            shift_z = coreg.meta["outputs"]["affine"].get("shift_z", np.nan)
 
             x, y = (
                 tile_coords[2] + self.block_size_fit / 2,
