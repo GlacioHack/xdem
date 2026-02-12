@@ -82,6 +82,9 @@ class BlockwiseCoreg:
                 "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
             )
 
+        if not step.is_affine:
+            raise ValueError("The 'step' argument must be an affine coregistration method.")
+
         self.procstep = step
         self.block_size_fit = block_size_fit
         # NB: in case of memory peak reduce block_size_apply
@@ -89,6 +92,8 @@ class BlockwiseCoreg:
 
         if isinstance(step, NuthKaab):
             self.apply_z_correction = step.vertical_shift  # type: ignore
+        else:
+            self.apply_z_correction = True
 
         if mp_config is not None:
             self.mp_config = mp_config
@@ -196,13 +201,10 @@ class BlockwiseCoreg:
         self.shifts_z = []  # type: ignore
 
         for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
-            try:
-                shift_x = coreg.meta["outputs"]["affine"]["shift_x"]
-                shift_y = coreg.meta["outputs"]["affine"]["shift_y"]
-                shift_z = coreg.meta["outputs"]["affine"]["shift_z"]
 
-            except KeyError:
-                continue
+            shift_x = coreg.meta["outputs"]["affine"].get("shift_x", 0)
+            shift_y = coreg.meta["outputs"]["affine"].get("shift_y", 0)
+            shift_z = coreg.meta["outputs"]["affine"].get("shift_z", 0)
 
             x, y = (
                 tile_coords[2] + self.block_size_fit / 2,
