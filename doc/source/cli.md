@@ -37,6 +37,8 @@ Also, this template can directly be saved in a YAML file like this:
 xdem workflow_name --template-config template_config.yaml
 ```
 
+Optionally, a output path to save the template can be set directly in the command-line using `--output`.
+
 When edited by a user, a configuration file **must contain at minima the input parameters listed as "required"** on the documentation page of the given workflow.
 xDEM then automatically fills in the rest with default settings. Users are free to edit the configuration file to run only the parts they need.
 

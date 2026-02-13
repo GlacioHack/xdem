@@ -122,7 +122,7 @@ Elevation input information, split between reference and to-be-aligned elevation
 ::::{tab-item} `reference_elev`
 
 :::{table} Inputs parameters for `reference_elev`
-:widths: 20, 35, 17, 18, 10
+:widths: 20, 40, 20, 10, 10
 
 | Name                  | Description                              | Type       | Default | Required |
 |-----------------------|------------------------------------------|------------|---------|----------|
