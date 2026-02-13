@@ -183,6 +183,13 @@ ACCURACY_SCHEMA = {
         "schema": {
             "reference_elev": {"type": "dict", "schema": INPUTS_DEM, "required": False, "nullable": True},
             "to_be_aligned_elev": {"type": "dict", "schema": INPUTS_DEM, "required": True},
+            "sampling_grid": {
+                "type": "string",
+                "allowed": ["reference_elev", "to_be_aligned_elev"],
+                "default": "reference_elev",
+                "nullable": True,
+                "required": False,
+            },
         },
     },
     "outputs": {
@@ -203,17 +210,11 @@ ACCURACY_SCHEMA = {
     "coregistration": {
         "type": "dict",
         "required": False,
-        "default": {"step_one": {"method": "NuthKaab"}, "sampling_grid": "reference_elev"},
+        "default": {"step_one": {"method": "NuthKaab"}},
         "schema": {
             "step_one": make_coreg_step(default_method="NuthKaab"),
             "step_two": make_coreg_step(required=False),
             "step_three": make_coreg_step(required=False),
-            "sampling_grid": {
-                "type": "string",
-                "allowed": ["reference_elev", "to_be_aligned_elev"],
-                "default": "reference_elev",
-                "required": False,
-            },
             "process": {"type": "boolean", "default": True, "required": False},
         },
     },
@@ -280,6 +281,7 @@ COMPLETE_CONFIG_ACCURACY = {
             "path_to_mask": None,
             "downsample": 1,
         },
+        "sampling_grid": "reference_elev",
     },
     "outputs": {
         "level": 1,
@@ -287,7 +289,6 @@ COMPLETE_CONFIG_ACCURACY = {
         "output_grid": "reference_elev",
     },
     "coregistration": {
-        "sampling_grid": "reference_elev",
         "step_one": {
             "method": "NuthKaab",
             "extra_information": None,
@@ -300,6 +301,7 @@ COMPLETE_CONFIG_ACCURACY = {
             "method": None,
             "extra_information": None,
         },
+        "process": True,
     },
     "statistics": [
         "mean",
