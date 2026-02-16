@@ -468,14 +468,14 @@ class Accuracy(Workflows):
 
         # Plot input elevation data
         html += "<h2>Elevation datasets</h2>\n"
-        html += "<div style='display: flex'>\n"
+        html += "<div>\n"
         html += (
             "<img src='plots/reference_elev_map.png' alt='Image PNG' "
-            "style='max-width: 50%; height: auto; width: 50%;'>"
+            "style='max-width: 49%; height: auto; width: 49%;'>"
         )
         html += (
             "<img src='plots/to_be_aligned_elev_map.png' alt='Image PNG' "
-            "style='max-width: 50%; height: auto; width: 50%;'>"
+            "style='max-width: 49%; height: auto; width: 49%;'>"
         )
         html += "</div>\n"
 
