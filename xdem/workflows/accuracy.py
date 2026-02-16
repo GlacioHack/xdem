@@ -213,12 +213,6 @@ class Accuracy(Workflows):
         # Intersection
         logging.info("Computing intersection")
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
-        self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
-        self.reference_elev = self.reference_elev.crop(coord_intersection)
-        coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
-        self.reference_elev = self.reference_elev.crop(coord_intersection)
-
-        coord_intersection = self.to_be_aligned_elev.intersection(self.reference_elev)
 
         if sampling_source == "reference_elev":
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
