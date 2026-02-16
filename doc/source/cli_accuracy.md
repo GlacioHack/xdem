@@ -179,7 +179,7 @@ Please refer to {ref}`data-example` to have more information.
 Raster to match for reprojection.
 
 :::{table} Values for ``sampling_grid``
-:widths: 30, 40, 10, 10, 10
+:widths: 30, 60, 10
 
 | Value                | Description                                                             | Default |
 |----------------------|-------------------------------------------------------------------------|---------|
