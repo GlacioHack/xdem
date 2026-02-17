@@ -107,7 +107,7 @@ def main() -> None:
         "  xdem accuracy --config config.yaml\n"
         "  xdem accuracy --config config.yaml --output myoutputfolder\n"
         "  xdem accuracy --template-config\n"
-        "  xdem accuracy --template-config --output template_config.yaml",
+        "  xdem accuracy --template-config template_config.yaml",
         add_help=False,
         formatter_class=argparse.RawTextHelpFormatter,
     )
