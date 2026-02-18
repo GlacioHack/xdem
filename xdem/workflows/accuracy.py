@@ -85,12 +85,13 @@ class Accuracy(Workflows):
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
 
-        vmin = min(self.reference_elev.get_stats("min"), self.to_be_aligned_elev.get_stats("min"))
-        vmax = max(self.reference_elev.get_stats("max"), self.to_be_aligned_elev.get_stats("max"))
+        vmin = float(min(np.nanpercentile(self.reference_elev, q=5), np.nanpercentile(self.to_be_aligned_elev, q=5)))
+        vmax = float(max(np.nanpercentile(self.reference_elev, q=95), np.nanpercentile(self.to_be_aligned_elev, q=95)))
+        print(type(vmin), vmax)
 
         self.generate_plot(
             self.reference_elev,
-            title="Reference DEM",
+            title="Reference elevation",
             filename="reference_elev_map",
             vmin=vmin,
             vmax=vmax,
@@ -99,7 +100,7 @@ class Accuracy(Workflows):
         )
         self.generate_plot(
             self.to_be_aligned_elev,
-            title="To-be-aligned DEM",
+            title="To-be-aligned elevation",
             filename="to_be_aligned_elev_map",
             vmin=vmin,
             vmax=vmax,
@@ -134,7 +135,7 @@ class Accuracy(Workflows):
         Get reference elevation.
         """
 
-        raise NotImplementedError("This is not implemented, add a reference DEM")
+        raise NotImplementedError("This is not implemented, add a reference elevation")
 
     def _compute_coregistration(self) -> RasterType:
         """
@@ -218,7 +219,7 @@ class Accuracy(Workflows):
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
             self.generate_plot(
                 self.to_be_aligned_elev,
-                title="Preprocessed to-be-aligned DEM",
+                title="Preprocessed to-be-aligned elevation",
                 filename="preprocessed_to_be_aligned_elev_map",
                 vmin=vmin,
                 vmax=vmax,
@@ -229,7 +230,7 @@ class Accuracy(Workflows):
             self.reference_elev = self.reference_elev.crop(coord_intersection)
             self.generate_plot(
                 self.reference_elev,
-                title="Preprocessed reference DEM",
+                title="Preprocessed reference elevation",
                 filename="preprocessed_reference_elev_map",
                 vmin=vmin,
                 vmax=vmax,
@@ -347,10 +348,12 @@ class Accuracy(Workflows):
         stats_keys = ["min", "max", "nmad", "median"]
 
         def generate_plot_diff(label: str, diff: RasterType, vmin: float, vmax: float) -> None:
+            print("ici")
             suffix = f"_elev_{label}_coreg_map" if label else "_elev"
+
             self.generate_plot(
                 diff,
-                title=f"Difference {label} coregistration",
+                title=f"Elevation difference\n{label} coregistration",
                 filename=f"diff{suffix}",
                 vmin=vmin,
                 vmax=vmax,
@@ -382,7 +385,7 @@ class Accuracy(Workflows):
             self.diff = self.to_be_aligned_elev - ref_elev
             self.stats = self.diff.get_stats(stats_keys)
             vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
-            generate_plot_diff("", self.diff, vmin, vmax)
+            generate_plot_diff("without", self.diff, vmin, vmax)
 
         if self.compute_coreg:
             stat_items = [
@@ -467,7 +470,7 @@ class Accuracy(Workflows):
         html += f"<p>Computing time: {self.elapsed:.2f} seconds</p>"
 
         # Plot input elevation data
-        html += "<h2>Elevation datasets</h2>\n"
+        html += "<h2>Elevation inputs</h2>\n"
         html += "<div>\n"
         html += (
             "<img src='plots/reference_elev_map.png' alt='Image PNG' "
@@ -512,7 +515,7 @@ class Accuracy(Workflows):
             else:
                 preprocessed_data = "plots/preprocessed_reference_elev_map.png"
 
-            html += "<h2>Preprocessed DEM</h2>\n"
+            html += "<h2>Preprocessed elevation</h2>\n"
             html += "<div style='display: flex'>\n"
             html += (
                 "  <img src='" + preprocessed_data + "' alt='Image PNG' style='max-width: "
@@ -535,20 +538,20 @@ class Accuracy(Workflows):
 
             for key, value in self.df_stats.T.iterrows():
                 df_values = "".join([f"<td>{str(val)}</td>" for val in value.values])
-                html += f'<tr><td style="font-weight:bold">{key}</td>{df_values}</tr>\n'
+                html += f"<tr><td>{key}</td>{df_values}</tr>\n"
             html += "</table>\n"
 
         # Coregistration: Add elevation difference plot and histograms before/after
         if self.compute_coreg:
             html += "<h2>Elevation differences</h2>\n"
-            html += "<div style='display: flex; gap: 10px;'>\n"
+            html += "<div>\n"
             html += (
-                "  <img src='plots/diff_elev_before_coreg_map.png' alt='Image PNG' style='max-width: "
-                "50%; height: auto; width: 50%;'>\n"
+                "<img src='plots/diff_elev_before_coreg_map.png' alt='Image PNG' "
+                "style='max-width: 49%; height: auto; width: 49%;'>"
             )
             html += (
-                "  <img src='plots/diff_elev_after_coreg_map.png' alt='Image PNG' style='max-width: "
-                "50%; height: auto; width: 50%;'>\n"
+                "<img src='plots/diff_elev_after_coreg_map.png' alt='Image PNG' "
+                "style='max-width: 49%; height: auto; width: 49%;'>"
             )
             html += "</div>\n"
 
@@ -557,10 +560,10 @@ class Accuracy(Workflows):
 
         else:
             html += "<h2>Elevation differences</h2>\n"
-            html += "<div style='display: flex; gap: 10px;'>\n"
+            html += "<div'>\n"
             html += (
-                "  <img src='plots/diff_elev.png' alt='Image PNG' style='max-width: "
-                "40%; height: auto; width: 50%;'>\n"
+                "  <img src='plots/diff_elev_without_coreg_map.png' alt='Image PNG' "
+                "style='max-width: 49%; height: auto; width: 49%;'>"
             )
             html += "</div>\n"
 

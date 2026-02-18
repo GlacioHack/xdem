@@ -160,7 +160,7 @@ class Workflows(ABC):
         if mask_path is None:
             dem.plot(**kwargs)
             plt.title(title)
-            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300)
+            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
             plt.close()
         else:
             mask = gu.Vector(mask_path)
@@ -168,7 +168,7 @@ class Workflows(ABC):
             dem.plot(**kwargs)
             mask.plot(dem, ec="k", fc="none")
             plt.title(title)
-            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300)
+            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
             plt.close()
 
     def floats_process(
