@@ -87,7 +87,6 @@ class Accuracy(Workflows):
 
         vmin = float(min(np.nanpercentile(self.reference_elev, q=5), np.nanpercentile(self.to_be_aligned_elev, q=5)))
         vmax = float(max(np.nanpercentile(self.reference_elev, q=95), np.nanpercentile(self.to_be_aligned_elev, q=95)))
-        print(type(vmin), vmax)
 
         self.generate_plot(
             self.reference_elev,
@@ -348,7 +347,6 @@ class Accuracy(Workflows):
         stats_keys = ["min", "max", "nmad", "median"]
 
         def generate_plot_diff(label: str, diff: RasterType, vmin: float, vmax: float) -> None:
-            print("ici")
             suffix = f"_elev_{label}_coreg_map" if label else "_elev"
 
             self.generate_plot(
@@ -409,7 +407,7 @@ class Accuracy(Workflows):
             stat_items = [
                 (self.reference_elev, "reference_elev", "Reference elevation", 2),
                 (self.to_be_aligned_elev, "to_be_aligned_elev", "To-be-aligned elevation", 2),
-                (self.diff, "diff_elev", "Elevation difference", 2),
+                (self.diff, "diff_elev_without_coreg", "Elevation difference without coregistration", 2),
             ]
 
         list_df_var = []
@@ -437,7 +435,7 @@ class Accuracy(Workflows):
                 self.diff_after.to_file(self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
         else:
             if self.level > 1:
-                self.diff.to_file(self.outputs_folder / "rasters" / "diff_elev.tif")
+                self.diff.to_file(self.outputs_folder / "rasters" / "diff_elev_without_coreg_map.tif")
 
         t1 = time.time()
         self.elapsed = t1 - t0

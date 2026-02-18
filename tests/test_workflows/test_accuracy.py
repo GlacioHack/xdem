@@ -64,7 +64,7 @@ def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path, caplog, 
     workflows = Accuracy(user_config)
     workflows._load_data()
 
-    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
+    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference elevation"):
         workflows._get_reference_elevation()
 
     user_config = get_accuracy_inputs_config
@@ -72,7 +72,7 @@ def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path, caplog, 
     user_config["inputs"]["reference_elev"] = None
 
     with caplog.at_level(logging.WARNING):
-        with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
+        with pytest.raises(NotImplementedError, match="This is not implemented, add a reference elevation"):
             workflows = Accuracy(user_config)
             workflows._load_data()
 
@@ -228,9 +228,9 @@ def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
     workflows = Accuracy(user_config)
     workflows.run()
 
-    assert Path(tmp_path / "tables").joinpath("diff_elev_stats.csv").exists()
+    assert Path(tmp_path / "tables").joinpath("diff_elev_without_coreg_stats.csv").exists()
 
-    assert Path(tmp_path / "plots").joinpath("diff_elev.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_without_coreg_map.png").exists()
     assert not Path(tmp_path / "plots").joinpath("diff_elev_before_coreg.png").exists()
     assert not Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
@@ -245,12 +245,12 @@ def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
     assert Path(tmp_path).joinpath("used_config.yaml").exists()
 
     csv_files = [
-        "diff_elev_stats.csv",
+        "diff_elev_without_coreg_stats.csv",
         "reference_elev_stats.csv",
         "to_be_aligned_elev_stats.csv",
     ]
 
-    raster_files = ["diff_elev.tif"]
+    raster_files = ["diff_elev_without_coreg_map.tif"]
 
     if level == 1:
         for file in csv_files:
