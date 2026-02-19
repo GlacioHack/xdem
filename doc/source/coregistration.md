@@ -576,7 +576,7 @@ for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at
 
 ```{caution}
 The {class}`~xdem.coreg.BlockwiseCoreg` feature is still experimental. Currently, it is only tested for the affine
-coregistration methods.
+coregistration methods and for translation only. Rotation shifts will be soon implemented, but not yet available.
 ```
 
 A {class}`~xdem.coreg.BlockwiseCoreg` splits a coregistration across different spatial blocks of an elevation dataset, running that

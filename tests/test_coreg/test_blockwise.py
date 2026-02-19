@@ -174,10 +174,10 @@ class TestBlockwiseCoreg:
         [
             pytest.param(xdem.coreg.NuthKaab(vertical_shift=False), id="NuthKaab"),
             pytest.param(xdem.coreg.NuthKaab(vertical_shift=True), id="NuthKaab_vertical"),
-            pytest.param(xdem.coreg.CPD(), id="CPD"),
-            pytest.param(xdem.coreg.ICP(), id="ICP"),
+            pytest.param(xdem.coreg.CPD(only_translation=True), id="CPD"),
+            pytest.param(xdem.coreg.ICP(only_translation=True), id="ICP"),
             pytest.param(xdem.coreg.DhMinimize(), id="DhMinimize"),
-            pytest.param(xdem.coreg.LZD(), id="LZD"),
+            pytest.param(xdem.coreg.LZD(only_translation=True), id="LZD"),
             pytest.param(xdem.coreg.VerticalShift(), id="VerticalShift"),
         ],
     )
