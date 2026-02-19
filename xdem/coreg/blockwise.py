@@ -251,6 +251,9 @@ class BlockwiseCoreg:
         import_optional("sklearn", package_name="scikit-learn")
         from sklearn.linear_model import LinearRegression, RANSACRegressor
 
+        if np.isnan(shifts).all():
+            shifts = np.zeros_like(shifts)
+
         # Stack and squeeze
         points = np.dstack([x_coords, y_coords, shifts])
         points = np.squeeze(points)
@@ -394,6 +397,8 @@ class BlockwiseCoreg:
 
         # be careful with depth value if Out of Memory
         depth = max(np.abs(self.shifts_x).max(), np.abs(self.shifts_y).max())
+        if np.isnan(depth):
+            depth = 0
 
         aligned_dem = map_overlap_multiproc_save(
             self._wrapper_apply_epc,
