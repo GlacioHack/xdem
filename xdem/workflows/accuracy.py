@@ -95,7 +95,7 @@ class Accuracy(Workflows):
             vmin=vmin,
             vmax=vmax,
             cmap="terrain",
-            cbar_title="Elevation (m)",
+            cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
         )
         self.generate_plot(
             self.to_be_aligned_elev,
@@ -104,7 +104,7 @@ class Accuracy(Workflows):
             vmin=vmin,
             vmax=vmax,
             cmap="terrain",
-            cbar_title="Elevation (m)",
+            cbar_title=f"Elevation ({self.to_be_aligned_elev.crs.linear_units})",
         )
 
         self.inlier_mask = None
@@ -124,7 +124,7 @@ class Accuracy(Workflows):
                 vmax=vmax,
                 mask_path=path_mask,
                 cmap="terrain",
-                cbar_title="Elevation (m)",
+                cbar_title=f"Elevation ({self.to_be_aligned_elev.crs.linear_units})",
             )
 
         return vmin, vmax
@@ -223,7 +223,7 @@ class Accuracy(Workflows):
                 vmin=vmin,
                 vmax=vmax,
                 cmap="terrain",
-                cbar_title="Elevation (m)",
+                cbar_title=f"Elevation ({self.to_be_aligned_elev.crs.linear_units})",
             )
         else:
             self.reference_elev = self.reference_elev.crop(coord_intersection)
@@ -234,7 +234,7 @@ class Accuracy(Workflows):
                 vmin=vmin,
                 vmax=vmax,
                 cmap="terrain",
-                cbar_title="Elevation (m)",
+                cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
         if self.level > 1:
@@ -312,7 +312,7 @@ class Accuracy(Workflows):
             va="center",
         )
         plt.title("Histogram of elevation differences\nbefore and after coregistration")
-        plt.xlabel("Elevation differences (m)")
+        plt.xlabel(f"Elevation differences ({self.reference_elev.crs.linear_units})")
         plt.ylabel("Count")
         plt.legend()
         plt.grid(False)
@@ -356,7 +356,7 @@ class Accuracy(Workflows):
                 vmin=vmin,
                 vmax=vmax,
                 cmap="RdBu",
-                cbar_title="Elevation differences (m)",
+                cbar_title=f"Elevation differences ({diff.crs.linear_units})",
             )
 
         if self.compute_coreg:
