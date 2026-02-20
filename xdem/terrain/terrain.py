@@ -26,7 +26,7 @@ import geoutils as gu
 import numpy as np
 from geoutils import profiler
 from geoutils.raster import Raster, RasterType
-from geoutils.raster.chunked import (
+from geoutils.multiproc import (
     MultiprocConfig,
     map_overlap_multiproc_save,
 )

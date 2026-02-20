@@ -22,7 +22,7 @@ import geoutils as gu
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
 import numpy as np
-from geoutils.raster.chunked import MultiprocConfig
+from geoutils.multiproc import MultiprocConfig
 
 import xdem
 

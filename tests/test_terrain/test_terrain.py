@@ -8,7 +8,7 @@ import geoutils as gu
 import numpy as np
 import pytest
 import rasterio as rio
-from geoutils.raster.chunked import MultiprocConfig
+from geoutils.multiproc import MultiprocConfig
 from pyproj import CRS
 
 import xdem
