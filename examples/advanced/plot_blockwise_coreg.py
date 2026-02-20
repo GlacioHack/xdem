@@ -66,7 +66,7 @@ blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), mp_config=mp_config
 # Coregistration is performed with the ``.fit()`` method.
 
 blockwise.fit(reference_dem, dem_to_be_aligned, inlier_mask)
-blockwise.apply()
+blockwise.apply(dem_to_be_aligned)
 
 aligned_dem = xdem.DEM("aligned_dem.tif")
 
