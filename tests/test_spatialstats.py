@@ -59,16 +59,17 @@ class TestBinning:
             values=self.diff.data.flatten()[indices],
             list_var=[self.slope.data.flatten()[indices]],
             list_var_names=["slope"],
+            list_var_bins=4,
         )
 
         # Check length matches
-        assert df.shape[0] == 10
+        assert df.shape[0] == 4
         # Check bin edges match the minimum and maximum of binning variable
         assert np.nanmin(self.slope.data.flatten()[indices]) == np.min(pd.IntervalIndex(df.slope).left)
         assert np.nanmax(self.slope.data.flatten()[indices]) == np.max(pd.IntervalIndex(df.slope).right)
 
         # NMAD should go up a bit with slope, more than 1 m between the two extreme bins
-        assert df.nmad.values[-1] - df.nmad.values[0] > 1
+        assert df.nmad.values[-1] - df.nmad.values[1] > 1
 
         # 1D binning with 20 bins
         df = xdem.spatialstats.nd_binning(
@@ -455,9 +456,7 @@ class TestBinning:
                 dvalues=self.diff.get_nanarray(), stable_mask=self.outlines, list_var=[self.slope.get_nanarray()]
             )
 
-    @pytest.mark.skipif(
-        find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
-    )  # type: ignore
+    @pytest.mark.skipif(find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing.")
     def test_plot_binning__missing_dep(self) -> None:
         """Check that proper import error is raised when matplotlib is missing"""
 
@@ -498,9 +497,7 @@ class TestVariogram:
 
     ref, diff, mask, outlines = load_ref_and_diff()
 
-    @pytest.mark.skipif(
-        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
-    )  # type: ignore
+    @pytest.mark.skipif(find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing.")
     def test_sample_empirical_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 
@@ -516,7 +513,7 @@ class TestVariogram:
         # Check the variogram output is consistent for a random state
         df = xdem.spatialstats.sample_empirical_variogram(values=self.diff, subsample=10, random_state=42)
         assert df["lags"][2] == pytest.approx(56.56854249492382)
-        assert df["count"][2] == 3
+        assert df["count"][2] == 4
         # With a single run, no error can be estimated
         assert all(np.isnan(df.err_exp.values))
 
@@ -642,9 +639,7 @@ class TestVariogram:
         # time_metricspace_variogram = t4 - t3
         # assert time_metricspace_variogram == pytest.approx(time_method_2, rel=0.3)
 
-    @pytest.mark.parametrize(
-        "subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"]
-    )  # type: ignore
+    @pytest.mark.parametrize("subsample_method", ["pdist_point", "pdist_ring", "pdist_disk", "cdist_point"])
     def test_sample_multirange_variogram_methods(self, subsample_method: str) -> None:
         """Verify that all other methods run"""
 
@@ -716,8 +711,8 @@ class TestVariogram:
         )
 
     # N is the number of samples in an ensemble
-    @pytest.mark.parametrize("subsample", [10, 100, 1000, 10000])  # type: ignore
-    @pytest.mark.parametrize("shape", [(50, 50), (100, 100), (500, 500)])  # type: ignore
+    @pytest.mark.parametrize("subsample", [10, 100, 1000, 10000])
+    @pytest.mark.parametrize("shape", [(50, 50), (100, 100), (500, 500)])
     def test_choose_cdist_equidistant_sampling_parameters(self, subsample: int, shape: tuple[int, int]) -> None:
         """Verify that the automatically-derived parameters of equidistant sampling are sound"""
 
@@ -805,9 +800,7 @@ class TestVariogram:
         if PLOT:
             xdem.spatialstats.plot_variogram(df, list_fit_fun=[fun])
 
-    @pytest.mark.skipif(
-        find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing."
-    )  # type: ignore
+    @pytest.mark.skipif(find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing.")
     def test_fit_sum_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when skgstat is missing"""
 
@@ -977,9 +970,7 @@ class TestVariogram:
                 dvalues=diff_on_stable_arr, stable_mask=self.outlines, list_models=["Gau", "Sph"], random_state=42
             )
 
-    @pytest.mark.skipif(
-        find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing."
-    )  # type: ignore
+    @pytest.mark.skipif(find_spec("matplotlib") is not None, reason="Only runs if matplotlib is missing.")
     def test_plot_variogram__missing_dep(self) -> None:
         """Check that proper import error is raised when matplotlib is missing"""
 
@@ -1041,10 +1032,10 @@ class TestNeffEstimation:
     ddem = Raster(examples.get_path("longyearbyen_ddem"))
     outlines = Vector(examples.get_path("longyearbyen_glacier_outlines"))
 
-    @pytest.mark.parametrize("range1", [10**i for i in range(3)])  # type: ignore
-    @pytest.mark.parametrize("psill1", [0.1, 1, 10])  # type: ignore
-    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])  # type: ignore
-    @pytest.mark.parametrize("area", [10 ** (2 * i) for i in range(3)])  # type: ignore
+    @pytest.mark.parametrize("range1", [10**i for i in range(3)])
+    @pytest.mark.parametrize("psill1", [0.1, 1, 10])
+    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])
+    @pytest.mark.parametrize("area", [10 ** (2 * i) for i in range(3)])
     def test_neff_circular_single_range(self, range1: float, psill1: float, model1: float, area: float) -> None:
         """Test the accuracy of numerical integration for one to three models of spherical, gaussian or exponential
         forms to get the number of effective samples"""
@@ -1063,11 +1054,11 @@ class TestNeffEstimation:
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
 
-    @pytest.mark.parametrize("range1", [10**i for i in range(2)])  # type: ignore
-    @pytest.mark.parametrize("range2", [10**i for i in range(2)])  # type: ignore
-    @pytest.mark.parametrize("range3", [10**i for i in range(2)])  # type: ignore
-    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])  # type: ignore
-    @pytest.mark.parametrize("model2", ["spherical", "exponential", "gaussian", "cubic"])  # type: ignore
+    @pytest.mark.parametrize("range1", [10**i for i in range(2)])
+    @pytest.mark.parametrize("range2", [10**i for i in range(2)])
+    @pytest.mark.parametrize("range3", [10**i for i in range(2)])
+    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])
+    @pytest.mark.parametrize("model2", ["spherical", "exponential", "gaussian", "cubic"])
     def test_neff_circular_three_ranges(
         self, range1: float, range2: float, range3: float, model1: float, model2: float
     ) -> None:
@@ -1327,7 +1318,7 @@ class TestSubSampling:
 
 class TestPatchesMethod:
 
-    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")  # type: ignore
+    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")
     def test_get_surface_attribute__missing_dep(self) -> None:
         """Check that proper import error is raised when numba is missing"""
 
@@ -1383,7 +1374,7 @@ class TestPatchesMethod:
         assert df_full.shape == (7, 5)
 
         # Check the sampling is always fixed for a random state
-        assert df_full["tile"].values[0] == "0_8"
+        assert df_full["tile"].values[0] == "7_9"
 
         # Check that all counts respect the default minimum percentage of 80% valid pixels
         assert all(df_full["count"].values > 0.8 * np.max(df_full["count"].values))

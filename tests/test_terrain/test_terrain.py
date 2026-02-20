@@ -35,7 +35,7 @@ class TestTerrainAttribute:
             "tpi",
             "roughness",
         ],
-    )  # type: ignore
+    )
     def test_attribute_functions_against_gdaldem(
         self, attribute: str, get_test_data_path: Callable[[str], str]
     ) -> None:
@@ -128,7 +128,7 @@ class TestTerrainAttribute:
     @pytest.mark.parametrize(
         "attribute",
         ["slope_Horn", "aspect_Horn", "hillshade_Horn", "profile_curvature", "planform_curvature"],
-    )  # type: ignore
+    )
     def test_attribute_functions_against_richdem(
         self, attribute: str, get_test_data_path: Callable[[str], str]
     ) -> None:
@@ -154,6 +154,7 @@ class TestTerrainAttribute:
         # Copy the DEM to ensure that the inter-test state is unchanged, and because the mask will be modified.
         dem = self.dem.copy()
 
+        slope = gu.raster.get_array_and_mask(functions_xdem["slope_Horn"](dem))[0].squeeze()
         # Derive the attribute using both RichDEM and xdem
         attr_xdem = gu.raster.get_array_and_mask(functions_xdem[attribute](dem))[0].squeeze()
         attr_richdem_rst = gu.Raster(get_test_data_path(os.path.join("richdem", f"{attribute}.tif")), load_data=True)
@@ -162,6 +163,10 @@ class TestTerrainAttribute:
         # RichDEM has the opposite sign for profile curvature compared to Minar et al. (2020)
         if attribute == "profile_curvature":
             attr_richdem = -attr_richdem
+
+        # Remove nearly flat terrain where aspect is extremely sensitive to numerical errors
+        if attribute == "aspect_Horn":
+            attr_xdem[slope < 3] = np.nan
 
         # We compute the difference and keep only valid values
         diff = attr_xdem - attr_richdem
@@ -192,14 +197,17 @@ class TestTerrainAttribute:
 
                 # Plotting the xdem and RichDEM attributes for comparison (plotting "diff" can also help debug)
                 plt.subplot(221)
-                plt.imshow(attr_richdem, vmin=-1, vmax=1)
+                plt.imshow(attr_richdem)
                 plt.colorbar(label="richdem")
                 plt.subplot(222)
-                plt.imshow(attr_xdem, vmin=-1, vmax=1)
+                plt.imshow(attr_xdem)
                 plt.colorbar(label="xdem")
                 plt.subplot(223)
-                plt.imshow(diff, vmin=-1, vmax=1)
+                plt.imshow(diff)
                 plt.colorbar(label="diff")
+                plt.subplot(224)
+                plt.imshow(dem.data)
+                plt.colorbar(label="dem")
                 plt.show()
 
             raise exception
@@ -236,8 +244,8 @@ class TestTerrainAttribute:
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
-    @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])  # type: ignore
-    @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)  # type: ignore
+    @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])
+    @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)
     def test_attributes__multiproc(self, attribute: str, surfit_windowsize: tuple[str, int]) -> None:
         """
         Test that terrain attributes are exactly equal in multiprocessing or in normal processing, and for varying

@@ -35,6 +35,7 @@ import xdem
 from xdem import DEM
 from xdem._misc import import_optional
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
+from xdem.examples import _FILEPATHS_ALL
 from xdem.workflows.schemas import validate_configuration
 
 # Inheritance of optional dependency class
@@ -106,7 +107,6 @@ class Workflows(ABC):
         """
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-
             if not _HAS_YAML:
                 import_optional("yaml", package_name="pyyaml")
             super().__init__(*args, **kwargs)
@@ -120,6 +120,7 @@ class Workflows(ABC):
     def load_config(self) -> Dict[str, Any]:
         """
         Load a configuration file
+        Note: all null values in the .yaml are translated to None in the dict
         :return: Configuration dictionary
         """
         yaml = import_optional("yaml", package_name="pyyaml")
@@ -127,7 +128,19 @@ class Workflows(ABC):
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"File not found : {self.config_path}")
         with open(self.config_path) as f:
-            return yaml.safe_load(f)
+
+            def replace_none_str_with_none_type(some_dict: Dict[str, Any]) -> Dict[str, Any]:
+                """Replace all "None" (None after serialization) values to None"""
+                for k, v in some_dict.items():
+                    if isinstance(v, dict):
+                        some_dict[k] = replace_none_str_with_none_type(v)
+                    elif v == "None":
+                        some_dict[k] = None
+                    else:
+                        some_dict[k] = v
+                return some_dict
+
+            return replace_none_str_with_none_type(yaml.safe_load(f))
 
     def generate_plot(self, dem: RasterType, title: str, filename: str, mask_path: str = None, **kwargs: Any) -> None:
         """
@@ -188,7 +201,13 @@ class Workflows(ABC):
         """
         mask_path = None
         if config_dem is not None:
-            dem = xdem.DEM(config_dem["path_to_elev"], downsample=config_dem.get("downsample", 1))
+
+            path_to_elev = config_dem["path_to_elev"]
+            # If alias, get its path
+            if path_to_elev in list(_FILEPATHS_ALL.keys()):
+                path_to_elev = xdem.examples.get_path(path_to_elev)
+
+            dem = xdem.DEM(path_to_elev, downsample=config_dem.get("downsample", 1))
             inlier_mask = None
             from_vcrs = config_dem.get("from_vcrs", None)
             to_vcrs = config_dem.get("to_vcrs", None)
@@ -206,6 +225,10 @@ class Workflows(ABC):
                 dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
             if config_dem.get("path_to_mask") is not None:
                 mask_path = config_dem["path_to_mask"]
+                # If alias, get its path
+                if mask_path in list(_FILEPATHS_ALL.keys()):
+                    mask_path = xdem.examples.get_path(mask_path)
+
                 mask = gu.Vector(mask_path)
                 inlier_mask = ~mask.create_mask(dem)
 

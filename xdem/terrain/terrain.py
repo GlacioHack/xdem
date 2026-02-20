@@ -165,7 +165,7 @@ def get_terrain_attribute(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.get_terrain_attribute", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.get_terrain_attribute", memprof=True)
 def get_terrain_attribute(
     dem: NDArrayf | MArrayf | RasterType,
     attribute: str | list[str],
@@ -639,7 +639,7 @@ def slope(
 ) -> Raster: ...
 
 
-@profiler.profile("xdem.terrain.slope", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.slope", memprof=True)
 def slope(
     dem: NDArrayf | MArrayf | RasterType,
     method: Literal["Horn", "ZevenbergThorne"] = None,
@@ -718,7 +718,7 @@ def aspect(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.aspect", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.aspect", memprof=True)
 def aspect(
     dem: NDArrayf | MArrayf | RasterType,
     method: Literal["Horn", "ZevenbergThorne"] = None,
@@ -812,7 +812,7 @@ def hillshade(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.hillshade", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.hillshade", memprof=True)
 def hillshade(
     dem: NDArrayf | MArrayf,
     method: Literal["Horn", "ZevenbergThorne"] = None,
@@ -889,7 +889,7 @@ def curvature(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.curvature", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.curvature", memprof=True)
 def curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -961,7 +961,7 @@ def profile_curvature(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.profile_curvature", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.profile_curvature", memprof=True)
 def profile_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -1037,7 +1037,7 @@ def tangential_curvature(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.tangential_curvature", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.tangential_curvature", memprof=True)
 def tangential_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -1114,7 +1114,7 @@ def planform_curvature(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.planform_curvature", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.planform_curvature", memprof=True)
 def planform_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -1189,7 +1189,7 @@ def flowline_curvature(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.flowline_curvature", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.flowline_curvature", memprof=True)
 def flowline_curvature(
     dem: NDArrayf | MArrayf,
     resolution: float | tuple[float, float] | None = None,
@@ -1265,7 +1265,7 @@ def max_curvature(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.max_curvature", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.max_curvature", memprof=True)
 def max_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -1341,7 +1341,7 @@ def min_curvature(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.min_curvature", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.min_curvature", memprof=True)
 def min_curvature(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -1413,7 +1413,7 @@ def topographic_position_index(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.topographic_position_index", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.topographic_position_index", memprof=True)
 def topographic_position_index(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 3,
@@ -1476,7 +1476,7 @@ def terrain_ruggedness_index(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.terrain_ruggedness_index", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.terrain_ruggedness_index", memprof=True)
 def terrain_ruggedness_index(
     dem: NDArrayf | MArrayf | RasterType,
     method: Literal["Riley", "Wilson"] = "Riley",
@@ -1545,7 +1545,7 @@ def roughness(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.roughness", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.roughness", memprof=True)
 def roughness(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 3,
@@ -1606,7 +1606,7 @@ def rugosity(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.rugosity", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.rugosity", memprof=True)
 def rugosity(
     dem: NDArrayf | MArrayf | RasterType,
     resolution: float | tuple[float, float] | None = None,
@@ -1667,7 +1667,7 @@ def fractal_roughness(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.fractal_roughness", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.fractal_roughness", memprof=True)
 def fractal_roughness(
     dem: NDArrayf | MArrayf | RasterType,
     window_size: int = 13,
@@ -1728,7 +1728,7 @@ def texture_shading(
 ) -> RasterType: ...
 
 
-@profiler.profile("xdem.terrain.texture_shading", memprof=True)  # type: ignore
+@profiler.profile("xdem.terrain.texture_shading", memprof=True)
 def texture_shading(
     dem: NDArrayf | MArrayf | RasterType,
     alpha: float = 0.8,

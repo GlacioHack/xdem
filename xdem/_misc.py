@@ -91,7 +91,7 @@ def deprecate(removal_version: Version = None, details: str = None) -> Callable[
     """
 
     def deprecator_func(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
-        @functools.wraps(func)  # type: ignore
+        @functools.wraps(func)
         def new_func(*args: Any, **kwargs: Any) -> Any:
 
             # Get current base version (without dev changes)

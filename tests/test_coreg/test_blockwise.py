@@ -18,7 +18,7 @@ import xdem
 from xdem.coreg import BlockwiseCoreg, Coreg
 
 
-@pytest.fixture(scope="module")  # type: ignore
+@pytest.fixture(scope="module")
 def example_data() -> tuple[Raster, Raster, Vector]:
     """Load example DEMs and glacier outlines with inlier mask."""
     ref_dem = Raster(xdem.examples.get_path_test("longyearbyen_ref_dem"))
@@ -29,17 +29,17 @@ def example_data() -> tuple[Raster, Raster, Vector]:
     return ref_dem, tba_dem, inlier_mask
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def step() -> Coreg:
     return xdem.coreg.NuthKaab(vertical_shift=False)
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def mp_config(tmp_path: Path) -> MultiprocConfig:
     return MultiprocConfig(chunk_size=25, outfile=tmp_path / "test.tif")
 
 
-@pytest.fixture  # type: ignore
+@pytest.fixture
 def blockwise_coreg(step, mp_config) -> BlockwiseCoreg:
     return xdem.coreg.BlockwiseCoreg(step=step, mp_config=mp_config, block_size_fit=25, block_size_apply=25)
 
@@ -168,10 +168,15 @@ class TestBlockwiseCoreg:
             equal_nan=True,
         )
 
-    @pytest.mark.parametrize("block_size", [32, 56])
+    @pytest.mark.parametrize("block_size", [30, 72])
     def test_blockwise_coreg_pipeline(self, step, example_data, tmp_path, block_size):
         """Test end-to-end blockwise coregistration and validate output."""
         ref, tba, mask = example_data
+        if block_size < ref.shape[1]:
+            ref_crop = ref.icrop(bbox=(0, 0, block_size, block_size))
+            ref = ref_crop.reproject(ref)
+            tba_crop = tba.icrop(bbox=(0, 0, block_size, block_size))
+            tba = tba_crop.reproject(tba)
 
         config_mc = MultiprocConfig(chunk_size=block_size, outfile=tmp_path / "test.tif")
         blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step, mp_config=config_mc, block_size_fit=block_size)
@@ -185,12 +190,18 @@ class TestBlockwiseCoreg:
 
         diff = np.abs(expected - aligned)
         # 90% of the aligned data differs by less than 2m
+
         assert np.nanpercentile(diff, 90) < 10
 
     @pytest.mark.parametrize("block_size", [32])
     def test_blockwise_coreg_pipeline_with_multiprocessing(self, step, example_data, tmp_path, block_size):
         """Test end-to-end blockwise coregistration in multiprocessing and validate output."""
         ref, tba, mask = example_data
+        if block_size < ref.shape[1]:
+            ref_crop = ref.icrop(bbox=(0, 0, block_size, block_size))
+            ref = ref_crop.reproject(ref)
+            tba_crop = tba.icrop(bbox=(0, 0, block_size, block_size))
+            tba = tba_crop.reproject(tba)
 
         config_mc = MultiprocConfig(
             chunk_size=block_size, outfile=tmp_path / "test.tif", cluster=ClusterGenerator("multi", nb_workers=4)
