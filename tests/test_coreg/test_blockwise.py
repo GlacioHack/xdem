@@ -53,7 +53,6 @@ class TestBlockwiseCoreg:
         assert coreg_obj.block_size_apply == 25
         assert coreg_obj.block_size_fit == 25
         assert coreg_obj.apply_z_correction is False
-        assert coreg_obj.output_path_reproject == tmp_path / "reprojected_dem.tif"
         assert coreg_obj.output_path_aligned == tmp_path / "aligned_dem.tif"
         assert coreg_obj.meta == {"inputs": {}, "outputs": {}}
 
@@ -181,7 +180,7 @@ class TestBlockwiseCoreg:
         config_mc = MultiprocConfig(chunk_size=block_size, outfile=tmp_path / "test.tif")
         blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step, mp_config=config_mc, block_size_fit=block_size)
         blockwise_coreg.fit(ref, tba, mask)
-        blockwise_coreg.apply()
+        blockwise_coreg.apply(tba)
 
         aligned = xdem.DEM(tmp_path / "aligned_dem.tif")
 
@@ -208,7 +207,7 @@ class TestBlockwiseCoreg:
         )
         blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step, mp_config=config_mc, block_size_fit=block_size)
         blockwise_coreg.fit(ref, tba, mask)
-        blockwise_coreg.apply()
+        blockwise_coreg.apply(tba)
 
         aligned = xdem.DEM(tmp_path / "aligned_dem.tif")
 
