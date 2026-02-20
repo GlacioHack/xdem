@@ -30,6 +30,7 @@ dependencies:
   - pyyaml  # For CLI
   - weasyprint  # For CLI
   - tqdm  # For progress bars
+  - geoutils[opt]  # For optional GeoUtils features
 
   # Test dependencies
   - pytest
