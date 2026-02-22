@@ -709,7 +709,7 @@ class DEM(Raster):  # type: ignore
             a sum of models. Uses three by default for a method allowing multiple correlation range, otherwise one.
         :param random_state: State or seed to use for randomization.
 
-        :return: Uncertainty raster, Variogram of uncertainty correlation.
+        :return: Raster of spread of random errors (1-sigma), Spatial variogram of error correlation.
         """
 
         # Summarize approach steps
@@ -724,8 +724,9 @@ class DEM(Raster):  # type: ignore
             dh = other_elev.reproject(self, silent=True) - self
         elif isinstance(other_elev, gpd.GeoDataFrame):
             other_elev = other_elev.to_crs(self.crs)
-            points = (other_elev.geometry.x.values, other_elev.geometry.y.values)
-            dh = other_elev[z_name].values - self.interp_points(points)
+            interp_h = self.interp_points(other_elev, as_array=True)
+            dh = other_elev.copy()
+            dh[z_name] = other_elev[z_name].values - interp_h
             stable_terrain = stable_terrain
         else:
             raise TypeError("Other elevation should be a DEM or elevation point cloud object.")

@@ -1562,107 +1562,104 @@ class IrregularLogLagMetricSpace(MetricSpace):
         self._dists = mat
         return self._dists
 
-# ----------------------------
-# Benchmark code (optional)
-# ----------------------------
-
-def benchmark_irregular_sampling(
-    *,
-    N: int = 50_000,
-    extent: float = 100_000.0,
-    samples: int = 500_000,
-    min_dist: float = 5.0,
-    max_dist: float = 20_000.0,
-    n_bins: int = 24,
-    anchors_per_round: int = 50_000,
-    attempts_per_anchor: int = 1,
-    max_rounds: int = 50,
-    seed: int = 0,
-) -> None:
-    """
-    Wall-clock benchmark of all three strategies on uniform random points.
-
-    Note:
-    - nn_logvector uses KDTree internally for NN queries. It is often fastest when
-      nn_alpha is not too small (e.g., 0.1–0.2) and the point cloud is reasonably dense.
-    """
-    import time
-
-    rng = np.random.default_rng(seed)
-    coords = rng.uniform(0.0, extent, size=(N, 2)).astype(np.float64)
-
-    print(f"N={N:,}, target samples={samples:,}, bins={n_bins}, max_dist={max_dist:g}")
-
-    for strat in ["kdtree", "hashgrid", "nn_logvector"]:
-        t0 = time.perf_counter()
-        ms = IrregularLogLagMetricSpace(
-            coords,
-            samples=samples,
-            min_dist=min_dist,
-            max_dist=max_dist,
-            n_bins=n_bins,
-            strategy=strat,
-            anchors_per_round=anchors_per_round,
-            attempts_per_anchor=attempts_per_anchor,
-            max_rounds=max_rounds,
-            # hashgrid tuning
-            # cell_size=max_dist/8,
-            # nn_logvector tuning
-            nn_alpha=0.15,
-            nn_oversample=2,
-            nn_batch_size=500_000,
-            seed=seed,
-            data_dtype=np.float32,
-            symmetrize=False,
-        )
-        D = ms.dists
-        t1 = time.perf_counter()
-        print(f"{strat:12s}: nnz={D.nnz:,}  time={t1 - t0:.2f}s  mean(d)={float(D.data.mean()):.2f}")
+# ----------------------------------------
+# Benchmark code (move to benchmark later)
+# ----------------------------------------
 
 
-# if __name__ == "__main__":
-#     benchmark_irregular_sampling()
+# import shutil
+# from time import perf_counter
+
+# def benchmark_irregular_sampling(
+#     *,
+#     N: int = 50_000,
+#     extent: float = 100_000.0,
+#     samples: int = 500_000,
+#     min_dist: float = 5.0,
+#     max_dist: float = 20_000.0,
+#     n_bins: int = 24,
+#     anchors_per_round: int = 50_000,
+#     attempts_per_anchor: int = 1,
+#     max_rounds: int = 50,
+#     seed: int = 0,
+# ) -> None:
+#     """
+#     Wall-clock benchmark of all three strategies on uniform random points.
+#
+#     Note:
+#     - nn_logvector uses KDTree internally for NN queries. It is often fastest when
+#       nn_alpha is not too small (e.g., 0.1–0.2) and the point cloud is reasonably dense.
+#     """
+#     import time
+#
+#     rng = np.random.default_rng(seed)
+#     coords = rng.uniform(0.0, extent, size=(N, 2)).astype(np.float64)
+#
+#     print(f"N={N:,}, target samples={samples:,}, bins={n_bins}, max_dist={max_dist:g}")
+#
+#     for strat in ["kdtree", "hashgrid", "nn_logvector"]:
+#         t0 = time.perf_counter()
+#         ms = IrregularLogLagMetricSpace(
+#             coords,
+#             samples=samples,
+#             min_dist=min_dist,
+#             max_dist=max_dist,
+#             n_bins=n_bins,
+#             strategy=strat,
+#             anchors_per_round=anchors_per_round,
+#             attempts_per_anchor=attempts_per_anchor,
+#             max_rounds=max_rounds,
+#             # hashgrid tuning
+#             # cell_size=max_dist/8,
+#             # nn_logvector tuning
+#             nn_alpha=0.15,
+#             nn_oversample=2,
+#             nn_batch_size=500_000,
+#             seed=seed,
+#             data_dtype=np.float32,
+#             symmetrize=False,
+#         )
+#         D = ms.dists
+#         t1 = time.perf_counter()
+#         print(f"{strat:12s}: nnz={D.nnz:,}  time={t1 - t0:.2f}s  mean(d)={float(D.data.mean()):.2f}")
+#
 
 
-
-import shutil
-from time import perf_counter
-
-# 1) create a chunked Zarr on disk
-path = "/home/atom/ongoing/own/xdem/benchmark_regulargridmetricspace/bench.zarr"
-shutil.rmtree(path, ignore_errors=True)
-
-ny, nx = 20000, 20000
-chunks = (1024, 1024)
-
-# build a dask array (still synthetic, but will be written chunked+compressed)
-arr = da.random.random((ny, nx), chunks=chunks).astype(np.float32)
-arr = da.where(arr > 0.05, arr, np.nan)
-
-# write to Zarr (this is a one-time setup cost)
-t0 = perf_counter()
-arr.to_zarr(path, overwrite=True)
-print("write seconds:", perf_counter() - t0)
-
-# 2) open lazily from disk
-arr_disk = da.from_zarr(path)
-# arr_loaded = np.array(arr_disk)
-
-# 3) run your sampler/MetricSpace benchmark
-for strat in ["independent", "anchors", "chunk_anchors", "anchor_batched"]:
-    for dedup in ["none", "global", "per_anchor"]:
-        ms = RegularLogLagMetricSpace(
-            arr_disk, dx=30, dy=30,
-            samples=500_000,
-            sampling_strategy=strat,
-            deduplicate=dedup,
-            hybrid_local_fraction=0,
-            batch_pairs=2_000_000,
-            chunks_per_round=8,
-            seed=0,
-            index_dtype=np.int32,
-        )
-
-        t0 = perf_counter()
-        D = ms.dists
-        print(f"build dists seconds for strategy {strat} and dedup {dedup}:", perf_counter() - t0, "nnz:", D.nnz)
+#
+# # 1) Create a chunked Zarr on disk
+# path = "/home/atom/ongoing/own/xdem/benchmark_regulargridmetricspace/bench.zarr"
+# shutil.rmtree(path, ignore_errors=True)
+#
+# ny, nx = 20000, 20000
+# chunks = (1024, 1024)
+#
+# # build a dask array (still synthetic, but will be written chunked+compressed)
+# arr = da.random.random((ny, nx), chunks=chunks).astype(np.float32)
+# arr = da.where(arr > 0.05, arr, np.nan)
+#
+# # write to Zarr (this is a one-time setup cost)
+# t0 = perf_counter()
+# arr.to_zarr(path, overwrite=True)
+# print("write seconds:", perf_counter() - t0)
+#
+# # 2) open lazily from disk
+# arr_disk = da.from_zarr(path)
+#
+# # 3) run sampler/MetricSpace benchmark
+# for strat in ["independent", "anchors", "chunk_anchors", "anchor_batched"]:
+#     for dedup in ["none", "global", "per_anchor"]:
+#         ms = RegularLogLagMetricSpace(
+#             arr_disk, dx=30, dy=30,
+#             samples=500_000,
+#             sampling_strategy=strat,
+#             deduplicate=dedup,
+#             hybrid_local_fraction=0,
+#             batch_pairs=2_000_000,
+#             chunks_per_round=8,
+#             seed=0,
+#             index_dtype=np.int32,
+#         )
+#
+#         t0 = perf_counter()
+#         D = ms.dists
+#         print(f"build dists seconds for strategy {strat} and dedup {dedup}:", perf_counter() - t0, "nnz:", D.nnz)

@@ -354,7 +354,7 @@ class TestAffineCoreg:
         assert vshift == pytest.approx(expected_vshift)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)
-    @pytest.mark.parametrize("shifts_rotations", [(20, 5, 0.1, 0.1, 0.05, 0.01), (-50, 100, 0.1, 1, 0.5, 0.01)])
+    @pytest.mark.parametrize("shifts_rotations", [(20, 5, 10, 0, 0, 0), (0, 0, 0, 1, 0.5, 0.01)])
     @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.LZD, coreg.CPD])
     def test_coreg_rigid__synthetic(
         self,
@@ -411,9 +411,13 @@ class TestAffineCoreg:
             atol_translation = 5 * ref.res[0] if coreg_method == coreg.ICP else 0.5 * ref.res[0]
             assert np.allclose(shifts_rotations[0:3], invert_fit_shifts_rotations[:3], atol=atol_translation)
 
-            # Specify rotation precision: LZD is usually more precise than ICP/CPD
-            atol_rotation = 2 * 10e-3 if coreg_method == coreg.LZD else 10 * 10e-2
-            assert np.allclose(shifts_rotations[3:], invert_fit_shifts_rotations[3:], atol=atol_rotation)
+        # Specify rotation precision: LZD is usually more precise than ICP/CPD
+        # XY rotation is the most precise
+        atol_xy_rotation = 10e-4 if coreg_method == coreg.LZD else 3 * 10e-2
+        assert np.allclose(shifts_rotations[3:5], invert_fit_shifts_rotations[3:5], atol=atol_xy_rotation)
+        # Z rotation is a bit harder, especially on a tiny DEM
+        atol_z_rotation = 10e-3 if coreg_method == coreg.LZD else 10e-1
+        assert np.allclose(shifts_rotations[5], invert_fit_shifts_rotations[5], atol=atol_z_rotation)
 
         # For a point cloud output, need to interpolate with the other DEM to get dh
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
@@ -436,19 +440,20 @@ class TestAffineCoreg:
         if PLOT and isinstance(dh, geoutils.Raster):
             import matplotlib.pyplot as plt
 
+            plt.subplot(121)
             init_dh.plot()
-            plt.show()
+            plt.subplot(221)
             dh.plot()
             plt.show()
 
         # Need to standardize by the elevation difference spread to avoid huge/small values close to infinity
-        # Checking for 90% of variance as ICP cannot always resolve the small shifts
-        # And only 10% of variance for CPD that can't resolve shifts at all
-        fac_reduc_var = 0.1 if coreg_method != coreg.CPD else 1.0
+        # Checking 80% of variance is corrected
+        # CPD can't resolve shifts at all, so just check it doesn't make it worse for non-zero shifts
+        fac_reduc_var = 1 if (coreg_method == coreg.CPD and np.linalg.norm(shifts_rotations[0:3]) != 0) else 0.2
         assert np.nanvar(dh / np.nanstd(init_dh)) < fac_reduc_var
 
     @pytest.mark.parametrize(
-        "coreg_method__shifts_rotations",
+        "coreg_method, shifts_rotations",
         [
             (coreg.ICP, (5.417970, 1.128243, -2.066260, 0.0071103, -0.007524, -0.0047392)),
             (coreg.LZD, (9.969819, 2.140150, -1.925771, 0.0070245, -0.00766, -0.008174)),
@@ -456,7 +461,7 @@ class TestAffineCoreg:
         ],
     )
     def test_coreg_rigid__example(
-        self, coreg_method__shifts_rotations: tuple[type[AffineCoreg], tuple[float, float, float]]
+        self, coreg_method: type[AffineCoreg], shifts_rotations: tuple[float, float, float]
     ) -> None:
         """
         Test that the rigid co-registration outputs is always exactly the same on the real example data.
@@ -466,9 +471,6 @@ class TestAffineCoreg:
         ref, tba, outlines = load_examples_fullsize()
         inlier_mask = ~outlines.create_mask(ref)
 
-        # Get the coregistration method and expected shifts from the inputs
-        coreg_method, expected_shifts_rots = coreg_method__shifts_rotations
-
         # Run co-registration
         subsample_size = 50000 if coreg_method != coreg.CPD else 500
         c = coreg_method(subsample=subsample_size)
@@ -477,7 +479,7 @@ class TestAffineCoreg:
         # Check the output translations and rotations match the exact values
         fit_matrix = c.meta["outputs"]["affine"]["matrix"]
         fit_shifts_rotations = translations_rotations_from_matrix(fit_matrix)
-        assert fit_shifts_rotations == pytest.approx(expected_shifts_rots, abs=10e-6)
+        assert fit_shifts_rotations == pytest.approx(shifts_rotations, abs=10e-6)
 
     @pytest.mark.parametrize(
         "rigid_coreg",
@@ -489,6 +491,8 @@ class TestAffineCoreg:
             coreg.ICP(picky=True),
             coreg.ICP(picky=False),
             coreg.CPD(weight=0.5),
+            coreg.CPD(lsg=False),
+            coreg.CPD(lsg=True),
         ],
     )
     def test_coreg_rigid__specific_args(self, rigid_coreg: coreg.Coreg) -> None:

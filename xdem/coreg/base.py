@@ -121,9 +121,11 @@ dict_key_to_str = {
     "only_translation": "Only translations are considered",
     "standardize": "Input data was standardized",
     "icp_method": "Type of ICP method",
-    "icp_picky": "Picky closest pair selection",
+    "icp_picky": "Picky ICP variant keeping only closest pairs",
+    "linearized": "Rotation linearized during optimization",
     "sampling_strategy": "Sampling strategy for point-point registration",
     "cpd_weight": "Weight of CPD outlier removal",
+    "cpd_lsg": "CPD variant LSG using normals"
 }
 
 
@@ -877,7 +879,8 @@ def _subsample_pts_rst_independent(
     """
     Subsample raster-raster, raster-point or point-point independently into two point clouds.
 
-    Each subsampling respects the valid values of each input and (optionally) of auxiliary variables tied to one of the inputs.
+    Each subsampling respects the valid values of each input and (optionally) of auxiliary variables tied to one of
+    the inputs.
     """
 
     # 1/ Reference elevation subsampling
@@ -969,6 +972,14 @@ def _subsample_pts_rst_independent(
         sub_aux = sub_aux_ref
     else:
         sub_aux = sub_aux_tba
+
+    # If lengths differ, cut to same? Not mandatory
+    # min_samp = min(sub_tba.shape[1], sub_ref.shape[1])
+    # print(min_samp)
+    # sub_ref = sub_ref[:, :min_samp]
+    # sub_tba = sub_tba[:, :min_samp]
+    # if sub_aux is not None:
+    #     sub_aux = {k: v[:min_samp] for k, v in sub_aux.items()}
 
     return sub_ref, sub_tba, sub_aux
 
@@ -1075,15 +1086,16 @@ def _subsample_rst_pts(
     :param crs: Coordinate reference system.
     :param area_or_point: Pixel interpretation of raster data.
     :param z_name: Name of elevation point cloud column.
-    :param sampling_strategy: Sampling strategy for random subsampling of point-raster data, either "independent" to sample different points between the two
-        datasets , or "same_xy" to sample at the same X/Y coordinates.
-    :param raster_to_point: Conversion from raster to point, either "on_grid" to use only points at regular grid coordinates or "off_grid" to use
-        point at any interpolated coordinates.
+    :param sampling_strategy: Sampling strategy for random subsampling of point-raster data, either "independent"
+        to sample different points between the two datasets , or "same_xy" to sample at the same X/Y coordinates.
+    :param raster_to_point: Conversion from raster to point, either "on_grid" to use only points at regular grid
+        coordinates or "off_grid" to use point at any interpolated coordinates.
     :param aux_vars: Auxiliary variables.
     :param aux_tied_to: What input data the auxiliary variables are tied to (only relevant for "independent" sampling).
 
-    :returns: Nx3 array of subsampled reference elevation points, Nx3 array of subsampled to-be-aligned elevation points and dictionary of 1D arrays of
-        auxiliary variables values subsampled at the same points as either reference or to-be-aligned.
+    :returns: Nx3 array of subsampled reference elevation points, Nx3 array of subsampled to-be-aligned elevation
+        points and dictionary of 1D arrays of auxiliary variables values subsampled at the same points as either
+        reference or to-be-aligned.
     """
 
     # If sampling is done at independent coordinates
@@ -1119,6 +1131,16 @@ def _subsample_rst_pts(
             z_name=z_name,
             raster_to_point=raster_to_point,
         )
+
+    # Replace everything to NaN arrays
+    if np.ma.isMaskedArray(sub_ref):
+        sub_ref = sub_ref.filled()
+    if np.ma.isMaskedArray(sub_tba):
+        sub_tba = sub_tba.filled()
+    if sub_aux is not None:
+        for k, v in sub_aux.items():
+            if np.ma.isMaskedArray(v):
+                sub_aux.update({k: v.filled()})
 
     # Return two geodataframes of subsampled points
     return sub_ref, sub_tba, sub_aux
@@ -2172,6 +2194,8 @@ class InSpecificDict(TypedDict, total=False):
 
     # (Using CPD) Weight for outlier removal
     cpd_weight: float
+    # (Using CPD) Use local surface geometry method
+    cpd_lsg: bool
 
     # (Using ICP or CPD or other point-point registration)
     sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"]
@@ -2199,7 +2223,8 @@ class InAffineDict(TypedDict, total=False):
     only_translation: bool
     # Standardize input data for numerics
     standardize: bool
-
+    # Linearize the rotation during optimization (if available)
+    linearized: bool
 
 class OutAffineDict(TypedDict, total=False):
     """Keys and types of outputs associated with affine methods."""
