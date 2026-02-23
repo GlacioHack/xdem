@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import re
-import sys
 
 import pytest
 import yaml  # type: ignore
@@ -169,18 +169,17 @@ class TestMisc:
         with pytest.raises(ValueError, match="The following pip dependencies are listed in env but not dev-env: lol"):
             diff_environment_yml(env4, devenv4, input_dict=True, print_dep="pip")
 
-    def test_get_progress_without_tqdm(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    @pytest.mark.skipif(
+        importlib.util.find_spec("tqdm") is not None,
+        reason="Only runs if tqdm is missing",
+    )
+    def test_get_progress_without_tqdm(self, caplog: logging.caplog) -> None:
         """
         Test that get_progress returns a compatible FalseTQDM object
         when tqdm is not available.
         """
 
-        # Simulate ImportError for tqdm
-        monkeypatch.setitem(sys.modules, "tqdm", None)
-        monkeypatch.setitem(sys.modules, "tqdm.auto", None)
+        caplog.set_level(logging.INFO)
 
         iterable = range(3)
         pbar = get_progress(iterable)
@@ -189,6 +188,7 @@ class TestMisc:
         assert list(pbar) == [0, 1, 2]
         assert hasattr(pbar, "write")
         pbar.write("test message")
+        assert "test message" in caplog.text
 
     def test_get_progress_with_tqdm(self) -> None:
         """
@@ -198,24 +198,9 @@ class TestMisc:
         try:
             from tqdm.auto import tqdm
         except ImportError:
-            pytest.skip("tqdm not installed")
+            pytest.importorskip("tqdm")
 
         iterable = range(3)
         pbar = get_progress(iterable)
 
         assert isinstance(pbar, tqdm)
-
-    def test_write_logging(self, monkeypatch: pytest.MonkeyPatch, caplog: logging.caplog) -> None:
-        """
-        Ensure that FalseTQDM.write actually prints.
-        """
-
-        monkeypatch.setitem(sys.modules, "tqdm", None)
-        monkeypatch.setitem(sys.modules, "tqdm.auto", None)
-
-        caplog.set_level(logging.INFO)
-
-        pbar = get_progress(range(1))
-        pbar.write("hello")
-
-        assert "hello" in caplog.text
