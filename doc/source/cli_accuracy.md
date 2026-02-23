@@ -116,12 +116,12 @@ These categories and detailed parameter values are further detailed below:
 
 **Required:** Yes
 
-Elevation input information, split between reference and to-be-aligned elevation data.
+Inputs information, split between reference and to-be-aligned elevation data.
 
 :::::{tab-set}
-::::{tab-item} `reference_elev`
+::::{tab-item} `reference_elev` / `to_be_aligned_elev`
 
-:::{table} Inputs parameters for `reference_elev`
+:::{table} Inputs parameters for `reference_elev` and  `to_be_aligned_elev`
 :widths: 20, 40, 20, 10, 10
 
 | Name                  | Description                              | Type       | Default | Required |
@@ -146,33 +146,6 @@ Please refer to {ref}`data-example` to have more information.
 
 ::::
 
-::::{tab-item} `to_be_aligned_elev`
-
-:::{table} Inputs parameters for `to_be_aligned_elev`
-:widths: 20, 35, 17, 18, 10
-
-| Name                   | Description                              | Type       | Default  | Required |
-|------------------------|------------------------------------------|------------|----------|----------|
-| `path_to_elev`         | Path to to-be-aligned elevation          | str        |          | Yes      |
-| `force_source_nodata`  | No data elevation                        | int        |          | No       |
-| `path_to_mask`         | Path to mask associated to the elevation | str        |          | No       |
-| `from_vcrs`            | Original vcrs                            | int, str   | `null`   | No       |
-| `to_vcrs`              | Destination vcrs                         | int, str   | `null`   | No       |
-| `downsample`           | Downsampling elevation factor >= 1       | int, float | 1        | No       |
-:::
-
-:::{note}
-For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to {ref}`vertical-ref`.
-The ``downsample`` parameter allows the user to resample the elevation by a round factor.
-The default value of 1 means no downsampling.
-
-And, if you want to test the CLI with xDEM example data, they can also refer to data alias.
-Please refer to {ref}`data-example` to have more information.
-:::
-
-
-
-::::
 
 ::::{tab-item} `sampling_grid`
 

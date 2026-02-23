@@ -161,6 +161,14 @@ class Topo(Workflows):
         import matplotlib.pyplot as plt
 
         fig, axes = plt.subplots(nrows, ncols)
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
 
         axes = axes.flatten()
         for i, attr in enumerate(self.list_attributes):
@@ -256,11 +264,11 @@ class Topo(Workflows):
         html += f"<p>Computing time: {self.elapsed:.2f} seconds</p>"
 
         html += "<h2>Elevation input</h2>\n"
-        html += "<img src='plots/elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<img src='plots/elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         if self.inlier_mask is not None:
             html += "<h2>Masked elevation data</h2>\n"
-            html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+            html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         for title, dictionary in list_dict:
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"  # type: ignore
@@ -273,7 +281,7 @@ class Topo(Workflows):
             html += "</div>\n"
 
         html += "<h2>Terrain attributes</h2>\n"
-        html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         html += "</body>\n</html>"
 

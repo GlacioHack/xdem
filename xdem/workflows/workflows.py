@@ -142,34 +142,64 @@ class Workflows(ABC):
 
             return replace_none_str_with_none_type(yaml.safe_load(f))
 
-    def generate_plot(self, dem: RasterType, title: str, filename: str, mask_path: str = None, **kwargs: Any) -> None:
+    def generate_plot(
+        self,
+        dem: RasterType,
+        title: str,
+        filename: str,
+        dem_right: str = None,
+        title_dem_right: str = None,
+        mask_path: str = None,
+        **kwargs: Any,
+    ) -> None:
         """
         Generate plot from a DEM.
 
-        :param dem: Input digital elevation model.
-        :param title: Title of figure.
+        :param dem: Input digital elevation model (left)
+        :param title: Title of dem plot (left)
         :param filename: Filename of figure.
+        :param dem_right: Input digital elevation model (right)
+        :param title_dem_right: Title of dem_right plot (right)
         :param mask_path: Path to mask file.
-
         :return: None
         """
 
         import_optional("matplotlib")
         import matplotlib.pyplot as plt
 
-        if mask_path is None:
-            dem.plot(**kwargs)
-            plt.title(title)
-            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
-            plt.close()
-        else:
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
+
+        # Force figsize with the good ratio to prevent larger right axe if not filled
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
+
+        # Add the first image to the figure (left position)
+        dem.plot(ax=ax1, **kwargs)
+        if mask_path is not None:
             mask = gu.Vector(mask_path)
             mask = mask.crop(dem)
-            dem.plot(**kwargs)
             mask.plot(dem, ec="k", fc="none")
-            plt.title(title)
-            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
-            plt.close()
+        plt.title(title)
+
+        # If exists, add the second image to the figure (right position)
+        if dem_right is not None:
+            dem_right.plot(ax=ax2, **kwargs)
+            if mask_path is not None:
+                mask = gu.Vector(mask_path)
+                mask = mask.crop(dem_right)
+                mask.plot(dem_right, ec="k", fc="none")
+            plt.title(title_dem_right)
+        else:
+            ax2.set_axis_off()
+
+        plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
+        plt.close()
 
     def floats_process(
         self, dict_with_floats: Dict[str, Any] | InputCoregDict | OutputCoregDict | Any

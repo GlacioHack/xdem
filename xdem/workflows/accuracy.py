@@ -89,22 +89,15 @@ class Accuracy(Workflows):
         vmax = float(max(np.nanpercentile(self.reference_elev, q=95), np.nanpercentile(self.to_be_aligned_elev, q=95)))
 
         self.generate_plot(
-            self.reference_elev,
+            dem=self.reference_elev,
             title="Reference elevation",
-            filename="reference_elev_map",
+            filename="inputs",
+            dem_right=self.to_be_aligned_elev,
+            title_dem_right="To-be-aligned elevation",
             vmin=vmin,
             vmax=vmax,
             cmap="terrain",
             cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
-        )
-        self.generate_plot(
-            self.to_be_aligned_elev,
-            title="To-be-aligned elevation",
-            filename="to_be_aligned_elev_map",
-            vmin=vmin,
-            vmax=vmax,
-            cmap="terrain",
-            cbar_title=f"Elevation ({self.to_be_aligned_elev.crs.linear_units})",
         )
 
         self.inlier_mask = None
@@ -117,14 +110,16 @@ class Accuracy(Workflows):
 
         if self.inlier_mask is not None:
             self.generate_plot(
-                self.to_be_aligned_elev,
-                title="Masked (inlier) terrain",
+                self.reference_elev,
+                title="Masked terrain for reference elevation",
                 filename="masked_elev_map",
+                dem_right=self.to_be_aligned_elev,
+                title_dem_right="Masked terrain for to-be-aligned elevation",
+                mask_path=path_mask,
                 vmin=vmin,
                 vmax=vmax,
-                mask_path=path_mask,
                 cmap="terrain",
-                cbar_title=f"Elevation ({self.to_be_aligned_elev.crs.linear_units})",
+                cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
         return vmin, vmax
@@ -287,7 +282,18 @@ class Accuracy(Workflows):
         import matplotlib.pyplot as plt
 
         logging.info("Computing histogram on altitude difference")
-        plt.figure(figsize=(12, 6))
+
+        # Force figsize with the same size as generate_plot function
+        plt.figure(figsize=[6.4, 2.34])
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
+
         bins = np.linspace(self.stats_before["min"], self.stats_before["max"], 300)
         plt.xlim((-4 * np.std(self.diff_before), 4 * np.std(self.diff_before)))
         plt.hist(self.diff_before.data.flatten(), bins=bins, color="g", alpha=0.5, label="Before coregistration")
@@ -316,7 +322,7 @@ class Accuracy(Workflows):
         plt.ylabel("Count")
         plt.legend()
         plt.grid(False)
-        plt.savefig(self.outputs_folder / "plots" / "elev_diff_histo.png")
+        plt.savefig(self.outputs_folder / "plots" / "elev_diff_histo.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     def run(self) -> None:
@@ -346,19 +352,6 @@ class Accuracy(Workflows):
 
         stats_keys = ["min", "max", "nmad", "median"]
 
-        def generate_plot_diff(label: str, diff: RasterType, vmin: float, vmax: float) -> None:
-            suffix = f"_elev_{label}_coreg_map" if label else "_elev"
-
-            self.generate_plot(
-                diff,
-                title=f"Elevation difference\n{label} coregistration",
-                filename=f"diff{suffix}",
-                vmin=vmin,
-                vmax=vmax,
-                cmap="RdBu",
-                cbar_title=f"Elevation differences ({diff.crs.linear_units})",
-            )
-
         if self.compute_coreg:
 
             self.diff_before = self.to_be_aligned_elev - ref_elev
@@ -376,15 +369,31 @@ class Accuracy(Workflows):
                 self.stats_after["median"] + 3 * self.stats_after["nmad"],
             )
 
-            generate_plot_diff("before", self.diff_before, vmin_diff, vmax_diff)
-            generate_plot_diff("after", self.diff_after, vmin_diff, vmax_diff)
+            self.generate_plot(
+                dem=self.diff_before,
+                title="Elevation difference before coregistration",
+                filename="diff_elev_diff_coreg_map",
+                dem_right=self.diff_after,
+                title_dem_right="Elevation difference after coregistration",
+                vmin=vmin_diff,
+                vmax=vmax_diff,
+                cmap="RdBu",
+                cbar_title=f"Elevation differences ({self.diff_before.crs.linear_units})",
+            )
 
         else:
             self.diff = self.to_be_aligned_elev - ref_elev
             self.stats = self.diff.get_stats(stats_keys)
             vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
-            generate_plot_diff("without", self.diff, vmin, vmax)
-
+            self.generate_plot(
+                self.diff,
+                title="Elevation difference without coregistration",
+                filename="diff_elev_without_coreg_map",
+                vmin=vmin,
+                vmax=vmax,
+                cmap="RdBu",
+                cbar_title=f"Elevation differences ({self.diff.crs.linear_units})",
+            )
         if self.compute_coreg:
             stat_items = [
                 (self.reference_elev, "reference_elev", "Reference elevation", 2),
@@ -469,16 +478,11 @@ class Accuracy(Workflows):
 
         # Plot input elevation data
         html += "<h2>Elevation inputs</h2>\n"
-        html += "<div>\n"
-        html += (
-            "<img src='plots/reference_elev_map.png' alt='Image PNG' "
-            "style='max-width: 49%; height: auto; width: 49%;'>"
-        )
-        html += (
-            "<img src='plots/to_be_aligned_elev_map.png' alt='Image PNG' "
-            "style='max-width: 49%; height: auto; width: 49%;'>"
-        )
-        html += "</div>\n"
+        html += "<img src='plots/inputs.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+
+        if self.inlier_mask is not None:
+            html += "<h2>Masked elevation data</h2>\n"
+            html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         def format_values(val: Any) -> Any:
             """Format values for the dictionary."""
@@ -513,13 +517,8 @@ class Accuracy(Workflows):
             else:
                 preprocessed_data = "plots/preprocessed_reference_elev_map.png"
 
-            html += "<h2>Preprocessed elevation</h2>\n"
-            html += "<div style='display: flex'>\n"
-            html += (
-                "  <img src='" + preprocessed_data + "' alt='Image PNG' style='max-width: "
-                "50%; height: auto; width: 50%;'>\n"
-            )
-            html += "</div>\n"
+            html += "<h2>Preprocessed elevation data</h2>\n"
+            html += "<img src='" + preprocessed_data + "' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         # Metadata: Inputs
         for title, dictionary in list_dict[1:]:  # type: ignore
@@ -542,31 +541,17 @@ class Accuracy(Workflows):
         # Coregistration: Add elevation difference plot and histograms before/after
         if self.compute_coreg:
             html += "<h2>Elevation differences</h2>\n"
-            html += "<div>\n"
-            html += (
-                "<img src='plots/diff_elev_before_coreg_map.png' alt='Image PNG' "
-                "style='max-width: 49%; height: auto; width: 49%;'>"
-            )
-            html += (
-                "<img src='plots/diff_elev_after_coreg_map.png' alt='Image PNG' "
-                "style='max-width: 49%; height: auto; width: 49%;'>"
-            )
-            html += "</div>\n"
+            html += "<img src='plots/diff_elev_diff_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
 
             html += "<h2>Differences histogram</h2>\n"
-            html += "<img src='plots/elev_diff_histo.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+            html += "<img src='plots/elev_diff_histo.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
 
         else:
             html += "<h2>Elevation differences</h2>\n"
-            html += "<div'>\n"
             html += (
-                "  <img src='plots/diff_elev_without_coreg_map.png' alt='Image PNG' "
-                "style='max-width: 49%; height: auto; width: 49%;'>"
+                "<img src='plots/diff_elev_without_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
             )
-            html += "</div>\n"
-
         html += """
-             </div>
          </body>
          </html>
          """
