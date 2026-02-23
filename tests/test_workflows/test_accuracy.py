@@ -45,9 +45,7 @@ def test_init_diff_analysis(get_accuracy_object_with_run, tmp_path):
 
     assert isinstance(workflows, Workflows)
     assert isinstance(workflows, Accuracy)
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("inputs.png").exists()
     dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
     mask = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
     inlier_mask = ~mask.create_mask(dem)
@@ -165,12 +163,10 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
 
     assert Path(tmp_path / "tables").joinpath("aligned_elev_stats.csv").exists()
 
-    assert Path(tmp_path / "plots").joinpath("diff_elev_after_coreg_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("diff_elev_before_coreg_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_diff_coreg_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("inputs.png").exists()
 
     assert Path(tmp_path / "rasters").joinpath("aligned_elev.tif").exists()
 
@@ -231,11 +227,10 @@ def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
     assert Path(tmp_path / "tables").joinpath("diff_elev_without_coreg_stats.csv").exists()
 
     assert Path(tmp_path / "plots").joinpath("diff_elev_without_coreg_map.png").exists()
-    assert not Path(tmp_path / "plots").joinpath("diff_elev_before_coreg.png").exists()
+    assert not Path(tmp_path / "plots").joinpath("diff_elev_diff_coreg_map.png").exists()
     assert not Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("inputs.png").exists()
 
     assert not Path(tmp_path / "rasters").joinpath("aligned_elev.tif").exists()
 
