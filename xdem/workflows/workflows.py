@@ -149,7 +149,6 @@ class Workflows(ABC):
         filename: str,
         dem_right: str = None,
         title_dem_right: str = None,
-        mask_path: str = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -180,22 +179,12 @@ class Workflows(ABC):
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
 
         # Add the first image to the figure (left position)
-        # if mask_path is not None:
-        #     mask = gu.Vector(mask_path)
-        #    inlier_mask = ~mask.create_mask(dem)
-
-        dem_copy = dem.copy()
-        # if mask_path is not None:
-        #    dem_copy.set_mask(~inlier_mask)
-        dem_copy.plot(ax=ax1, **kwargs)
+        dem.plot(ax=ax1, **kwargs)
         plt.title(title)
 
         # If exists, add the second image to the figure
         if dem_right is not None:
-            dem_right_copy = dem_right.copy()
-            # if mask_path is not None:
-            #    dem_right_copy.set_mask(~inlier_mask)
-            dem_right_copy.plot(ax=ax2, **kwargs)
+            dem_right.plot(ax=ax2, **kwargs)
             plt.title(title_dem_right)
         else:
             ax2.set_axis_off()

@@ -103,19 +103,21 @@ class Accuracy(Workflows):
         self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
             self.inlier_mask = tba_mask
-            path_mask = tba_path_mask
         else:
             self.inlier_mask = ref_mask or tba_mask
-            path_mask = ref_mask_path or tba_path_mask
 
         if self.inlier_mask is not None:
+            inlier_mask_crop = self.inlier_mask.reproject(self.reference_elev).crop(self.reference_elev)
+            self.reference_elev.set_mask(~inlier_mask_crop)
+            inlier_mask_crop = self.inlier_mask.reproject(self.to_be_aligned_elev).crop(self.to_be_aligned_elev)
+            self.to_be_aligned_elev.set_mask(~inlier_mask_crop)
+
             self.generate_plot(
                 self.reference_elev,
                 title="Masked terrain for reference elevation",
                 filename="masked_elev_map",
                 dem_right=self.to_be_aligned_elev,
                 title_dem_right="Masked terrain for to-be-aligned elevation",
-                mask_path=path_mask,
                 vmin=vmin,
                 vmax=vmax,
                 cmap="terrain",

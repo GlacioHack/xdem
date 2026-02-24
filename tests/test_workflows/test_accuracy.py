@@ -341,11 +341,14 @@ def test_prepare_datas(get_accuracy_inputs_config, tmp_path, config):
     # Save path before crop(s)
     original_ref_path = user_config["inputs"]["reference_elev"]["path_to_elev"]
     original_tba_path = user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"]
+    user_config["inputs"]["reference_elev"]["path_to_mask"] = None
+    user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = None
 
     # Update user_config
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
     user_config["coregistration"] = {"process": False}
     user_config["inputs"]["sampling_grid"] = sampling_grid
+    user_config["inputs"]["reference_elev"]["path_to_mask"] = None
     user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = None
 
     # Init crops possible values

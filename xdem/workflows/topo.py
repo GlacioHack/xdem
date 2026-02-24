@@ -77,11 +77,12 @@ class Topo(Workflows):
         )
 
         if self.inlier_mask is not None:
+            inlier_mask_crop = self.inlier_mask.reproject(self.dem).crop(self.dem)
+            self.dem.set_mask(~inlier_mask_crop)
             self.generate_plot(
                 self.dem,
                 title="Masked elevation",
                 filename="masked_elev_map",
-                mask_path=path_to_mask,
                 cmap="terrain",
                 cbar_title=f"Elevation ({self.dem.crs.linear_units})",
             )
