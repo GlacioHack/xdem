@@ -123,6 +123,7 @@ dict_key_to_str = {
     "icp_method": "Type of ICP method",
     "icp_picky": "Picky ICP variant keeping only closest pairs",
     "linearized": "Rotation linearized during optimization",
+    "anisotropic": "Weights axis distances separately",
     "sampling_strategy": "Sampling strategy for point-point registration",
     "cpd_weight": "Weight of CPD outlier removal",
     "cpd_lsg": "CPD variant LSG using normals"
@@ -2225,6 +2226,9 @@ class InAffineDict(TypedDict, total=False):
     standardize: bool
     # Linearize the rotation during optimization (if available)
     linearized: bool
+    # Assign anisotropic weights based on X/Y/Z axis to account for unit differences
+    anisotropic: Literal["xy_vs_z", "per_axis"] | None
+
 
 class OutAffineDict(TypedDict, total=False):
     """Keys and types of outputs associated with affine methods."""

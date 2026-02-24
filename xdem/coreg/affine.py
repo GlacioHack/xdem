@@ -418,7 +418,7 @@ class DemGeometryDict(TypedDict, total=False):
     nx: NDArrayf
     ny: NDArrayf
     nz: NDArrayf
-    curvature: NDArrayf
+    curv: NDArrayf
 
 def _dem_normals_curvature(
     dem: NDArrayf,
@@ -538,24 +538,50 @@ def _epc_normals_curvature(points: NDArrayf, neighbours: int) -> tuple[NDArrayf,
 
     return normals.astype(float), curvature.astype(float)
 
-def _axis_weights_from_epc(epc: NDArrayf, *, eps: float = 1e-12) -> tuple[NDArrayf]:
+def _axis_weights_from_epc(
+    epc: NDArrayf,
+    *,
+    anisotropic: Literal["xy_vs_z", "per_axis"] | None = None,
+    eps: float = 1e-12,
+) -> NDArrayf:
     """
     Compute anisotropic axis weights from a 3xN EPC.
 
-    We use w_i = 1 / std_i^2 and sqrt_w for whitening residuals.
+    Either None (isotropic), "per_axis" (each axis weighted independent by its std), or "xy_vs_z" where X/Y share the
+    same weight pooled from X and Y std.
 
     :param epc: EPC array (3, N).
+    :param anisotropic: Type of anisotropic weighting.
     :param eps: Small value to avoid division by zero.
-    :return: (w, sqrt_w) both shape (3,).
+
+    :return: w shape (3,), axis weights.
     """
     xyz = np.asarray(epc, dtype=float)
+
     if xyz.shape[0] != 3:
         raise ValueError("epc must have shape (3, N).")
 
+    if anisotropic is None:
+        return np.ones(3, dtype=float)
+
+    # Get STD of each axis, avoid division per zero
     std = np.nanstd(xyz, axis=1)
     std = np.clip(std, eps, None)
 
-    w = 1.0 / std ** 2
+    # Per axis
+    if anisotropic == "per_axis":
+        w = 1.0 / (std ** 2)
+
+    # For XY vs Z, we sum the variances of X/Y and take the half-squareroot
+    elif anisotropic == "xy_vs_z":
+        std_xy = np.sqrt(0.5 * (std[0] ** 2 + std[1] ** 2))
+        std_xy = max(std_xy, eps)
+        w_xy = 1.0 / (std_xy ** 2)
+        w_z = 1.0 / (std[2] ** 2)
+        w = np.array([w_xy, w_xy, w_z], dtype=float)
+
+    else:
+        raise ValueError("anisotropic must be None, 'xy_vs_z', or 'per_axis'.")
 
     return w.astype(float)
 
@@ -1065,6 +1091,7 @@ def _icp_fit_func(
     method: Literal["point-to-point", "point-to-plane"],
     linearized: bool = False,
     weights: NDArrayf | None = None,
+    axis_weights: NDArrayf | None = None,
 ) -> NDArrayf:
     """
     Fit function of ICP, a rigid transformation with 6 parameters (3 translations and 3 rotations) between closest
@@ -1089,15 +1116,24 @@ def _icp_fit_func(
         that minimizes 3D distances, or "point-to-plane" of Chen and Medioni (1992) that minimizes 3D distances
         projected on normals.
 
-    :return Array of distances between closest points.
+    :return: Array of distances between closest points.
     """
 
     # Get inputs
     ref, tba, norm = inputs
     n_pts = ref.shape[1]
 
+    # Per point weights
     w_point = _collapse_weights_to_points(weights, n_pts)
     w_sqrt = None if w_point is None else np.sqrt(w_point)
+
+    # Axis weights
+    if axis_weights is None:
+        sqrt_w_axis = None
+        w_axis = None
+    else:
+        w_axis = np.asarray(axis_weights, dtype=float).reshape(3)
+        sqrt_w_axis = np.sqrt(np.clip(w_axis, 0.0, None))
 
     # 1/ Point-to-point method, from Besl and McKay (1992), https://doi.org/10.1117/12.57955
     if method == "point-to-point":
@@ -1105,9 +1141,19 @@ def _icp_fit_func(
         matrix = matrix_from_translations_rotations(t1, t2, t3, alpha1, alpha2, alpha3, use_degrees=False)
         trans_tba = _apply_matrix_pts_mat(mat=tba, matrix=matrix)
 
-        # Euclidean distance between 3D points
-        diffs = (trans_tba - ref) ** 2
-        res = np.sqrt(np.sum(diffs, axis=0))
+        # Vector residuals (3, N)
+        r = (trans_tba - ref)
+
+        # Apply axis weight for anisotropic X/Y versus Z (3, N)
+        if sqrt_w_axis is not None:
+            r = r * sqrt_w_axis[:, None]
+
+        # Apply per-point weights (3, N)
+        if w_sqrt is not None:
+            r = r * w_sqrt[None, :]
+
+        # Return 1D residual vector
+        res = r.reshape(-1)
 
     # 2/ Point-to-plane used the normals, from Chen and Medioni (1992), https://doi.org/10.1016/0262-8856(92)90066-C
     # A priori, this method is faster based on Rusinkiewicz and Levoy (2001), https://doi.org/10.1109/IM.2001.924423
@@ -1136,12 +1182,20 @@ def _icp_fit_func(
             # Distance projected on 3D normal
             diffs = (trans_tba - ref) * norm
             res = np.sum(diffs, axis=0)  # shape (N,)
+
+            # Axis weighting for plane residuals
+            if w_axis is not None:
+                # The norm is (3, N)
+                nWn = np.sum((norm * norm) * w_axis[:, None], axis=0)  # (N,)
+                plane_sqrt = np.sqrt(np.clip(nWn, 0.0, None))
+                res = plane_sqrt * res
+
+            # Apply per-point weight
+            if w_sqrt is not None:
+                res = w_sqrt * res
     else:
         raise ValueError("ICP method must be 'point-to-point' or 'point-to-plane'.")
 
-    # Optionally, add weight
-    if w_sqrt is not None:
-        res = w_sqrt * res
     return res
 
 def _icp_fit(
@@ -1149,6 +1203,7 @@ def _icp_fit(
     tba: NDArrayf,
     norms: NDArrayf | None,
     weights: NDArrayf | None,
+    axis_weights: NDArrayf | None,
     method: Literal["point-to-point", "point-to-plane"],
     params_fit_or_bin: InFitOrBinDict,
     only_translation: bool,
@@ -1208,6 +1263,7 @@ def _icp_fit(
                 method=method,
                 linearized=linearized,
                 weights=weights,
+                axis_weights=axis_weights
             )
 
         # Initial offset near zero
@@ -1228,6 +1284,7 @@ def _icp_fit(
                 method=method,
                 linearized=linearized,
                 weights=weights,
+                axis_weights=axis_weights
             )
 
         # Initial offset near zero
@@ -1247,6 +1304,7 @@ def _icp_iteration_step(
     ref_epc: NDArrayf,
     tba_epc: NDArrayf,
     norms: NDArrayf,
+    axis_weights: NDArrayf,
     ref_epc_nearest_tree: scipy.spatial.KDTree,
     params_fit_or_bin: InFitOrBinDict,
     method: Literal["point-to-point", "point-to-plane"],
@@ -1313,7 +1371,8 @@ def _icp_iteration_step(
         method=method,
         only_translation=only_translation,
         linearized=linearized,
-        weights=None
+        weights=None,
+        axis_weights=axis_weights,
     )
 
     # Increment transformation matrix by step
@@ -1330,29 +1389,6 @@ def _icp_iteration_step(
 
     return new_matrix, step_statistics, None
 
-
-def _icp_norms(dem: NDArrayf, transform: affine.Affine) -> tuple[NDArrayf, NDArrayf, NDArrayf]:
-    """
-    Derive normals from the DEM for "point-to-plane" method.
-
-    :param dem: Array of DEM.
-    :param transform: Transform of DEM.
-
-    :return: Arrays of 3D normals: east, north and upward.
-    """
-
-    # Get DEM resolution
-    resolution = _res(transform)
-
-    # Generate the X, Y and Z normals
-    gradient_x, gradient_y = np.gradient(dem)
-    normal_east = np.sin(np.arctan(gradient_y / resolution[1])) * -1
-    normal_north = np.sin(np.arctan(gradient_x / resolution[0]))
-    normal_up = 1 - np.linalg.norm([normal_east, normal_north], axis=0)
-
-    return normal_east, normal_north, normal_up
-
-
 def icp(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
@@ -1368,10 +1404,11 @@ def icp(
     params_random: InRandomDict,
     params_fit_or_bin: InFitOrBinDict,
     method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
-    sampling_strategy: Literal["independent", "same_xy"] = "same_xy",
+    sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
     picky: bool = False,
     linearized: bool = False,
     only_translation: bool = False,
+    anisotropic: Literal["xy_vs_z", "per_axis"] | None = "xy_vs_z",
     standardize: bool = True,
 ) -> tuple[NDArrayf, tuple[float, float, float], int, OutIterativeDict]:
     """
@@ -1474,6 +1511,9 @@ def icp(
         # Remove centroid and standardize to facilitate numerical convergence
         ref_epc, tba_epc = _standardize_epc(ref_epc, tba_epc, centroid=centroid, scale=scale)
 
+        # Calculate standard deviation for axes for optional anisotropic weighting
+        w_axis = _axis_weights_from_epc(ref_epc, anisotropic=anisotropic)
+
         # Define search tree outside of loop for performance
         ref_epc_nearest_tree = scipy.spatial.KDTree(ref_epc.T)
 
@@ -1482,6 +1522,7 @@ def icp(
             ref_epc,
             tba_epc,  # For iterative sampling, tba_epc is updated above
             norms,
+            w_axis,
             ref_epc_nearest_tree,
             params_fit_or_bin,
             method,
@@ -1527,7 +1568,7 @@ def icp(
 
     # Get subsample size
     # TODO: Support reporting different number of subsamples when independent?
-    subsample_final = min(ref_epc.shape[0], tba_epc.shape[0])
+    subsample_final = min(ref_epc.shape[1], tba_epc.shape[1])
 
     # If we solved the inverted problem (fixed surface was originally tba), we invert to keep the external convention
     if method == "point-to-plane" and invert_output:
@@ -2471,6 +2512,7 @@ def cpd(
     tolerance_translation: float | None,
     tolerance_rotation: float | None,
     sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
+    anisotropic: Literal["xy_vs_z", "per_axis"] | None = "xy_vs_z",
     only_translation: bool = False,
     lsg: bool = False,
     standardize: bool = True,
@@ -2565,8 +2607,8 @@ def cpd(
         # Remove centroid and standardize to facilitate numerical convergence
         ref_epc, tba_epc = _standardize_epc(ref_epc, tba_epc, centroid=centroid, scale=scale)
 
-        # Get axis weights based on their coordinate variance
-        w_axis = _axis_weights_from_epc(ref_epc)
+        # Calculate standard deviation for axes for optional anisotropic weighting
+        w_axis = _axis_weights_from_epc(ref_epc, anisotropic=anisotropic)
 
         # Re-stack normals if defined
         if sub_aux is not None:
@@ -2650,7 +2692,7 @@ def cpd(
 
     # Get subsample size
     # TODO: Support reporting different number of subsamples when independent?
-    subsample_final = min(ref_epc.shape[0], tba_epc.shape[0])
+    subsample_final = min(ref_epc.shape[1], tba_epc.shape[1])
 
     # If we solved the swapped problem for LSG (tba was the fixed reference), invert to keep external convention
     if lsg and invert_output:
@@ -2705,6 +2747,128 @@ def _lzd_aux_vars(
     gradient_y = -gradient_y / res[1]  # Because raster Y axis is inverted, need to add a minus
 
     return gradient_x, gradient_y
+
+def _lzd_fit_func_nonlinear(
+    inputs: tuple[Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf], NDArrayf, tuple[float, float, float]],
+    t1: float,
+    t2: float,
+    t3: float,
+    alpha1: float,
+    alpha2: float,
+    alpha3: float,
+) -> NDArrayf:
+    """
+    Fit function for nonlinear LZD.
+
+    Returns elevation residuals after applying a candidate rigid step transform to the point cloud:
+        r = z_grid(x', y') - z'
+
+    :param inputs: Tuple of (grid interpolator, point cloud, centroid).
+        - sub_rst: Callable interpolator z_grid((y, x)) -> z, matching _reproject_horizontal_shift_samecrs signature.
+        - pts_epc: Point cloud as 3xN array (in map coordinates).
+        - centroid: Centroid used as rotation center for _apply_matrix_pts_mat.
+    :param t1: Translation in X.
+    :param t2: Translation in Y.
+    :param t3: Translation in Z.
+    :param alpha1: Rotation around X.
+    :param alpha2: Rotation around Y.
+    :param alpha3: Rotation around Z.
+
+    :return: 1D array of finite residuals (dh) in map units.
+    """
+
+    sub_rst, pts_epc, centroid = inputs
+
+    # Build candidate step matrix
+    step = matrix_from_translations_rotations(t1, t2, t3, alpha1, alpha2, alpha3, use_degrees=False)
+
+    # Apply candidate step to current points
+    pts_step = _apply_matrix_pts_mat(pts_epc, matrix=step, centroid=centroid)
+
+    x = pts_step[0, :]
+    y = pts_step[1, :]
+    z = pts_step[2, :]
+
+    # Residuals: grid elevation at transformed XY minus transformed Z
+    dh = sub_rst((y, x)) - z
+    dh = np.asarray(dh).reshape(-1)
+
+    # Remove invalid values (created by interpolation)
+    return dh[np.isfinite(dh)]
+
+
+def _lzd_fit_nonlinear(
+    sub_rst: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    pts_epc: NDArrayf,
+    centroid: tuple[float, float, float],
+    params_fit_or_bin: Any,  # InFitOrBinDict
+    only_translation: bool,
+    **kwargs: Any,
+) -> NDArrayf:
+    """
+    Optimize one nonlinear LZD step transform by minimizing dh residuals directly.
+
+    This is analogous to ICP's point-to-plane nonlinear solve pattern:
+    - return a residual vector (here: vertical residuals),
+    - let fit_minimizer + loss handle robust losses.
+
+    :param sub_rst: Interpolator of the reference grid elevation.
+    :param pts_epc: Current point cloud as 3xN array (already in the current iteration frame).
+    :param centroid: Centroid used as rotation center for _apply_matrix_pts_mat.
+    :param params_fit_or_bin: Fit configuration dictionary (expects keys "fit_minimizer" and "fit_loss_func").
+    :param only_translation: Whether to solve only for translation (no rotations).
+    :param kwargs: Extra keyword arguments forwarded to fit_minimizer.
+
+    :return: Step affine matrix (4x4) for this iteration.
+    """
+
+    inputs = (sub_rst, pts_epc, centroid)
+
+    fit_minimizer: Callable[..., Any] = params_fit_or_bin["fit_minimizer"]
+    loss_func = params_fit_or_bin["fit_loss_func"]
+
+    # With rotation: 6 DOF
+    if not only_translation:
+
+        def fit_func(offsets: NDArrayf) -> NDArrayf:
+            return _lzd_fit_func_nonlinear(
+                inputs=inputs,
+                t1=float(offsets[0]),
+                t2=float(offsets[1]),
+                t3=float(offsets[2]),
+                alpha1=float(offsets[3]),
+                alpha2=float(offsets[4]),
+                alpha3=float(offsets[5]),
+            )
+
+        init_offsets = np.zeros(6, dtype=float)
+
+    # Translation only: 3 DOF
+    else:
+
+        def fit_func(offsets: NDArrayf) -> NDArrayf:
+            return _lzd_fit_func_nonlinear(
+                inputs=inputs,
+                t1=float(offsets[0]),
+                t2=float(offsets[1]),
+                t3=float(offsets[2]),
+                alpha1=0.0,
+                alpha2=0.0,
+                alpha3=0.0,
+            )
+
+        init_offsets = np.zeros(3, dtype=float)
+
+    results = fit_minimizer(fit_func, init_offsets, loss=loss_func, **kwargs)
+    assert results is not None
+
+    # Build step matrix
+    if only_translation:
+        beta = np.array([results.x[0], results.x[1], results.x[2], 0.0, 0.0, 0.0], dtype=float)
+    else:
+        beta = np.asarray(results.x, dtype=float)
+
+    return matrix_from_translations_rotations(*beta, use_degrees=False)
 
 
 def _lzd_fit_func(
@@ -3083,7 +3247,7 @@ def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, sig_h_other, corr_h_o
 
     return beta, sd_beta, cov_beta
 
-def _lzd_fit(
+def _lzd_fit_linearized(
     x: NDArrayf,
     y: NDArrayf,
     z: NDArrayf,
@@ -3195,6 +3359,140 @@ def _lzd_fit(
     return matrix, err_beta
 
 
+def _lzd_fit(
+    matrix: NDArrayf,
+    sub_rst: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    trans_pts_epc: NDArrayf,
+    centroid: tuple[float, float, float],
+    sub_gradx: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    sub_grady: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    params_fit_or_bin: Any,  # InFitOrBinDict
+    only_translation: bool,
+    sub_errors: tuple[
+        Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf] | None,
+        Callable | None,
+        Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf] | None,
+        Callable | None,
+    ] | None,
+    pixel_size: float,
+    force_opti: Literal["ols", "gls", "tls"] | None = None,
+    linearized: bool = True,
+    **kwargs: Any,
+) -> tuple[NDArrayf, NDArrayf | None]:
+    """
+    Fit dispatcher for LZD iteration step.
+
+    This function:
+    1) Applies the current matrix to the point cloud.
+    2) Builds the residual inputs required by the selected solver.
+    3) Solves for a step transform matrix (and optionally parameter uncertainties for linearized GLS/TLS).
+
+    :param matrix: Current affine transform matrix of the iteration.
+    :param sub_rst: Interpolator for the reference grid elevation.
+    :param sub_pts: Transformed elevation point cloud for this step.
+    :param centroid: Centroid used as rotation center for _apply_matrix_pts_mat.
+    :param sub_gradx: Interpolator for grid gradient along X (used only for linearized solver).
+    :param sub_grady: Interpolator for grid gradient along Y (used only for linearized solver).
+    :param params_fit_or_bin: Fit configuration dictionary.
+    :param only_translation: Whether to solve only for translation.
+    :param sub_errors: Error inputs (used only for linearized GLS/TLS path).
+    :param pixel_size: Pixel size in meters.
+    :param force_opti: Force optimization method in linearized solver ("ols", "gls", "tls").
+    :param linearized: Whether solver is "linearized" (R&T 1988 small-rotation) or not (exact vertical residual).
+    :param kwargs: Extra keyword arguments forwarded to the fit minimizer.
+
+    :return: (step_matrix, err_beta) where err_beta is only returned for the linearized GLS/TLS path.
+    """
+
+    # Nonlinear solve: optimize dh residuals directly
+    if not linearized:
+        if sub_errors is not None or force_opti is not None:
+            # Nonlinear path currently ignores GLS/TLS error propagation
+            logging.info(
+                "Nonlinear LZD does not use GLS/TLS error propagation; using residual+loss only."
+            )
+
+        step_matrix = _lzd_fit_nonlinear(
+            sub_rst=sub_rst,
+            pts_epc=trans_pts_epc,
+            centroid=centroid,
+            params_fit_or_bin=params_fit_or_bin,
+            only_translation=only_translation,
+            **kwargs,
+        )
+        err_beta = None
+        return step_matrix, err_beta
+
+    # Linearized solve: follow Rosenholm & Torlegård (1988)
+    else:
+        x = trans_pts_epc[0, :].copy()
+        y = trans_pts_epc[1, :].copy()
+        z = trans_pts_epc[2, :].copy()
+
+        # Evaluate dh and gradients at transformed coordinates
+        dh = sub_rst((y, x)) - z
+        gradx = sub_gradx((y, x))
+        grady = sub_grady((y, x))
+
+        # Resolve and sample errors at the transformed coordinates (if provided)
+        if sub_errors is not None:
+            sub_sig_other, corr_other, sub_sig_grid, corr_grid = sub_errors
+            sig_other = sub_sig_other((y, x)) if sub_sig_other is not None else None
+            sig_grid = sub_sig_grid((y, x)) if sub_sig_grid is not None else None
+            errors = (sig_other, corr_other, sig_grid, corr_grid)
+        else:
+            errors = None
+
+        # Remove centroid before fit for better numerical conditioning
+        x -= centroid[0]
+        y -= centroid[1]
+        z -= centroid[2]
+
+        # Remove invalid values sampled by interpolators
+        valids = np.logical_and.reduce((np.isfinite(dh), np.isfinite(z), np.isfinite(gradx), np.isfinite(grady)))
+        if errors is not None:
+            if errors[0] is not None:
+                valids = np.logical_and(valids, np.isfinite(errors[0]))
+            if errors[2] is not None:
+                valids = np.logical_and(valids, np.isfinite(errors[2]))
+
+        if np.count_nonzero(valids) == 0:
+            raise ValueError(
+                "The subsample contains no more valid values. This can happen if the affine transformation to "
+                "correct is larger than the data extent, or if the algorithm diverged. To ensure all possible points can "
+                "be used at any iteration step, use subsample=1."
+            )
+
+        x = x[valids]
+        y = y[valids]
+        z = z[valids]
+        dh = np.asarray(dh)[valids]
+        gradx = np.asarray(gradx)[valids]
+        grady = np.asarray(grady)[valids]
+
+        if errors is not None:
+            err_other, corr_other, err_grid, corr_grid = errors
+            err_other = err_other[valids] if err_other is not None else None
+            err_grid = err_grid[valids] if err_grid is not None else None
+            errors = (err_other, corr_other, err_grid, corr_grid)
+
+        step_matrix, err_beta = _lzd_fit_linearized(
+            x=x,
+            y=y,
+            z=z,
+            dh=dh,
+            gradx=gradx,
+            grady=grady,
+            params_fit_or_bin=params_fit_or_bin,
+            only_translation=only_translation,
+            errors=errors,
+            pixel_size=pixel_size,
+            force_opti=force_opti,
+            **kwargs,
+        )
+        return step_matrix, err_beta
+
+
 def _lzd_iteration_step(
     matrix: NDArrayf,
     sub_rst: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
@@ -3205,6 +3503,7 @@ def _lzd_iteration_step(
     sub_grady: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
     params_fit_or_bin: InFitOrBinDict,
     only_translation: bool,
+    linearized: bool,
     sub_errors: tuple[Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf], Callable, Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf], Callable],
     pixel_size: float,
     force_opti: Literal["ols", "gls", "tls"] = None,
@@ -3237,67 +3536,20 @@ def _lzd_iteration_step(
     pts_epc = np.vstack((sub_coords[0], sub_coords[1], sub_pts))
     trans_pts_epc = _apply_matrix_pts_mat(pts_epc, matrix=matrix, centroid=centroid)
 
-    # Evaluate dh and gradients at new X/Y coordinates
-    x = trans_pts_epc[0, :]
-    y = trans_pts_epc[1, :]
-    z = trans_pts_epc[2, :]
-    dh = sub_rst((y, x)) - z
-    gradx = sub_gradx((y, x))
-    grady = sub_grady((y, x))
-
-    if sub_errors is not None:
-        sub_sig_other, corr_other, sub_sig_grid, corr_grid = sub_errors
-        sig_other = sub_sig_other((y, x)) if sub_sig_other is not None else None
-        sig_grid = sub_sig_grid((y, x)) if sub_sig_grid is not None else None
-        errors = (sig_other, corr_other, sig_grid, corr_grid)
-    else:
-        errors = None
-
-    # Remove centroid before fit for better convergence
-    x -= centroid[0]
-    y -= centroid[1]
-    z -= centroid[2]
-
-    # Remove invalid values sampled by interpolators
-    valids = np.logical_and.reduce((np.isfinite(dh), np.isfinite(z), np.isfinite(gradx), np.isfinite(grady)))
-    if errors is not None:
-        if errors[0] is not None:
-            valids = np.logical_and(valids, np.isfinite(errors[0]))
-        if errors[2] is not None:
-            valids = np.logical_and(valids, np.isfinite(errors[2]))
-    if np.count_nonzero(valids) == 0:
-        raise ValueError(
-            "The subsample contains no more valid values. This can happen if the affine transformation to "
-            "correct is larger than the data extent, or if the algorithm diverged. To ensure all possible points can "
-            "be used at any iteration step, use subsample=1."
-        )
-    x = x[valids]
-    y = y[valids]
-    z = z[valids]
-    dh = dh[valids]
-    gradx = gradx[valids]
-    grady = grady[valids]
-    if errors is not None:
-        err_other, corr_other, err_grid, corr_grid = errors
-        err_other = err_other[valids] if err_other is not None else None
-        err_grid = err_grid[valids] if err_grid is not None else None
-        errors = (err_other, corr_other, err_grid, corr_grid)
-    else:
-        errors = None
-
-    # Fit to get new step transform
+    # Apply step fit
     step_matrix, err_beta = _lzd_fit(
-        x=x,
-        y=y,
-        z=z,
-        dh=dh,
-        gradx=gradx,
-        grady=grady,
+        matrix=matrix,
+        sub_rst=sub_rst,
+        trans_pts_epc=trans_pts_epc,
+        centroid=centroid,
+        sub_gradx=sub_gradx,
+        sub_grady=sub_grady,
         params_fit_or_bin=params_fit_or_bin,
         only_translation=only_translation,
-        errors=errors,
+        sub_errors=sub_errors,
         pixel_size=pixel_size,
         force_opti=force_opti,
+        linearized=linearized,
     )
 
     # Increment transformation matrix by step
@@ -3330,6 +3582,7 @@ def lzd(
     params_random: InRandomDict,
     params_fit_or_bin: InFitOrBinDict,
     only_translation: bool,
+    linearized: bool = True,
     sig_ref: NDArrayf | gpd.GeoDataFrame = None,
     sig_tba: NDArrayf | gpd.GeoDataFrame = None,
     corr_ref: Callable[[NDArrayf, NDArrayf], NDArrayf] = None,
@@ -3431,6 +3684,7 @@ def lzd(
         sub_grady,
         params_fit_or_bin,
         only_translation,
+        linearized,
         sub_errors,
         pixel_size,
         force_opti
@@ -3874,6 +4128,7 @@ class ICP(AffineCoreg):
         picky: bool = True,
         linearized: bool = True,
         only_translation: bool = False,
+        anisotropic: Literal["xy_vs_z", "per_axis"] | None = "xy_vs_z",
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
         max_iterations: int = 20,
@@ -3926,6 +4181,7 @@ class ICP(AffineCoreg):
             "only_translation": only_translation,
             "sampling_strategy": sampling_strategy,
             "standardize": standardize,
+            "anisotropic": anisotropic,
         }
         if trim_residuals:
             meta_input_filtering = {
@@ -3979,6 +4235,7 @@ class ICP(AffineCoreg):
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
             sampling_strategy=self._meta["inputs"]["specific"]["sampling_strategy"],
             standardize=self._meta["inputs"]["affine"]["standardize"],
+            anisotropic=self._meta["inputs"]["affine"]["anisotropic"],
         )
 
         # Write output to class
@@ -4015,6 +4272,7 @@ class CPD(AffineCoreg):
         weight: float = 0,
         only_translation: bool = False,
         lsg: bool = True,
+        anisotropic: Literal["xy_vs_z", "per_axis"] | None = "xy_vs_z",
         max_iterations: int = 100,
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
@@ -4062,6 +4320,7 @@ class CPD(AffineCoreg):
             "only_translation": only_translation,
             "sampling_strategy": sampling_strategy,
             "standardize": standardize,
+            "anisotropic": anisotropic,
         }
 
         super().__init__(subsample=subsample, meta=meta_cpd)  # type: ignore
@@ -4104,6 +4363,7 @@ class CPD(AffineCoreg):
             sampling_strategy=self._meta["inputs"]["specific"]["sampling_strategy"],
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
             standardize=self._meta["inputs"]["affine"]["standardize"],
+            anisotropic=self._meta["inputs"]["affine"]["anisotropic"],
             params_fit_or_bin=params_fitorbin,
         )
 
@@ -4309,6 +4569,7 @@ class LZD(AffineCoreg):
     def __init__(
         self,
         only_translation: bool = False,
+        linearized: bool = True,
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
         max_iterations: int = 20,
@@ -4346,6 +4607,7 @@ class LZD(AffineCoreg):
             "tolerance_translation": tolerance_translation,
             "tolerance_rotation": tolerance_rotation,
             "only_translation": only_translation,
+            "linearized": linearized,
         }
         if trim_residuals:
             meta_input_filtering = {
@@ -4393,6 +4655,7 @@ class LZD(AffineCoreg):
             tolerance_translation=self._meta["inputs"]["iterative"]["tolerance_translation"],
             tolerance_rotation=self._meta["inputs"]["iterative"]["tolerance_rotation"],
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
+            linearized=self._meta["inputs"]["affine"]["linearized"],
             sig_tba=kwargs.get("sig_tba"),
             sig_ref=kwargs.get("sig_ref"),
             corr_ref=kwargs.get("corr_ref"),
@@ -4418,6 +4681,9 @@ class LZD(AffineCoreg):
 
 class DhMinimize(AffineCoreg):
     """
+    (DEPRECATED: To replicate the same behaviour, use LZD with linearized=False, only_translation=True,
+    fit_minimizer=scipy.optimize.minimize and fit_loss_func=nmad)
+
     Elevation difference minimization coregistration.
 
     Estimates vertical and horizontal translations.
@@ -4440,6 +4706,11 @@ class DhMinimize(AffineCoreg):
         :param fit_loss_func: Loss function for the minimization of residuals.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
+
+        warnings.warn(message="DhMinimize is deprecated due to redundancy with LZD. To replicate "
+                              "the old behaviour, use LZD with linearized=False, only_translation=True, "
+                              "fit_optimizer=scipy.optimize.minimize and fit_loss_func=nmad",
+                      category=DeprecationWarning)
 
         meta_fit = {"fit_or_bin": "fit", "fit_minimizer": fit_minimizer, "fit_loss_func": fit_loss_func}
         super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore

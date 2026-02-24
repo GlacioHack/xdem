@@ -1338,9 +1338,8 @@ class IrregularLogLagMetricSpace(MetricSpace):
         if self._grid is None or self._grid_spec is None:
             self._grid, self._grid_spec = _build_hash_grid_numpy(self.coords, self.cell_size)
 
-    # ----------------------------
     # Exact annulus sampling
-    # ----------------------------
+    ########################
 
     def _sample_log_bin(self) -> tuple[float, float]:
         b = int(self.rng.integers(0, self.n_bins))
@@ -1427,9 +1426,8 @@ class IrregularLogLagMetricSpace(MetricSpace):
 
         raise RuntimeError("_pick_one_in_annulus called for non-annulus strategy")
 
-    # ----------------------------
     # Vectorized nn_logvector
-    # ----------------------------
+    #########################
 
     def _fill_nn_logvector_vectorized(self, rows: np.ndarray, cols: np.ndarray, data: np.ndarray, start: int) -> int:
         """
