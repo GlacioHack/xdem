@@ -275,8 +275,11 @@ class Topo(Workflows):
             html += f"<h2>{title}</h2>\n"
             html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
             html += "<tr><th>Information</th><th>Value</th></tr>\n"
-            for key, value in dictionary.items():
-                html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
+            for key, val in dictionary.items():
+                if "statistics" in title.lower():
+                    html += f"<tr><td>{key}</td><td>{self.format_values_stats(key, val)}</td></tr>\n"
+                else:
+                    html += f"<tr><td>{key}</td><td>{val}</td></tr>\n"
             html += "</table>\n"
             html += "</div>\n"
 

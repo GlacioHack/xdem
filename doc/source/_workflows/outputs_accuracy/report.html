@@ -2,9 +2,10 @@
 <head><meta charset='UTF-8'><title>Qualify elevation results</title></head>
 <body>
 <h1>Accuracy assessment report — xDEM</h1>
-<p>xDEM version: 0.2.3.dev26</p><p>Date: 19/02/2026 09:50:22</p><p>Computing time: 24.24 seconds</p><h2>Elevation inputs</h2>
-<div>
-<img src='plots/reference_elev_map.png' alt='Image PNG' style='max-width: 49%; height: auto; width: 49%;'><img src='plots/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: 49%; height: auto; width: 49%;'></div>
+<p>xDEM version: 0.2.3.dev26</p><p>Date: 24/02/2026 10:49:16</p><p>Computing time: 18.70 seconds</p><h2>Elevation inputs</h2>
+<img src='plots/inputs.png' alt='Image PNG' style='width: 100%; height: auto;'>
+<h2>Masked elevation data</h2>
+<img src='plots/masked_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>
 <div style='clear: both; margin-bottom: 30px;'>
 <h2>Information about inputs</h2>
 <table border='1' cellspacing='0' cellpadding='5'>
@@ -14,10 +15,8 @@
 <tr><td>sampling_grid</td><td>reference_elev</td></tr>
 </table>
 </div>
-<h2>Preprocessed elevation</h2>
-<div style='display: flex'>
-  <img src='plots/preprocessed_to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
-</div>
+<h2>Preprocessed elevation data</h2>
+<img src='plots/preprocessed_to_be_aligned_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>
 <div style='clear: both; margin-bottom: 30px;'>
 <h2>Coregistration user configuration</h2>
 <table border='1' cellspacing='0' cellpadding='5'>
@@ -48,16 +47,14 @@
 <h2>Statistics</h2>
 <table border='1' cellspacing='0' cellpadding='5'>
 <tr><td style="font-weight:bold">Data</td><td style="font-weight:bold">Aligned elevation</td><td style="font-weight:bold">Difference before coreg</td><td style="font-weight:bold">Difference after coreg</td></tr>
-<tr><td>Median</td><td>363.33892822265625</td><td>2.766407012939453</td><td>0.2544441223144531</td></tr>
-<tr><td>NMAD</td><td>291.80120849609375</td><td>3.805830478668213</td><td>2.403942584991455</td></tr>
-<tr><td>Valid count</td><td>1309704.0</td><td>1312020.0</td><td>1309704.0</td></tr>
+<tr><td>Median</td><td>363.339</td><td>2.766</td><td>0.254</td></tr>
+<tr><td>NMAD</td><td>291.801</td><td>3.806</td><td>2.404</td></tr>
+<tr><td>Valid count</td><td>1309704</td><td>1312020</td><td>1309704</td></tr>
 </table>
 <h2>Elevation differences</h2>
-<div>
-<img src='plots/diff_elev_before_coreg_map.png' alt='Image PNG' style='max-width: 49%; height: auto; width: 49%;'><img src='plots/diff_elev_after_coreg_map.png' alt='Image PNG' style='max-width: 49%; height: auto; width: 49%;'></div>
+<img src='plots/diff_elev_diff_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>
 <h2>Differences histogram</h2>
-<img src='plots/elev_diff_histo.png' alt='Image PNG' style='max-width: 100%; height: auto;'>
+<img src='plots/elev_diff_histo.png' alt='Image PNG' style='width: 100%; height: auto'>
 
-             </div>
          </body>
          </html>

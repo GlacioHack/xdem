@@ -528,13 +528,11 @@ class Accuracy(Workflows):
         if self.df_stats is not None:
             html += "<h2>Statistics</h2>\n"
             html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
-
             # Plot one stat by row
             df_cols = "".join([f'<td style="font-weight:bold">{col}</td>' for col in self.df_stats.T.columns])
             html += f'<tr><td style="font-weight:bold">Data</td>{df_cols}</tr>\n'
-
             for key, value in self.df_stats.T.iterrows():
-                df_values = "".join([f"<td>{str(val)}</td>" for val in value.values])
+                df_values = "".join([f"<td>{self.format_values_stats(key, val)}</td>" for val in value.values])
                 html += f"<tr><td>{key}</td>{df_values}</tr>\n"
             html += "</table>\n"
 

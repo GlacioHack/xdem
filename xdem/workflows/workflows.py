@@ -180,20 +180,22 @@ class Workflows(ABC):
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
 
         # Add the first image to the figure (left position)
-        dem.plot(ax=ax1, **kwargs)
-        if mask_path is not None:
-            mask = gu.Vector(mask_path)
-            mask = mask.crop(dem)
-            mask.plot(dem, ec="k", fc="none")
+        # if mask_path is not None:
+        #     mask = gu.Vector(mask_path)
+        #    inlier_mask = ~mask.create_mask(dem)
+
+        dem_copy = dem.copy()
+        # if mask_path is not None:
+        #    dem_copy.set_mask(~inlier_mask)
+        dem_copy.plot(ax=ax1, **kwargs)
         plt.title(title)
 
-        # If exists, add the second image to the figure (right position)
+        # If exists, add the second image to the figure
         if dem_right is not None:
-            dem_right.plot(ax=ax2, **kwargs)
-            if mask_path is not None:
-                mask = gu.Vector(mask_path)
-                mask = mask.crop(dem_right)
-                mask.plot(dem_right, ec="k", fc="none")
+            dem_right_copy = dem_right.copy()
+            # if mask_path is not None:
+            #    dem_right_copy.set_mask(~inlier_mask)
+            dem_right_copy.plot(ax=ax2, **kwargs)
             plt.title(title_dem_right)
         else:
             ax2.set_axis_off()
@@ -321,3 +323,16 @@ class Workflows(ABC):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerow(cleaned_data)
+
+    def format_values_stats(self, key: str, val: Union[float, int]) -> str:
+        """Format values for the statistics."""
+        if "count" in key.lower():
+            return str(int(val))
+        if "percentage" in key.lower():
+            return f"{val:.2f}" + "%"
+        elif abs(val) > 10e4:
+            return np.format_float_scientific(val, precision=3)
+        elif abs(val) < 10e-4:
+            return np.format_float_scientific(val, precision=3)
+        else:
+            return f"{val:.3f}"
