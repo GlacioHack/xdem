@@ -35,7 +35,7 @@ from numpy import floating
 import xdem
 from xdem._misc import import_optional
 from xdem.workflows.schemas import ACCURACY_SCHEMA
-from xdem.workflows.workflows import Workflows
+from xdem.workflows.workflows import _ALIAS, Workflows
 
 
 class Accuracy(Workflows):
@@ -244,27 +244,7 @@ class Accuracy(Workflows):
         if list_to_compute is not None:
             logging.info(f"Computing statistics on {name_of_data}: {list_to_compute}")
             dict_stats = dem.get_stats(list_to_compute)
-
-            # Aliases for nicer CSV headers
-            aliases = {
-                "mean": "Mean",
-                "median": "Median",
-                "max": "Maximum",
-                "min": "Minimum",
-                "sum": "Sum",
-                "sumofsquares": "Sum of squares",
-                "90thpercentile": "90th percentile",
-                "le90": "LE90",
-                "nmad": "NMAD",
-                "rmse": "RMSE",
-                "std": "STD",
-                "standarddeviation": "Standard deviation",
-                "validcount": "Valid count",
-                "totalcount": "Total count",
-                "percentagevalidpoints": "Percentage valid points",
-            }
-
-            dict_stats_aliased = {aliases.get(k, k): v for k, v in dict_stats.items()}
+            dict_stats_aliased = {_ALIAS.get(k, k): v for k, v in dict_stats.items()}
 
         return dict_stats_aliased
 

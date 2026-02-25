@@ -47,6 +47,24 @@ except ImportError:
     SafeDumper = object
     _HAS_YAML = False
 
+_ALIAS = {
+    "mean": "Mean",
+    "median": "Median",
+    "max": "Maximum",
+    "min": "Minimum",
+    "sum": "Sum",
+    "sumofsquares": "Sum of squares",
+    "90thpercentile": "90th percentile",
+    "le90": "LE90",
+    "nmad": "NMAD",
+    "rmse": "RMSE",
+    "std": "STD",
+    "standarddeviation": "Standard deviation",
+    "validcount": "Valid count",
+    "totalcount": "Total count",
+    "percentagevalidpoints": "Percentage valid points",
+}
+
 
 class Workflows(ABC):
     """

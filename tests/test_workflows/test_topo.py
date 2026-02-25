@@ -29,7 +29,7 @@ from rasterio.coords import BoundingBox
 import xdem
 from xdem.workflows import Topo
 from xdem.workflows.schemas import STATS_METHODS
-from xdem.workflows.workflows import Workflows
+from xdem.workflows.workflows import _ALIAS, Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
@@ -173,6 +173,6 @@ def test_run(get_topo_inputs_config, tmp_path):
 
     # 3/ Statistics names
     assert workflows.dico_to_show[2][0] == "Global statistics"
-    assert list(workflows.dico_to_show[2][1].keys()) == STATS_METHODS
+    assert list(workflows.dico_to_show[2][1].keys()) == [_ALIAS.get(k) for k in STATS_METHODS]
     assert workflows.dico_to_show[3][0] == "Mask statistics"
-    assert list(workflows.dico_to_show[3][1].keys()) == STATS_METHODS
+    assert list(workflows.dico_to_show[3][1].keys()) == [_ALIAS.get(k) for k in STATS_METHODS]

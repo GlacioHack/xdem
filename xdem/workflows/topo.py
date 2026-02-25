@@ -30,7 +30,7 @@ from typing import Any, Dict
 import xdem
 from xdem._misc import import_optional
 from xdem.workflows.schemas import TOPO_SCHEMA
-from xdem.workflows.workflows import Workflows
+from xdem.workflows.workflows import _ALIAS, Workflows
 
 
 class Topo(Workflows):
@@ -219,11 +219,14 @@ class Topo(Workflows):
         list_metrics = self.config["statistics"]
         if list_metrics is not None:
             stats_dem = self.dem.get_stats(list_metrics)
+            stats_dem = {_ALIAS.get(k, k): v for k, v in stats_dem.items()}
             self.save_stat_as_csv(stats_dem, "stats_elev")
             self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
             stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
+
             if self.inlier_mask is not None:
                 self.save_stat_as_csv(stats_dem_mask, "stats_elev_mask")
+                stats_dem_mask = {_ALIAS.get(k, k): v for k, v in stats_dem_mask.items()}
                 self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
             logging.info(f"Computing metrics on reference elevation: {list_metrics}")
 
