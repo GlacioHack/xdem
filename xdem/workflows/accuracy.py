@@ -80,8 +80,8 @@ class Accuracy(Workflows):
 
         :return vmin, vmax: to plot elevation data with the same scale
         """
-        self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"])
         self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"].get("reference_elev", None))
+        self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"])
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
 
@@ -100,16 +100,11 @@ class Accuracy(Workflows):
             cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
         )
 
-        self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
-            self.inlier_mask = tba_mask
-        else:
-            self.inlier_mask = ref_mask or tba_mask
-
-        if self.inlier_mask is not None:
-            inlier_mask_crop = self.inlier_mask.reproject(self.reference_elev).crop(self.reference_elev)
+            inlier_mask_crop = ref_mask.reproject(self.reference_elev).crop(self.reference_elev)
             self.reference_elev.set_mask(~inlier_mask_crop)
-            inlier_mask_crop = self.inlier_mask.reproject(self.to_be_aligned_elev).crop(self.to_be_aligned_elev)
+
+            inlier_mask_crop = tba_mask.reproject(self.to_be_aligned_elev).crop(self.to_be_aligned_elev)
             self.to_be_aligned_elev.set_mask(~inlier_mask_crop)
 
             self.generate_plot(
@@ -161,9 +156,7 @@ class Accuracy(Workflows):
         my_coreg = sum(coreg_functions[1:], coreg_functions[0]) if len(coreg_functions) > 1 else coreg_functions[0]
 
         # Coregister
-        aligned_elev = self.to_be_aligned_elev.coregister_3d(
-            self.reference_elev, my_coreg, self.inlier_mask, random_state=42
-        )
+        aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, random_state=42)
         aligned_elev.to_file(self.outputs_folder / "rasters" / "aligned_elev.tif")
 
         self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
@@ -482,7 +475,7 @@ class Accuracy(Workflows):
         html += "<h2>Elevation inputs</h2>\n"
         html += "<img src='plots/inputs.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
-        if self.inlier_mask is not None:
+        if self.reference_elev.get_mask() is not None:
             html += "<h2>Masked elevation data</h2>\n"
             html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
