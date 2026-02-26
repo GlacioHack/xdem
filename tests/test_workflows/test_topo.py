@@ -133,9 +133,7 @@ def test_run(get_topo_inputs_config, tmp_path):
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Topo(user_config)
     workflows.run()
-
     assert Path(tmp_path / "tables").joinpath("stats_elev_stats.csv").exists()
-    assert Path(tmp_path / "tables").joinpath("stats_elev_mask_stats.csv").exists()
     assert Path(tmp_path).joinpath("report.html").exists()
     # Check subdictionaries content, except exact stats values in case test data/algorithms slightly changes,
     # and as those are already tested separately
@@ -172,7 +170,5 @@ def test_run(get_topo_inputs_config, tmp_path):
     )
 
     # 3/ Statistics names
-    assert workflows.dico_to_show[2][0] == "Global statistics"
+    assert workflows.dico_to_show[2][0] == "Statistics"
     assert list(workflows.dico_to_show[2][1].keys()) == [_ALIAS.get(k) for k in STATS_METHODS]
-    assert workflows.dico_to_show[3][0] == "Mask statistics"
-    assert list(workflows.dico_to_show[3][1].keys()) == [_ALIAS.get(k) for k in STATS_METHODS]
