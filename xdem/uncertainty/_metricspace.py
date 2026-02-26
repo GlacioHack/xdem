@@ -1,3 +1,21 @@
+# Copyright (c) 2026 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional
 import warnings
@@ -241,6 +259,16 @@ class RegularLogLagMetricSpace(MetricSpace):
         data_dtype:
             dtype for distances. float64 is default; float32 can halve memory for `data`.
         """
+
+        # Faking empty coords with a shape/length so that Variogram class works
+        class Coords:
+            def __init__(self, fake_shape: tuple[int, int]):
+                self.shape = fake_shape
+                self.n = fake_shape[0]
+
+            def __len__(self) -> int:
+                return self.n
+        self.coords = Coords(fake_shape=(np.prod(array.shape), 2))
 
         # We intentionally do not call MetricSpace.__init__ here (it expects coords).
         self.array = array
@@ -828,9 +856,9 @@ class RegularLogLagMetricSpace(MetricSpace):
 
         # Check sample cannot be larger than unique "undirected" pairs (i.e. i,j = j,i)
         n_valid = int(round(f_valid * self.N))  # or better: return n_valid from _estimate_valid_fraction
-        max_unique_valid = n_valid * (n_valid - 1) / 2
+        max_unique_valid = int(n_valid * (n_valid - 1) / 2)
         if self.samples >= max_unique_valid:
-            warnings.warn(f"Too large pairwise sample size {self.samples}, defaulting to maximum number of finite"
+            warnings.warn(f"Too large pairwise sample size {self.samples}, defaulting to maximum number of finite "
                           f"undirected pairs {max_unique_valid} for this array of size {self.shape}.",
                           category=UserWarning)
             self.samples = max_unique_valid

@@ -52,14 +52,13 @@ from xdem.coreg.base import (
     _apply_matrix_pts_mat,
     _apply_matrix_rst,
     _bin_or_and_fit_nd,
-    _get_subsample_mask_pts_rst,
     _make_matrix_valid,
     _reproject_horizontal_shift_samecrs,
-    _subsample_rst_pts,
     invert_matrix,
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
 )
+from xdem.cosampling import _subsample_rst_pts, _get_subsample_mask_pts_rst
 from xdem.fit import index_trimmed
 
 ######################################
@@ -298,7 +297,8 @@ def _subsample_rst_pts_interpolator(
 
     # Get subsample mask (a 2D array for raster-raster, a 1D array of length the point data for point-raster)
     sub_mask = _get_subsample_mask_pts_rst(
-        params_random=params_random,
+        subsample=params_random["subsample"],
+        random_state=params_random["random_state"],
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
@@ -1020,7 +1020,8 @@ def vertical_shift(
 
     # Pre-process point-raster inputs to the same subsampled points
     sub_ref, sub_tba, _ = _subsample_rst_pts(
-        params_random=params_random,
+        subsample=params_random["subsample"],
+        random_state=params_random["random_state"],
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
@@ -1488,7 +1489,8 @@ def icp(
 
         # Pre-process point-raster inputs to the same subsampled points
         ref_epc, tba_epc, sub_aux = _subsample_rst_pts(
-            params_random=params_random,
+            subsample=params_random["subsample"],
+            random_state=params_random["random_state"],
             ref_elev=ref_elev,
             tba_elev=tba_elev,  # For iterative sampling, tba_elev is updated below
             inlier_mask=inlier_mask,
@@ -2590,7 +2592,8 @@ def cpd(
 
         # Pre-process point-raster inputs to the same subsampled points
         ref_epc, tba_epc, sub_aux = _subsample_rst_pts(
-            params_random=params_random,
+            subsample=params_random["subsample"],
+            random_state=params_random["random_state"],
             ref_elev=ref_elev,
             tba_elev=tba_elev,  # For iterative sampling, tba_elev is updated below
             aux_vars=aux_vars,
@@ -3621,7 +3624,8 @@ def lzd(
 
     # Then, perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
     sub_ref, sub_tba, _ = _subsample_rst_pts(
-        params_random=params_random,
+        subsample=params_random["subsample"],
+        random_state=params_random["random_state"],
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
@@ -3924,7 +3928,8 @@ class AffineCoreg(Coreg):
 
         # Get subsample mask (a 2D array for raster-raster, a 1D array of length the point data for point-raster)
         sub_mask = _get_subsample_mask_pts_rst(
-            params_random=params_random,
+            subsample=params_random["subsample"],
+            random_state=params_random["random_state"],
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,

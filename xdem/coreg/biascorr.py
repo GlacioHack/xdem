@@ -31,7 +31,8 @@ import scipy
 
 import xdem.spatialstats
 from xdem._typing import NDArrayb, NDArrayf
-from xdem.coreg.base import Coreg, InRandomDict, _subsample_rst_pts, fit_workflows
+from xdem.coreg.base import Coreg, InRandomDict, fit_workflows
+from xdem.cosampling import _subsample_rst_pts
 from xdem.fit import polynomial_2d
 
 BiasCorrType = TypeVar("BiasCorrType", bound="BiasCorr")
@@ -185,7 +186,8 @@ class BiasCorr(Coreg):
 
         # Pre-process raster-point input
         sub_ref, sub_tba, sub_bias_vars = _subsample_rst_pts(
-            params_random=params_random,
+            subsample=params_random["subsample"],
+            random_state=params_random["random_state"],
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,

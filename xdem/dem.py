@@ -720,13 +720,21 @@ class DEM(Raster):  # type: ignore
         }
 
         # Elevation change with the other DEM or elevation point cloud
+        # TODO: Adjust with common helper function once GeoUtils accessors are released
         if isinstance(other_elev, DEM):
             dh = other_elev.reproject(self, silent=True) - self
-        elif isinstance(other_elev, gpd.GeoDataFrame):
-            other_elev = other_elev.to_crs(self.crs)
-            interp_h = self.interp_points(other_elev, as_array=True)
-            dh = other_elev.copy()
-            dh[z_name] = other_elev[z_name].values - interp_h
+        elif isinstance(other_elev, (gpd.GeoDataFrame, xdem.EPC)):
+            if isinstance(other_elev, xdem.EPC):
+                gdf = other_elev.ds
+                z_name = other_elev.data_column
+            else:
+                gdf = other_elev
+                z_name = z_name
+            gdf = gdf.to_crs(self.crs)
+            interp_h = self.interp_points(xdem.EPC(gdf, data_column=z_name), as_array=True)
+            dh = other_elev[z_name].values - interp_h
+            pc_dh = other_elev.copy()
+            pc_dh[z_name] = dh
             stable_terrain = stable_terrain
         else:
             raise TypeError("Other elevation should be a DEM or elevation point cloud object.")
