@@ -54,6 +54,7 @@ from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
 from geoutils.raster import Raster, RasterType, raster
 from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
+from geoutils.raster.distributed_computing import map_overlap_multiproc_save
 from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
 from geoutils.raster.geotransformations import _translate
 
@@ -1545,7 +1546,6 @@ def _apply_matrix_rst(
 
     :returns: Transformed DEM, Transform.
     """
-
     # Invert matrix if required
     if invert:
         matrix = invert_matrix(matrix)
@@ -1764,6 +1764,144 @@ def apply_matrix(
             applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
             return applied_dem
         return applied_dem, out_transform
+
+
+@overload
+def apply_matrix_multi(
+    elev: NDArrayf,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
+    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    transform: rio.transform.Affine = None,
+    z_name: str = "z",
+    multiproc_config: gu.raster.MultiprocConfig | None = None,
+    **kwargs: Any,
+) -> tuple[NDArrayf, affine.Affine]: ...
+
+
+@overload
+def apply_matrix_multi(
+    elev: gu.Raster | gpd.GeoDataFrame,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
+    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    transform: rio.transform.Affine = None,
+    z_name: str = "z",
+    multiproc_config: gu.raster.MultiprocConfig | None = None,
+    **kwargs: Any,
+) -> gu.Raster | gpd.GeoDataFrame: ...
+
+
+def apply_matrix_multi(
+    elev: gu.Raster | NDArrayf | gpd.GeoDataFrame,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
+    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    transform: rio.transform.Affine = None,
+    z_name: str = "z",
+    multiproc_config: gu.raster.MultiprocConfig | None = None,
+    **kwargs: Any,
+) -> tuple[NDArrayf, affine.Affine] | gu.Raster | gpd.GeoDataFrame:
+    """
+    Apply a 3D affine transformation matrix to a 3D elevation point cloud or 2.5D DEM.
+
+    For an elevation point cloud, the transformation is exact.
+
+    For a DEM, it requires re-gridding because the affine-transformed point cloud of the DEM does not fall onto a
+    regular grid anymore (except if the affine transformation only has translations). For this, this function uses the
+    three following methods:
+
+    1. For transformations with only translations, the transform is updated and vertical shift added to the array,
+
+    2. For transformations with a small rotation (20 degrees or less for all axes), this function maps which 2D
+    point coordinates will fall back exactly onto the original DEM grid coordinates after affine transformation by
+    searching iteratively using the invert affine transformation and 2D point regular-grid interpolation on the
+    original DEM (see geoutils.Raster.interp_points, or scipy.interpolate.interpn),
+
+    3. For transformations with large rotations (20 degrees or more), scipy.interpolate.griddata is used to
+    re-grid the irregular affine-transformed 3D point cloud using Delauney triangulation interpolation (slower).
+
+    :param elev: Elevation point cloud or DEM to transform, either a 2D array (requires transform) or
+        geodataframe (requires z_name).
+    :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
+    :param invert: Whether to invert the transformation matrix.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
+        Defaults to the midpoint (Z=0).
+    :param resample: (For translations) If set to True, will resample output on the translated grid to match the input
+        transform. Otherwise, only the transform will be updated and no resampling is done.
+    :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more
+        information, see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
+    :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
+    :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+    :param multiproc_config: ...
+    :param kwargs: Keywords passed to _apply_matrix_rst for testing.
+
+    :return: Affine transformed elevation point cloud or DEM.
+    """
+
+    mp_backend = multiproc_config is not None
+    # The check below can only run on Xarray
+    # dask_backend = da is not None and elev._chunks is not None
+    dask_backend = False
+
+    if mp_backend and dask_backend:
+        raise ValueError(
+            "Cannot use Multiprocessing and Dask simultaneously. To use Dask, remove mp_config parameter "
+            "from reproject(). To use Multiprocessing, open the file without chunks."
+        )
+
+    # If using Multiprocessing backend, process and return None (files written on disk)
+    if mp_backend:
+        # Get depth of overlap
+        depth = 10  # ath.ceil(depth)
+
+        # Block function to pass
+        def _apply_matrix_rst_block(
+            block: Raster,
+            matrix: NDArrayf,
+            invert: bool = False,
+            centroid: tuple[float, float, float] | None = None,
+            resample: bool = True,
+            resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+            **kwargs: Any,
+        ) -> Raster:
+            """Block function for multiprocessing."""
+            filtered_block, new_transform = _apply_matrix_rst(
+                block.data.filled(np.nan), block.transform, matrix, invert, centroid, resampling, **kwargs
+            )
+            if resample:
+                print(resample, type(filtered_block))
+                filtered_block = _reproject_horizontal_shift_samecrs(
+                    filtered_block, src_transform=new_transform, dst_transform=block.transform, resampling=resampling
+                )
+                new_transform = block.transform
+            rast = gu.Raster.from_array(filtered_block, new_transform, block.crs, block.nodata)
+            return rast
+
+        dem_res = map_overlap_multiproc_save(
+            _apply_matrix_rst_block,
+            elev,
+            multiproc_config,
+            matrix,
+            invert,
+            centroid,
+            resample,
+            resampling,
+            depth=depth,
+            **kwargs,
+        )
+
+        return dem_res
+    elif dask_backend:
+        return None
+    else:
+        return apply_matrix(elev, matrix, invert, centroid, resample, resampling, transform, z_name, **kwargs)
 
 
 ###########################################

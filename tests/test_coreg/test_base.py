@@ -6,6 +6,7 @@ import inspect
 import re
 import sys
 import warnings
+from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
 import geopandas as gpd
@@ -16,12 +17,13 @@ import pytest
 import rasterio as rio
 from geoutils import Raster, Vector
 from geoutils.raster import RasterType
+from geoutils.raster.distributed_computing import MultiprocConfig
 from scipy.ndimage import binary_dilation
 
 import xdem
 from xdem import coreg, examples
 from xdem._typing import NDArrayf
-from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
+from xdem.coreg.base import Coreg, apply_matrix, apply_matrix_multi, dict_key_to_str
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -1068,3 +1070,33 @@ class TestAffineManipulation:
         diff_it_gd = z_points_gd[valids] - z_points_it[valids]
         assert np.percentile(np.abs(diff_it_gd), 99) < 1.2  # 99% of values are within a 1.20 meter (instead of 90%)
         assert np.percentile(np.abs(diff_it_gd), 50) < 0.03  # 10 times more precise than above
+
+    @pytest.mark.parametrize("chunk_size", [5, 30])
+    @pytest.mark.parametrize("matrix", list_matrices)
+    @pytest.mark.parametrize("invert", [True, False])
+    @pytest.mark.parametrize("resampling", [None, "nearest", "linear", "cubic", "quintic"])
+    def test_apply_matrix_multi(
+        self, matrix: NDArrayf, chunk_size: int, invert: bool, resampling: str, tmp_path: Path
+    ) -> None:
+
+        # Create a synthetic raster and convert to point cloud
+        dem_arr = np.linspace(0, 2, 25).reshape(5, 5)
+        transform = rio.transform.from_origin(0, 5, 1, 1)
+        dem = gu.Raster.from_array(dem_arr, transform=transform, crs=4326, nodata=100)
+        epc = dem.to_pointcloud(data_column_name="z").ds
+
+        # If a centroid was not given, default to the center of the DEM (at Z=0).
+        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.0)
+        resample = resampling is not None
+
+        # Apply affine transformation to both datasets
+        ref_dem = apply_matrix(dem, matrix, invert=invert, centroid=centroid, resample=resample)
+
+        mp_config = MultiprocConfig(chunk_size=5, outfile=tmp_path / "test.tif")
+        apply_matrix_multi(dem, matrix, multiproc_config=mp_config, invert=invert, centroid=centroid, resample=resample)
+        res_dem = xdem.DEM(tmp_path / "test.tif")
+
+        assert ref_dem.nodata == res_dem.nodata
+        assert ref_dem.crs == res_dem.crs
+        assert ref_dem.transform == res_dem.transform
+        assert ref_dem.get_stats("mean") == res_dem.get_stats("mean")
