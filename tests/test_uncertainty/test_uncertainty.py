@@ -34,20 +34,19 @@ class TestUncertainty:
         dem_tba = DEM(fn_tba)
 
         # Test with input "EPC, DEM"
-        sig_h, corr_sig = _infer_uncertainty(epc_ref, dem_tba, random_state=42)
-        assert isinstance(sig_h, PointCloud)
-        assert callable(corr_sig)
+        hetesc_out, corr_out = _infer_uncertainty(epc_ref, dem_tba, random_state=42)
+        assert isinstance(hetesc_out[0], PointCloud)
+        assert callable(corr_out[2])
 
         # Test with input "DEM, EPC"
-        sig_h, corr_sig = _infer_uncertainty(dem_tba, epc_ref, random_state=42)
-        assert isinstance(sig_h, Raster)
-        assert callable(corr_sig)
+        hetesc_out, corr_out = _infer_uncertainty(dem_tba, epc_ref, random_state=42)
+        assert isinstance(hetesc_out[0], Raster)
+        assert callable(corr_out[2])
 
         # Test with input "DEM, DEM"
-        sig_h, corr_sig = _infer_uncertainty(dem_ref, dem_tba, random_state=42)
-        assert isinstance(sig_h, Raster)
-        assert callable(corr_sig)
-
+        hetesc_out, corr_out = _infer_uncertainty(dem_ref, dem_tba, random_state=42)
+        assert isinstance(hetesc_out[0], Raster)
+        assert callable(corr_out[2])
 
     def test_propag_uncertainty_coreg__runs_and_reports(self) -> None:
         # Import optional skgstat or skip test
