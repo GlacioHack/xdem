@@ -119,10 +119,13 @@ def _propag_uncertainty_coreg(
 
     logging.info(f"Infering uncertainty from {error_applied_to}...")
     # Get correlation, heteroscedasticity, and build model for GSTools random fields
-    sig_elev, params, _ = _infer_uncertainty(source_elev=source_elev, other_elev=other_elev,
+    hetesc_out, corr_out = _infer_uncertainty(source_elev=source_elev, other_elev=other_elev,
                                              stable_terrain=inlier_mask, random_state=rng,
                                              **kwargs_infer_uncertainty)
+    sig_elev = hetesc_out[0]
+    params = corr_out[1]
     corr_func = params_to_gstools_model(params)
+    logging.info(f"Found spatial correlation parameters:\n{params}")
 
     # Then, run simulations
     list_df = []
@@ -267,7 +270,7 @@ def _infer_uncertainty(
     subsample_pairs_vario: int | float = 10e6,
     z_name: str | None = None,
     random_state: int | np.random.Generator | None = None,
-) -> tuple[Raster, Callable[[NDArrayf], NDArrayf]]:
+) -> Any:
     """
     Infer the uncertainty (random error model) of an elevation data using the difference to another elevation data.
 
@@ -304,7 +307,8 @@ def _infer_uncertainty(
         a sum of models. Uses three by default for methods allowing nested correlation ranges, otherwise one.
     :param random_state: State or seed to use for randomization.
 
-    :return: Raster of spread of random errors (1-sigma), Spatial variogram of error correlation.
+    :return: Tuple of (Raster of spread of random errors (1-sigma), Binning dataframe, Empirical error function) and
+             Tuple of (Empirical variogram dataframe, Model parameters dataframe, Spatial error correlation function).
     """
 
     # Summarize approach steps
@@ -324,7 +328,7 @@ def _infer_uncertainty(
 
     logging.info(f"Starting heteroscedasticity inference.")
     # Heteroscedasticity
-    sig_dh = _infer_heteroscedasticity(
+    sig_dh, df_bin, fun_bin = _infer_heteroscedasticity(
         source_elev=source_elev,
         other_elev=other_elev,
         stable_terrain=stable_terrain,
@@ -333,11 +337,11 @@ def _infer_uncertainty(
         z_name=z_name,
         subsample_hetesc=subsample_hetesc,
         spread_statistic=spread_estimator,
-    )[0]
+    )
 
     logging.info(f"Starting spatial correlation inference.")
     # Spatial error correlation
-    params, corr_sig = _infer_spatial_correlation(
+    df_vario, df_params, fun_corr = _infer_spatial_correlation(
         source_elev=source_elev,
         other_elev=other_elev,
         inlier_mask=stable_terrain,
@@ -346,9 +350,9 @@ def _infer_uncertainty(
         random_state=random_state,
         list_models=vario_model,
         subsample=subsample_pairs_vario,
-    )[1:]
+    )
 
-    return sig_dh, params, corr_sig
+    return (sig_dh, df_bin, fun_bin), (df_vario, df_params, fun_corr)
 
 
 def _infer_heteroscedasticity(

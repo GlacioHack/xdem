@@ -80,7 +80,7 @@ class TestUncertainty:
             error_applied_to="tba",
             inlier_mask=None,
             random_state=seed,
-        )
+        )[0]
 
         assert isinstance(report, pd.DataFrame)
 
@@ -106,7 +106,7 @@ class TestUncertainty:
             error_applied_to="tba",
             inlier_mask=None,
             random_state=seed,
-        )
+        )[0]
         assert isinstance(report2, pd.DataFrame)
         for k in expected_index:
             assert k in report2.index
@@ -121,7 +121,7 @@ class TestUncertainty:
             error_applied_to="ref",
             inlier_mask=None,
             random_state=seed,
-        )
+        )[0]
         assert isinstance(report3, pd.DataFrame)
         for k in expected_index:
             assert k in report3.index
@@ -150,7 +150,7 @@ class TestUncertainty:
             random_state=seed,
             kwargs_coreg_fit={},
             kwargs_infer_uncertainty={},
-        )
+        )[0]
         r2 = _propag_uncertainty_coreg(
             reference_elev=dem_ref,
             to_be_aligned_elev=dem_tba,
@@ -160,7 +160,7 @@ class TestUncertainty:
             random_state=seed,
             kwargs_coreg_fit={},
             kwargs_infer_uncertainty={},
-        )
+        )[0]
 
         # Same seed should give identical report (within float tolerance)
         pd.testing.assert_frame_equal(r1, r2, check_exact=False, rtol=0, atol=0)
