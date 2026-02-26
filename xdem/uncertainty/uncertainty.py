@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import warnings
+import logging
 from typing import Callable, Any, Literal, TYPE_CHECKING
 
 import pandas as pd
@@ -84,9 +85,12 @@ def _propag_uncertainty_coreg(
     random_state: int | np.random.Generator | None = None,
     kwargs_coreg_fit: dict[str, Any] | None = None,
     kwargs_infer_uncertainty: dict[str, Any] | None = None,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame, list[coreg.Coreg]]:
     """
     Propagate uncertainties to any coregistration by Monte Carlo simulations of errors.
+
+    Returns a summary dataframe (mean/STD per translation and rotation), the full dataframe of all simulations core
+    metadata, and the full list of coreg objects for each run.
 
     :param reference_elev: Reference elevation.
     :param to_be_aligned_elev: To-be-aligned elevation.
@@ -98,6 +102,12 @@ def _propag_uncertainty_coreg(
     :param kwargs_infer_uncertainty: Keyword arguments passed to `DEM/EPC.infer_uncertainty`.
     """
 
+    # Normalize input dicts if empty
+    if kwargs_coreg_fit is None:
+        kwargs_coreg_fit = {}
+    if kwargs_infer_uncertainty is None:
+        kwargs_infer_uncertainty = {}
+
     # Define random state
     rng = np.random.default_rng(random_state)
 
@@ -106,6 +116,8 @@ def _propag_uncertainty_coreg(
         source_elev, other_elev = reference_elev, to_be_aligned_elev
     else:
         source_elev, other_elev = to_be_aligned_elev, reference_elev
+
+    logging.info(f"Infering uncertainty from {error_applied_to}...")
     # Get correlation, heteroscedasticity, and build model for GSTools random fields
     sig_elev, params, _ = _infer_uncertainty(source_elev=source_elev, other_elev=other_elev,
                                              stable_terrain=inlier_mask, random_state=rng,
@@ -114,9 +126,13 @@ def _propag_uncertainty_coreg(
 
     # Then, run simulations
     list_df = []
+    list_coreg = []
     for i in range(nsim):
+        logging.info(f"Running simulation {i+1} out of {nsim}\n"
+                     f"######################################")
 
         # Derive error field for this simulation
+        logging.info(f"  Simulating error field...")
         error_field = _simu_random_error_field(elev=source_elev, sig_elev=sig_elev, corr_func=corr_func,
                                                random_state=rng)
         # Apply error to proper input
@@ -128,12 +144,14 @@ def _propag_uncertainty_coreg(
             tba_elev = to_be_aligned_elev + error_field
 
         # Run coreg fit
+        logging.info(f"  Running coregistration fit...")
         c = coreg_method.copy()  # Avoid carrying over the state over multiple simulations
         c.fit(reference_elev=ref_elev, to_be_aligned_elev=tba_elev, inlier_mask=inlier_mask,
               kwargs_coreg_fit=kwargs_coreg_fit, random_state=rng)
         df_it = _postproc_coreg_metadata(c)
         df_it["nsim"] = i + 1
         list_df.append(df_it)
+        list_coreg.append(c)
 
     # Finally, estimate errors for all the translations/rotations in the simulations
     df = pd.concat(list_df, ignore_index=True)
@@ -142,7 +160,7 @@ def _propag_uncertainty_coreg(
         {"mean": df[t_r_names].mean(), "std": df[t_r_names].std(ddof=1)}
     )
 
-    return summary
+    return summary, df, list_coreg
 
 def _simu_random_error_field(
     elev: DEM | gpd.GeoDataFrame,
@@ -304,6 +322,7 @@ def _infer_uncertainty(
     # if precision_of_other == "same":
     #     dh = dh / np.sqrt(2)
 
+    logging.info(f"Starting heteroscedasticity inference.")
     # Heteroscedasticity
     sig_dh = _infer_heteroscedasticity(
         source_elev=source_elev,
@@ -316,6 +335,7 @@ def _infer_uncertainty(
         spread_statistic=spread_estimator,
     )[0]
 
+    logging.info(f"Starting spatial correlation inference.")
     # Spatial error correlation
     params, corr_sig = _infer_spatial_correlation(
         source_elev=source_elev,
@@ -409,6 +429,8 @@ def _infer_heteroscedasticity(
             list_vars.append(var)
 
     # 2) Fit heteroscedasticity model on stable terrain (co-sampled)
+    logging.info(f"  Step 1: Sampling all datasets at colocated valid coordinates with subsample size"
+                 f" {subsample_hetesc}...")
     rp1_fit, rp2_fit, aux_fit, _ = cosample(
         rst_pc1=source_elev if not isinstance(source_elev, PointCloud) else source_pc,
         rst_pc2=other_elev if not isinstance(other_elev, PointCloud) else other_pc,
@@ -428,6 +450,8 @@ def _infer_heteroscedasticity(
 
     # 3A) If heteroscedastic, perform binning and fit
     if heterosc:
+        logging.info(f"  Step 2: Estimating variable error with binned variables {list(aux_fit.keys())} and estimator"
+                     f" {spread_statistic!r}...")
         df, fun = _estimate_model_heteroscedasticity(
             dvalues=dvalues_fit,
             list_var=list(aux_fit.values()),
@@ -489,6 +513,7 @@ def _infer_heteroscedasticity(
 
     # 3B) Otherwise, return a constant error evaluated on the source input
     else:
+        logging.info(f"  Step 2: Computing constant spread with estimator {spread_statistic!r}...")
         sig_dh_magn = float(spread_statistic(dvalues_fit))
         df = pd.DataFrame()
         def _const_fun(_: tuple[NDArrayf, ...]) -> NDArrayf:
@@ -605,6 +630,7 @@ def _infer_spatial_correlation(
         return_coords = True
         transform = None
 
+    logging.info(f"  Step 1: Sampling at colocated values of the inlier mask...")
     # Apply mask to inputs and auxiliary "error" input (no subsampling)
     rp1, rp2, aux_e, coords = cosample(
         rst_pc1=source_elev,
@@ -620,11 +646,14 @@ def _infer_spatial_correlation(
         )
 
     # Difference and standardize
+    logging.info(f"  Step 2: Standardizing elevation differences...")
     dh_vals = rp1 - rp2
     if errors is not None:
         dh_vals = dh_vals / aux_e["err"]
 
     # Empirical variogram directly on 2D array (RegularLogLagMetricSpace path)
+    logging.info(f"  Step 3: Sampling variogram with pairwise subsample size of {subsample} and estimator "
+                 f"{estimator}...")
     df_emp = _variogram(
         values=dh_vals,
         coords=coords,  # This is None if the dh is a raster
@@ -638,6 +667,7 @@ def _infer_spatial_correlation(
 
     # 5) Fit model(s) and return correlation function
     # Fit a sum of variogram models
+    logging.info(f"  Step 4: Fitting variogram models {list_models}...")
     params_variogram_model = fit_sum_model_variogram(
         list_models=list_models,
         empirical_variogram=df_emp,

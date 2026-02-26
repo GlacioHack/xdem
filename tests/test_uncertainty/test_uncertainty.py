@@ -68,6 +68,9 @@ class TestUncertainty:
         nsim = 5
         seed = 42
 
+        import logging
+        logging.basicConfig(level=logging.INFO)
+
         # --- DEM, DEM ---
         report = _propag_uncertainty_coreg(
             reference_elev=dem_ref,
@@ -77,8 +80,6 @@ class TestUncertainty:
             error_applied_to="tba",
             inlier_mask=None,
             random_state=seed,
-            kwargs_coreg_fit={},
-            kwargs_infer_uncertainty={},
         )
 
         assert isinstance(report, pd.DataFrame)
@@ -105,8 +106,6 @@ class TestUncertainty:
             error_applied_to="tba",
             inlier_mask=None,
             random_state=seed,
-            kwargs_coreg_fit={},
-            kwargs_infer_uncertainty={},
         )
         assert isinstance(report2, pd.DataFrame)
         for k in expected_index:
@@ -122,8 +121,6 @@ class TestUncertainty:
             error_applied_to="ref",
             inlier_mask=None,
             random_state=seed,
-            kwargs_coreg_fit={},
-            kwargs_infer_uncertainty={},
         )
         assert isinstance(report3, pd.DataFrame)
         for k in expected_index:

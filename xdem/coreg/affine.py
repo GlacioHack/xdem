@@ -327,7 +327,7 @@ def _subsample_rst_pts_interpolator(
 
 
 def _get_centroid_scale(
-    ref_elev: NDArrayf | gpd.GeoDataFrame, transform: affine.Affine | None
+    ref_elev: NDArrayf | gpd.GeoDataFrame, transform: affine.Affine | None, z_name: str | None = None,
 ) -> tuple[tuple[float, float, float], float]:
     """
     Get centroid and standardization factor from reference elevation (whether it is a DEM or an elevation point cloud).
@@ -360,16 +360,17 @@ def _get_centroid_scale(
     # For an elevation point cloud
     else:
         # Derive centroid
-        centroid = np.nanmedian(ref_elev, axis=1)
-        centroid = (centroid[0], centroid[1], centroid[2])
+        centroid = (np.nanmedian(ref_elev.geometry.x.values),
+                    np.nanmedian(ref_elev.geometry.y.values),
+                    np.nanmedian(ref_elev[z_name].values))
 
         # Derive standardization factor
         std_fac = float(
             np.mean(
                 [
-                    nmad(ref_elev[0, :] - centroid[0]),
-                    nmad(ref_elev[1, :] - centroid[1]),
-                    nmad(ref_elev[2, :] - centroid[2]),
+                    nmad(ref_elev.geometry.x.values - centroid[0]),
+                    nmad(ref_elev.geometry.y.values - centroid[1]),
+                    nmad(ref_elev[z_name].values - centroid[2]),
                 ]
             )
         )
@@ -1428,7 +1429,7 @@ def icp(
     """
 
     # Derive centroid and scale ahead of any potential iterative sampling loop, and scale translation tolerance
-    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=ref_transform)
+    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=ref_transform, z_name=z_name)
     if not standardize:
         scale = 1
     tolerance_translation /= scale
@@ -2532,7 +2533,7 @@ def cpd(
     """
 
     # Derive centroid and scale ahead of any potential iterative sampling loop, and scale translation tolerance
-    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=ref_transform)
+    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=ref_transform, z_name=z_name)
     if not standardize:
         scale = 1
     tolerance_translation /= scale
@@ -3674,7 +3675,7 @@ def lzd(
         sub_errors = None
 
     # Estimate centroid to use
-    centroid = _get_centroid_scale(ref_elev=ref_elev, transform=transform)[0]
+    centroid = _get_centroid_scale(ref_elev=ref_elev, transform=transform, z_name=z_name)[0]
 
     logging.info("Iteratively estimating rigid transformation:")
     # Iterate through method until tolerance or max number of iterations is reached
