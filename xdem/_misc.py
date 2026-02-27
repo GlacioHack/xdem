@@ -22,9 +22,10 @@ from __future__ import annotations
 
 import copy
 import functools
+import logging
 import sys
 import warnings
-from typing import Any, Callable
+from typing import Any, Callable, Iterable, TypeVar
 
 from packaging.version import Version
 
@@ -42,14 +43,28 @@ def get_progress(iterable: Any | None = None, **kwargs: Any) -> Any:
     """
     try:
         from tqdm.auto import tqdm
-    except ImportError:
-        if iterable is None:
-            return lambda x: x
-        return iterable
 
-    if iterable is None:
-        return tqdm
-    return tqdm(iterable, **kwargs)
+        if iterable is None:
+            return tqdm
+        return tqdm(iterable, **kwargs)
+
+    except ImportError:
+
+        class FalseTQDM:
+            def __init__(self, iterable: Iterable[TypeVar]) -> None:
+                self.iterable = iterable
+
+            def __iter__(self) -> Iterable[TypeVar]:
+                return iter(self.iterable)
+
+            def write(self, msg: str) -> None:
+                logging.info(msg)
+
+        if iterable is None:
+            # Same as tqdm constructor
+            return lambda x, **kw: FalseTQDM(x)
+
+        return FalseTQDM(iterable)
 
 
 def import_optional(import_name: str, package_name: str | None = None, extra_name: str = "opt") -> Any:
