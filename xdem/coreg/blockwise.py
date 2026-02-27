@@ -81,6 +81,8 @@ class BlockwiseCoreg:
             raise ValueError(
                 "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
             )
+        if not step.is_affine:
+            raise ValueError("The blockwise coregistration only supports affine coregistration methods.")
 
         self.procstep = step
         self.block_size_fit = block_size_fit
@@ -89,6 +91,8 @@ class BlockwiseCoreg:
 
         if isinstance(step, NuthKaab):
             self.apply_z_correction = step.vertical_shift  # type: ignore
+        else:
+            self.apply_z_correction = True
 
         if mp_config is not None:
             self.mp_config = mp_config
@@ -196,13 +200,10 @@ class BlockwiseCoreg:
         self.shifts_z = []  # type: ignore
 
         for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
-            try:
-                shift_x = coreg.meta["outputs"]["affine"]["shift_x"]
-                shift_y = coreg.meta["outputs"]["affine"]["shift_y"]
-                shift_z = coreg.meta["outputs"]["affine"]["shift_z"]
 
-            except KeyError:
-                continue
+            shift_x = coreg.meta["outputs"]["affine"].get("shift_x", np.nan)
+            shift_y = coreg.meta["outputs"]["affine"].get("shift_y", np.nan)
+            shift_z = coreg.meta["outputs"]["affine"].get("shift_z", np.nan)
 
             x, y = (
                 tile_coords[2] + self.block_size_fit / 2,
@@ -249,6 +250,9 @@ class BlockwiseCoreg:
 
         import_optional("sklearn", package_name="scikit-learn")
         from sklearn.linear_model import LinearRegression, RANSACRegressor
+
+        if np.isnan(shifts).all():
+            shifts = np.zeros_like(shifts)
 
         # Stack and squeeze
         points = np.dstack([x_coords, y_coords, shifts])
@@ -393,6 +397,8 @@ class BlockwiseCoreg:
 
         # be careful with depth value if Out of Memory
         depth = max(np.abs(self.shifts_x).max(), np.abs(self.shifts_y).max())
+        if np.isnan(depth):
+            depth = 0
 
         aligned_dem = map_overlap_multiproc_save(
             self._wrapper_apply_epc,
