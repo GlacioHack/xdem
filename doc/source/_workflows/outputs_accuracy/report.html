@@ -2,11 +2,10 @@
 <head><meta charset='UTF-8'><title>Qualify elevation results</title></head>
 <body>
 <h1>Accuracy assessment report — xDEM</h1>
-<p>xDEM version: 0.1.dev729</p><p>Date: 13/01/2026 15:02:39</p><p>Computing time: 23.89 seconds</p><h2>Elevation datasets</h2>
-<div style='display: flex; gap: 10px;'>
-  <img src='plots/reference_elev_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
-  <img src='plots/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
-</div>
+<p>xDEM version: 0.2.3.dev26</p><p>Date: 26/02/2026 14:37:01</p><p>Computing time: 12.86 seconds</p><h2>Elevation inputs</h2>
+<img src='plots/inputs.png' alt='Image PNG' style='width: 100%; height: auto;'>
+<h2>Masked elevation data</h2>
+<img src='plots/masked_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>
 <div style='clear: both; margin-bottom: 30px;'>
 <h2>Information about inputs</h2>
 <table border='1' cellspacing='0' cellpadding='5'>
@@ -16,6 +15,8 @@
 <tr><td>sampling_grid</td><td>reference_elev</td></tr>
 </table>
 </div>
+<h2>Preprocessed elevation data</h2>
+<img src='plots/preprocessed_to_be_aligned_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>
 <div style='clear: both; margin-bottom: 30px;'>
 <h2>Coregistration user configuration</h2>
 <table border='1' cellspacing='0' cellpadding='5'>
@@ -39,48 +40,21 @@
 <h2>LZD outputs</h2>
 <table border='1' cellspacing='0' cellpadding='5'>
 <tr><th>Information</th><th>Value</th></tr>
-<tr><td>affine</td><td>{'centroid': '(515650.83, 8663888.17, 353.11)', 'matrix': '[[ 9.99999985e-01  1.17578419e-04 -1.30099078e-04  1.02548967e+01]\n [-1.17594385e-04  9.99999986e-01 -1.22719549e-04  1.90590312e+00]\n [ 1.30084647e-04  1.22734846e-04  9.99999984e-01 -1.93544013e+00]\n [ 0.00000000e+00  0.00000000e+00  0.00000000e+00  1.00000000e+00]]', 'shift_x': '10.25', 'shift_y': '1.91', 'shift_z': '-1.94'}</td></tr>
+<tr><td>affine</td><td>{'centroid': '(516048.39, 8664263.24, 377.02)', 'matrix': '[[ 9.99999989e-01  1.18935868e-04 -8.98659020e-05  9.27075541e+00]\n [-1.18939217e-04  9.99999992e-01 -3.72660317e-05  1.15738237e-01]\n [ 8.98614690e-05  3.72767199e-05  9.99999995e-01 -3.12406906e+00]\n [ 0.00000000e+00  0.00000000e+00  0.00000000e+00  1.00000000e+00]]', 'shift_x': '9.27', 'shift_y': '0.12', 'shift_z': '-3.12'}</td></tr>
 <tr><td>random</td><td>{'subsample_final': '10000'}</td></tr>
 </table>
 </div>
 <h2>Statistics</h2>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th>Data</th>
-      <th>Median</th>
-      <th>NMAD</th>
-      <th>Valid count</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>Aligned elevation</td>
-      <td>363.338928</td>
-      <td>291.801208</td>
-      <td>1309704</td>
-    </tr>
-    <tr>
-      <td>Difference before coreg</td>
-      <td>2.766407</td>
-      <td>3.805830</td>
-      <td>1312020</td>
-    </tr>
-    <tr>
-      <td>Difference after coreg</td>
-      <td>0.254444</td>
-      <td>2.403943</td>
-      <td>1309704</td>
-    </tr>
-  </tbody>
-</table><h2>Elevation differences</h2>
-<div style='display: flex; gap: 10px;'>
-  <img src='plots/diff_elev_before_coreg_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
-  <img src='plots/diff_elev_after_coreg_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
-</div>
+<table border='1' cellspacing='0' cellpadding='5'>
+<tr><td style="font-weight:bold">Data</td><td style="font-weight:bold">Aligned elevation</td><td style="font-weight:bold">Difference before coreg</td><td style="font-weight:bold">Difference after coreg</td></tr>
+<tr><td>Median</td><td>361.983</td><td>2.766</td><td>-0.847</td></tr>
+<tr><td>NMAD</td><td>291.535</td><td>3.806</td><td>2.551</td></tr>
+<tr><td>Valid count</td><td>1309691</td><td>1312020</td><td>1309691</td></tr>
+</table>
+<h2>Elevation differences</h2>
+<img src='plots/diff_elev_diff_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>
 <h2>Differences histogram</h2>
-<img src='plots/elev_diff_histo.png' alt='Image PNG' style='max-width: 100%; height: auto;'>
+<img src='plots/elev_diff_histo.png' alt='Image PNG' style='width: 100%; height: auto'>
 
-             </div>
          </body>
          </html>

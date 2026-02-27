@@ -47,6 +47,24 @@ except ImportError:
     SafeDumper = object
     _HAS_YAML = False
 
+_ALIAS = {
+    "mean": "Mean",
+    "median": "Median",
+    "max": "Maximum",
+    "min": "Minimum",
+    "sum": "Sum",
+    "sumofsquares": "Sum of squares",
+    "90thpercentile": "90th percentile",
+    "le90": "LE90",
+    "nmad": "NMAD",
+    "rmse": "RMSE",
+    "std": "STD",
+    "standarddeviation": "Standard deviation",
+    "validcount": "Valid count",
+    "totalcount": "Total count",
+    "percentagevalidpoints": "Percentage valid points",
+}
+
 
 class Workflows(ABC):
     """
@@ -142,34 +160,55 @@ class Workflows(ABC):
 
             return replace_none_str_with_none_type(yaml.safe_load(f))
 
-    def generate_plot(self, dem: RasterType, title: str, filename: str, mask_path: str = None, **kwargs: Any) -> None:
+    def generate_plot(
+        self,
+        dem: RasterType,
+        title: str,
+        filename: str,
+        dem_right: str = None,
+        title_dem_right: str = None,
+        **kwargs: Any,
+    ) -> None:
         """
         Generate plot from a DEM.
 
-        :param dem: Input digital elevation model.
-        :param title: Title of figure.
+        :param dem: Input digital elevation model (left)
+        :param title: Title of dem plot (left)
         :param filename: Filename of figure.
+        :param dem_right: Input digital elevation model (right)
+        :param title_dem_right: Title of dem_right plot (right)
         :param mask_path: Path to mask file.
-
         :return: None
         """
 
         import_optional("matplotlib")
         import matplotlib.pyplot as plt
 
-        if mask_path is None:
-            dem.plot(**kwargs)
-            plt.title(title)
-            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300)
-            plt.close()
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
+
+        # Force figsize with the good ratio to prevent larger right axe if not filled
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
+
+        # Add the first image to the figure (left position)
+        dem.plot(ax=ax1, **kwargs)
+        plt.title(title)
+
+        # If exists, add the second image to the figure
+        if dem_right is not None:
+            dem_right.plot(ax=ax2, **kwargs)
+            plt.title(title_dem_right)
         else:
-            mask = gu.Vector(mask_path)
-            mask = mask.crop(dem)
-            dem.plot(**kwargs)
-            mask.plot(dem, ec="k", fc="none")
-            plt.title(title)
-            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300)
-            plt.close()
+            ax2.set_axis_off()
+
+        plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
+        plt.close()
 
     def floats_process(
         self, dict_with_floats: Dict[str, Any] | InputCoregDict | OutputCoregDict | Any
@@ -291,3 +330,16 @@ class Workflows(ABC):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerow(cleaned_data)
+
+    def format_values_stats(self, key: str, val: Union[float, int]) -> str:
+        """Format values for the statistics."""
+        if "count" in key.lower():
+            return str(int(val))
+        if "percentage" in key.lower():
+            return f"{val:.2f}" + "%"
+        elif abs(val) > 10e4:
+            return np.format_float_scientific(val, precision=3)
+        elif abs(val) < 10e-4:
+            return np.format_float_scientific(val, precision=3)
+        else:
+            return f"{val:.3f}"

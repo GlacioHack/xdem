@@ -35,7 +35,7 @@ from numpy import floating
 import xdem
 from xdem._misc import import_optional
 from xdem.workflows.schemas import ACCURACY_SCHEMA
-from xdem.workflows.workflows import Workflows
+from xdem.workflows.workflows import _ALIAS, Workflows
 
 
 class Accuracy(Workflows):
@@ -74,52 +74,59 @@ class Accuracy(Workflows):
 
         self.config = self.remove_none(self.config)  # type: ignore
 
-    def _load_data(self) -> None:
-        """Load data."""
+    def _load_data(self) -> tuple[float, float]:
+        """
+        Load data
 
-        self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"])
+        :return vmin, vmax: to plot elevation data with the same scale
+        """
         self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"].get("reference_elev", None))
+        self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"])
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
+
+        vmin = float(min(np.nanpercentile(self.reference_elev, q=5), np.nanpercentile(self.to_be_aligned_elev, q=5)))
+        vmax = float(max(np.nanpercentile(self.reference_elev, q=95), np.nanpercentile(self.to_be_aligned_elev, q=95)))
+
         self.generate_plot(
-            self.reference_elev,
-            title="Reference DEM",
-            filename="reference_elev_map",
+            dem=self.reference_elev,
+            title="Reference elevation",
+            filename="inputs",
+            dem_right=self.to_be_aligned_elev,
+            title_dem_right="To-be-aligned elevation",
+            vmin=vmin,
+            vmax=vmax,
             cmap="terrain",
-            cbar_title="Elevation (m)",
-        )
-        self.generate_plot(
-            self.to_be_aligned_elev,
-            title="To-be-aligned DEM",
-            filename="to_be_aligned_elev_map",
-            cmap="terrain",
-            cbar_title="Elevation (m)",
+            cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
         )
 
-        self.inlier_mask = None
         if ref_mask is not None and tba_mask is not None:
-            self.inlier_mask = tba_mask
-            path_mask = tba_path_mask
-        else:
-            self.inlier_mask = ref_mask or tba_mask
-            path_mask = ref_mask_path or tba_path_mask
+            inlier_mask_crop = ref_mask.reproject(self.reference_elev).crop(self.reference_elev)
+            self.reference_elev.set_mask(~inlier_mask_crop)
 
-        if self.inlier_mask is not None:
+            inlier_mask_crop = tba_mask.reproject(self.to_be_aligned_elev).crop(self.to_be_aligned_elev)
+            self.to_be_aligned_elev.set_mask(~inlier_mask_crop)
+
             self.generate_plot(
-                self.to_be_aligned_elev,
-                title="Masked (inlier) terrain",
+                self.reference_elev,
+                title="Masked terrain for reference elevation",
                 filename="masked_elev_map",
-                mask_path=path_mask,
+                dem_right=self.to_be_aligned_elev,
+                title_dem_right="Masked terrain for to-be-aligned elevation",
+                vmin=vmin,
+                vmax=vmax,
                 cmap="terrain",
-                cbar_title="Elevation (m)",
+                cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
+
+        return vmin, vmax
 
     def _get_reference_elevation(self) -> float:
         """
         Get reference elevation.
         """
 
-        raise NotImplementedError("This is not implemented, add a reference DEM")
+        raise NotImplementedError("This is not implemented, add a reference elevation")
 
     def _compute_coregistration(self) -> RasterType:
         """
@@ -149,9 +156,7 @@ class Accuracy(Workflows):
         my_coreg = sum(coreg_functions[1:], coreg_functions[0]) if len(coreg_functions) > 1 else coreg_functions[0]
 
         # Coregister
-        aligned_elev = self.to_be_aligned_elev.coregister_3d(
-            self.reference_elev, my_coreg, self.inlier_mask, random_state=42
-        )
+        aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, random_state=42)
         aligned_elev.to_file(self.outputs_folder / "rasters" / "aligned_elev.tif")
 
         self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
@@ -169,9 +174,12 @@ class Accuracy(Workflows):
 
         return aligned_elev
 
-    def _prepare_datas(self) -> None:
+    def _prepare_datas(self, vmin: float, vmax: float) -> None:
         """
         Compute reprojection.
+
+        :param vmin: to plot elevation data with the same scale
+        :param vmax: to plot elevation data with the same scale
         """
         sampling_source = self.config["inputs"]["sampling_grid"]
 
@@ -195,23 +203,28 @@ class Accuracy(Workflows):
         # Intersection
         logging.info("Computing intersection")
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
+
         if sampling_source == "reference_elev":
-            self.reference_elev = self.reference_elev.crop(coord_intersection)
-            self.generate_plot(
-                self.to_be_aligned_elev,
-                title="Cropped reference DEM",
-                filename="cropped_reference_elev_map",
-                cmap="terrain",
-                cbar_title="Elevation (m)",
-            )
-        else:
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
             self.generate_plot(
                 self.to_be_aligned_elev,
-                title="Cropped to-be-aligned DEM",
-                filename="cropped_to_be_aligned_elev_map",
+                title="Preprocessed to-be-aligned elevation",
+                filename="preprocessed_to_be_aligned_elev_map",
+                vmin=vmin,
+                vmax=vmax,
                 cmap="terrain",
-                cbar_title="Elevation (m)",
+                cbar_title=f"Elevation ({self.to_be_aligned_elev.crs.linear_units})",
+            )
+        else:
+            self.reference_elev = self.reference_elev.crop(coord_intersection)
+            self.generate_plot(
+                self.reference_elev,
+                title="Preprocessed reference elevation",
+                filename="preprocessed_reference_elev_map",
+                vmin=vmin,
+                vmax=vmax,
+                cmap="terrain",
+                cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
         if self.level > 1:
@@ -231,27 +244,7 @@ class Accuracy(Workflows):
         if list_to_compute is not None:
             logging.info(f"Computing statistics on {name_of_data}: {list_to_compute}")
             dict_stats = dem.get_stats(list_to_compute)
-
-            # Aliases for nicer CSV headers
-            aliases = {
-                "mean": "Mean",
-                "median": "Median",
-                "max": "Maximum",
-                "min": "Minimum",
-                "sum": "Sum",
-                "sumofsquares": "Sum of squares",
-                "90thpercentile": "90th percentile",
-                "le90": "LE90",
-                "nmad": "NMAD",
-                "rmse": "RMSE",
-                "std": "STD",
-                "standarddeviation": "Standard deviation",
-                "validcount": "Valid count",
-                "totalcount": "Total count",
-                "percentagevalidpoints": "Percentage valid points",
-            }
-
-            dict_stats_aliased = {aliases.get(k, k): v for k, v in dict_stats.items()}
+            dict_stats_aliased = {_ALIAS.get(k, k): v for k, v in dict_stats.items()}
 
         return dict_stats_aliased
 
@@ -264,7 +257,18 @@ class Accuracy(Workflows):
         import matplotlib.pyplot as plt
 
         logging.info("Computing histogram on altitude difference")
-        plt.figure(figsize=(12, 6))
+
+        # Force figsize with the same size as generate_plot function
+        plt.figure(figsize=[6.4, 2.34])
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
+
         bins = np.linspace(self.stats_before["min"], self.stats_before["max"], 300)
         plt.xlim((-4 * np.std(self.diff_before), 4 * np.std(self.diff_before)))
         plt.hist(self.diff_before.data.flatten(), bins=bins, color="g", alpha=0.5, label="Before coregistration")
@@ -289,11 +293,11 @@ class Accuracy(Workflows):
             va="center",
         )
         plt.title("Histogram of elevation differences\nbefore and after coregistration")
-        plt.xlabel("Elevation differences (m)")
+        plt.xlabel(f"Elevation differences ({self.reference_elev.crs.linear_units})")
         plt.ylabel("Count")
         plt.legend()
         plt.grid(False)
-        plt.savefig(self.outputs_folder / "plots" / "elev_diff_histo.png")
+        plt.savefig(self.outputs_folder / "plots" / "elev_diff_histo.png", dpi=300, bbox_inches="tight")
         plt.close()
 
     def run(self) -> None:
@@ -305,11 +309,11 @@ class Accuracy(Workflows):
 
         t0 = time.time()
 
-        self._load_data()
+        vmin, vmax = self._load_data()
 
         # Reprojection step
         if "sampling_grid" in self.config["inputs"]:
-            self._prepare_datas()
+            self._prepare_datas(vmin, vmax)
 
         if self.compute_coreg:
             # Coregistration step
@@ -321,38 +325,50 @@ class Accuracy(Workflows):
         output_grid = self.config["outputs"]["output_grid"]
         ref_elev = self.reference_elev if output_grid == "reference_elev" else self.to_be_aligned_elev
 
-        vmin = vmax = None
+        stats_keys = ["min", "max", "nmad", "median"]
 
         if self.compute_coreg:
-            diff_pairs = [("before", self.to_be_aligned_elev), ("after", aligned_elev.reproject(ref_elev))]
-        else:
-            diff_pairs = [("", self.to_be_aligned_elev)]
 
-        for label, dem in diff_pairs:
-            diff = dem - ref_elev
-            stats_keys = ["min", "max", "nmad", "median"]
-            stats = diff.get_stats(stats_keys)
+            self.diff_before = self.to_be_aligned_elev - ref_elev
+            self.stats_before = self.diff_before.get_stats(stats_keys)
 
-            if label == "before":
-                self.diff_before, self.stats_before = diff, stats
-                vmin, vmax = -(stats["median"] + 3 * stats["nmad"]), stats["median"] + 3 * stats["nmad"]
-            elif label == "after":
-                self.diff_after, self.stats_after = diff, stats
-            else:
-                self.diff = diff
-                vmin, vmax = -(stats["median"] + 3 * stats["nmad"]), (stats["median"] + 3 * stats["nmad"])
+            self.diff_after = aligned_elev.reproject(ref_elev) - ref_elev
+            self.stats_after = self.diff_after.get_stats(stats_keys)
 
-            suffix = f"_elev_{label}_coreg_map" if label else "_elev"
+            vmin_diff = min(
+                -(self.stats_before["median"] + 3 * self.stats_before["nmad"]),
+                -(self.stats_after["median"] + 3 * self.stats_after["nmad"]),
+            )
+            vmax_diff = max(
+                self.stats_before["median"] + 3 * self.stats_before["nmad"],
+                self.stats_after["median"] + 3 * self.stats_after["nmad"],
+            )
+
             self.generate_plot(
-                diff,
-                title=f"Difference\n{label} coregistration",
-                filename=f"diff{suffix}",
+                dem=self.diff_before,
+                title="Elevation difference before coregistration",
+                filename="diff_elev_diff_coreg_map",
+                dem_right=self.diff_after,
+                title_dem_right="Elevation difference after coregistration",
+                vmin=vmin_diff,
+                vmax=vmax_diff,
+                cmap="RdBu",
+                cbar_title=f"Elevation differences ({self.diff_before.crs.linear_units})",
+            )
+
+        else:
+            self.diff = self.to_be_aligned_elev - ref_elev
+            self.stats = self.diff.get_stats(stats_keys)
+            vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
+            self.generate_plot(
+                self.diff,
+                title="Elevation difference without coregistration",
+                filename="diff_elev_without_coreg_map",
                 vmin=vmin,
                 vmax=vmax,
                 cmap="RdBu",
-                cbar_title="Elevation differences (m)",
+                cbar_title=f"Elevation differences ({self.diff.crs.linear_units})",
             )
-
         if self.compute_coreg:
             stat_items = [
                 (self.reference_elev, "reference_elev", "Reference elevation", 2),
@@ -375,7 +391,7 @@ class Accuracy(Workflows):
             stat_items = [
                 (self.reference_elev, "reference_elev", "Reference elevation", 2),
                 (self.to_be_aligned_elev, "to_be_aligned_elev", "To-be-aligned elevation", 2),
-                (self.diff, "diff_elev", "Elevation difference", 2),
+                (self.diff, "diff_elev_without_coreg", "Elevation difference without coregistration", 2),
             ]
 
         list_df_var = []
@@ -391,6 +407,7 @@ class Accuracy(Workflows):
 
         if len(list_df_var) > 0:
             df_stats = pd.concat(list_df_var)
+            df_stats.set_index("Data", inplace=True)
         else:
             df_stats = None
         self.df_stats = df_stats
@@ -402,7 +419,7 @@ class Accuracy(Workflows):
                 self.diff_after.to_file(self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
         else:
             if self.level > 1:
-                self.diff.to_file(self.outputs_folder / "rasters" / "diff_elev.tif")
+                self.diff.to_file(self.outputs_folder / "rasters" / "diff_elev_without_coreg_map.tif")
 
         t1 = time.time()
         self.elapsed = t1 - t0
@@ -435,17 +452,12 @@ class Accuracy(Workflows):
         html += f"<p>Computing time: {self.elapsed:.2f} seconds</p>"
 
         # Plot input elevation data
-        html += "<h2>Elevation datasets</h2>\n"
-        html += "<div style='display: flex; gap: 10px;'>\n"
-        html += (
-            "  <img src='plots/reference_elev_map.png' alt='Image PNG' "
-            "style='max-width: 50%; height: auto; width: 50%;'>\n"
-        )
-        html += (
-            "  <img src='plots/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: "
-            "50%; height: auto; width: 50%;'>\n"
-        )
-        html += "</div>\n"
+        html += "<h2>Elevation inputs</h2>\n"
+        html += "<img src='plots/inputs.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+
+        if self.reference_elev.get_mask() is not None:
+            html += "<h2>Masked elevation data</h2>\n"
+            html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         def format_values(val: Any) -> Any:
             """Format values for the dictionary."""
@@ -456,52 +468,63 @@ class Accuracy(Workflows):
             else:
                 return str(val)
 
-        # Metadata: Inputs, coregistration
-        for title, dictionary in list_dict:  # type: ignore
-            html += "<div style='clear: both; margin-bottom: 30px;'>\n"
-            html += f"<h2>{title}</h2>\n"
-            html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
-            html += "<tr><th>Information</th><th>Value</th></tr>\n"
+        def print_dict(title: str, dictionary: dict[str, Any]) -> str:
+            div_html = "<div style='clear: both; margin-bottom: 30px;'>\n"
+            div_html += f"<h2>{title}</h2>\n"
+            div_html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
+            div_html += "<tr><th>Information</th><th>Value</th></tr>\n"
             for key, value in dictionary.items():
                 if isinstance(value, dict):
                     value = {k: format_values(v) for k, v in value.items()}
-                html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
-            html += "</table>\n"
-            html += "</div>\n"
+                div_html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
+            div_html += "</table>\n"
+            div_html += "</div>\n"
+            return div_html
+
+        # Metadata: Inputs
+        inputs_information = list_dict[0]
+        html += print_dict(inputs_information[0], inputs_information[1])
+
+        # Plot preprocessed data if did
+        if "sampling_grid" in self.config["inputs"] and self.config["inputs"]["sampling_grid"] is not None:
+            if self.config["inputs"]["sampling_grid"] == "reference_elev":
+                preprocessed_data = "plots/preprocessed_to_be_aligned_elev_map.png"
+            else:
+                preprocessed_data = "plots/preprocessed_reference_elev_map.png"
+
+            html += "<h2>Preprocessed elevation data</h2>\n"
+            html += "<img src='" + preprocessed_data + "' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+
+        # Metadata: Inputs
+        for title, dictionary in list_dict[1:]:  # type: ignore
+            html += print_dict(title, dictionary)
 
         # Statistics table:
         if self.df_stats is not None:
             html += "<h2>Statistics</h2>\n"
-            html += self.df_stats.to_html(index=False)
+            html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
+            # Plot one stat by row
+            df_cols = "".join([f'<td style="font-weight:bold">{col}</td>' for col in self.df_stats.T.columns])
+            html += f'<tr><td style="font-weight:bold">Data</td>{df_cols}</tr>\n'
+            for key, value in self.df_stats.T.iterrows():
+                df_values = "".join([f"<td>{self.format_values_stats(key, val)}</td>" for val in value.values])
+                html += f"<tr><td>{key}</td>{df_values}</tr>\n"
+            html += "</table>\n"
 
         # Coregistration: Add elevation difference plot and histograms before/after
         if self.compute_coreg:
             html += "<h2>Elevation differences</h2>\n"
-            html += "<div style='display: flex; gap: 10px;'>\n"
-            html += (
-                "  <img src='plots/diff_elev_before_coreg_map.png' alt='Image PNG' style='max-width: "
-                "50%; height: auto; width: 50%;'>\n"
-            )
-            html += (
-                "  <img src='plots/diff_elev_after_coreg_map.png' alt='Image PNG' style='max-width: "
-                "50%; height: auto; width: 50%;'>\n"
-            )
-            html += "</div>\n"
+            html += "<img src='plots/diff_elev_diff_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
 
             html += "<h2>Differences histogram</h2>\n"
-            html += "<img src='plots/elev_diff_histo.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+            html += "<img src='plots/elev_diff_histo.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
 
         else:
             html += "<h2>Elevation differences</h2>\n"
-            html += "<div style='display: flex; gap: 10px;'>\n"
             html += (
-                "  <img src='plots/diff_elev.png' alt='Image PNG' style='max-width: "
-                "40%; height: auto; width: 50%;'>\n"
+                "<img src='plots/diff_elev_without_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
             )
-            html += "</div>\n"
-
         html += """
-             </div>
          </body>
          </html>
          """

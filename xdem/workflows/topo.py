@@ -30,7 +30,7 @@ from typing import Any, Dict
 import xdem
 from xdem._misc import import_optional
 from xdem.workflows.schemas import TOPO_SCHEMA
-from xdem.workflows.workflows import Workflows
+from xdem.workflows.workflows import _ALIAS, Workflows
 
 
 class Topo(Workflows):
@@ -68,16 +68,23 @@ class Topo(Workflows):
         """
 
         self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
-        self.generate_plot(self.dem, filename="elev_map", title="Elevation", cmap="terrain", cbar_title="Elevation (m)")
+        self.generate_plot(
+            self.dem,
+            filename="elev_map",
+            title="Elevation",
+            cmap="terrain",
+            cbar_title=f"Elevation ({self.dem.crs.linear_units})",
+        )
 
         if self.inlier_mask is not None:
+            inlier_mask_crop = self.inlier_mask.reproject(self.dem).crop(self.dem)
+            self.dem.set_mask(~inlier_mask_crop)
             self.generate_plot(
                 self.dem,
                 title="Masked elevation",
                 filename="masked_elev_map",
-                mask_path=path_to_mask,
                 cmap="terrain",
-                cbar_title="Elevation (m)",
+                cbar_title=f"Elevation ({self.dem.crs.linear_units})",
             )
 
     def generate_terrain_attributes_tiff(self) -> None:
@@ -128,26 +135,26 @@ class Topo(Workflows):
 
         ncols = 2
         nrows = math.ceil(n / ncols)
-
+        unit = self.dem.crs.linear_units
         attribute_params: dict[str, dict[str, Any]] = {
             "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (0, 255)},
             "texture_shading": {"label": "Texture shading", "cmap": "Greys_r", "vlim": (-20, 20)},
             "slope": {"label": "Slope (°)", "cmap": "Reds", "vlim": (0, 90)},
             "aspect": {"label": "Aspect (°)", "cmap": "twilight", "vlim": (0, 360)},
-            "profile_curvature": {"label": "Profile curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "tangential_curvature": {"label": "Tangential curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "planform_curvature": {"label": "Planform curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "flowline_curvature": {"label": "Flowline curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "max_curvature": {"label": "Max. curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "min_curvature": {"label": "Min. curvature (100 / m)", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "profile_curvature": {"label": f"Profile curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "tangential_curvature": {"label": f"Tangential curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "planform_curvature": {"label": f"Planform curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "flowline_curvature": {"label": f"Flowline curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "max_curvature": {"label": f"Max. curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "min_curvature": {"label": f"Min. curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
             "terrain_ruggedness_index": {"label": "Terrain Ruggedness Index", "cmap": "Purples", "vlim": (None, None)},
             "rugosity": {"label": "Rugosity", "cmap": "YlOrRd", "vlim": (None, None)},
             "topographic_position_index": {
-                "label": "Topographic position index (m)",
+                "label": f"Topographic position index ({unit})",
                 "cmap": "Spectral",
                 "vlim": (None, None),
             },
-            "roughness": {"label": "Roughness (m)", "cmap": "Oranges", "vlim": (None, None)},
+            "roughness": {"label": f"Roughness ({self.dem.crs.linear_units})", "cmap": "Oranges", "vlim": (None, None)},
             "fractal_dimension": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
         }
 
@@ -155,6 +162,14 @@ class Topo(Workflows):
         import matplotlib.pyplot as plt
 
         fig, axes = plt.subplots(nrows, ncols)
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
 
         axes = axes.flatten()
         for i, attr in enumerate(self.list_attributes):
@@ -168,6 +183,7 @@ class Topo(Workflows):
             ax.set_xticks([])
             ax.set_yticks([])
 
+        [fig.delaxes(ax) for ax in axes.flatten() if not ax.has_data()]
         plt.tight_layout()
         plt.savefig(self.outputs_folder / "plots" / "terrain_attributes_map.png", dpi=300)
         plt.close()
@@ -203,12 +219,9 @@ class Topo(Workflows):
         list_metrics = self.config["statistics"]
         if list_metrics is not None:
             stats_dem = self.dem.get_stats(list_metrics)
+            stats_dem = {_ALIAS.get(k, k): v for k, v in stats_dem.items()}
             self.save_stat_as_csv(stats_dem, "stats_elev")
-            self.dico_to_show.append(("Global statistics", self.floats_process(stats_dem)))
-            stats_dem_mask = self.dem.get_stats(list_metrics, inlier_mask=self.inlier_mask)
-            if self.inlier_mask is not None:
-                self.save_stat_as_csv(stats_dem_mask, "stats_elev_mask")
-                self.dico_to_show.append(("Mask statistics", self.floats_process(stats_dem_mask)))
+            self.dico_to_show.append(("Statistics", self.floats_process(stats_dem)))
             logging.info(f"Computing metrics on reference elevation: {list_metrics}")
 
         # Terrain attributes
@@ -248,25 +261,28 @@ class Topo(Workflows):
         html += f"<p>Date: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</p>"
         html += f"<p>Computing time: {self.elapsed:.2f} seconds</p>"
 
-        html += "<h2>Elevation data</h2>\n"
-        html += "<img src='plots/elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<h2>Elevation input</h2>\n"
+        html += "<img src='plots/elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         if self.inlier_mask is not None:
             html += "<h2>Masked elevation data</h2>\n"
-            html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+            html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         for title, dictionary in list_dict:
             html += "<div style='clear: both; margin-bottom: 30px;'>\n"  # type: ignore
             html += f"<h2>{title}</h2>\n"
             html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
             html += "<tr><th>Information</th><th>Value</th></tr>\n"
-            for key, value in dictionary.items():
-                html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
+            for key, val in dictionary.items():
+                if "statistics" in title.lower():
+                    html += f"<tr><td>{key}</td><td>{self.format_values_stats(key, val)}</td></tr>\n"
+                else:
+                    html += f"<tr><td>{key}</td><td>{val}</td></tr>\n"
             html += "</table>\n"
             html += "</div>\n"
 
         html += "<h2>Terrain attributes</h2>\n"
-        html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='max-width: 100%; height: auto;'>\n"
+        html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         html += "</body>\n</html>"
 
