@@ -154,7 +154,7 @@ def _process_longyearbyen_coreg_examples(output_dir: str, overwrite: bool = Fals
         glacier_mask = gu.Vector(get_path("longyearbyen_glacier_outlines", output_dir=output_dir))
         inlier_mask = ~glacier_mask.create_mask(reference_raster)
 
-        nuth_kaab = xdem.coreg.NuthKaab(offset_threshold=0.005)
+        nuth_kaab = xdem.coreg.NuthKaab(tolerance_translation=0.005)
         nuth_kaab.fit(reference_raster, to_be_aligned_raster, inlier_mask=inlier_mask, random_state=42)
 
         aligned_raster = nuth_kaab.apply(to_be_aligned_raster, resample=True)
