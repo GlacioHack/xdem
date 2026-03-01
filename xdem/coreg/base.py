@@ -2063,8 +2063,9 @@ class Coreg:
             self._meta["inputs"]["random"]["subsample"] = subsample
 
         # Save random_state if a subsample is used
-        if self._meta["inputs"]["random"]["subsample"] != 1:
-            self._meta["inputs"]["random"]["random_state"] = random_state
+        # TODO: Always save a random state?
+        # if self._meta["inputs"]["random"]["subsample"] != 1:
+        self._meta["inputs"]["random"]["random_state"] = random_state
 
         # Apply the shift to the source dem if given
         initial_shift_apply = False

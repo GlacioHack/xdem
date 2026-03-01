@@ -1,6 +1,6 @@
-# Copyright (c) 2026 xRaster developers
+# Copyright (c) 2026 xDEM developers
 #
-# This file is part of the xRaster project:
+# This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -117,7 +117,7 @@ def _propag_uncertainty_coreg(
     else:
         source_elev, other_elev = to_be_aligned_elev, reference_elev
 
-    logging.info(f"Infering uncertainty from {error_applied_to}...")
+    logging.info(f"Inferring uncertainty from {error_applied_to}...")
     # Get correlation, heteroscedasticity, and build model for GSTools random fields
     hetesc_out, corr_out = _infer_uncertainty(source_elev=source_elev, other_elev=other_elev,
                                              stable_terrain=inlier_mask, random_state=rng,
@@ -149,8 +149,8 @@ def _propag_uncertainty_coreg(
         # Run coreg fit
         logging.info(f"  Running coregistration fit...")
         c = coreg_method.copy()  # Avoid carrying over the state over multiple simulations
-        c.fit(reference_elev=ref_elev, to_be_aligned_elev=tba_elev, inlier_mask=inlier_mask,
-              kwargs_coreg_fit=kwargs_coreg_fit, random_state=rng)
+        c.fit(reference_elev=ref_elev, to_be_aligned_elev=tba_elev, inlier_mask=inlier_mask, random_state=rng,
+              **kwargs_coreg_fit)
         df_it = _postproc_coreg_metadata(c)
         df_it["nsim"] = i + 1
         list_df.append(df_it)
@@ -166,11 +166,11 @@ def _propag_uncertainty_coreg(
     return summary, df, list_coreg
 
 def _simu_random_error_field(
-    elev: DEM | gpd.GeoDataFrame,
-    sig_elev: DEM | gpd.GeoDataFrame | float,
+    elev: Raster | PointCloud,
+    sig_elev: Raster | PointCloud | float,
     corr_func: Callable[[NDArrayf], NDArrayf] | gs.CovModel | None = None,
     random_state: None | np.random.Generator | int = None,
-) -> DEM | gpd.GeoDataFrame:
+) -> Raster | PointCloud:
     """
     Simulate random error fields based on per-pixel error input and correlation range.
 
@@ -185,12 +185,20 @@ def _simu_random_error_field(
 
     rng = np.random.default_rng(random_state)
 
+    if ((isinstance(elev, (gpd.GeoDataFrame, PointCloud)) and not isinstance(sig_elev, (gpd.GeoDataFrame,
+                                                                                       PointCloud)))
+            or (isinstance(elev, Raster) and not isinstance(sig_elev, Raster))):
+        raise ValueError("Input 'elev' and 'sig_elev' must both be of the same type (raster or point cloud).")
+
     # 1/ Standardized random field
 
     # Coordinates for random field
-    if isinstance(elev, gpd.GeoDataFrame):
-        geom = elev.geometry
-        # assume tested ahead: point geometries and non-empty
+    if isinstance(elev, (gpd.GeoDataFrame, PointCloud)):
+        if isinstance(elev, PointCloud):
+            gdf = elev.ds
+        else:
+            gdf = elev
+        geom = gdf.geometry
         x = geom.x.to_numpy()
         y = geom.y.to_numpy()
         coords = (x, y)
@@ -198,7 +206,6 @@ def _simu_random_error_field(
         out_shape = (len(x),)
     else:
         dem = elev
-        # note: x over cols, y over rows
         x = np.arange(dem.shape[1]) * dem.res[0]
         y = np.arange(dem.shape[0]) * dem.res[1]
         coords = (x, y)
@@ -222,13 +229,13 @@ def _simu_random_error_field(
                     return user_corr(np.asarray(r, dtype=float))
             model = _CallableCorrModel()
 
-        # Reproducible seed derived from rng (works for both int seed and Generator input)
+        # Reproducible seed derived from rng (works for both int seed and generator input)
         seed = int(rng.integers(0, 2**32 - 1))
         srf = gs.SRF(model, seed=seed, mode_no=100)
 
         error_field = srf(coords, mesh_type=mesh_type)
 
-        # GSTools sometimes returns (nx, ny); ensure (nrows, ncols)
+        # GSTools sometimes returns (nx, ny), ensure (nrows, ncols)
         if mesh_type == "structured" and error_field.shape != out_shape and error_field.T.shape == out_shape:
             error_field = error_field.T
 
@@ -239,19 +246,14 @@ def _simu_random_error_field(
     if np.isscalar(sig_elev):
         sigma = float(sig_elev)
     else:
-        if isinstance(sig_elev, Raster):
-            sigma = sig_elev.data
-        else:
-            sigma = np.asarray(sig_elev)
+        sigma = sig_elev.data  # Works for both raster and point cloud
     error_field = sigma * error_field
 
     # 3/ Return same type as input
-    if isinstance(elev, gpd.GeoDataFrame):
-        out = elev.copy()
-        out["error"] = error_field
+    if isinstance(elev, PointCloud):
+        out = elev.copy(new_array=error_field)
         return out
     else:
-        # assume DEM supports copy() and data assignment
         out = Raster.from_array(error_field, transform=elev.transform, crs=elev.crs, nodata=elev.nodata)
         return out
 
@@ -266,8 +268,8 @@ def _infer_uncertainty(
     hetesc_vars: (tuple[Raster | pd.Series | str, ...] |
                   dict[str, Raster | pd.Series | str]) = ("slope", "max_curvature"),
     vario_model: str | tuple[str, ...] = ("gaussian", "spherical"),
-    subsample_hetesc: int | float = 10e6,
-    subsample_pairs_vario: int | float = 10e6,
+    subsample_hetesc: int | float = 1_000_000,
+    subsample_pairs_vario: int | float = 1_000_000,
     z_name: str | None = None,
     random_state: int | np.random.Generator | None = None,
 ) -> Any:
@@ -381,7 +383,7 @@ def _infer_heteroscedasticity(
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
 ) -> tuple[
-    Raster | gpd.GeoDataFrame,
+    Raster | PointCloud,
     pd.DataFrame,
     Callable[[tuple[NDArrayf, ...]], NDArrayf],
 ]:
@@ -454,8 +456,8 @@ def _infer_heteroscedasticity(
 
     # 3A) If heteroscedastic, perform binning and fit
     if heterosc:
-        logging.info(f"  Step 2: Estimating variable error with binned variables {list(aux_fit.keys())} and estimator"
-                     f" {spread_statistic!r}...")
+        logging.info(f"  Step 2: Estimating variable error with binned variables {list(aux_fit.keys())} and spread "
+                     f"estimator {spread_statistic.__name__}...")
         df, fun = _estimate_model_heteroscedasticity(
             dvalues=dvalues_fit,
             list_var=list(aux_fit.values()),
@@ -517,7 +519,7 @@ def _infer_heteroscedasticity(
 
     # 3B) Otherwise, return a constant error evaluated on the source input
     else:
-        logging.info(f"  Step 2: Computing constant spread with estimator {spread_statistic!r}...")
+        logging.info(f"  Step 2: Computing constant spread with spread estimator {spread_statistic.__name__}...")
         sig_dh_magn = float(spread_statistic(dvalues_fit))
         df = pd.DataFrame()
         def _const_fun(_: tuple[NDArrayf, ...]) -> NDArrayf:

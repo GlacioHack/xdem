@@ -2732,7 +2732,11 @@ def _lzd_aux_vars(
     elif isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
 
         # Derive slope and aspect from the reference as default
-        gradient_y, gradient_x = np.gradient(ref_elev)
+        if np.ma.isMaskedArray(ref_elev):
+            ref_arr = ref_elev.filled(np.nan)
+        else:
+            ref_arr = ref_elev
+        gradient_y, gradient_x = np.gradient(ref_arr)
 
     # If inputs are one raster and one point cloud, derive terrain attribute from raster and get 1D dh interpolator
     else:
@@ -2741,9 +2745,12 @@ def _lzd_aux_vars(
             rst_elev = tba_elev
         else:
             rst_elev = ref_elev
-
+        if np.ma.isMaskedArray(rst_elev):
+            rst_arr = rst_elev.filled(np.nan)
+        else:
+            rst_arr = rst_elev
         # Derive slope and aspect from the raster dataset
-        gradient_y, gradient_x = np.gradient(rst_elev)
+        gradient_y, gradient_x = np.gradient(rst_arr)
 
     # Convert to unitary gradient depending on resolution
     res = _res(transform)
@@ -3608,8 +3615,7 @@ def lzd(
 
     transform = ref_transform if ref_transform is not None else tba_transform
     pixel_size = _res(transform)[0]
-    logging.info(f"Using "
-                 f"{"reference" if ref_transform is not None else "to-be-aligned"} "
+    logging.info(f"Using {"reference" if ref_transform is not None else "to-be-aligned"} "
                  f"as continuous grid for deriving gradients.")
 
     # Check that DEM CRS is projected, otherwise slope is not correctly calculated

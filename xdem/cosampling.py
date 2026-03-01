@@ -338,7 +338,7 @@ def _subsample_pts_rst_independent(
     # Or if it is a raster
     else:
         # We can use the _get_subsample_mask_pts_rst with a placeholder
-        placeholder_ref = np.ones(ref_elev.shape, dtype=bool)
+        placeholder_ref = np.ones(tba_elev.shape, dtype=bool)
         # If auxiliary variables are tied to to-be-aligned, pass them here
         aux_vars_tba = aux_vars if aux_tied_to == "tba" else None
         sub_mask = _get_subsample_mask_pts_rst(
@@ -355,7 +355,7 @@ def _subsample_pts_rst_independent(
         _, sub_tba, sub_aux_tba, sub_coords = _subsample_on_mask(
             ref_elev=placeholder_ref,
             tba_elev=tba_elev,
-            aux_vars=aux_vars,
+            aux_vars=aux_vars_tba,
             sub_mask=sub_mask,
             transform=tba_transform,
             area_or_point=area_or_point,
