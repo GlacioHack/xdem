@@ -180,7 +180,6 @@ class Workflows(ABC):
         :param mask_path: Path to mask file.
         :return: None
         """
-
         import_optional("matplotlib")
         import matplotlib.pyplot as plt
 
@@ -192,6 +191,12 @@ class Workflows(ABC):
         plt.rc("ytick", labelsize=size_font)
         plt.rc("legend", fontsize=size_font)
         plt.rc("figure", titlesize=size_font)
+
+        # Apply default cmap if not given in inputs
+        if "cmap" not in kwargs:
+            cmap = plt.get_cmap("terrain")
+            cmap.set_bad(color="k", alpha=None)
+            kwargs["cmap"] = cmap
 
         # Force figsize with the good ratio to prevent larger right axe if not filled
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])

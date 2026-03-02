@@ -72,7 +72,6 @@ class Topo(Workflows):
             self.dem,
             filename="elev_map",
             title="Elevation",
-            cmap="terrain",
             cbar_title=f"Elevation ({self.dem.crs.linear_units})",
         )
 
@@ -83,7 +82,6 @@ class Topo(Workflows):
                 self.dem,
                 title="Masked elevation",
                 filename="masked_elev_map",
-                cmap="terrain",
                 cbar_title=f"Elevation ({self.dem.crs.linear_units})",
             )
 

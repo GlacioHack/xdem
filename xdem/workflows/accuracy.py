@@ -96,7 +96,6 @@ class Accuracy(Workflows):
             title_dem_right="To-be-aligned elevation",
             vmin=vmin,
             vmax=vmax,
-            cmap="terrain",
             cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
         )
 
@@ -115,7 +114,6 @@ class Accuracy(Workflows):
                 title_dem_right="Masked terrain for to-be-aligned elevation",
                 vmin=vmin,
                 vmax=vmax,
-                cmap="terrain",
                 cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
@@ -212,7 +210,6 @@ class Accuracy(Workflows):
                 filename="preprocessed_to_be_aligned_elev_map",
                 vmin=vmin,
                 vmax=vmax,
-                cmap="terrain",
                 cbar_title=f"Elevation ({self.to_be_aligned_elev.crs.linear_units})",
             )
         else:
@@ -223,7 +220,6 @@ class Accuracy(Workflows):
                 filename="preprocessed_reference_elev_map",
                 vmin=vmin,
                 vmax=vmax,
-                cmap="terrain",
                 cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
