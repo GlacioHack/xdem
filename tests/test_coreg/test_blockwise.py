@@ -36,7 +36,7 @@ def step() -> Coreg:
 
 @pytest.fixture
 def mp_config(tmp_path: Path) -> MultiprocConfig:
-    return MultiprocConfig(chunk_size=25, outfile=tmp_path / "test.tif")
+    return MultiprocConfig(chunk_size=25, outfile=tmp_path / "aligned_dem.tif")
 
 
 @pytest.fixture
@@ -182,7 +182,7 @@ class TestBlockwiseCoreg:
         blockwise_coreg.fit(ref, tba, mask)
         blockwise_coreg.apply(tba)
 
-        aligned = xdem.DEM(tmp_path / "aligned_dem.tif")
+        aligned = xdem.DEM(tmp_path / "test.tif")
 
         # Ground truth comparison with full image coregistration
         expected = step.fit_and_apply(ref, tba, mask)
@@ -209,7 +209,7 @@ class TestBlockwiseCoreg:
         blockwise_coreg.fit(ref, tba, mask)
         blockwise_coreg.apply(tba)
 
-        aligned = xdem.DEM(tmp_path / "aligned_dem.tif")
+        aligned = xdem.DEM(tmp_path / "test.tif")
 
         # Ground truth comparison with full image coregistration
         expected = step.fit_and_apply(ref, tba, mask)

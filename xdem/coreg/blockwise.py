@@ -92,7 +92,6 @@ class BlockwiseCoreg:
 
         if mp_config is not None:
             self.mp_config = mp_config
-            self.mp_config.chunk_size = block_size_fit
             self.parent_path = Path(mp_config.outfile).parent
         else:
             self.mp_config = MultiprocConfig(chunk_size=self.block_size_fit, outfile="aligned_dem.tif")
@@ -100,7 +99,7 @@ class BlockwiseCoreg:
 
         os.makedirs(self.parent_path, exist_ok=True)
 
-        self.output_path_aligned = self.parent_path / "aligned_dem.tif"
+        self.output_path_aligned = self.parent_path / self.mp_config.outfile
 
         self.meta = {"inputs": {}, "outputs": {}}
         self.shape_tiling_grid = (0, 0, 0)
@@ -379,7 +378,6 @@ class BlockwiseCoreg:
             coeff_z = (0, 0, 0)
 
         self.mp_config.outfile = self.output_path_aligned
-        self.mp_config.chunk_size = self.block_size_apply
 
         # be careful with depth value if Out of Memory
         depth = max(np.abs(self.shifts_x).max(), np.abs(self.shifts_y).max())
