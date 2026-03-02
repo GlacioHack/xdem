@@ -33,7 +33,6 @@ from xdem.coreg.base import (  # noqa
     Coreg,
     CoregPipeline,
     apply_matrix,
-    apply_matrix_multi,
     invert_matrix,
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,

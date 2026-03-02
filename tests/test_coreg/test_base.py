@@ -23,7 +23,7 @@ from scipy.ndimage import binary_dilation
 import xdem
 from xdem import coreg, examples
 from xdem._typing import NDArrayf
-from xdem.coreg.base import Coreg, apply_matrix, apply_matrix_multi, dict_key_to_str
+from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -1093,7 +1093,7 @@ class TestAffineManipulation:
         ref_dem = apply_matrix(dem, matrix, invert=invert, centroid=centroid, resample=resample)
 
         mp_config = MultiprocConfig(chunk_size=5, outfile=tmp_path / "test.tif")
-        apply_matrix_multi(dem, matrix, multiproc_config=mp_config, invert=invert, centroid=centroid, resample=resample)
+        apply_matrix(dem, matrix, multiproc_config=mp_config, invert=invert, centroid=centroid, resample=resample)
         res_dem = xdem.DEM(tmp_path / "test.tif")
 
         assert ref_dem.nodata == res_dem.nodata
