@@ -84,6 +84,12 @@ class BlockwiseCoreg:
         if not step.is_affine:
             raise ValueError("The blockwise coregistration only supports affine coregistration methods.")
 
+        if not step.meta["inputs"]["affine"].get("only_translation", True):
+            raise ValueError(
+                "The provided coregistration method is configured to only estimate translation. "
+                "Consider setting 'only_translation' to True to allow for more complex transformations."
+            )
+
         self.procstep = step
         self.block_size_fit = block_size_fit
         # NB: in case of memory peak reduce block_size_apply

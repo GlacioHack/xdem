@@ -226,6 +226,33 @@ class TestBlockwiseCoreg:
         ):
             _ = xdem.coreg.BlockwiseCoreg(step=step_coreg, mp_config=config_mc, block_size_fit=block_size)
 
+    @pytest.mark.parametrize(
+        "step_coreg",
+        [
+            pytest.param(xdem.coreg.CPD(only_translation=False), id="CPD"),
+            pytest.param(xdem.coreg.ICP(only_translation=False), id="ICP"),
+            pytest.param(xdem.coreg.LZD(only_translation=False), id="LZD"),
+            pytest.param(xdem.coreg.CPD(), id="CPD"),
+            pytest.param(xdem.coreg.ICP(), id="ICP"),
+            pytest.param(xdem.coreg.LZD(), id="LZD"),
+        ],
+    )
+    @pytest.mark.parametrize("block_size", [32])
+    def test_blockwise_only_translation_coreg_pipeline(self, step_coreg, tmp_path, block_size):
+        """
+        Test end-to-end blockwise coregistration for non-affine steps and validate output.
+        """
+
+        config_mc = MultiprocConfig(
+            chunk_size=block_size, outfile=tmp_path / "test.tif", cluster=ClusterGenerator("multi", nb_workers=4)
+        )
+        with pytest.raises(
+            ValueError,
+            match="The provided coregistration method is configured to only estimate translation. "
+            "Consider setting 'only_translation' to True to allow for more complex transformations.",
+        ):
+            _ = xdem.coreg.BlockwiseCoreg(step=step_coreg, mp_config=config_mc, block_size_fit=block_size)
+
     @pytest.mark.parametrize("block_size", [32])
     def test_blockwise_coreg_pipeline_with_multiprocessing(self, step, example_data, tmp_path, block_size):
         """Test end-to-end blockwise coregistration in multiprocessing and validate output."""
@@ -241,9 +268,9 @@ class TestBlockwiseCoreg:
         )
         blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step, mp_config=config_mc, block_size_fit=block_size)
         blockwise_coreg.fit(ref, tba, mask)
-        blockwise_coreg.apply()
+        blockwise_coreg.apply(tba)
 
-        aligned = xdem.DEM(tmp_path / "aligned_dem.tif")
+        aligned = xdem.DEM(tmp_path / "test.tif")
 
         # Ground truth comparison with full image coregistration
         expected = step.fit_and_apply(ref, tba, mask)
