@@ -17,7 +17,7 @@ from geoutils.raster.geotransformations import _translate
 from geoutils.stats import nmad
 from scipy.ndimage import binary_dilation
 
-from xdem import coreg, examples
+from xdem import coreg, examples, DEM
 from xdem.coreg.affine import (
     AffineCoreg,
     _reproject_horizontal_shift_samecrs,
@@ -196,7 +196,7 @@ class TestAffineCoreg:
         ref_shifted = ref.translate(shifts[0], shifts[1]) + shifts[2]
         # Convert to point cloud if input was point cloud
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            ref_shifted = ref_shifted.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
+            ref_shifted = ref_shifted.to_pointcloud(data_column_name="z", random_state=42).ds
         elev_fit_args["to_be_aligned_elev"] = ref_shifted
 
         # Run coregistration
@@ -240,16 +240,16 @@ class TestAffineCoreg:
         assert np.nanvar(dh / np.nanstd(init_dh)) < tol
 
     @pytest.mark.parametrize(
-        "coreg_method__shift",
+        "coreg_method, shift",
         [
-            (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
+            (coreg.NuthKaab, (9.087068, 2.87615, -1.908257)),
             (coreg.DhMinimize, (10.0850892, 2.898172, -1.943001)),
             (coreg.LZD, (9.969819, 2.140150, -1.9257709)),
             (coreg.ICP, (5.417970, 1.1282436, -2.0662609)),
         ],
     )
     def test_coreg_translations__example(
-        self, coreg_method__shift: tuple[type[AffineCoreg], tuple[float, float, float]]
+        self, coreg_method: type[coreg.Coreg], shift: tuple[type[AffineCoreg], tuple[float, float, float]]
     ) -> None:
         """
         Test that the translation co-registration outputs are always exactly the same on the real example data.
@@ -260,7 +260,7 @@ class TestAffineCoreg:
         inlier_mask = ~outlines.create_mask(ref)
 
         # Get the coregistration method and expected shifts from the inputs
-        coreg_method, expected_shifts = coreg_method__shift
+        expected_shifts = shift
 
         subsample_size = 50000 if coreg_method != coreg.CPD else 500
         c = coreg_method(subsample=subsample_size)
@@ -667,6 +667,100 @@ class TestAffineCoreg:
         if coreg_method != coreg.CPD:
             assert np.allclose(invert_fit_shifts_translations_nonstd[:3], shifts_rotations[:3], rtol=1 * ref.res[0])
             assert np.allclose(invert_fit_shifts_translations_nonstd[3:], shifts_rotations[3:], atol=2 * 10e-2)
+
+    @pytest.mark.parametrize(
+        "coreg_method",
+        [
+            pytest.param(coreg.ICP(method="point-to-plane", subsample=1), id="ICP-p2plane"),
+            pytest.param(coreg.ICP(method="point-to-point", subsample=1), id="ICP-p2point"),
+            pytest.param(coreg.LZD(subsample=1), id="LZD"),
+            pytest.param(coreg.NuthKaab(subsample=1, bin_before_fit=False), id="NuthKaab"),
+            pytest.param(coreg.CPD(lsg=False, subsample=1), id="CPD"),
+            pytest.param(coreg.CPD(lsg=True, subsample=1), id="CPD-LSG"),
+        ],
+    )
+    def test_coreg__symmetry(self, coreg_method: coreg.Coreg) -> None:
+        """
+        Check that coregistrations are symmetric between point cloud-raster inputs (if both hold the same data points),
+        and with ref/tba input (only if the method is symmetric; i.e. not use a gradient preferentialy derived on the
+        gridded input).
+
+        This test should not include any randomness (no subsampling), so we always set subsample = 1 (use all samples).
+
+        Coregistration output should be:
+        - Exactly equal for these 3 inputs: DEM1/DEM2, DEM1/EPC2 and opposite of EPC2/DEM1.
+        - Additionally, for methods that do not rely on a gradient (e.g., ICP point-to-point) and are thus fully
+            symmetric, the other 3 combinations should also be exactly equal: DEM2/DEM1, EPC1/DEM2 and DEM2/EPC1.
+        """
+
+        # Open DEMs are convert to point cloud
+        fn_ref = examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = examples.get_path_test("longyearbyen_tba_dem")
+
+        dem_ref = DEM(fn_ref)
+        dem_tba = DEM(fn_tba)
+        epc_ref = dem_ref.to_pointcloud()
+        epc_tba = dem_tba.to_pointcloud()
+
+        def is_method_symmetric(c: coreg.Coreg) -> bool:
+            """Return if coregistration is symmetric."""
+            icp_or_cpd = c.__class__.__name__ in ["ICP", "CPD"]
+
+            icp_p2point = ("specific" in c.meta["inputs"] and
+                           "icp_method" in c.meta["inputs"]["specific"] and
+                           c.meta["inputs"]["specific"]["icp_method"] == "point-to-point")
+
+            cpd_nolsg = ("specific" in c.meta["inputs"] and
+                           "cpd_lsg" in c.meta["inputs"]["specific"] and
+                           c.meta["inputs"]["specific"]["cpd_lsg"] == False)
+
+            return icp_or_cpd and (icp_p2point or cpd_nolsg)
+
+        input_pairs = [
+            # Those three output should always be equal
+            ("DEM1/DEM2", dem_ref, dem_tba, 1),
+            ("DEM1/EPC2", dem_ref, epc_tba, 1),
+            ("EPC2/DEM1", epc_tba, dem_ref, -1),  # Opposite
+            # Those are only equal for symmetric methods
+            ("DEM2/DEM1", dem_tba, dem_ref, -1),  # Opposite
+            ("EPC1/DEM2", epc_ref, dem_tba, 1),
+            ("DEM2/EPC1", dem_tba, epc_ref, -1),  # Opposite
+        ]
+        baseline = None
+        for i, pair in enumerate(input_pairs):
+            # Copy coreg method and fit pair
+            m = coreg_method.copy()
+            m.fit(pair[1], pair[2])
+            # Extract translations and rotations
+            matrix = m.to_matrix()
+            # We invert the result if we compare to the opposite
+            if pair[3] == -1:
+                matrix = invert_matrix(matrix)
+            tr = coreg.translations_rotations_from_matrix(matrix)
+
+            print(pair[0])
+            print(np.asarray(tr))
+
+            if baseline is None:
+                baseline = np.asarray(tr)
+            else:
+                # If not symmetric, don't check the last 3
+                if pair[0] in ["DEM2/DEM1", "EPC1/DEM2", "DEM2/EPC1"]:
+                    if not is_method_symmetric(coreg_method):
+                        continue
+
+                # If symmetric, but run is opposite, add a tolerance, because the algorithm is not strictly equivalent
+                # (ref moving towards tba, or tba moving towards ref differs slightly; even without gradient tied to
+                # one)
+                if pair[0] in ["EPC2/DEM1", "DEM2/DEM1", "DEM2/EPC1"] and is_method_symmetric(coreg_method):
+                    rtol_trans = 0.1 * np.linalg.norm(baseline[0:3])
+                    rtol_rot = 0.1 * np.linalg.norm(baseline[3:6])
+                else:
+                    rtol_trans = rtol_rot = 10e-5
+
+                # Should be almost exactly equal
+                assert np.allclose(baseline[0:3], np.asarray(tr)[0:3], rtol=rtol_trans)
+                assert np.allclose(baseline[3:6], np.asarray(tr)[3:6], rtol=rtol_rot)
 
     def test_nuthkaab__no_vertical_shift(self) -> None:
         ref, tba = load_examples()[0:2]

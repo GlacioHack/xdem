@@ -233,6 +233,8 @@ def _subsample_on_mask_interpolator(
         ref = "point" if isinstance(ref_elev, gpd.GeoDataFrame) else "raster"
 
         # Subsample point coordinates
+        valid_pts = np.isfinite(pts_elev[z_name].values)
+        pts_elev = pts_elev[valid_pts]
         coords = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
         sub_coords = (coords[0][sub_mask], coords[1][sub_mask])
 
@@ -640,10 +642,11 @@ def _nuth_kaab_bin_fit(
         valids = np.isfinite(y)
         y = y[valids]
         dh = dh[valids]
+        aspect = aspect[valids]
 
     # Trim if required
     if "trim_residuals" in params_fit_or_bin.keys() and params_fit_or_bin["trim_residuals"]:
-        ind = index_trimmed(dh,
+        ind = index_trimmed(y,
                             central_estimator=params_fit_or_bin["trim_central_statistic"],
                             spread_estimator=params_fit_or_bin["trim_spread_statistic"],
                             spread_coverage=params_fit_or_bin["trim_spread_coverage"],
@@ -652,10 +655,9 @@ def _nuth_kaab_bin_fit(
         # Keep data not trimmed
         y = y[~ind]
         aspect = aspect[~ind]
-        dh = dh[~ind]
 
     # Make an initial guess of the a, b, and c parameters
-    x0 = (1, 1, np.nanmedian(dh))
+    x0 = (1, 1, float(np.nanmedian(y)))
 
     # For this type of method, the procedure can only be fit, or bin + fit (binning alone does not estimate parameters)
     if params_fit_or_bin["fit_or_bin"] not in ["fit", "bin_and_fit"]:
@@ -678,109 +680,88 @@ def _nuth_kaab_bin_fit(
     assert results is not None
     easting_offset = results[0] * np.sin(results[1])
     northing_offset = results[0] * np.cos(results[1])
-    vertical_offset = results[2] * np.nanmean(slope_tan)
+    vertical_offset = results[2] * np.nanmedian(slope_tan)
 
     return easting_offset, northing_offset, vertical_offset
 
 
-def _nuth_kaab_aux_vars(
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
+def _nuth_kaab_aux_vars_grad(
+    elev: NDArrayf,
 ) -> tuple[NDArrayf, NDArrayf]:
     """
-    Deriving slope tangent and aspect auxiliary variables expected by the Nuth and Kääb (2011) algorithm.
+    Derive map-consistent gradients (gradx, grady) expected by NK, scaled based on DEM resolution.
 
-    :return: Slope tangent and aspect (radians).
+    :return: gradx, grady (unitless, dz/dx and dz/dy in map units).
     """
-
-    def _calculate_slope_and_aspect_nuthkaab(dem: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
-        """
-        Calculate the tangent of slope and aspect of a DEM, in radians, as needed for the Nuth & Kaab algorithm.
-
-        For now, this method using the gradient is more efficient than slope/aspect derived in the terrain module.
-
-        :param dem: A numpy array of elevation values.
-
-        :returns:  The tangent of slope and aspect (in radians) of the DEM.
-        """
-
-        # Gradient implementation
-        # # Calculate the gradient of the slope
-        gradient_y, gradient_x = np.gradient(dem)
-        slope_tan = np.sqrt(gradient_x**2 + gradient_y**2)
-        aspect = np.arctan2(-gradient_x, gradient_y)
-        aspect += np.pi
-
-        # Terrain module implementation
-        # slope, aspect = xdem.terrain.get_terrain_attribute(
-        #     dem, attribute=["slope", "aspect"], resolution=1, degrees=False
-        # )
-        # slope_tan = np.tan(slope)
-        # aspect = (aspect + np.pi) % (2 * np.pi)
-
-        return slope_tan, aspect
-
-    # If inputs are both point clouds, raise an error
-    if isinstance(ref_elev, gpd.GeoDataFrame) and isinstance(tba_elev, gpd.GeoDataFrame):
-
-        raise TypeError(
-            "The Nuth and Kääb (2011) coregistration does not support two point clouds, one elevation "
-            "dataset in the pair must be a DEM."
-        )
-
-    # If inputs are both rasters, derive terrain attributes from ref and get 2D dh interpolator
-    elif isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
-
-        # Derive slope and aspect from the reference as default
-        slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(ref_elev)
-
-    # If inputs are one raster and one point cloud, derive terrain attribute from raster and get 1D dh interpolator
+    if np.ma.isMaskedArray(elev):
+        dem_arr = elev.filled(np.nan)
     else:
+        dem_arr = elev
 
-        if isinstance(ref_elev, gpd.GeoDataFrame):
-            rst_elev = tba_elev
-        else:
-            rst_elev = ref_elev
+    # Gradient in raster axis order (row=y, col=x)
+    gradient_y, gradient_x = np.gradient(dem_arr)
 
-        # Derive slope and aspect from the raster dataset
-        slope_tan, aspect = _calculate_slope_and_aspect_nuthkaab(rst_elev)
-
-    return slope_tan, aspect
-
+    return gradient_x, gradient_y
 
 def _nuth_kaab_iteration_step(
     coords_offsets: tuple[float, float, float],
-    dh_interpolator: Callable[[float, float], NDArrayf],
-    slope_tan: NDArrayf,
-    aspect: NDArrayf,
-    res: tuple[int, int],
+    sub_rst: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    sub_pts: NDArrayf,
+    sub_coords: tuple[NDArrayf, NDArrayf],
+    sub_gradx: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    sub_grady: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    res: tuple[float, float],
     params_fit_bin: InFitOrBinDict,
 ) -> tuple[tuple[float, float, float], dict[str, float], None]:
     """
-    Iteration step of Nuth and Kääb (2011).
+    Iteration step of Nuth and Kääb (2011), using LZD-like preprocessing.
 
     Returns newly incremented coordinate offsets, and new statistic to compare to tolerance to reach.
 
     :param coords_offsets: Coordinate offsets at this iteration (easting, northing, vertical) in georeferenced unit.
-    :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
-        horizontal offset (see _preprocess_pts_rst_subsample_interpolator).
-    :param slope_tan: Array of slope tangent.
-    :param aspect: Array of aspect.
-    :param res: Resolution of DEM.
+    :param sub_rst: Interpolator for 2D array of reference DEM (continuous grid).
+    :param sub_pts: Subsampled elevation for the other elevation data (DEM or point) as 1D array.
+    :param sub_coords: Subsampled X/Y coordinates arrays for point or second DEM input as 1D arrays.
+    :param sub_gradx: Interpolator for 2D gradient in X.
+    :param sub_grady: Interpolator for 2D gradient in Y.
+    :param res: Resolution of X/Y grid.
+    :param params_fit_bin: Dictionary of fitting and binning parameters.
 
     :return X/Y/Z offsets, Horizontal tolerance.
     """
 
-    # Calculate the elevation difference with offsets
-    dh_step = dh_interpolator(coords_offsets[0], coords_offsets[1])
-    # Tests show that using the median vertical offset significantly speeds up the algorithm compared to
-    # using the vertical offset output of the fit function below
-    vshift = np.nanmean(dh_step)
+    # Apply horizontal offsets to subsampled coordinates (same convention as LZD: interpolators take (y, x))
+    coords_y = sub_coords[1] - coords_offsets[1]
+    coords_x = sub_coords[0] - coords_offsets[0]
+
+    # Calculate the elevation difference with offsets at the same XY locations
+    # (continuous grid minus other elevations)
+    dh_step = sub_rst((coords_y, coords_x)) - sub_pts
+
+    # Using the median/mean vertical offset is necessary (the Z component of the NK algorithm is not well defined)
+    vshift = float(np.nanmean(dh_step))
     dh_step -= vshift
 
+    # Evaluate auxiliary variables at the same shifted XY locations
+    gradx = sub_gradx((coords_y, coords_x))
+    grady = sub_grady((coords_y, coords_x))
+
+    # Original NK slope/aspect from raw pixel gradients
+    slope_tan = np.sqrt(gradx ** 2 + grady ** 2)
+    aspect = np.arctan2(-gradx, grady)
+    aspect += np.pi
+
     # Interpolating with an offset creates new invalid values, so the subsample is reduced
-    # TODO: Add an option to re-subsample at every iteration step?
-    mask_valid = np.isfinite(dh_step)
+    slope_min = 0.0001  # Prevent tiny slope blow-up numerically
+    with np.errstate(divide="ignore", invalid="ignore"):
+        y = dh_step / slope_tan
+    mask_valid = (
+            np.isfinite(y)
+            & np.isfinite(aspect)
+            & np.isfinite(slope_tan)
+            & (slope_tan > slope_min)
+    )
+
     if np.count_nonzero(mask_valid) == 0:
         raise ValueError(
             "The subsample contains no more valid values. This can happen is the horizontal shift to "
@@ -796,18 +777,22 @@ def _nuth_kaab_iteration_step(
         dh=dh_step, slope_tan=slope_tan, aspect=aspect, params_fit_or_bin=params_fit_bin,
     )
 
+    # Compute statistic on offset to know if it reached tolerance
+    # The easting and northing are here in pixels because of the slope/aspect derivation
+    offset_translation = float(
+        np.sqrt(
+            (easting_offset * res[0]) ** 2
+            + (northing_offset * res[1]) ** 2
+        )
+    )
+    step_statistics = {"translation": offset_translation}
+
     # Increment the offsets by the new offset
     new_coords_offsets = (
         coords_offsets[0] + easting_offset * res[0],
         coords_offsets[1] + northing_offset * res[1],
         float(vshift),
     )
-
-    # Compute statistic on offset to know if it reached tolerance
-    # The easting and northing are here in pixels because of the slope/aspect derivation
-    offset_horizontal_translation = np.sqrt(easting_offset**2 + northing_offset**2)
-
-    step_statistics = {"translation": offset_horizontal_translation}
 
     return new_coords_offsets, step_statistics, None
 
@@ -848,34 +833,53 @@ def nuth_kaab(
             f"using DEM.get_metric_crs()."
         )
 
-    # First, derive auxiliary variables of Nuth and Kääb (slope tangent, and aspect) for any point-raster input
-    slope_tan, aspect = _nuth_kaab_aux_vars(ref_elev=ref_elev, tba_elev=tba_elev)
-
-    # Add slope tangents near zero to outliers, to avoid infinite values from later division by slope tangent, and to
-    # subsample the right number of subsample points straight ahead
-    mask_zero_slope_tan = np.isclose(slope_tan, 0)
-    slope_tan[mask_zero_slope_tan] = np.nan
-
-    # Then, perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
-    aux_vars = {"slope_tan": slope_tan, "aspect": aspect}  # Wrap auxiliary data in dictionary to use generic function
-    sub_dh_interpolator, sub_aux_vars, subsample_final = _subsample_rst_pts_interpolator(
-        params_random=params_random,
+    # First, enforce identical XY sampling
+    sub_ref, sub_tba, _ = _subsample_rst_pts(
+        subsample=params_random["subsample"],
+        random_state=params_random["random_state"],
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
-        aux_vars=aux_vars,
-        transform=transform,
+        ref_transform=ref_transform,
+        tba_transform=tba_transform,
+        sampling_strategy="same_xy",
+        crs=crs,
         area_or_point=area_or_point,
         z_name=z_name,
     )
 
+    # Simplify output given that the X/Y coordinates are the same
+    sub_coords = (sub_ref[0, :], sub_ref[1, :])
+    sub_ref = sub_ref[2, :]
+    sub_tba = sub_tba[2, :]
+
+    # Define the continuous grid used for dh and for deriving slope/aspect (same logic as LZD)
+    if ref_transform is not None:
+        if not isinstance(ref_elev, np.ndarray):
+            raise TypeError("NuthKaab requires a DEM raster as the continuous grid to derive slope/aspect.")
+        sub_pts = sub_tba
+        sub_rst = _reproject_horizontal_shift_samecrs(ref_elev, src_transform=transform, return_interpolator=True)
+        grid_dem = ref_elev
+        ref = "rst"
+    else:
+        if not isinstance(tba_elev, np.ndarray):
+            raise TypeError("NuthKaab requires a DEM raster as the continuous grid to derive slope/aspect.")
+        sub_pts = sub_ref
+        sub_rst = _reproject_horizontal_shift_samecrs(tba_elev, src_transform=transform, return_interpolator=True)
+        grid_dem = tba_elev
+        ref = "pts"
+
+    # Derive auxiliary variables on the continuous DEM grid (once), then build 2D interpolators (once)
+    gradx, grady = _nuth_kaab_aux_vars_grad(elev=grid_dem)
+    sub_gradx = _reproject_horizontal_shift_samecrs(gradx, src_transform=transform, return_interpolator=True)
+    sub_grady = _reproject_horizontal_shift_samecrs(grady, src_transform=transform, return_interpolator=True)
+
     # Initialise east, north and vertical offset variables (these will be incremented up and down)
     initial_offset = (0.0, 0.0, 0.0)
-    # Resolution
-    res = _res(transform)
+    res = _res(transform=transform)
+
     # Iterate through method of Nuth and Kääb (2011) until tolerance or max number of iterations is reached
-    assert sub_aux_vars is not None  # Mypy: dictionary cannot be None here
-    constant_inputs = (sub_dh_interpolator, sub_aux_vars["slope_tan"], sub_aux_vars["aspect"], res, params_fit_or_bin)
+    constant_inputs = (sub_rst, sub_pts, sub_coords, sub_gradx, sub_grady, res, params_fit_or_bin)
     final_offsets, _, output_iterative, _ = _iterate_method(
         method=_nuth_kaab_iteration_step,
         iterating_input=initial_offset,
@@ -883,6 +887,12 @@ def nuth_kaab(
         tolerances={"translation": tolerance_translation},
         max_iterations=max_iterations,
     )
+
+    subsample_final = len(sub_pts)
+
+    # Change sign of output if reference was the point dataset
+    if ref == "pts":
+        final_offsets = (-off for off in final_offsets)
 
     return final_offsets, subsample_final, output_iterative
 
@@ -1429,7 +1439,9 @@ def icp(
     """
 
     # Derive centroid and scale ahead of any potential iterative sampling loop, and scale translation tolerance
-    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=ref_transform, z_name=z_name)
+    centroid, scale = _get_centroid_scale(ref_elev=ref_elev if isinstance(ref_elev, np.ndarray) else tba_elev,
+                                          transform=ref_transform if ref_transform is not None else tba_transform,
+                                          z_name=z_name)
     if not standardize:
         scale = 1
     tolerance_translation /= scale
@@ -1596,6 +1608,7 @@ def _plane_ratio_from_curvature(curvature: NDArrayf, lsg_lambda: float, max_plan
 
 # CPD cache precomputation (reused across iterations)
 #####################################################
+
 def _cpd_precompute(
     ref_epc: NDArrayf,
     tba_epc: NDArrayf,
@@ -1610,6 +1623,7 @@ def _cpd_precompute(
     max_plane_ratio: float = 30.0,
     truncation_threshold: float = 0.19,
     lsg_lambda: float = 0.2,
+    estep_knn_k: int | None = None,
 ) -> dict[str, Any]:
     """
     Precompute quantities that can be reused across CPD iterations.
@@ -1644,6 +1658,31 @@ def _cpd_precompute(
         "weight_cpd": float(weight_cpd),
         "truncation_threshold": float(truncation_threshold),
     }
+
+    # Optional kNN cache: build a KD-tree on X in anisotropically-weighted
+    # coordinates. The E-step queries in the same space (TY * sqrt(w)).
+    if estep_knn_k is not None:
+        k = int(estep_knn_k)
+        if k <= 0:
+            raise ValueError("knn_k must be a positive integer when provided.")
+
+        # cKDTree uses Euclidean distance, so we fold axis weights into the coordinates:
+        # d^2 = sum_d w[d] * (x_d - y_d)^2  <=>  || sqrt(w) * x - sqrt(w) * y ||^2
+        w = cache["classic"]["w"]  # (3,)
+        w_sqrt = np.sqrt(np.clip(np.asarray(w, dtype=float).reshape(3), 0.0, None))
+
+        Xw = (cache["classic"]["X"] * w_sqrt[None, :]).astype(float, copy=False)  # (N,3)
+
+        # Build tree once; reused across EM iterations
+        tree = cKDTree(Xw)
+
+        cache["knn"] = {
+            "tree": tree,
+            "k": k,
+        }
+
+    else:
+        cache["knn"] = None
 
     if not lsg:
         return cache
@@ -1780,6 +1819,10 @@ def _cpd_estep_classic(
     weight_cpd: float,
     sigma2: float,
     w: NDArrayf,
+    *,
+    knn_tree: cKDTree | None = None,
+    knn_k: int | None = None,
+    knn_workers: int = -1,
 ) -> dict[str, NDArrayf]:
     """
     Expectation step of classic CPD.
@@ -1789,16 +1832,41 @@ def _cpd_estep_classic(
     N, D = X.shape
     M, _ = Y.shape
 
-    # Sum only over D axis for numerator
-    diff2 = (X[None, :, :] - TY[:, None, :]) ** 2 * w[None, None, :]
-    P = np.sum(diff2, axis=2)
-    P = np.exp(-P / (2 * sigma2))
+    # Build P numerator either densely or for kNN pairs only
+    P = np.zeros((M, N), dtype=X.dtype)
 
-    # Re-sum over M axis for denominator
+    if knn_tree is None:
+        # Dense: numerator for all pairs (M,N)
+        diff2 = (X[None, :, :] - TY[:, None, :]) ** 2 * w[None, None, :]
+        P = np.sum(diff2, axis=2)
+        P = np.exp(-P / (2 * sigma2))
+
+    else:
+        if knn_k is None:
+            raise ValueError("If knn_tree is provided, knn_k must be provided as well.")
+
+        # kNN: query neighbors in anisotropically-weighted space:
+        # d^2 = sum_d w[d] * (x_d - ty_d)^2  <=>  Euclidean in (sqrt(w)*coords)
+        w_sqrt = np.sqrt(np.clip(np.asarray(w, dtype=float).reshape(3), 0.0, None))
+        TYs = TY * w_sqrt[None, :]
+        dists, idx = knn_tree.query(TYs, k=min(int(knn_k), N), workers=int(knn_workers))
+
+        # Ensure (M,k) even if k==1
+        if np.ndim(idx) == 1:
+            idx = idx[:, None]
+            dists = dists[:, None]
+
+        d2 = (dists.astype(float) ** 2)  # already weighted by w through scaling
+        num = np.exp(-d2 / (2.0 * float(sigma2))).astype(X.dtype)  # (M,k)
+
+        rows = np.repeat(np.arange(M), idx.shape[1])
+        cols = idx.reshape(-1)
+        P[rows, cols] = num.reshape(-1)
+
+    # Normalize (same for both paths)
     Pden = np.sum(P, axis=0, keepdims=True)
     c = (2 * np.pi * sigma2) ** (D / 2) * weight_cpd / (1.0 - weight_cpd) * M / N
     Pden = np.clip(Pden, np.finfo(X.dtype).eps, None) + c
-
     P = np.divide(P, Pden)
 
     # Extract P subterms useful for next steps
@@ -1808,7 +1876,6 @@ def _cpd_estep_classic(
     PX = np.matmul(P, X)
 
     return {"P": P, "Pt1": Pt1, "P1": P1, "Np": np.asarray(Np), "PX": PX}
-
 
 def _cpd_mstep_classic_fit_minimizer(
     X: NDArrayf,
@@ -2126,6 +2193,10 @@ def _cpd_estep_lsg(
     cache_lsg: dict[str, Any],
     sigma_terms: dict[str, Any],
     TY: NDArrayf,
+    *,
+    knn_tree: cKDTree | None = None,
+    knn_k: int | None = None,
+    knn_workers: int = -1,
 ) -> dict[str, NDArrayf]:
     """
     Expectation step of LSG-CPD.
@@ -2138,7 +2209,6 @@ def _cpd_estep_lsg(
         This mirrors classic CPD where the E-step is evaluated at the current transform.
     """
     X = cache_lsg["X"]                     # (N,3)
-    ref_normals = cache_lsg["ref_normals"] # (N,3)
     a = cache_lsg["a"]                     # (N,)
     invSigma_flat = cache_lsg["invSigma_flat"]  # (N,9)
     x_invSigma = cache_lsg["x_invSigma"]        # (N,3)
@@ -2153,30 +2223,78 @@ def _cpd_estep_lsg(
     C_const = sigma_terms["C_const"]            # scalar
     c_const = sigma_terms["c_const"]            # scalar
 
-    # Use the transformed moving/source points (M,3) directly (no recompute from R,t)
     gY = np.asarray(TY, dtype=float)  # (M,3)
     gY2 = np.sum((gY * gY) * w[None, :], axis=1)  # (M,)
 
-    # Plane term weighted
-    dWn = (Wn @ gY.T) - X_normal[:, None]  # (N,M)
-    plane_term = (dWn * dWn) / nWn[:, None]  # (N,M)
+    N = X.shape[0]
+    M = gY.shape[0]
 
-    # Quad term weighted
-    xWy = (X * w[None, :]) @ gY.T  # (N,M)
-    quad_term = X_X2[:, None] + gY2[None, :] - 2.0 * xWy
+    # Build P numerator either densely or for kNN pairs only
+    P = np.zeros((N, M), dtype=float)
 
-    # Responsibilities (N,M)
-    P = F_matrix * np.exp(c_const * (a[:, None] * plane_term + quad_term))
+    if knn_tree is None:
+        # Dense: plane term weighted (N,M)
+        dWn = (Wn @ gY.T) - X_normal[:, None]
+        plane_term = (dWn * dWn) / nWn[:, None]
 
+        # Dense: quad term weighted (N,M)
+        xWy = (X * w[None, :]) @ gY.T
+        quad_term = X_X2[:, None] + gY2[None, :] - 2.0 * xWy
+
+        P = F_matrix * np.exp(c_const * (a[:, None] * plane_term + quad_term))
+
+    else:
+        if knn_k is None:
+            raise ValueError("If knn_tree is provided, knn_k must be provided as well.")
+
+        # Query neighbors in anisotropically-weighted coordinate space
+        w_sqrt = np.sqrt(np.clip(np.asarray(w, dtype=float).reshape(3), 0.0, None))
+        TYs = gY * w_sqrt[None, :]
+        dists, idx = knn_tree.query(TYs, k=min(int(knn_k), N), workers=int(knn_workers))
+
+        if np.ndim(idx) == 1:
+            idx = idx[:, None]
+            dists = dists[:, None]
+        k_eff = idx.shape[1]
+
+        # Gather per-neighbor terms (M,k)
+        a_nb = a[idx]
+        nWn_nb = nWn[idx]
+        X_normal_nb = X_normal[idx]
+        X_X2_nb = X_X2[idx]
+        Wn_nb = Wn[idx]  # (M,k,3)
+
+        # Plane term (M,k)
+        Wn_dot_y = np.einsum("mkd,md->mk", Wn_nb, gY)
+        dWn = Wn_dot_y - X_normal_nb
+        plane_term = (dWn * dWn) / np.clip(nWn_nb, 1e-12, None)
+
+        # Quad term (M,k)
+        Xw_nb = X[idx] * w[None, None, :]
+        xWy_nb = np.einsum("mkd,md->mk", Xw_nb, gY)
+        quad_term = X_X2_nb + gY2[:, None] - 2.0 * xWy_nb
+
+        # F_nb = F_matrix[n, m] for (m,k) pairs
+        cols_m = np.arange(M)[:, None]
+        F_nb = F_matrix[idx, cols_m]  # (M,k)
+
+        P_nb = F_nb * np.exp(c_const * (a_nb * plane_term + quad_term))  # (M,k)
+
+        # Scatter into P (N,M)
+        rows = idx.reshape(-1)                      # n indices
+        cols = np.repeat(np.arange(M), k_eff)       # m indices
+        P[rows, cols] = P_nb.reshape(-1)
+
+    # Normalize (same for both paths)
     denom = P.sum(axis=0, keepdims=True) + C_const
     P = P / np.clip(denom, 1e-300, None)
 
-    # Sufficient stats
-    M0_flat = P.T @ invSigma_flat    # (M,9)
-    M0 = M0_flat.reshape(gY.shape[0], 3, 3)  # (M,3,3)
+    # Sufficient stats (same for both paths)
+    M0_flat = P.T @ invSigma_flat
+    M0 = M0_flat.reshape(gY.shape[0], 3, 3)
 
-    M1 = P.T @ x_invSigma            # (M,3)
-    M2 = P.T @ x_invSigma_x          # (M,)
+    M1 = P.T @ x_invSigma
+    M2 = P.T @ x_invSigma_x
     sum_P = float(np.sum(P))
 
     return {"P": P, "M0": M0, "M1": M1, "M2": M2, "sum_P": np.asarray(sum_P)}
@@ -2377,13 +2495,19 @@ def _cpd_fit(
         diff2 = (X[None, :, :] - TY[:, None, :]) ** 2
         sigma2 = float(np.sum(diff2) / (D * N * M))
 
+    # Get kNN tree if used to accelerate expectation step
+    knn = None if cache is None else cache.get("knn", None)
+    knn_tree = None if knn is None else knn["tree"]
+    knn_k = None if knn is None else knn["k"]
+
     # Classic CPD
     if not lsg:
 
         w = cache["classic"]["w"]
 
         # 1/ Expectation step
-        estep = _cpd_estep_classic(X=X, Y=Y, TY=TY, w=w, weight_cpd=weight_cpd, sigma2=float(sigma2))
+        estep = _cpd_estep_classic(X=X, Y=Y, TY=TY, w=w, weight_cpd=weight_cpd, sigma2=float(sigma2),
+                                   knn_tree=knn_tree, knn_k=knn_k)
 
         # 2/ Minimization step
         use_generic_mstep = False  # To check internally the consistency with old implementation
@@ -2419,6 +2543,8 @@ def _cpd_fit(
             cache_lsg=cache_lsg,
             sigma_terms=sigma_terms,
             TY=TY,
+            knn_tree=knn_tree,
+            knn_k=knn_k,
         )
 
         # 2/ Minimization step
@@ -2516,6 +2642,7 @@ def cpd(
     tolerance_rotation: float | None,
     sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
     anisotropic: Literal["xy_vs_z", "per_axis"] | None = "xy_vs_z",
+    estep_knn_k: int | None = 64,
     only_translation: bool = False,
     lsg: bool = False,
     standardize: bool = True,
@@ -2635,6 +2762,7 @@ def cpd(
             ref_normals=norms,
             curvature=curv,
             axis_weights=w_axis,
+            estep_knn_k=estep_knn_k,
         )
         constant_inputs = (
             ref_epc,
@@ -3613,7 +3741,11 @@ def lzd(
 
     logging.info("Running LZD coregistration")
 
+    # Estimate centroid to use
     transform = ref_transform if ref_transform is not None else tba_transform
+    centroid = _get_centroid_scale(ref_elev=ref_elev if isinstance(ref_elev, np.ndarray) else tba_elev,
+                                   transform=transform)[0]
+
     pixel_size = _res(transform)[0]
     logging.info(f"Using {"reference" if ref_transform is not None else "to-be-aligned"} "
                  f"as continuous grid for deriving gradients.")
@@ -3679,9 +3811,6 @@ def lzd(
             sub_errors = (sub_sig_ref, corr_ref, sub_sig_tba, corr_tba)
     else:
         sub_errors = None
-
-    # Estimate centroid to use
-    centroid = _get_centroid_scale(ref_elev=ref_elev, transform=transform, z_name=z_name)[0]
 
     logging.info("Iteratively estimating rigid transformation:")
     # Iterate through method until tolerance or max number of iterations is reached
@@ -4285,6 +4414,7 @@ class CPD(AffineCoreg):
         only_translation: bool = False,
         lsg: bool = True,
         anisotropic: Literal["xy_vs_z", "per_axis"] | None = "xy_vs_z",
+        estep_knearest: int | None = 64,
         max_iterations: int = 100,
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
@@ -4333,6 +4463,7 @@ class CPD(AffineCoreg):
             "sampling_strategy": sampling_strategy,
             "standardize": standardize,
             "anisotropic": anisotropic,
+            "cpd_estep_knearest": estep_knearest,
         }
 
         super().__init__(subsample=subsample, meta=meta_cpd)  # type: ignore
@@ -4376,6 +4507,7 @@ class CPD(AffineCoreg):
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
             standardize=self._meta["inputs"]["affine"]["standardize"],
             anisotropic=self._meta["inputs"]["affine"]["anisotropic"],
+            estep_knn_k=self._meta["inputs"]["specific"]["cpd_estep_knearest"],
             params_fit_or_bin=params_fitorbin,
         )
 

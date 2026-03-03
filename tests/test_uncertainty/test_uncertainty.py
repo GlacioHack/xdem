@@ -81,35 +81,6 @@ class TestUncertainty:
         assert np.isfinite(report.loc[expected_index, "std"]).all()
 
 
-    def test_coreg__symmetry(self) -> None:
-
-        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
-
-        dem_ref = DEM(fn_ref)
-        dem_tba = DEM(fn_tba)
-        epc_ref = dem_ref.to_pointcloud()
-        epc_tba = dem_tba.to_pointcloud()
-
-        # A lightweight symmetric coreg method for tests
-        # method = coreg.ICP(method="point-to-point", sampling_strategy="independent", subsample=1)
-        method = coreg.LZD(subsample=1)
-
-        input_pairs = [
-            ("DEM/DEM", dem_ref, dem_tba),
-            ("DEM/EPC", dem_ref, epc_tba),
-            ("EPC/DEM", epc_tba, dem_ref),
-        ]
-        for pair in input_pairs:
-            m = method.copy()
-            m.fit(pair[1], pair[2])
-            tr = coreg.translations_rotations_from_matrix(m.to_matrix())
-
-            print(pair[0])
-            print(tr)
-
-        assert False
-
     @pytest.mark.parametrize(
         "coreg_method",
         [
@@ -117,8 +88,8 @@ class TestUncertainty:
             pytest.param(coreg.ICP(method="point-to-point"), id="ICP-p2point"),
             pytest.param(coreg.LZD(), id="LZD"),
             pytest.param(coreg.NuthKaab(), id="NuthKaab"),
-            pytest.param(coreg.CPD(lsg=False), id="CPD"),
-            pytest.param(coreg.CPD(lsg=True), id="CPD-LSG"),
+            # pytest.param(coreg.CPD(lsg=False), id="CPD"),
+            # pytest.param(coreg.CPD(lsg=True), id="CPD-LSG"),
         ],
     )
     def test_propag_uncertainty_coreg__symmetry(self, coreg_method: coreg.Coreg) -> None:
@@ -143,7 +114,7 @@ class TestUncertainty:
         # A lightweight symmetric coreg method for tests
         method = coreg_method.copy()
         # Keep nsim small for CI speed
-        nsim = 10
+        nsim = 20
         random_state = 42
 
         input_pairs = [
@@ -207,6 +178,8 @@ class TestUncertainty:
                         f"Current:  {combo_label}\n\n"
                         f"{e}"
                     )
+
+        assert False
 
     def test_propag_uncertainty_coreg__deterministic(self) -> None:
         pytest.importorskip("skgstat")

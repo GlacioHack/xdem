@@ -153,6 +153,23 @@ def _preprocess_coreg_fit_raster_raster(
             f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
         )
 
+    ref_transform: rio.transform.Affine | None = None
+    tba_transform: rio.transform.Affine | None = None
+    ref_crs: rio.crs.CRS | None = None
+    tba_crs: rio.crs.CRS | None = None
+    ref_aop: Literal["Area", "Point"] | None = None
+    tba_aop: Literal["Area", "Point"] | None = None
+
+    # If raster objects are provided, they define their own grid/CRS/pixel interpretation.
+    if isinstance(reference_dem, gu.Raster):
+        ref_transform = reference_dem.transform
+        ref_crs = reference_dem.crs
+        ref_aop = reference_dem.area_or_point
+    if isinstance(dem_to_be_aligned, gu.Raster):
+        tba_transform = dem_to_be_aligned.transform
+        tba_crs = dem_to_be_aligned.crs
+        tba_aop = dem_to_be_aligned.area_or_point
+
     if inlier_mask is not None:
         # If inlier_mask has not the same shape of the input dem, reproject it
         if reference_dem.shape != inlier_mask.shape:
@@ -167,15 +184,20 @@ def _preprocess_coreg_fit_raster_raster(
                 raise ValueError("Input mask array can't be a different size array as input elevation.")
 
     # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
-    tba_transform = None
     if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
         # Only reproject to the same grid if required, otherwise simply reproject to the same CRS
         if reproj_same_grid:
             dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True)
+            # TBA now lies on the reference grid
             tba_transform = reference_dem.transform
+            tba_crs = reference_dem.crs
+            tba_aop = reference_dem.area_or_point
         else:
             dem_to_be_aligned = dem_to_be_aligned.reproject(crs=reference_dem.crs, silent=True)
+            # TBA keeps its own grid but CRS matches reference
             tba_transform = dem_to_be_aligned.transform
+            tba_crs = dem_to_be_aligned.crs
+            tba_aop = dem_to_be_aligned.area_or_point
 
     # If both inputs are raster, cast their pixel interpretation and override any individual interpretation
     indiv_check = True
@@ -187,51 +209,61 @@ def _preprocess_coreg_fit_raster_raster(
             warnings.warn("Pixel interpretation cast from the two input rasters overrides the given 'area_or_point'.")
         indiv_check = False
 
-    # If any input is a Raster, use its transform if 'transform is None'.
-    # If 'transform' was given and any input is a Raster, trigger a warning.
-    # Finally, extract only the data of the raster.
-    new_transform = None
-    new_crs = None
+    # If any input is a Raster, use its transform if 'transform is None'
+    # If 'transform' was given and any input is a Raster, trigger a warning
+    # Finally, extract only the data of the raster
+
+    # For array-like inputs, we assume the provided 'transform/crs/area_or_point' apply to BOTH inputs
+    # If you need two different grids for two array-like DEMs, pass them as Raster objects instead
     for name, dem in [("reference_dem", reference_dem), ("dem_to_be_aligned", dem_to_be_aligned)]:
         if isinstance(dem, gu.Raster):
-            # If a raster was passed, override the transform, reference raster has priority to set new_transform.
-            if transform is None:
-                new_transform = dem.transform
-            elif transform is not None and new_transform is None:
-                new_transform = dem.transform
+            # If a raster was passed and the user provided 'transform', warn that the raster overrides it
+            if transform is not None:
                 warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
-            # Same for crs
-            if crs is None:
-                new_crs = dem.crs
-            elif crs is not None and new_crs is None:
-                new_crs = dem.crs
+            if crs is not None:
                 warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'crs'")
             # Same for pixel interpretation, only if both inputs aren't rasters (which requires casting, see above)
-            if indiv_check:
-                if area_or_point is None:
-                    new_aop = dem.area_or_point
-                elif crs is not None and new_aop is None:
-                    new_aop = dem.area_or_point
-                    warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'area_or_point'")
+            if indiv_check and area_or_point is not None:
+                warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'area_or_point'")
 
-    # Override transform, CRS and pixel interpretation
-    if new_transform is not None:
-        transform = new_transform
-    if tba_transform is None:
-        if new_transform is None:
+    # Resolve array-like metadata
+    if not isinstance(reference_dem, gu.Raster) or not isinstance(dem_to_be_aligned, gu.Raster):
+        # At least one input is array-like => require transform/crs
+        if transform is None:
+            raise ValueError("'transform' must be given if any DEM is array-like.")
+        if crs is None:
+            raise ValueError("'crs' must be given if any DEM is array-like.")
+
+        # NEW: for array-like inputs, we cannot represent two distinct grids with this signature,
+        # so we assume both array-like DEMs share the provided transform/crs/aop.
+        if not isinstance(reference_dem, gu.Raster):
+            ref_transform = transform
+            ref_crs = crs
+            if indiv_check and area_or_point is not None:
+                ref_aop = area_or_point
+        if not isinstance(dem_to_be_aligned, gu.Raster):
             tba_transform = transform
-        else:
-            tba_transform = new_transform
-    if new_crs is not None:
-        crs = new_crs
+            tba_crs = crs
+            if indiv_check and area_or_point is not None:
+                tba_aop = area_or_point
+
+    # Override CRS and pixel interpretation
+    # CRS: coreg assumes both inputs are in the same CRS after reprojection (if any).
+    final_crs = ref_crs if ref_crs is not None else tba_crs
+    if final_crs is None:
+        raise ValueError("'crs' must be given if both DEMs are array-like.")
+
     if new_aop is not None:
         area_or_point = new_aop
+    else:
+        # If not cast above, set from reference if available, otherwise from tba, otherwise keep user input
+        if area_or_point is None:
+            area_or_point = ref_aop if ref_aop is not None else tba_aop
 
-    if transform is None:
-        raise ValueError("'transform' must be given if both DEMs are array-like.")
-
-    if crs is None:
-        raise ValueError("'crs' must be given if both DEMs are array-like.")
+    if ref_transform is None:
+        raise ValueError("'transform' must be given if 'reference_dem' is array-like.")
+    if tba_transform is None:
+        raise ValueError("'transform' must be given if 'dem_to_be_aligned' is array-like.")
 
     # Get a NaN array covering nodatas from the raster, masked array or integer-type array
     with warnings.catch_warnings():
@@ -263,8 +295,7 @@ def _preprocess_coreg_fit_raster_raster(
     if np.all(invalid_mask):
         raise ValueError("All values of the inlier mask are NaNs in either 'reference_dem' or 'dem_to_be_aligned'.")
 
-    return ref_dem, tba_dem, inlier_mask, transform, tba_transform, crs, area_or_point
-
+    return ref_dem, tba_dem, inlier_mask, ref_transform, tba_transform, final_crs, area_or_point
 
 def _preprocess_coreg_fit_raster_point(
     raster_elev: NDArrayf | MArrayf | RasterType,
@@ -1692,6 +1723,8 @@ class InSpecificDict(TypedDict, total=False):
     cpd_weight: float
     # (Using CPD) Use local surface geometry method
     cpd_lsg: bool
+    # (Using CPD) Use kNN to speed up E-step
+    cpd_estep_knearest: int
 
     # (Using ICP or CPD or other point-point registration)
     sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"]
