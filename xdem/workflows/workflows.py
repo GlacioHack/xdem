@@ -58,7 +58,7 @@ _ALIAS = {
     "le90": "LE90",
     "nmad": "NMAD",
     "rmse": "RMSE",
-    "std": "STD",
+    "std": "Standard deviation",
     "standarddeviation": "Standard deviation",
     "validcount": "Valid count",
     "totalcount": "Total count",
@@ -193,10 +193,13 @@ class Workflows(ABC):
         plt.rc("figure", titlesize=size_font)
 
         # Apply default cmap if not given in inputs
-        if "cmap" not in kwargs:
-            cmap = plt.get_cmap("terrain")
-            cmap.set_bad(color="k", alpha=None)
-            kwargs["cmap"] = cmap
+        if "cmap" in kwargs:
+            print(kwargs["cmap"])
+            cmap = plt.get_cmap(name=kwargs["cmap"])
+        else:
+            cmap = plt.get_cmap(name="terrain")
+        cmap.set_bad(color="k", alpha=None)
+        kwargs["cmap"] = cmap
 
         # Force figsize with the good ratio to prevent larger right axe if not filled
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])

@@ -98,13 +98,13 @@ class Accuracy(Workflows):
             vmax=vmax,
             cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
         )
-
-        if ref_mask is not None and tba_mask is not None:
-            inlier_mask_crop = ref_mask.reproject(self.reference_elev).crop(self.reference_elev)
-            self.reference_elev.set_mask(~inlier_mask_crop)
-
-            inlier_mask_crop = tba_mask.reproject(self.to_be_aligned_elev).crop(self.to_be_aligned_elev)
-            self.to_be_aligned_elev.set_mask(~inlier_mask_crop)
+        if ref_mask is not None or tba_mask is not None:
+            if ref_mask is not None:
+                inlier_mask_crop = ref_mask.reproject(self.reference_elev).crop(self.reference_elev)
+                self.reference_elev.set_mask(~inlier_mask_crop)
+            if tba_mask is not None:
+                inlier_mask_crop = tba_mask.reproject(self.to_be_aligned_elev).crop(self.to_be_aligned_elev)
+                self.to_be_aligned_elev.set_mask(~inlier_mask_crop)
 
             self.generate_plot(
                 self.reference_elev,
@@ -150,7 +150,6 @@ class Accuracy(Workflows):
                 coreg_extra = config_coreg.get("extra_information", {})
                 coreg_fun = partial(method_map[method_name], **coreg_extra)
                 coreg_functions.append(coreg_fun())
-
         my_coreg = sum(coreg_functions[1:], coreg_functions[0]) if len(coreg_functions) > 1 else coreg_functions[0]
 
         # Coregister
@@ -320,7 +319,6 @@ class Accuracy(Workflows):
 
         output_grid = self.config["outputs"]["output_grid"]
         ref_elev = self.reference_elev if output_grid == "reference_elev" else self.to_be_aligned_elev
-
         stats_keys = ["min", "max", "nmad", "median"]
 
         if self.compute_coreg:

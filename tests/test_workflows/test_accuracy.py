@@ -126,7 +126,7 @@ def test__get_stats(get_accuracy_inputs_config, tmp_path):
         "le90": "LE90",
         "nmad": "NMAD",
         "rmse": "RMSE",
-        "std": "STD",
+        "std": "Standard deviation",
         "standarddeviation": "Standard deviation",
         "validcount": "Valid count",
         "totalcount": "Total count",
@@ -430,39 +430,55 @@ def test_create_html(tmp_path, get_accuracy_object_with_run):
     assert Path(tmp_path).joinpath("report.html").exists()
 
 
-def test_mask(tmp_path, get_accuracy_inputs_config):
+@pytest.mark.parametrize(
+    "masked",
+    [
+        [True, True],
+        [False, True],
+        [True, False],
+        [False, False],
+    ],
+)
+def test_mask(tmp_path, get_accuracy_inputs_config, masked):
     """
     Test mask initialization and correg
     """
     user_config = get_accuracy_inputs_config
-
+    masked_ref, masked_tba = masked
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
 
+    ref_dem_path = xdem.examples.get_path_test("longyearbyen_ref_dem")
+    tba_dem_path = xdem.examples.get_path_test("longyearbyen_tba_dem")
+    mask_ref_dem_path = xdem.examples.get_path_test("longyearbyen_glacier_outlines")
+    mask_tba_dem_path = xdem.examples.get_path_test("longyearbyen_glacier_outlines_2010")
+
     # Create 1/2 mask (up) for ref and 1/2 mask (bottom) for tba
-    ref_dem = gu.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
+    ref_dem = xdem.DEM(ref_dem_path)
     ref_dem.load()
-    tba_dem = gu.Raster(xdem.examples.get_path("longyearbyen_tba_dem"))
+    tba_dem = xdem.DEM(tba_dem_path)
     tba_dem.load()
-    mask = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
-    h, w = ref_dem.shape
+    ref_mask = gu.Vector(mask_ref_dem_path)
+    tba_mask = gu.Vector(mask_tba_dem_path)
 
-    crop_1 = ref_dem.icrop([0, 0, w, h / 2])
-    ref_mask = mask.crop(crop_1.get_bounds_projected(mask.crs))
-    inlier_mask = ~ref_mask.create_mask(ref_dem)
-    ref_dem.set_mask(~inlier_mask)
-    ref_mask.save(tmp_path / "ref_mask.shp")
+    user_config["inputs"]["reference_elev"]["path_to_elev"] = ref_dem_path
+    if masked_ref:
+        inlier_mask = ~ref_mask.create_mask(ref_dem)
+        inlier_mask_reproject = inlier_mask.reproject(ref_dem).crop(ref_dem)
+        ref_dem.set_mask(~inlier_mask_reproject)
+        user_config["inputs"]["reference_elev"]["path_to_mask"] = mask_ref_dem_path
+    else:
+        user_config["inputs"]["reference_elev"]["path_to_mask"] = None
 
-    crop_2 = ref_dem.icrop([0, h / 2, w, h])
-    tba_mask = mask.crop(crop_2.get_bounds_projected(mask.crs))
-    inlier_mask = ~tba_mask.create_mask(tba_dem)
-    tba_dem.set_mask(~inlier_mask)
-    tba_mask.save(tmp_path / "tba_mask.shp")
+    user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"] = tba_dem_path
+    if masked_tba:
+        inlier_mask = ~tba_mask.create_mask(tba_dem)
+        inlier_mask_reproject = inlier_mask.reproject(tba_dem).crop(tba_dem)
+        tba_dem.set_mask(~inlier_mask_reproject)
+        user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = mask_tba_dem_path
+    else:
+        user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = None
 
     # Apply to config dict
-    user_config["inputs"]["reference_elev"]["path_to_elev"] = xdem.examples.get_path("longyearbyen_ref_dem")
-    user_config["inputs"]["reference_elev"]["path_to_mask"] = str(tmp_path / "ref_mask.shp")
-    user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"] = xdem.examples.get_path("longyearbyen_tba_dem")
-    user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = str(tmp_path / "tba_mask.shp")
     workflows = Accuracy(user_config)
     workflows.run()
 
@@ -473,15 +489,16 @@ def test_mask(tmp_path, get_accuracy_inputs_config):
     # Count 1/2 mask application for tba data
     stats_tba = pd.read_csv(Path(tmp_path / "tables" / "to_be_aligned_elev_stats.csv").as_posix())
     assert stats_tba["Valid count"].values[0] == tba_dem.get_stats("Valid count")
+
     stats_tba_aligned = pd.read_csv(Path(tmp_path / "tables" / "aligned_elev_stats.csv").as_posix())
-    assert stats_tba_aligned["Valid count"].values[0] == tba_dem.get_stats("Valid count")
+    aligned_tba = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab(), random_state=42)
+    assert stats_tba_aligned["Valid count"].values[0] == aligned_tba.get_stats("Valid count")
 
     # Count full mask on diff elev data
-    ref_dem = gu.Raster(xdem.examples.get_path("longyearbyen_ref_dem"))
-    ref_dem.load()
-    inlier_mask = ~mask.create_mask(ref_dem)
-    ref_dem.set_mask(~inlier_mask)
     stats_before = pd.read_csv(Path(tmp_path / "tables" / "diff_elev_before_coreg_stats.csv").as_posix())
     stats_after = pd.read_csv(Path(tmp_path / "tables" / "diff_elev_after_coreg_stats.csv").as_posix())
-    assert stats_before["Valid count"].values[0] == ref_dem.get_stats("Valid count")
-    assert stats_after["Valid count"].values[0] == ref_dem.get_stats("Valid count")
+
+    diff_before = tba_dem - ref_dem
+    assert stats_before["Valid count"].values[0] == diff_before.get_stats("Valid count")
+    diff_after = aligned_tba.reproject(ref_dem) - ref_dem
+    assert stats_after["Valid count"].values[0] == diff_after.get_stats("Valid count")
