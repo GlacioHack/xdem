@@ -28,7 +28,7 @@ from rasterio.coords import BoundingBox
 
 import xdem
 from xdem.workflows import Topo
-from xdem.workflows.schemas import COMPLETE_CONFIG_TOPO
+from xdem.workflows.schemas import MIN_STATS
 from xdem.workflows.workflows import _ALIAS, Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
@@ -171,13 +171,15 @@ def test_run(get_topo_inputs_config, tmp_path):
 
     # 3/ Statistics names
     assert workflows.dico_to_show[2][0] == "Statistics"
-    assert list(workflows.dico_to_show[2][1].keys()) == [_ALIAS.get(k) for k in COMPLETE_CONFIG_TOPO["statistics"]]
+
+    assert list(workflows.dico_to_show[2][1].keys()) == [_ALIAS.get(k) for k in MIN_STATS]
 
 
 @pytest.mark.parametrize(
     "stats_name, res",
     [
-        [COMPLETE_CONFIG_TOPO["statistics"], [_ALIAS.get(k) for k in COMPLETE_CONFIG_TOPO["statistics"]]],
+        [MIN_STATS, [_ALIAS.get(k) for k in MIN_STATS]],
+        [list(_ALIAS.keys()), [_ALIAS.get(k) for k in _ALIAS.keys()]],
         [["std"], ["Standard deviation"]],
         [["standarddeviation"], ["Standard deviation"]],
         [["std", "standarddeviation"], ["Standard deviation"]],
@@ -191,4 +193,4 @@ def test_stats(get_topo_inputs_config, tmp_path, stats_name, res):
 
     workflows = Topo(user_config)
     workflows.run()
-    assert list(workflows.dico_to_show[2][1].keys()) == res
+    assert list(set(workflows.dico_to_show[2][1].keys())) == list(set(res))

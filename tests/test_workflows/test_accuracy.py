@@ -31,7 +31,8 @@ import pytest
 
 import xdem
 from xdem.workflows import Accuracy
-from xdem.workflows.workflows import Workflows
+from xdem.workflows.schemas import MIN_STATS
+from xdem.workflows.workflows import _ALIAS, Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 pytest.importorskip("cerberus")
@@ -85,56 +86,30 @@ def test__compute_coregistration():
     """
 
 
-def test__get_stats(get_accuracy_inputs_config, tmp_path):
+@pytest.mark.parametrize(
+    "stats_name, res",
+    [
+        [MIN_STATS, [_ALIAS.get(k) for k in MIN_STATS]],
+        [list(_ALIAS.keys()), [_ALIAS.get(k) for k in _ALIAS.keys()]],
+        [["std"], ["Standard deviation"]],
+        [["standarddeviation"], ["Standard deviation"]],
+        [["std", "standarddeviation"], ["Standard deviation"]],
+    ],
+)
+def test__get_stats(get_accuracy_inputs_config, tmp_path, stats_name, res):
     """
     Test _get_stats function
     """
     user_config = get_accuracy_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
+    user_config["statistics"] = stats_name
     workflows = Accuracy(user_config)
 
     dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
-    stats_gt = dem.get_stats(
-        [
-            "mean",
-            "median",
-            "max",
-            "min",
-            "sum",
-            "sumofsquares",
-            "90thpercentile",
-            "le90",
-            "nmad",
-            "rmse",
-            "std",
-            "standarddeviation",
-            "validcount",
-            "totalcount",
-            "percentagevalidpoints",
-        ]
-    )
+    stats_gt = dem.get_stats(stats_name)
 
-    # Aliases for nicer CSV headers
-    aliases = {
-        "mean": "Mean",
-        "median": "Median",
-        "max": "Maximum",
-        "min": "Minimum",
-        "sum": "Sum",
-        "sumofsquares": "Sum of squares",
-        "90thpercentile": "90th percentile",
-        "le90": "LE90",
-        "nmad": "NMAD",
-        "rmse": "RMSE",
-        "std": "Standard deviation",
-        "standarddeviation": "Standard deviation",
-        "validcount": "Valid count",
-        "totalcount": "Total count",
-        "percentagevalidpoints": "Percentage valid points",
-    }
-
-    stats_gt = {aliases.get(k, k): v for k, v in stats_gt.items()}
-    assert workflows._get_stats(dem) == stats_gt
+    assert list(set(workflows._get_stats(dem).keys())) == list(set(res))  # type: ignore
+    assert workflows._get_stats(dem) == {_ALIAS.get(k, k): v for k, v in stats_gt.items()}
 
 
 def test__compute_histogram(get_accuracy_object_with_run, tmp_path):

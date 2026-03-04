@@ -25,7 +25,7 @@ import pytest
 
 import xdem
 from xdem.workflows import Accuracy
-from xdem.workflows.schemas import TERRAIN_ATTRIBUTES_DEFAULT
+from xdem.workflows.schemas import MIN_STATS, TERRAIN_ATTRIBUTES_DEFAULT
 
 
 @pytest.fixture()
@@ -114,23 +114,7 @@ def pipeline_topo():
                 "downsample": 1,
             }
         },
-        "statistics": [
-            "mean",
-            "median",
-            "max",
-            "min",
-            "sum",
-            "sumofsquares",
-            "90thpercentile",
-            "le90",
-            "nmad",
-            "rmse",
-            "std",
-            "standarddeviation",
-            "validcount",
-            "totalcount",
-            "percentagevalidpoints",
-        ],
+        "statistics": MIN_STATS,
         "terrain_attributes": TERRAIN_ATTRIBUTES_DEFAULT,
         "outputs": {"path": "outputs", "level": 1},
     }

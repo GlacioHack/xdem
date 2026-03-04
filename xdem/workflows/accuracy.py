@@ -236,6 +236,8 @@ class Accuracy(Workflows):
         # Compute user statistics
         dict_stats_aliased = {}
         list_to_compute = self.config["statistics"]
+        print("list_to_compute", list_to_compute)
+
         if list_to_compute is not None:
             logging.info(f"Computing statistics on {name_of_data}: {list_to_compute}")
             dict_stats = dem.get_stats(list_to_compute)

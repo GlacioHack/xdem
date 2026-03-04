@@ -92,6 +92,19 @@ INPUTS_DEM = {
 
 COREG_METHODS = ["NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD", None]
 
+
+MIN_STATS = [
+    "min",
+    "max",
+    "mean",
+    "median",
+    "standarddeviation",
+    "nmad",
+    "validcount",
+    "totalcount",
+    "percentagevalidpoints",
+]
+
 STATS_METHODS = [
     "mean",
     "median",
@@ -168,7 +181,7 @@ def validate_configuration(user_config: dict[str, Any], schema: dict[str, Any]) 
             raise ValueError(f"User configuration invalid for '{field}': {errors}")
 
     if "statistics" not in validator.document:
-        validator.document["statistics"] = STATS_METHODS
+        validator.document["statistics"] = MIN_STATS
 
     if "terrain_attributes" not in validator.document and "coregistration" not in validator.document:
         validator.document["terrain_attributes"] = TERRAIN_ATTRIBUTES_DEFAULT
@@ -210,9 +223,9 @@ ACCURACY_SCHEMA = {
     "coregistration": {
         "type": "dict",
         "required": False,
-        "default": {"step_one": {"method": "NuthKaab"}},
+        "default": {"step_one": {"method": "LZD", "extra_information": {"subsample": 10000}}},
         "schema": {
-            "step_one": make_coreg_step(default_method="NuthKaab"),
+            "step_one": make_coreg_step(default_method="LZD"),
             "step_two": make_coreg_step(required=False),
             "step_three": make_coreg_step(required=False),
             "process": {"type": "boolean", "default": True, "required": False},
@@ -290,8 +303,8 @@ COMPLETE_CONFIG_ACCURACY = {
     },
     "coregistration": {
         "step_one": {
-            "method": "NuthKaab",
-            "extra_information": None,
+            "method": "LZD",
+            "extra_information": {"subsample": 10000},
         },
         "step_two": {
             "method": None,
@@ -303,22 +316,7 @@ COMPLETE_CONFIG_ACCURACY = {
         },
         "process": True,
     },
-    "statistics": [
-        "mean",
-        "median",
-        "max",
-        "min",
-        "sum",
-        "sumofsquares",
-        "90thpercentile",
-        "le90",
-        "nmad",
-        "rmse",
-        "std",
-        "validcount",
-        "totalcount",
-        "percentagevalidpoints",
-    ],
+    "statistics": MIN_STATS,
 }
 
 COMPLETE_CONFIG_TOPO = {
@@ -333,21 +331,6 @@ COMPLETE_CONFIG_TOPO = {
         },
     },
     "outputs": {"level": 1, "path": "outputs"},
-    "statistics": [
-        "mean",
-        "median",
-        "max",
-        "min",
-        "sum",
-        "sumofsquares",
-        "90thpercentile",
-        "le90",
-        "nmad",
-        "rmse",
-        "std",
-        "validcount",
-        "totalcount",
-        "percentagevalidpoints",
-    ],
+    "statistics": MIN_STATS,
     "terrain_attributes": ["slope", "aspect", "max_curvature"],
 }
