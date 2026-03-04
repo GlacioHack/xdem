@@ -451,7 +451,10 @@ class Accuracy(Workflows):
         html += "<h2>Elevation inputs</h2>\n"
         html += "<img src='plots/inputs.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
-        if self.reference_elev.get_mask() is not None:
+        if (
+            "path_to_mask" in self.config["inputs"]["reference_elev"]
+            or "path_to_mask" in self.config["inputs"]["to_be_aligned_elev"]
+        ):
             html += "<h2>Masked elevation data</h2>\n"
             html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
