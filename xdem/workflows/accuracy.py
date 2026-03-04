@@ -147,6 +147,7 @@ class Accuracy(Workflows):
             config_coreg = self.config["coregistration"].get(step)
             if config_coreg:
                 method_name = config_coreg.get("method")
+                print(method_name)
                 coreg_extra = config_coreg.get("extra_information", {})
                 coreg_fun = partial(method_map[method_name], **coreg_extra)
                 coreg_functions.append(coreg_fun())

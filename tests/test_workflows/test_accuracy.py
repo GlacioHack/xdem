@@ -421,7 +421,7 @@ def test_mask(tmp_path, get_accuracy_inputs_config, masked):
     user_config = get_accuracy_inputs_config
     masked_ref, masked_tba = masked
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
-
+    print(user_config)
     ref_dem_path = xdem.examples.get_path_test("longyearbyen_ref_dem")
     tba_dem_path = xdem.examples.get_path_test("longyearbyen_tba_dem")
     mask_ref_dem_path = xdem.examples.get_path_test("longyearbyen_glacier_outlines")
@@ -466,7 +466,7 @@ def test_mask(tmp_path, get_accuracy_inputs_config, masked):
     assert stats_tba["Valid count"].values[0] == tba_dem.get_stats("Valid count")
 
     stats_tba_aligned = pd.read_csv(Path(tmp_path / "tables" / "aligned_elev_stats.csv").as_posix())
-    aligned_tba = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab(), random_state=42)
+    aligned_tba = tba_dem.coregister_3d(ref_dem, xdem.coreg.LZD(subsample=10000), random_state=42)
     assert stats_tba_aligned["Valid count"].values[0] == aligned_tba.get_stats("Valid count")
 
     # Count full mask on diff elev data
