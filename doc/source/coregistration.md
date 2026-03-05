@@ -596,7 +596,7 @@ blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
                                       parent_path="")
 
 blockwise.fit(ref_dem, tba_dem_shifted)
-aligned_dem = blockwise.apply()
+aligned_dem = blockwise.apply(tba_dem_shifted)
 aligned_dem.load()
 ```
 ```{code-cell} ipython3
