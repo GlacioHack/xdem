@@ -32,7 +32,8 @@ from affine import Affine
 from geoutils import profiler
 from geoutils._typing import NDArrayNum
 from geoutils.raster import Raster, RasterType
-from geoutils.raster.distributed_computing import MultiprocConfig
+from geoutils.multiproc import MultiprocConfig
+from geoutils.raster.transformation import MultiprocConfig
 from geoutils.stats import nmad
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
