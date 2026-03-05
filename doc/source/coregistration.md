@@ -580,9 +580,8 @@ coregistration methods and for translation only. Rotation shifts will be soon im
 Please set `only_translation=True` when initializing the coregistration method ICP(), LZD() or CPD().
 ```
 
-A {class}`~xdem.coreg.BlockwiseCoreg` splits a coregistration across different spatial blocks of an elevation dataset, running that
-method independently in each block.
-By default, these blocks are loaded sequentially to reduce the memory used during a coregistration.
+A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs in grids, the a coregistration method (e.g. Nuth Kääb) run independently in each block.
+method independently in each block. After, an interpolation method is use to obtain the overall offset. The advantages of this tool are, the memory consumption reduc and a better detection of local errors.
 
 ```{note}
 The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
@@ -594,12 +593,13 @@ These two parameters do **not** need to be the same size.
 ```{code-cell} ipython3
 blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
                                       block_size_fit=500,
-                                      block_size_apply=100,
+                                      block_size_apply=1000,
                                       parent_path="")
 
 blockwise.fit(ref_dem, tba_dem_shifted)
 aligned_dem = blockwise.apply(tba_dem_shifted)
 ```
+
 ```{code-cell} ipython3
 :tags: [remove-cell]
 aligned_dem.load()

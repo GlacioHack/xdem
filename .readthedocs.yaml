@@ -17,7 +17,6 @@ sphinx:
 
 # Build the doc in offline formats
 formats:
-  - pdf
   - htmlzip
 
 conda:
