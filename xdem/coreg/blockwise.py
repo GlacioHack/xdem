@@ -195,7 +195,7 @@ class BlockwiseCoreg:
             x, y = (
                 tile_coords[2] + self.block_size_fit / 2,
                 tile_coords[0] + self.block_size_fit / 2,
-            ) * reference_elev.transform
+            ) * to_be_aligned_elev.transform  # type: ignore
 
             self.x_coords.append(x)
             self.y_coords.append(y)
@@ -377,8 +377,7 @@ class BlockwiseCoreg:
         else:
             coeff_z = (0, 0, 0)
 
-        self.mp_config.outfile = self.output_path_aligned
-
+        self.mp_config.chunk_size = self.block_size_apply
         # be careful with depth value if Out of Memory
         depth = max(np.abs(self.shifts_x).max(), np.abs(self.shifts_y).max())
 
