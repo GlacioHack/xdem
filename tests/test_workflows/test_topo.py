@@ -28,8 +28,8 @@ from rasterio.coords import BoundingBox
 
 import xdem
 from xdem.workflows import Topo
-from xdem.workflows.schemas import STATS_METHODS
-from xdem.workflows.workflows import Workflows
+from xdem.workflows.schemas import MIN_STATS
+from xdem.workflows.workflows import _ALIAS, Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
@@ -133,9 +133,7 @@ def test_run(get_topo_inputs_config, tmp_path):
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Topo(user_config)
     workflows.run()
-
     assert Path(tmp_path / "tables").joinpath("stats_elev_stats.csv").exists()
-    assert Path(tmp_path / "tables").joinpath("stats_elev_mask_stats.csv").exists()
     assert Path(tmp_path).joinpath("report.html").exists()
     # Check subdictionaries content, except exact stats values in case test data/algorithms slightly changes,
     # and as those are already tested separately
@@ -172,7 +170,27 @@ def test_run(get_topo_inputs_config, tmp_path):
     )
 
     # 3/ Statistics names
-    assert workflows.dico_to_show[2][0] == "Global statistics"
-    assert list(workflows.dico_to_show[2][1].keys()) == STATS_METHODS
-    assert workflows.dico_to_show[3][0] == "Mask statistics"
-    assert list(workflows.dico_to_show[3][1].keys()) == STATS_METHODS
+    assert workflows.dico_to_show[2][0] == "Statistics"
+
+    assert list(workflows.dico_to_show[2][1].keys()) == [_ALIAS.get(k) for k in MIN_STATS]
+
+
+@pytest.mark.parametrize(
+    "stats_name, res",
+    [
+        [MIN_STATS, [_ALIAS.get(k) for k in MIN_STATS]],
+        [list(_ALIAS.keys()), [_ALIAS.get(k) for k in _ALIAS.keys()]],
+        [["std"], ["Standard deviation"]],
+        [["standarddeviation"], ["Standard deviation"]],
+        [["std", "standarddeviation"], ["Standard deviation"]],
+    ],
+)
+def test_stats(get_topo_inputs_config, tmp_path, stats_name, res):
+
+    user_config = get_topo_inputs_config
+    user_config["outputs"] = {"path": str(tmp_path)}
+    user_config["statistics"] = stats_name
+
+    workflows = Topo(user_config)
+    workflows.run()
+    assert list(set(workflows.dico_to_show[2][1].keys())) == list(set(res))

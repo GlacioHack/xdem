@@ -31,7 +31,8 @@ import pytest
 
 import xdem
 from xdem.workflows import Accuracy
-from xdem.workflows.workflows import Workflows
+from xdem.workflows.schemas import MIN_STATS
+from xdem.workflows.workflows import _ALIAS, Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 pytest.importorskip("cerberus")
@@ -45,13 +46,11 @@ def test_init_diff_analysis(get_accuracy_object_with_run, tmp_path):
 
     assert isinstance(workflows, Workflows)
     assert isinstance(workflows, Accuracy)
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("inputs.png").exists()
     dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
     mask = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
     inlier_mask = ~mask.create_mask(dem)
-    assert workflows.inlier_mask == inlier_mask
+    assert workflows.to_be_aligned_elev.get_mask() == inlier_mask
 
 
 def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path, caplog, assert_and_allow_log):
@@ -64,7 +63,7 @@ def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path, caplog, 
     workflows = Accuracy(user_config)
     workflows._load_data()
 
-    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
+    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference elevation"):
         workflows._get_reference_elevation()
 
     user_config = get_accuracy_inputs_config
@@ -72,7 +71,7 @@ def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path, caplog, 
     user_config["inputs"]["reference_elev"] = None
 
     with caplog.at_level(logging.WARNING):
-        with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
+        with pytest.raises(NotImplementedError, match="This is not implemented, add a reference elevation"):
             workflows = Accuracy(user_config)
             workflows._load_data()
 
@@ -87,56 +86,30 @@ def test__compute_coregistration():
     """
 
 
-def test__get_stats(get_accuracy_inputs_config, tmp_path):
+@pytest.mark.parametrize(
+    "stats_name, res",
+    [
+        [MIN_STATS, [_ALIAS.get(k) for k in MIN_STATS]],
+        [list(_ALIAS.keys()), [_ALIAS.get(k) for k in _ALIAS.keys()]],
+        [["std"], ["Standard deviation"]],
+        [["standarddeviation"], ["Standard deviation"]],
+        [["std", "standarddeviation"], ["Standard deviation"]],
+    ],
+)
+def test__get_stats(get_accuracy_inputs_config, tmp_path, stats_name, res):
     """
     Test _get_stats function
     """
     user_config = get_accuracy_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
+    user_config["statistics"] = stats_name
     workflows = Accuracy(user_config)
 
     dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
-    stats_gt = dem.get_stats(
-        [
-            "mean",
-            "median",
-            "max",
-            "min",
-            "sum",
-            "sumofsquares",
-            "90thpercentile",
-            "le90",
-            "nmad",
-            "rmse",
-            "std",
-            "standarddeviation",
-            "validcount",
-            "totalcount",
-            "percentagevalidpoints",
-        ]
-    )
+    stats_gt = dem.get_stats(stats_name)
 
-    # Aliases for nicer CSV headers
-    aliases = {
-        "mean": "Mean",
-        "median": "Median",
-        "max": "Maximum",
-        "min": "Minimum",
-        "sum": "Sum",
-        "sumofsquares": "Sum of squares",
-        "90thpercentile": "90th percentile",
-        "le90": "LE90",
-        "nmad": "NMAD",
-        "rmse": "RMSE",
-        "std": "STD",
-        "standarddeviation": "Standard deviation",
-        "validcount": "Valid count",
-        "totalcount": "Total count",
-        "percentagevalidpoints": "Percentage valid points",
-    }
-
-    stats_gt = {aliases.get(k, k): v for k, v in stats_gt.items()}
-    assert workflows._get_stats(dem) == stats_gt
+    assert list(set(workflows._get_stats(dem).keys())) == list(set(res))  # type: ignore
+    assert workflows._get_stats(dem) == {_ALIAS.get(k, k): v for k, v in stats_gt.items()}
 
 
 def test__compute_histogram(get_accuracy_object_with_run, tmp_path):
@@ -165,12 +138,10 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
 
     assert Path(tmp_path / "tables").joinpath("aligned_elev_stats.csv").exists()
 
-    assert Path(tmp_path / "plots").joinpath("diff_elev_after_coreg_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("diff_elev_before_coreg_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_diff_coreg_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("inputs.png").exists()
 
     assert Path(tmp_path / "rasters").joinpath("aligned_elev.tif").exists()
 
@@ -228,14 +199,13 @@ def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
     workflows = Accuracy(user_config)
     workflows.run()
 
-    assert Path(tmp_path / "tables").joinpath("diff_elev_stats.csv").exists()
+    assert Path(tmp_path / "tables").joinpath("diff_elev_without_coreg_stats.csv").exists()
 
-    assert Path(tmp_path / "plots").joinpath("diff_elev.png").exists()
-    assert not Path(tmp_path / "plots").joinpath("diff_elev_before_coreg.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_without_coreg_map.png").exists()
+    assert not Path(tmp_path / "plots").joinpath("diff_elev_diff_coreg_map.png").exists()
     assert not Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("inputs.png").exists()
 
     assert not Path(tmp_path / "rasters").joinpath("aligned_elev.tif").exists()
 
@@ -245,12 +215,12 @@ def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
     assert Path(tmp_path).joinpath("used_config.yaml").exists()
 
     csv_files = [
-        "diff_elev_stats.csv",
+        "diff_elev_without_coreg_stats.csv",
         "reference_elev_stats.csv",
         "to_be_aligned_elev_stats.csv",
     ]
 
-    raster_files = ["diff_elev.tif"]
+    raster_files = ["diff_elev_without_coreg_map.tif"]
 
     if level == 1:
         for file in csv_files:
@@ -346,11 +316,14 @@ def test_prepare_datas(get_accuracy_inputs_config, tmp_path, config):
     # Save path before crop(s)
     original_ref_path = user_config["inputs"]["reference_elev"]["path_to_elev"]
     original_tba_path = user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"]
+    user_config["inputs"]["reference_elev"]["path_to_mask"] = None
+    user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = None
 
     # Update user_config
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
     user_config["coregistration"] = {"process": False}
     user_config["inputs"]["sampling_grid"] = sampling_grid
+    user_config["inputs"]["reference_elev"]["path_to_mask"] = None
     user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = None
 
     # Init crops possible values
@@ -432,17 +405,75 @@ def test_create_html(tmp_path, get_accuracy_object_with_run):
     assert Path(tmp_path).joinpath("report.html").exists()
 
 
-def test_mask_init(tmp_path, get_accuracy_inputs_config):
+@pytest.mark.parametrize(
+    "masked",
+    [
+        [True, True],
+        [False, True],
+        [True, False],
+        [False, False],
+    ],
+)
+def test_mask(tmp_path, get_accuracy_inputs_config, masked):
     """
-    Test mask initialization
+    Test mask initialization and correg
     """
     user_config = get_accuracy_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
-    del user_config["inputs"]["reference_elev"]["path_to_mask"]
+    masked_ref, masked_tba = masked
+    user_config["outputs"] = {"path": str(tmp_path), "level": 2}
+    print(user_config)
+    ref_dem_path = xdem.examples.get_path_test("longyearbyen_ref_dem")
+    tba_dem_path = xdem.examples.get_path_test("longyearbyen_tba_dem")
+    mask_ref_dem_path = xdem.examples.get_path_test("longyearbyen_glacier_outlines")
+    mask_tba_dem_path = xdem.examples.get_path_test("longyearbyen_glacier_outlines_2010")
+
+    # Create 1/2 mask (up) for ref and 1/2 mask (bottom) for tba
+    ref_dem = xdem.DEM(ref_dem_path)
+    ref_dem.load()
+    tba_dem = xdem.DEM(tba_dem_path)
+    tba_dem.load()
+    ref_mask = gu.Vector(mask_ref_dem_path)
+    tba_mask = gu.Vector(mask_tba_dem_path)
+
+    user_config["inputs"]["reference_elev"]["path_to_elev"] = ref_dem_path
+    if masked_ref:
+        inlier_mask = ~ref_mask.create_mask(ref_dem)
+        inlier_mask_reproject = inlier_mask.reproject(ref_dem).crop(ref_dem)
+        ref_dem.set_mask(~inlier_mask_reproject)
+        user_config["inputs"]["reference_elev"]["path_to_mask"] = mask_ref_dem_path
+    else:
+        user_config["inputs"]["reference_elev"]["path_to_mask"] = None
+
+    user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"] = tba_dem_path
+    if masked_tba:
+        inlier_mask = ~tba_mask.create_mask(tba_dem)
+        inlier_mask_reproject = inlier_mask.reproject(tba_dem).crop(tba_dem)
+        tba_dem.set_mask(~inlier_mask_reproject)
+        user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = mask_tba_dem_path
+    else:
+        user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = None
+
+    # Apply to config dict
     workflows = Accuracy(user_config)
-    workflows._load_data()
-    dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
-    mask = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
-    inlier_mask = ~mask.create_mask(dem)
-    assert workflows.inlier_mask == inlier_mask
-    assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
+    workflows.run()
+
+    # Verify 1/2 mask application for ref data
+    stats_ref = pd.read_csv(Path(tmp_path / "tables" / "reference_elev_stats.csv").as_posix())
+    assert stats_ref["Valid count"].values[0] == ref_dem.get_stats("Valid count")
+
+    # Count 1/2 mask application for tba data
+    stats_tba = pd.read_csv(Path(tmp_path / "tables" / "to_be_aligned_elev_stats.csv").as_posix())
+    assert stats_tba["Valid count"].values[0] == tba_dem.get_stats("Valid count")
+
+    stats_tba_aligned = pd.read_csv(Path(tmp_path / "tables" / "aligned_elev_stats.csv").as_posix())
+    aligned_tba = tba_dem.coregister_3d(ref_dem, xdem.coreg.LZD(subsample=10000), random_state=42)
+    assert stats_tba_aligned["Valid count"].values[0] == aligned_tba.get_stats("Valid count")
+
+    # Count full mask on diff elev data
+    stats_before = pd.read_csv(Path(tmp_path / "tables" / "diff_elev_before_coreg_stats.csv").as_posix())
+    stats_after = pd.read_csv(Path(tmp_path / "tables" / "diff_elev_after_coreg_stats.csv").as_posix())
+
+    diff_before = tba_dem - ref_dem
+    assert stats_before["Valid count"].values[0] == diff_before.get_stats("Valid count")
+    diff_after = aligned_tba.reproject(ref_dem) - ref_dem
+    assert stats_after["Valid count"].values[0] == diff_after.get_stats("Valid count")
