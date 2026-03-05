@@ -599,19 +599,12 @@ blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
 
 blockwise.fit(ref_dem, tba_dem_shifted)
 aligned_dem = blockwise.apply(tba_dem_shifted)
-aligned_dem.load()
 ```
 ```{code-cell} ipython3
 :tags: [remove-cell]
+aligned_dem.load()
 import os
 os.remove("aligned_dem.tif")
-```
-
-The subdivision corresponds to the chunk_size. The results of each tile coregistration are saved in the meta parameters
-of the "blockwise" class.
-
-```{code-cell} ipython3
-blockwise.meta
 ```
 
 ```{code-cell} ipython3
