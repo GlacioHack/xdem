@@ -54,6 +54,7 @@ from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
 from geoutils.raster import Raster, RasterType, raster
 from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
+from geoutils.raster.distributed_computing import map_overlap_multiproc_save
 from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
 from geoutils.raster.geotransformations import _translate
 
@@ -1545,7 +1546,6 @@ def _apply_matrix_rst(
 
     :returns: Transformed DEM, Transform.
     """
-
     # Invert matrix if required
     if invert:
         matrix = invert_matrix(matrix)
@@ -1665,6 +1665,7 @@ def apply_matrix(
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
+    multiproc_config: gu.raster.MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> tuple[NDArrayf, affine.Affine]: ...
 
@@ -1679,6 +1680,7 @@ def apply_matrix(
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
+    multiproc_config: gu.raster.MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> gu.Raster | gpd.GeoDataFrame: ...
 
@@ -1692,6 +1694,7 @@ def apply_matrix(
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     transform: rio.transform.Affine = None,
     z_name: str = "z",
+    multiproc_config: gu.raster.MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> tuple[NDArrayf, affine.Affine] | gu.Raster | gpd.GeoDataFrame:
     """
@@ -1725,16 +1728,33 @@ def apply_matrix(
         information, see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
     :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
     :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+    :param multiproc_config: ...
     :param kwargs: Keywords passed to _apply_matrix_rst for testing.
 
     :return: Affine transformed elevation point cloud or DEM.
     """
 
+    mp_backend = multiproc_config is not None
+    # The check below can only run on Xarray
+    # dask_backend = da is not None and elev._chunks is not None
+    dask_backend = False
+
     # Apply matrix to elevation point cloud
     if isinstance(elev, gpd.GeoDataFrame):
+        if mp_backend or dask_backend:
+            raise ValueError(
+                "Cannot use Multiprocessing or Dask simultaneously to apply a 3D affine transformation matrix"
+                "to a 3D elevation point cloud."
+            )
         return _apply_matrix_pts(epc=elev, matrix=matrix, invert=invert, centroid=centroid, z_name=z_name)
+
     # Or apply matrix to raster (often requires re-gridding)
     else:
+        if mp_backend and dask_backend:
+            raise ValueError(
+                "Cannot use Multiprocessing and Dask simultaneously. To use Dask, remove mp_config parameter "
+                "from reproject(). To use Multiprocessing, open the file without chunks."
+            )
 
         # First, we apply the affine matrix for the array/transform
         if isinstance(elev, gu.Raster):
@@ -1742,28 +1762,78 @@ def apply_matrix(
             dem = elev.data.filled(np.nan)
         else:
             dem = elev
-        applied_dem, out_transform = _apply_matrix_rst(
-            dem=dem,
-            transform=transform,
-            matrix=matrix,
-            invert=invert,
-            centroid=centroid,
-            resampling=resampling,
-            **kwargs,
-        )
 
-        # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
-        if resample:
-            applied_dem = _reproject_horizontal_shift_samecrs(
-                applied_dem, src_transform=out_transform, dst_transform=transform, resampling=resampling
+        # If using Multiprocessing backend, process and return None (files written on disk)
+        if mp_backend:
+            # Get depth of overlap
+            depth = 10  # ath.ceil(depth)
+
+            # Block function to pass
+            def _apply_matrix_rst_block(
+                block: Raster,
+                matrix: NDArrayf,
+                invert: bool = False,
+                centroid: tuple[float, float, float] | None = None,
+                resample: bool = True,
+                resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+                **kwargs: Any,
+            ) -> Raster:
+                """Block function for multiprocessing."""
+                filtered_block, new_transform = _apply_matrix_rst(
+                    block.data.filled(np.nan), block.transform, matrix, invert, centroid, resampling, **kwargs
+                )
+                if resample:
+                    print(resample, type(filtered_block))
+                    filtered_block = _reproject_horizontal_shift_samecrs(
+                        filtered_block,
+                        src_transform=new_transform,
+                        dst_transform=block.transform,
+                        resampling=resampling,
+                    )
+                    new_transform = block.transform
+                rast = gu.Raster.from_array(filtered_block, new_transform, block.crs, block.nodata)
+                return rast
+
+            dem_res = map_overlap_multiproc_save(
+                _apply_matrix_rst_block,
+                elev,
+                multiproc_config,
+                matrix,
+                invert,
+                centroid,
+                resample,
+                resampling,
+                depth=depth,
+                **kwargs,
             )
-            out_transform = transform
 
-        # We return a raster if input was a raster
-        if isinstance(elev, gu.Raster):
-            applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
+            return dem_res
+        elif dask_backend:
+            raise ValueError("Cannot use Dask....")
+            return None
+        else:
+            applied_dem, out_transform = _apply_matrix_rst(
+                dem=dem,
+                transform=transform,
+                matrix=matrix,
+                invert=invert,
+                centroid=centroid,
+                resampling=resampling,
+                **kwargs,
+            )
+
+            # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
+            if resample:
+                applied_dem = _reproject_horizontal_shift_samecrs(
+                    applied_dem, src_transform=out_transform, dst_transform=transform, resampling=resampling
+                )
+                out_transform = transform
+
+            # We return a raster if input was a raster
+            if isinstance(elev, gu.Raster):
+                applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
+
             return applied_dem
-        return applied_dem, out_transform
 
 
 ###########################################
