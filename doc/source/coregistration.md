@@ -581,7 +581,7 @@ Please set `only_translation=True` when initializing the coregistration method I
 ```
 
 A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs in grids, the a coregistration method (e.g. Nuth Kääb) run independently in each block.
-method independently in each block. After, an interpolation method is use to obtain the overall offset. The advantages of this tool are, the memory consumption reduc and a better detection of local errors.
+method independently in each block. After, an interpolation method is use to obtain the overall offset. The advantages of this tool are, the memory consumption reduce and a better detection of local errors.
 
 ```{note}
 The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
@@ -599,6 +599,7 @@ blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
 blockwise.fit(ref_dem, tba_dem_shifted)
 aligned_dem = blockwise.apply(tba_dem_shifted)
 ```
+In this example, processing is performed sequentially. It is possible to enable multiprocessing on {class}`~xdem.coreg.BlockwiseCoreg`; the procedure is described in the advanced examples.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -608,6 +609,10 @@ os.remove("aligned_dem.tif")
 ```
 
 ```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show plotting code"
+:  code_prompt_hide: "Hide plotting code"
 # Plot before and after
 f, ax = plt.subplots(1, 2)
 ax[0].set_title("Before block NK")
