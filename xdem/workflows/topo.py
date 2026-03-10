@@ -50,10 +50,10 @@ class Topo(Workflows):
         self.schema = TOPO_SCHEMA
 
         super().__init__(config_dem, output)
-
         self.config_attributes = self.config["terrain_attributes"]
         if isinstance(self.config_attributes, dict):
             self.list_attributes = list(self.config_attributes.keys())
+            print(self.list_attributes)
         else:
             self.list_attributes = self.config_attributes
 
@@ -62,12 +62,16 @@ class Topo(Workflows):
 
         self.config = self.remove_none(self.config)  # type: ignore
 
-    def _load_data(self) -> None:
+    def _load_data(self, input: Dict[str, Any]) -> None:
         """
         Load data defined in config file.
+
+        :param input: input info (dict) to load
+        :return: None
         """
 
-        self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
+        self.create_output_dir()
+        self.dem, self.inlier_mask, path_to_mask = self.load_dem(input)
         self.generate_plot(
             self.dem,
             filename="elev_map",
@@ -123,11 +127,17 @@ class Topo(Workflows):
         """
 
         logging.info(f"Computing attributes : {self.list_attributes}")
+        print(self.list_attributes)
 
         attributes = xdem.terrain.get_terrain_attribute(
             self.dem,
             attribute=self.list_attributes,
         )
+
+        import geoutils as gu
+
+        if isinstance(attributes, gu.Raster):
+            attributes = [attributes]
 
         n = len(attributes)
 
@@ -193,55 +203,66 @@ class Topo(Workflows):
         """
 
         t0 = time.time()
+        self.dico_to_show = []
+        general_output = self.outputs_folder
+        for k, input in enumerate(self.config["inputs"]):
+            self.dico_to_show.append(
+                [
+                    ("Information about inputs", input),
+                ]
+            )
+            if len(self.config["inputs"]) > 1:
+                self.outputs_folder = general_output / ("dem_" + str(k))
+            self.create_output_dir(self.outputs_folder)
+            self._load_data(input)
 
-        self._load_data()
+            # Global information
+            dem_informations = {
+                "Driver": self.dem.driver,
+                "Filename": self.dem.filename,
+                "Grid size": self.dem.vcrs_grid,
+                "Number of band": self.dem.bands,
+                "Data types": self.dem.dtype,
+                "Nodata Value": self.dem.nodata,
+                "Pixel interpretation": self.dem.area_or_point,
+                "Pixel size": self.dem.res,
+                "Width": self.dem.width,
+                "Height": self.dem.height,
+                "Transform": self.dem.transform,
+                "Bounds": self.dem.bounds,
+            }
+            self.dico_to_show[k].append(("Elevation information", dem_informations))
 
-        # Global information
-        dem_informations = {
-            "Driver": self.dem.driver,
-            "Filename": self.dem.filename,
-            "Grid size": self.dem.vcrs_grid,
-            "Number of band": self.dem.bands,
-            "Data types": self.dem.dtype,
-            "Nodata Value": self.dem.nodata,
-            "Pixel interpretation": self.dem.area_or_point,
-            "Pixel size": self.dem.res,
-            "Width": self.dem.width,
-            "Height": self.dem.height,
-            "Transform": self.dem.transform,
-            "Bounds": self.dem.bounds,
-        }
-        self.dico_to_show.append(("Elevation information", dem_informations))
+            # Statistics
+            list_metrics = self.config["statistics"]
+            if list_metrics is not None:
+                stats_dem = self.dem.get_stats(list_metrics)
+                stats_dem = {_ALIAS.get(k, k): v for k, v in stats_dem.items()}
+                self.save_stat_as_csv(stats_dem, "stats_elev")
+                self.dico_to_show[k].append(("Statistics", self.floats_process(stats_dem)))
+                logging.info(f"Computing metrics on reference elevation: {list_metrics}")
 
-        # Statistics
-        list_metrics = self.config["statistics"]
-        if list_metrics is not None:
-            stats_dem = self.dem.get_stats(list_metrics)
-            stats_dem = {_ALIAS.get(k, k): v for k, v in stats_dem.items()}
-            self.save_stat_as_csv(stats_dem, "stats_elev")
-            self.dico_to_show.append(("Statistics", self.floats_process(stats_dem)))
-            logging.info(f"Computing metrics on reference elevation: {list_metrics}")
+            # Terrain attributes
+            if self.list_attributes is not None:
+                self.generate_terrain_attributes_png()
+                if self.level > 1:
+                    self.generate_terrain_attributes_tiff()
+            else:
+                logging.info("Computing terrain attributes: None")
 
-        # Terrain attributes
-        if self.list_attributes is not None:
-            self.generate_terrain_attributes_png()
-            if self.level > 1:
-                self.generate_terrain_attributes_tiff()
-        else:
-            logging.info("Computing terrain attributes: None")
+            t1 = time.time()
+            self.elapsed = t1 - t0
 
-        t1 = time.time()
-        self.elapsed = t1 - t0
+            self.create_html(self.dico_to_show[k])
+            # self.dico_to_show[k] = None
 
-        self.create_html(self.dico_to_show)
-
-        # Remove empty folder
-        for folder in self.outputs_folder.rglob("*"):
-            if folder.is_dir():
-                try:
-                    folder.rmdir()
-                except OSError:
-                    pass
+            # Remove empty folder
+            for folder in self.outputs_folder.rglob("*"):
+                if folder.is_dir():
+                    try:
+                        folder.rmdir()
+                    except OSError:
+                        pass
 
     def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
         """

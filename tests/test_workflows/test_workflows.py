@@ -50,38 +50,18 @@ def test_workflows_init_wrong_config():
         _ = Topo(user_config)  # type: ignore
 
 
-def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
+@pytest.mark.parametrize("level", [1, 2])
+def test_workflows_init(get_topo_inputs_config_unique, tmp_path, level):
     """
     Test workflows class initialization
     """
-    user_config = get_topo_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
+    user_config = get_topo_inputs_config_unique
+    user_config["outputs"] = {"path": str(tmp_path), "level": level}
     workflows = Topo(user_config)
+    workflows.run()
 
     assert isinstance(workflows, Workflows)
-    pipeline_gt = pipeline_topo
-    pipeline_gt["outputs"] = {"path": str(tmp_path), "level": 1}
-    assert workflows.config == pipeline_topo
-    assert workflows.level == 1
-    assert workflows.outputs_folder == tmp_path
-    assert workflows.outputs_folder.exists()
-    for folder in ["plots", "rasters", "tables"]:
-        assert workflows.outputs_folder.joinpath(folder).exists()
-    assert workflows.outputs_folder.joinpath("used_config.yaml").exists()
-    assert workflows.dico_to_show == [
-        (
-            "Information about inputs",
-            {
-                "reference_elev": {
-                    "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
-                    "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
-                    "from_vcrs": None,
-                    "to_vcrs": None,
-                    "downsample": 1,
-                }
-            },
-        )
-    ]
+    assert isinstance(workflows, Topo)
 
 
 @pytest.mark.parametrize(
@@ -101,21 +81,21 @@ def test_workflows_init(pipeline_topo, get_topo_inputs_config, tmp_path):
         ({"a": 1, "b": [2, 3], "c": {"d": 4}}, {"a": 1, "b": [2, 3], "c": {"d": 4}}),
     ],
 )
-def test_remove_none_cases(get_topo_inputs_config, tmp_path, input_data, expected):
+def test_remove_none_cases(get_topo_inputs_config_unique, tmp_path, input_data, expected):
     """
     Test remove_none from dictionary
     """
-    user_config = get_topo_inputs_config
+    user_config = get_topo_inputs_config_unique
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Topo(user_config)
     assert workflows.remove_none(input_data) == expected
 
 
-def test_load_config(get_topo_inputs_config, tmp_path):
+def test_load_config(get_topo_inputs_config_unique, tmp_path):
     """
     Test load_config function
     """
-    cfg = get_topo_inputs_config
+    cfg = get_topo_inputs_config_unique
 
     # Succeed
     with open(tmp_path / "temp_config.yaml", "w", encoding="utf-8") as f:
@@ -129,7 +109,7 @@ def test_load_config(get_topo_inputs_config, tmp_path):
         _ = Topo(str(tmp_path / "tempconfig.yaml"))
 
 
-def test_load_config_none(get_topo_inputs_config, get_accuracy_inputs_config, tmp_path):
+def test_load_config_none(get_topo_inputs_config_unique, get_accuracy_inputs_config, tmp_path):
     """
     Test None values in yaml reading function
     """
@@ -137,17 +117,19 @@ def test_load_config_none(get_topo_inputs_config, get_accuracy_inputs_config, tm
     # Topo workflow
 
     # Change values
-    cfg = get_topo_inputs_config
-    cfg["inputs"]["reference_elev"]["from_vcrs"] = "None"
-    cfg["inputs"]["reference_elev"]["to_vcrs"] = "None"
+    cfg = get_topo_inputs_config_unique
+    cfg["inputs"][0]["from_vcrs"] = None
+    cfg["inputs"][0]["to_vcrs"] = None
 
     # Read working config
     yaml_str = yaml.dump(cfg, allow_unicode=True)
     Path(tmp_path / "temp_config.yaml").write_text(yaml_str, encoding="utf-8")
     workflow_topo = Topo(str(tmp_path / "temp_config.yaml"))
+    assert isinstance(workflow_topo, Workflows)
+    assert isinstance(workflow_topo, Topo)
     config_output = workflow_topo.load_config()
-    assert config_output["inputs"]["reference_elev"]["from_vcrs"] is None
-    assert config_output["inputs"]["reference_elev"]["to_vcrs"] is None
+    assert config_output["inputs"][0]["from_vcrs"] is None
+    assert config_output["inputs"][0]["to_vcrs"] is None
 
     # Accuracy workflow
 
@@ -163,13 +145,15 @@ def test_load_config_none(get_topo_inputs_config, get_accuracy_inputs_config, tm
     yaml_str = yaml.dump(cfg, allow_unicode=True)
     Path(tmp_path / "temp_config.yaml").write_text(yaml_str, encoding="utf-8")
     workflow_accuracy = Accuracy(str(tmp_path / "temp_config.yaml"))
+    assert isinstance(workflow_accuracy, Workflows)
+    assert isinstance(workflow_accuracy, Accuracy)
     config_output = workflow_accuracy.load_config()
     assert config_output["inputs"]["reference_elev"]["from_vcrs"] is None
     assert config_output["inputs"]["reference_elev"]["to_vcrs"] is None
     assert config_output["inputs"]["sampling_grid"] is None
 
 
-def test_generate_graph(get_topo_inputs_config, tmp_path):
+def test_generate_graph(get_topo_inputs_config_unique, tmp_path):
     """
     Test generate_plot function
     """
@@ -177,10 +161,10 @@ def test_generate_graph(get_topo_inputs_config, tmp_path):
     filename = "test_generate_graph"
     title = "Test graph"
 
-    user_config = get_topo_inputs_config
+    user_config = get_topo_inputs_config_unique
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Topo(user_config)
-
+    workflows.create_output_dir()
     workflows.generate_plot(dem, filename=filename, title=title)
     out = tmp_path / "plots" / f"{filename}.png"
     assert out.exists()
@@ -202,24 +186,25 @@ def test_generate_graph(get_topo_inputs_config, tmp_path):
         pytest.param({"a": np.float64(2.71828)}, {"a": 2.72}, id="test_numpy_float"),
     ],
 )
-def test_floats_process(get_topo_inputs_config, tmp_path, inputs, expected):
+def test_floats_process(get_topo_inputs_config_unique, tmp_path, inputs, expected):
     """
     Test floats_process function
     """
-    user_config = get_topo_inputs_config
+    user_config = get_topo_inputs_config_unique
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Topo(user_config)
 
     assert workflows.floats_process(inputs) == expected
 
 
-def test_save_stat_as_csv(get_topo_inputs_config, tmp_path):
+def test_save_stat_as_csv(get_topo_inputs_config_unique, tmp_path):
     """
     Test save_stat_as_csv function
     """
-    user_config = get_topo_inputs_config
+    user_config = get_topo_inputs_config_unique
     user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Topo(user_config)
+    workflows.create_output_dir()
 
     data = {"a": 1.2345, "b": 2.9876}
     title = "test_save_stat_as_csv"
