@@ -41,8 +41,8 @@ class TestBiasCorr:
     fit_args_rst_rst = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
 
     # Convert DEMs to points with a bit of subsampling for speed-up
-    tba_pts = tba.to_pointcloud(data_column_name="z", subsample=50000, random_state=42)
-    ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42)
+    tba_pts = tba.to_pointcloud(data_column_name="z")
+    ref_pts = ref.to_pointcloud(data_column_name="z")
 
     # Raster-Point
     fit_args_rst_pts = dict(reference_elev=ref, to_be_aligned_elev=tba_pts, inlier_mask=inlier_mask)
@@ -292,7 +292,7 @@ class TestBiasCorr:
         elev_fit_args.update({"bias_vars": bias_vars_dict})
 
         # Run with input parameter, and using only 100 subsamples for speed
-        bcorr.fit(**elev_fit_args, subsample=10000, random_state=42)
+        bcorr.fit(**elev_fit_args)
 
         # Check that variable names are defined during fit
         assert bcorr.meta["inputs"]["fitorbin"]["bias_var_names"] == ["elevation", "slope"]
@@ -439,7 +439,7 @@ class TestBiasCorr:
             plt.show()
 
             dirbias = biascorr.DirectionalBias(angle=angle, fit_or_bin="bin", bin_sizes=10000)
-            dirbias.fit(reference_elev=self.ref, to_be_aligned_elev=bias_dem, subsample=10000, random_state=42)
+            dirbias.fit(reference_elev=self.ref, to_be_aligned_elev=bias_dem)
             xdem.spatialstats.plot_1d_binning(
                 df=dirbias.meta["outputs"]["fitorbin"]["bin_dataframe"],
                 var_name="angle",
@@ -464,14 +464,12 @@ class TestBiasCorr:
         elev_fit_args = fit_args.copy()
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
             # Need a higher sample size to get the coefficients right here
-            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
+            bias_elev = bias_dem.to_pointcloud(data_column_name="z").ds
         else:
             bias_elev = bias_dem
         dirbias.fit(
             elev_fit_args["reference_elev"],
             to_be_aligned_elev=bias_elev,
-            subsample=40000,
-            random_state=42,
             bounds_amp_wave_phase=bounds,
             niter=2,
         )
@@ -524,10 +522,10 @@ class TestBiasCorr:
         deramp = biascorr.Deramp(poly_order=order)
         elev_fit_args = fit_args.copy()
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=30000, random_state=42).ds
+            bias_elev = bias_dem.to_pointcloud(data_column_name="z").ds
         else:
             bias_elev = bias_dem
-        deramp.fit(elev_fit_args["reference_elev"], to_be_aligned_elev=bias_elev, subsample=20000, random_state=42)
+        deramp.fit(elev_fit_args["reference_elev"], to_be_aligned_elev=bias_elev)
 
         # Check high-order fit parameters are the same within 10%
         fit_params = deramp.meta["outputs"]["fitorbin"]["fit_params"]
@@ -582,14 +580,12 @@ class TestBiasCorr:
         )
         elev_fit_args = fit_args.copy()
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            bias_elev = bias_dem.to_pointcloud(data_column_name="z", subsample=20000, random_state=42).ds
+            bias_elev = bias_dem.to_pointcloud(data_column_name="z").ds
         else:
             bias_elev = bias_dem
         tb.fit(
             elev_fit_args["reference_elev"],
             to_be_aligned_elev=bias_elev,
-            subsample=10000,
-            random_state=42,
             bias_vars={"max_curvature": maxc},
         )
 
