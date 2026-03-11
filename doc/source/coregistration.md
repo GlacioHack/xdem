@@ -580,8 +580,7 @@ coregistration methods and for translation only. Rotation shifts will be soon im
 Please set `only_translation=True` when initializing the coregistration method ICP(), LZD() or CPD().
 ```
 
-A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs in grids, the a coregistration method (e.g. Nuth Kääb) run independently in each block.
-method independently in each block. After, an interpolation method is use to obtain the overall offset. The advantages of this tool are, the memory consumption reduce and a better detection of local errors.
+A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs in grids, the a coregistration method (e.g. LZD) run independently in each block. After, an interpolation method is use to obtain the overall offset. The advantages of this tool are, the memory consumption reduce and a better detection of local errors.
 
 ```{note}
 The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
@@ -591,7 +590,7 @@ These two parameters do **not** need to be the same size.
 ```
 
 ```{code-cell} ipython3
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
+blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.LZD(only_translation=True),
                                       block_size_fit=500,
                                       block_size_apply=1000,
                                       parent_path="")
@@ -599,7 +598,7 @@ blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
 blockwise.fit(ref_dem, tba_dem_shifted)
 aligned_dem = blockwise.apply(tba_dem_shifted)
 ```
-In this example, processing is performed sequentially. It is possible to enable multiprocessing on {class}`~xdem.coreg.BlockwiseCoreg`; the procedure is described in the advanced examples.
+In this example, processing is performed sequentially. It is possible to enable multiprocessing on {class}`~xdem.coreg.BlockwiseCoreg`, the configuration is described in the advanced examples.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -615,9 +614,9 @@ os.remove("aligned_dem.tif")
 :  code_prompt_hide: "Hide plotting code"
 # Plot before and after
 f, ax = plt.subplots(1, 2)
-ax[0].set_title("Before block NK")
+ax[0].set_title("Before block LZD")
 (tba_dem_shifted - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
-ax[1].set_title("After block NK")
+ax[1].set_title("After block LZD")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
 ```

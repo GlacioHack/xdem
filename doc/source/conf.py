@@ -196,3 +196,5 @@ html_static_path = ["_static", "imgs", "_workflows"]
 html_css_files = [
     "css/custom.css",
 ]
+
+latex_engine = "xelatex"
