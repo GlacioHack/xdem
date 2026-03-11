@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """DEM collection class and functions."""
+
 from __future__ import annotations
 
 import datetime

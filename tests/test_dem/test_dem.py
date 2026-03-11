@@ -1,10 +1,10 @@
-""" Functions to test the DEM tools."""
+"""Functions to test the DEM tools."""
 
 from __future__ import annotations
 
-import os
-import tempfile
 import warnings
+from importlib.util import find_spec
+from pathlib import Path
 from typing import Any
 
 import geoutils as gu
@@ -23,9 +23,10 @@ DO_PLOT = False
 
 
 class TestDEM:
+
     def test_init(self) -> None:
         """Test that inputs work properly in DEM class init."""
-        fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_img = xdem.examples.get_path_test("longyearbyen_ref_dem")
 
         # From filename
         dem = DEM(fn_img)
@@ -72,13 +73,13 @@ class TestDEM:
                 nodata=None,
             )
 
-    def test_init__vcrs(self) -> None:
+    def test_init__vcrs(self, tmp_path: Path) -> None:
         """Test that vcrs is set properly during instantiation."""
 
         # Tests 1: instantiation with a file that has a 2D CRS
 
         # First, check a DEM that does not have any vertical CRS set
-        fn_img = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_img = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_img)
         assert dem.vcrs is None
 
@@ -92,9 +93,8 @@ class TestDEM:
         dem_reproj = dem.reproject(crs=4979)
 
         # Save to temporary folder
-        temp_dir = tempfile.TemporaryDirectory()
-        temp_file = os.path.join(temp_dir.name, "test.tif")
-        dem_reproj.save(temp_file)
+        temp_file = tmp_path / "test.tif"
+        dem_reproj.to_file(temp_file)
 
         # Check opening a DEM with a 3D CRS sets the vcrs
         dem_3d = DEM(temp_file)
@@ -158,6 +158,15 @@ class TestDEM:
         )
         assert dem.vcrs == CRS("EPSG:5773")
 
+    def test_from_array__cast_mask(self) -> None:
+        """Test that DEMs are cast into mask for a logical operation."""
+
+        transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
+        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None)
+
+        mask_dem = dem > 1
+        assert isinstance(mask_dem, gu.Raster) and np.dtype(mask_dem.dtype) == np.bool_
+
     def test_copy(self) -> None:
         """
         Test that the copy method works as expected for DEM. In particular
@@ -166,7 +175,7 @@ class TestDEM:
         - if r is copied, r.data changed, r2.data should be unchanged
         """
         # Open dataset, update data and make a copy
-        r = xdem.dem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+        r = xdem.DEM(xdem.examples.get_path_test("longyearbyen_ref_dem"))
         r.data += 5
         r2 = r.copy()
 
@@ -174,7 +183,7 @@ class TestDEM:
         assert r is not r2
 
         # Check the object is a DEM
-        assert isinstance(r2, xdem.dem.DEM)
+        assert isinstance(r2, xdem.DEM)
 
         # Check all immutable attributes are equal
         # raster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'bands', 'nodata',
@@ -183,7 +192,7 @@ class TestDEM:
         # dem_attrs = ['vcrs', 'vcrs_grid', 'vcrs_name', 'ccrs']
 
         # using list directly available in Class
-        attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver"]]
+        attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver", "profile"]]
         all_attrs = attrs + xdem.dem.dem_attrs
         for attr in all_attrs:
             assert r.__getattribute__(attr) == r2.__getattribute__(attr)
@@ -206,7 +215,7 @@ class TestDEM:
     def test_set_vcrs(self) -> None:
         """Tests to set the vertical CRS."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
         # -- Test 1: we check with names --
@@ -229,7 +238,7 @@ class TestDEM:
 
         # -- Test 2: we check with grids --
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         dem.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
         assert dem.vcrs_name == "unknown using geoidgrids=us_nga_egm96_15.tif"
@@ -243,18 +252,18 @@ class TestDEM:
         dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
 
         # Check that non-existing grids raise errors
-        with pytest.warns(UserWarning, match="Grid not found in*"):
+        with pytest.warns(UserWarning, match="Grid 'grid.tif' not found in*"):
             with pytest.raises(
                 ValueError,
-                match="The provided grid 'the best grid' does not exist at https://cdn.proj.org/. "
+                match="The provided grid 'grid.tif' does not exist at https://cdn.proj.org/. "
                 "Provide an existing grid.",
             ):
-                dem.set_vcrs(new_vcrs="the best grid")
+                dem.set_vcrs(new_vcrs="grid.tif")
 
     def test_to_vcrs(self) -> None:
         """Tests the conversion of vertical CRS."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
         # Reproject in WGS84 2D
@@ -298,7 +307,7 @@ class TestDEM:
     def test_to_vcrs__equal_warning(self) -> None:
         """Test that DEM.to_vcrs() does not transform if both 3D CRS are equal."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
 
         # With both inputs as names
@@ -321,12 +330,12 @@ class TestDEM:
     geoid96_alaska = {"grid": "us_noaa_geoid06_ak.tif", "lon": -145, "lat": 62, "shift": 15}
     isn93_iceland = {"grid": "is_lmi_Icegeoid_ISN93.tif", "lon": -18, "lat": 65, "shift": 68}
 
-    @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])  # type: ignore
+    @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])
     def test_to_vcrs__grids(self, grid_shifts: dict[str, Any]) -> None:
         """Tests grids to convert vertical CRS."""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
-        warnings.filterwarnings("ignore", category=UserWarning, message="Grid not found in *")
+        warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         # Using an arbitrary elevation of 100 m (no influence on the transformation)
         dem = DEM.from_array(
@@ -345,41 +354,221 @@ class TestDEM:
         # Compare the elevation difference
         z_diff = 100 - trans_dem.data[0, 0]
 
-        # Check the shift is the one expect within 10%
+        # Check the shift is the expected one within 10%
         assert z_diff == pytest.approx(grid_shifts["shift"], rel=0.1)
 
-    @pytest.mark.parametrize("terrain_attribute", xdem.terrain.available_attributes)  # type: ignore
+    @pytest.mark.parametrize("terrain_attribute", xdem.terrain.available_attributes)
     def test_terrain_attributes_wrappers(self, terrain_attribute: str) -> None:
         """Check the terrain attributes corresponds to the ones derived in the terrain module."""
 
-        fn_dem = xdem.examples.get_path("longyearbyen_ref_dem")
+        fn_dem = xdem.examples.get_path_test("longyearbyen_ref_dem")
         dem = DEM(fn_dem)
+        # Crop to tiny DEM for speed
+        dem = dem.icrop((0, 0, 20, 20))
 
         dem_class_attr = getattr(dem, terrain_attribute)()
         terrain_module_attr = getattr(xdem.terrain, terrain_attribute)(dem)
 
         assert dem_class_attr.raster_equal(terrain_module_attr)
 
-    def test_coregister_3d_wrapper(self) -> None:
+    def test_info_2dcrs(self) -> None:
+        """Tests info function with the new Coordinate system line on dem with 2D CRS"""
 
-        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+        dem_path = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        raster = gu.Raster(dem_path)
+        dem = xdem.dem.DEM(dem_path)
+        crs_key = "Coordinate system:"
+
+        # Test info() with stats or not
+        for stats in [True, False]:
+            raster_infos_arrays = raster.info(stats=stats, verbose=False).split("\n")
+            dem_infos_array = dem.info(stats=stats, verbose=False).split("\n")
+
+            # Same number of lines
+            assert len(dem_infos_array) == len(raster_infos_arrays)
+
+            # Find Coordinate system line
+            crs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith(crs_key)]
+            assert len(crs_line) == 1
+            complete_line = dem_infos_array[crs_line[0]]
+
+            # Verify infos except Coordinate system
+            del raster_infos_arrays[crs_line[0]]
+            del dem_infos_array[crs_line[0]]
+            for line in range(len(raster_infos_arrays)):
+                assert raster_infos_arrays[line] == dem_infos_array[line]
+
+            # Verify Coordinate system value
+            assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'None']"
+
+        # Verify new VCRS value with this 2D CRS DEM
+        dem.set_vcrs(new_vcrs="EGM96")
+        dem_infos_array = dem.info(verbose=False).split("\n")
+        complete_line = dem_infos_array[crs_line[0]]
+        assert complete_line.startswith(crs_key)
+        assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'EPSG:5773']"
+
+    @pytest.mark.skip()
+    def test_info_3dcrs(self) -> None:
+        """Tests info function with the new Coordinate system line on dem with 3D CRS"""
+
+        dem_path = xdem.examples.get_path_test("gizeh")
+        dem = xdem.dem.DEM(dem_path)
+        dem_infos_array = dem.info(verbose=False).split("\n")
+
+        crs_key = "Coordinate system:"
+        crs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith(crs_key)]
+
+        complete_line = dem_infos_array[crs_line[0]]
+        assert complete_line.startswith(crs_key)
+        assert complete_line[len(crs_key) :].strip() == "['WGS 84 / UTM zone 36N + EGM96 height']"
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "coreg_method, expected_pipeline_types",
+        [
+            pytest.param(xdem.coreg.Deramp(), [xdem.coreg.Deramp], id="Custom method: Deramp"),
+            pytest.param(
+                xdem.coreg.NuthKaab(initial_shift=(10, 5)) + xdem.coreg.VerticalShift(),
+                [xdem.coreg.AffineCoreg, xdem.coreg.VerticalShift],
+                id="Pipeline: NuthKaab + VerticalShift with initial shift",
+            ),
+            pytest.param(
+                xdem.coreg.NuthKaab(initial_shift=(10, 5)),
+                [xdem.coreg.AffineCoreg],
+                id="Pipeline: NuthKaab with initial shift",
+            ),
+            pytest.param(
+                xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
+                [xdem.coreg.AffineCoreg, xdem.coreg.VerticalShift],
+                id="Pipeline: NuthKaab + VerticalShift without initial shift",
+            ),
+            pytest.param(
+                xdem.coreg.DhMinimize(),
+                [xdem.coreg.AffineCoreg],
+                id="Simple affine method: DhMinimize without initial shift",
+            ),
+        ],
+    )
+    def test_coregister_3d(coreg_method: Any, expected_pipeline_types: Any) -> None:
+        """
+        Test coregister_3d functionality
+        """
+
+        warnings.filterwarnings("ignore", message="Covariance of the parameters could not be estimated.*")
+
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
 
-        dem_class_aligned = dem_tba.coregister_3d(dem_ref, random_state=42)
+        # Run coregistration
+        dem_aligned = dem_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
 
-        nk = xdem.coreg.NuthKaab()
-        nk.fit(dem_ref, dem_tba, random_state=42)
-        coreg_module_aligned = nk.apply(dem_tba)
+        assert isinstance(dem_aligned, xdem.DEM)
+        assert isinstance(coreg_method, xdem.coreg.Coreg)
 
-        assert dem_class_aligned.raster_equal(coreg_module_aligned)
+        # Test pipeline
+        pipeline = coreg_method.pipeline if hasattr(coreg_method, "pipeline") else [coreg_method]
+        for i, expected_type in enumerate(expected_pipeline_types):
+            assert isinstance(pipeline[i], expected_type)
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "shift, expected_message",
+        [
+            pytest.param(None, None, id="NuthKaab method: No initial shift"),
+            pytest.param((0, 0), None, id="NuthKaab method: (0, 0) initial shift"),
+            pytest.param((50, 10), None, id="NuthKaab method: (50, 10) initial shift"),
+            pytest.param((10, 50), None, id="NuthKaab method: (10, 50) initial shift"),
+            pytest.param((10, 50, 0), None, id="NuthKaab method: (10, 50, 20) initial shift"),
+            pytest.param(
+                (10, 50, 20),
+                (UserWarning, r".*altitude is currently work*"),
+                id="NuthKaab method: (10, 50, 20) initial shift",
+            ),
+            pytest.param(
+                ("2", 2), (ValueError, r".*three numerical values.*"), id='NuthKaab method: ("2", 2) initial shift'
+            ),
+            pytest.param(
+                (2, 3, 4, 5),
+                (ValueError, r".*three numerical values.*"),
+                id="NuthKaab method: (2, 3, 4, 5) initial shift",
+            ),
+        ],
+    )
+    def test_nuthkaab_initial_shift(shift: Any, expected_message: Any) -> None:
+        """
+        Test coregister_3d initial and output shift
+        """
+
+        dem_ref = DEM(xdem.examples.get_path_test("longyearbyen_ref_dem"))
+        dem_tba = DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
+
+        if expected_message is not None:
+            # Init coreg method and catch error
+            with pytest.raises(expected_message[0], match=expected_message[1]):
+                coreg_method = xdem.coreg.NuthKaab(initial_shift=shift)
+
+                # case warning
+                assert coreg_method.meta["inputs"]["affine"]["initial_shift"] is not None
+                assert list(coreg_method.meta["inputs"]["affine"]["initial_shift"])[2] == 0
+        else:
+            coreg_method = xdem.coreg.NuthKaab(initial_shift=shift)  # type: ignore
+            if shift is not None:
+                if len(shift) == 2:
+                    shift += (0,)
+                assert coreg_method.meta["inputs"]["affine"]["initial_shift"]
+                assert coreg_method.meta["inputs"]["affine"]["initial_shift"] == shift
+                assert isinstance(coreg_method.meta["inputs"]["affine"]["initial_shift"], tuple)
+            else:
+                assert "initial_shift" not in coreg_method.meta["inputs"]["affine"]
+
+            # Test output shift vs fit result
+            dem_aligned = dem_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
+            output_shift = coreg_method.meta["outputs"]["affine"]
+
+            nk = xdem.coreg.NuthKaab(initial_shift=shift)
+            nk.fit(dem_ref, dem_tba, random_state=42)
+            manually_aligned = nk.apply(dem_tba, resampling=rio.warp.Resampling.bilinear)
+
+            # Output metadata
+            assert nk.meta["outputs"]["affine"] == output_shift
+
+            # Output DEM
+            assert dem_aligned.raster_equal(manually_aligned, warn_failure_reason=True)
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "pipeline",
+        [
+            xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
+            xdem.coreg.NuthKaab(initial_shift=(10, 5)) + xdem.coreg.VerticalShift(),
+            xdem.coreg.VerticalShift() + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
+            xdem.coreg.NuthKaab(initial_shift=(10, 5))
+            + xdem.coreg.VerticalShift()
+            + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
+            xdem.coreg.VerticalShift()
+            + xdem.coreg.NuthKaab(initial_shift=(10, 5))
+            + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
+        ],
+    )
+    def test_nuthkaab_coregpipeline(pipeline: Any) -> None:
+        """
+        Test initial shift cancellation in coreg pipeline method
+        """
+
+        for method in pipeline.pipeline:
+            assert "initial_shift" not in method.meta["inputs"]["affine"]
 
     def test_estimate_uncertainty(self) -> None:
 
-        fn_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path("longyearbyen_tba_dem")
+        # Import optional skgstat or skip test
+        pytest.importorskip("skgstat")
+
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
@@ -388,3 +577,24 @@ class TestDEM:
 
         assert isinstance(sig_h, gu.Raster)
         assert callable(corr_sig)
+
+    @pytest.mark.skipif(find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing.")
+    def test_estimate_uncertainty__missing_dep(self) -> None:
+        """Check that proper import error is raised when skgstat is missing"""
+
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
+
+        dem_ref = DEM(fn_ref)
+        dem_tba = DEM(fn_tba)
+
+        with pytest.raises(ImportError, match="Optional dependency 'scikit-gstat' required.*"):
+            dem_tba.estimate_uncertainty(dem_ref)
+
+    def test_to_pointcloud__type_override(self) -> None:
+
+        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        dem_ref = DEM(fn_ref)
+        epc_ref = dem_ref.to_pointcloud(subsample=500)
+
+        assert isinstance(epc_ref, xdem.EPC)

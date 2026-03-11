@@ -26,9 +26,9 @@ import geoutils as gu
 # sphinx_gallery_thumbnail_number = 6
 import matplotlib.pyplot as plt
 import numpy as np
+from geoutils.stats import nmad
 
 import xdem
-from xdem.spatialstats import nmad
 
 # %%
 # We load example files.
@@ -46,7 +46,7 @@ dh.set_mask(mask_glacier)
 # We estimate the average per-pixel elevation error on stable terrain, using both the standard deviation
 # and normalized median absolute deviation. For this example, we do not account for elevation heteroscedasticity.
 print(f"STD: {np.nanstd(dh.data):.2f} meters.")
-print(f"NMAD: {xdem.spatialstats.nmad(dh.data):.2f} meters.")
+print(f"NMAD: {gu.stats.nmad(dh.data):.2f} meters.")
 
 # %%
 # The two measures of dispersion are quite similar showing that, on average, there is a small influence of outliers on the
@@ -64,7 +64,7 @@ dh.plot(ax=plt.gca(), cmap="RdYlBu", vmin=-4, vmax=4, cbar_title="Elevation diff
 # Additionally, we notice that the elevation differences are still polluted by unrealistically large elevation
 # differences near glaciers, probably because the glacier inventory is more recent than the data, hence with too small outlines.
 # To remedy this, we filter large elevation differences outside 4 NMAD.
-dh.set_mask(np.abs(dh.data) > 4 * xdem.spatialstats.nmad(dh.data))
+dh.set_mask(np.abs(dh.data) > 4 * gu.stats.nmad(dh.data))
 
 # %%
 # We plot the elevation differences after filtering to check that we successively removed glacier signals.

@@ -26,8 +26,8 @@ import xdem
 # -- Project information -----------------------------------------------------
 
 project = "xDEM"
-copyright = "2024, xDEM developers"
-author = "Erik Mannerfelt, Romain Hugonnet, Amaury Dehecq and others"
+copyright = "2026, xDEM developers"
+author = "Romain Hugonnet, Erik Mannerfelt, Amaury Dehecq and others"
 
 # The full version, including alpha/beta/rc tags
 release = xdem.__version__
@@ -56,6 +56,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     # "myst_parser",  !! Not needed with myst_nb !! # Form of Markdown that works with sphinx, used a lot by the Sphinx Book Theme
     "myst_nb",  # MySt for rendering Jupyter notebook in documentation
+    "sphinx_design",
 ]
 
 # For sphinx design to work properly
@@ -66,8 +67,8 @@ nb_kernel_rgx_aliases = {".*xdem.*": "python3"}
 nb_execution_raise_on_error = True  # To fail documentation build on notebook execution error
 nb_execution_show_tb = True  # To show full traceback on notebook execution error
 nb_output_stderr = "warn"  # To warn if an error is raised in a notebook cell (if intended, override to "show" in cell)
-
-# autosummary_generate = True
+nb_execution_mode = "cache"
+html_allow_html = True  # To allow HTML embedding, to add "Workflows" HTML report in documentation
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/", None),
@@ -117,7 +118,6 @@ plot_formats = [(".png", 600)]
 # To avoid long path names in inheritance diagrams
 inheritance_alias = {
     "geoutils.georaster.raster.Raster": "geoutils.Raster",
-    "geoutils.georaster.raster.Mask": "geoutils.Mask",
     "geoutils.geovector.Vector": "geoutils.Vector",
     "xdem.dem.DEM": "xdem.DEM",
     "xdem.coreg.base.Coreg": "xdem.Coreg",
@@ -176,10 +176,10 @@ html_theme_options = {
     "logo": {
         "image_dark": "_static/xdem_logo_dark.svg",
     },
-    "announcement": (
-        "⚠️ Our 0.1 release refactored several early-development functions for long-term stability, "
-        'to update your code see <a href="https://github.com/GlacioHack/xdem/releases/tag/v0.1.0">here</a>. ⚠️'
-    ),
+    # "announcement": (
+    #     "⚠️ Our 0.1 release refactored several early-development functions for long-term stability, "
+    #     "to update your code see the release notes. ⚠️"
+    # ),
 }
 
 # For dark mode
@@ -188,11 +188,10 @@ html_context = {
     "default_mode": "auto"
 }
 
-
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ["imgs", "_static"]  # Commented out as we have no custom static data
+html_static_path = ["_static", "imgs", "_workflows"]
 
 html_css_files = [
     "css/custom.css",

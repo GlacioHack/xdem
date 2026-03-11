@@ -24,11 +24,11 @@ pyplot.rcParams['savefig.dpi'] = 600
 # Vertical referencing
 
 xDEM supports the use of **vertical coordinate reference systems (vertical CRSs) and vertical transformations for elevation data**
-by conveniently wrapping PROJ pipelines through [Pyproj](https://pyproj4.github.io/pyproj/stable/) in the {class}`~xdem.DEM` class.
+by conveniently wrapping PROJ pipelines through [Pyproj](https://pyproj4.github.io/pyproj/stable/) for both {class}`~xdem.DEM` or {class}`~xdem.EPC` data objects.
 
 ```{note}
-**A {class}`~xdem.DEM` already possesses a {class}`~xdem.DEM.crs` attribute that defines its 2- or 3D CRS**, inherited from
-{class}`~geoutils.Raster`. Unfortunately, most DEM products do not yet come with a 3D CRS in their raster metadata, and
+**A {class}`~xdem.DEM` or {class}`~xdem.EPC` already possesses a {class}`~xdem.DEM.crs` attribute that defines its 2- or 3D CRS**, inherited from
+{class}`~geoutils.Raster` or {class}`~geoutils.PointCloud`. Unfortunately, most elevation data products do not yet come with a 3D CRS in their raster metadata, and
 vertical CRSs often have to be set by the user. See {ref}`vref-setting` below.
 
 For more reading on referencing for elevation data, see the **{ref}`elevation-intricacies` guide page.**
@@ -37,9 +37,9 @@ For more reading on referencing for elevation data, see the **{ref}`elevation-in
 ## Quick use
 
 The parsing, setting and transformation of vertical CRSs revolves around **three methods**, all described in details further below:
-- The **instantiation** of {class}`~xdem.DEM` that implicitly tries to set the vertical CRS from the metadata (or explicitly through the `vcrs` argument),
-- The **setting** method {func}`~xdem.DEM.set_vcrs` to explicitly set the vertical CRS of a {class}`~xdem.DEM`,
-- The **transformation** method {func}`~xdem.DEM.to_vcrs` to explicitly transform the vertical CRS of a {class}`~xdem.DEM`.
+- The **instantiation** of {class}`~xdem.DEM` or {class}`~xdem.EPC` that implicitly tries to set the vertical CRS from the metadata (or explicitly through the `vcrs` argument),
+- The **setting** method {func}`~xdem.DEM.set_vcrs` to explicitly set the vertical CRS`,
+- The **transformation** method {func}`~xdem.DEM.to_vcrs` to explicitly transform the vertical CRS.
 
 ```{caution}
 As of now, **[Rasterio](https://rasterio.readthedocs.io/en/stable/) does not support vertical transformations during CRS reprojection** (even if the CRS
@@ -62,7 +62,19 @@ import matplotlib.pyplot as plt
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 ```
 
+```{note}
+:class: note
+:class: margin
+
+xDEM warns that the grid doesn't exist locally, and attempts to download it.
+```
+
 ```{code-cell} ipython3
+---
+mystnb:
+  output_stderr: show
+---
+
 # Set current vertical CRS
 ref_dem.set_vcrs("EGM96")
 # Transform to a local reference system from https://cdn.proj.org/
@@ -106,7 +118,7 @@ dem = xdem.DEM.from_array(data=np.ones((2,2)),
                      transform=rio.transform.from_bounds(0, 0, 1, 1, 2, 2),
                      crs=pyproj.CRS("EPSG:4326+5773"),
                      nodata=None)
-dem.save("mydem_with3dcrs.tif")
+dem.to_file("mydem_with3dcrs.tif")
 ```
 
 ```{code-cell} ipython3
@@ -132,11 +144,6 @@ os.remove("mydem_with3dcrs.tif")
 
 2. **From the {attr}`~xdem.DEM.product` name of the DEM**, if parsed from the filename by the ``parse_sensor_metadata`` of {class}`geoutils.Raster`.
 
-
-```{seealso}
-The {class}`~geoutils.Raster` parent class can parse sensor metadata, see its [documentation page](https://geoutils.readthedocs.io/en/stable/core_satimg.html).
-```
-
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
@@ -147,12 +154,12 @@ dem = xdem.DEM.from_array(data=np.ones((2,2)),
                      crs=pyproj.CRS("EPSG:4326"),
                      nodata=None)
 # Save with the name of an ArcticDEM strip file
-dem.save("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem.tif")
+dem.to_file("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem.tif")
 ```
 
 ```{code-cell} ipython3
 # Open an ArcticDEM strip file, recognized as an ArcticDEM product
-dem = xdem.DEM("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem.tif")
+dem = xdem.DEM("SETSM_WV03_20151101_104001001327F500_104001001312DE00_seg2_2m_v3.0_dem.tif", parse_sensor_metadata=True)
 # The vertical CRS is set as "Ellipsoid" from knowing that is it an ArcticDEM product
 dem.vcrs
 ```
@@ -199,10 +206,9 @@ with user inputs described below.
 
 ## Setting a vertical CRS with convenient user inputs
 
-The vertical CRS of a {class}`~xdem.DEM` can be set or re-set manually at any point using {func}`~xdem.DEM.set_vcrs`.
+The vertical CRS of a {class}`~xdem.DEM` or {class}`~xdem.EPC` can be set or re-set manually at any point using {func}`~xdem.DEM.set_vcrs`.
 
-The `vcrs` argument, consistent across the three functions {class}`~xdem.DEM`, {func}`~xdem.DEM.set_vcrs` and {func}`~xdem.DEM.to_vcrs`,
-accepts a **wide variety of user inputs**:
+The `vcrs` argument accepts a **wide variety of user inputs**, consistent across {class}`~xdem.DEM`, {class}`~xdem.DEM`, {func}`~xdem.DEM.set_vcrs` and {func}`~xdem.DEM.to_vcrs`:
 
 - **Simple strings for the three most common references: `"Ellipsoid"`, `"EGM08"` or `"EGM96"`**,
 
@@ -221,10 +227,15 @@ dem.vcrs
 - **Any PROJ grid name available at [https://cdn.proj.org/](https://cdn.proj.org/)**,
 
 ```{tip}
-**No need to download the grid!** This is done automatically during the setting operation, if the grid does not already exist locally.
+**No need to download the grid!** This is done automatically during the setting operation, if the grid does not already exist locally (in which case xDEM raises a warning).
 ```
 
 ```{code-cell} ipython3
+---
+mystnb:
+  output_stderr: show
+---
+
 # Set a geoid vertical CRS based on a grid
 dem.set_vcrs("us_noaa_geoid06_ak.tif")
 dem.vcrs
@@ -249,7 +260,7 @@ dem.vcrs
 
 ## Transforming to another vertical CRS
 
-To transform a {class}`~xdem.DEM` to a different vertical CRS, {func}`~xdem.DEM.to_vcrs` is used.
+To transform a {class}`~xdem.DEM` or {class}`~xdem.EPC` to a different vertical CRS, {func}`~xdem.DEM.to_vcrs` is used.
 
 ```{note}
 If your transformation requires a grid that is not available locally, it will be **downloaded automatically**.

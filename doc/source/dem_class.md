@@ -54,7 +54,7 @@ dem = xdem.DEM(filename_dem)
 dem
 ```
 
-Detailed information on the {class}`~xdem.DEM` is printed using {func}`~geoutils.Raster.info`, along with basic statistics using `stats=True`:
+Detailed information on the {class}`~xdem.DEM` is printed using {func}`~xdem.DEM.info`, along with basic statistics using `stats=True`:
 
 ```{code-cell} ipython3
 # Print details of raster
@@ -67,11 +67,11 @@ The {class}`~xdem.DEM` data array remains implicitly unloaded until {attr}`~xdem
 The georeferencing metadata ({attr}`~xdem.DEM.transform`, {attr}`~xdem.DEM.crs`, {attr}`~xdem.DEM.nodata`), however, is always loaded. This allows to pass it effortlessly to other objects requiring it for geospatial operations (reproject-match, rasterizing a vector, etc).
 ```
 
-A {class}`~xdem.DEM` is saved to file by calling {func}`~xdem.DEM.save` with a {class}`str` or a {class}`pathlib.Path`.
+A {class}`~xdem.DEM` is saved to file by calling {func}`~xdem.DEM.to_file` with a {class}`str` or a {class}`pathlib.Path`.
 
 ```{code-cell} ipython3
 # Save raster to disk
-dem.save("mydem.tif")
+dem.to_file("mydem.tif")
 ```
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -128,7 +128,7 @@ by calling the function corresponding to the attribute name such as {func}`~xdem
 
 ```{code-cell} ipython3
 # Derive slope using the Zevenberg and Thorne (1987) method
-slope = dem.slope(method="ZevenbergThorne")
+slope = dem.slope(surface_fit="ZevenbergThorne")
 slope.plot(cmap="Reds", cbar_title="Slope (°)")
 ```
 
@@ -136,10 +136,22 @@ slope.plot(cmap="Reds", cbar_title="Slope (°)")
 For the full list of terrain attributes, see the {ref}`terrain-attributes` page.
 ```
 
+## Statistics
+
+The {func}`~xdem.DEM.get_stats` method allows to extract statistical information from a DEM in a dictionary.
+
+- Get all statistics in a dict:
+```{code-cell} ipython3
+dem.get_stats()
+```
+
+The DEM statistics functionalities in xDEM are based on those in GeoUtils.
+For more information on computing statistics, please refer to [GeoUtils' documentation](https://geoutils.readthedocs.io/en/stable/stats.html).
+
 ## Coregistration
 
 3D coregistration is performed with {func}`~xdem.DEM.coregister_3d`, which aligns the
-{class}`~xdem.DEM` to another DEM using a pipeline defined with a {class}`~xdem.coreg.Coreg`
+{class}`~xdem.DEM` to another DEM or EPC using a pipeline defined with a {class}`~xdem.coreg.Coreg`
 object (defaults to horizontal and vertical shifts).
 
 ```{code-cell} ipython3
@@ -148,7 +160,7 @@ filename_tba = xdem.examples.get_path("longyearbyen_tba_dem")
 dem_tba = xdem.DEM(filename_tba)
 
 # Coregister (horizontal and vertical shifts)
-dem_tba_coreg = dem_tba.coregister_3d(dem)
+dem_tba_coreg = dem_tba.coregister_3d(dem, xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift())
 
 # Plot the elevation change of the DEM due to coregistration
 dh_tba = dem_tba - dem_tba_coreg.reproject(dem_tba, silent=True)

@@ -8,5 +8,5 @@ our sister-package [GeoUtils](https://geoutils.readthedocs.io/en/stable/).
 :maxdepth: 2
 
 dem_class
-elevation_point_cloud
+epc_class
 ```

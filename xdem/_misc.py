@@ -17,78 +17,76 @@
 # limitations under the License.
 
 """Small functions for testing, examples, and other miscellaneous uses."""
+
 from __future__ import annotations
 
 import copy
 import functools
+import logging
+import sys
 import warnings
-from typing import Any, Callable
+from typing import Any, Callable, Iterable, TypeVar
 
 from packaging.version import Version
 
-try:
-    import yaml  # type: ignore
-
-    _has_yaml = True
-except ImportError:
-    _has_yaml = False
-
-try:
-    import cv2
-
-    _has_cv2 = True
-except ImportError:
-    _has_cv2 = False
-
-import numpy as np
-
 import xdem
-from xdem._typing import NDArrayf
 
 
-def generate_random_field(
-    shape: tuple[int, int], corr_size: int, random_state: int | np.random.Generator | None = None
-) -> NDArrayf:
+def get_progress(iterable: Any | None = None, **kwargs: Any) -> Any:
     """
-    Generate a semi-random gaussian field (to simulate a DEM or DEM error)
+    Helper function to return a tqdm progress bar if available, otherwise a no-op wrapper.
 
-    :param shape: The output shape of the field.
-    :param corr_size: The correlation size of the field.
-    :param random_state: Seed for random number generator.
+    :param iterable: Optional iterable to pass to tqdm progress bar.
+    :param kwargs: Optional keyword arguments to pass to tqdm progress bar.
 
-    :examples:
-        >>> generate_random_field((4, 5), corr_size=2, random_state=1).round(2)
-        array([[0.74, 0.74, 0.75, 0.75, 0.75],
-               [0.69, 0.69, 0.7 , 0.71, 0.71],
-               [0.51, 0.51, 0.54, 0.57, 0.58],
-               [0.45, 0.47, 0.5 , 0.53, 0.54]])
+    :return: A tqdm progress bar.
+    """
+    try:
+        from tqdm.auto import tqdm
 
-    :returns: A numpy array of semi-random values from 0 to 1
+        if iterable is None:
+            return tqdm
+        return tqdm(iterable, **kwargs)
+
+    except ImportError:
+
+        class FalseTQDM:
+            def __init__(self, iterable: Iterable[TypeVar]) -> None:
+                self.iterable = iterable
+
+            def __iter__(self) -> Iterable[TypeVar]:
+                return iter(self.iterable)
+
+            def write(self, msg: str) -> None:
+                logging.info(msg)
+
+        if iterable is None:
+            # Same as tqdm constructor
+            return lambda x, **kw: FalseTQDM(x)
+
+        return FalseTQDM(iterable)
+
+
+def import_optional(import_name: str, package_name: str | None = None, extra_name: str = "opt") -> Any:
+    """
+    Helper function to consistently import and raise errors for an optional dependency.
+
+    :param import_name: Name of the dependency to import.
+    :param package_name: Name of the package to install (optional, only if different from import name e.g.
+        "pyyaml" package is imported as "import yaml".).
+    :param extra_name: Name of the extra tag to install the optional dependency from GeoUtils.
     """
 
-    rng = np.random.default_rng(random_state)
+    if package_name is None:
+        package_name = import_name
 
-    if not _has_cv2:
-        raise ValueError("Optional dependency needed. Install 'opencv'.")
-
-    field = cv2.resize(
-        cv2.GaussianBlur(
-            np.repeat(
-                np.repeat(
-                    rng.integers(0, 255, (shape[0] // corr_size, shape[1] // corr_size), dtype="uint8"),
-                    corr_size,
-                    axis=0,
-                ),
-                corr_size,
-                axis=1,
-            ),
-            ksize=(2 * corr_size + 1, 2 * corr_size + 1),
-            sigmaX=corr_size,
-        )
-        / 255,
-        dsize=(shape[1], shape[0]),
-    )
-    return field
+    try:
+        return __import__(import_name)
+    except ImportError as e:
+        raise ImportError(
+            f"Optional dependency '{package_name}' required. "
+            f"Install it directly or through: pip install xdem[{extra_name}]."
+        ) from e
 
 
 def deprecate(removal_version: Version = None, details: str = None) -> Callable[[Any], Any]:
@@ -108,7 +106,7 @@ def deprecate(removal_version: Version = None, details: str = None) -> Callable[
     """
 
     def deprecator_func(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
-        @functools.wraps(func)  # type: ignore
+        @functools.wraps(func)
         def new_func(*args: Any, **kwargs: Any) -> Any:
 
             # Get current base version (without dev changes)
@@ -180,14 +178,27 @@ def copy_doc(
         # Replace argument description of dem and resolution (not used in the DEM class, only in terrain)
         if remove_dem_res_params:
 
+            # Get Python version (spaces of docstring are not handled the same way after Python 3.13)
+            pyv = Version(".".join(str(getattr(sys.version_info, v)) for v in ["major", "minor", "micro"]))
+
             # Find and remove them if they exist
             if ":param dem:" in other_doc:
-                dem_section = "\n    :param dem:" + other_doc.split("\n    :param dem:")[1].split("\n")[0]
+                if pyv >= Version("3.13"):
+                    dem_section = "\n:param dem:" + other_doc.split("\n:param dem:")[1].split("\n")[0]
+                else:
+                    dem_section = "\n    :param dem:" + other_doc.split("\n    :param dem:")[1].split("\n")[0]
+
                 other_doc = other_doc.replace(dem_section, "")
             if ":param resolution:" in other_doc:
-                resolution_section = (
-                    "\n    :param resolution:" + other_doc.split("\n    :param resolution:")[1].split("\n")[0]
-                )
+                if pyv >= Version("3.13"):
+                    resolution_section = (
+                        "\n:param resolution:" + other_doc.split("\n:param resolution:")[1].split("\n")[0]
+                    )
+                else:
+                    resolution_section = (
+                        "\n    :param resolution:" + other_doc.split("\n    :param resolution:")[1].split("\n")[0]
+                    )
+
                 other_doc = other_doc.replace(resolution_section, "")
 
         # Remove docstring examples
@@ -212,8 +223,7 @@ def diff_environment_yml(
     :param input_dict: Whether to consider the input as a dict (for testing purposes).
     """
 
-    if not _has_yaml:
-        raise ValueError("Test dependency needed. Install 'pyyaml'.")
+    yaml = import_optional("yaml", package_name="pyyaml")
 
     if not input_dict:
         # Load the yml as dictionaries

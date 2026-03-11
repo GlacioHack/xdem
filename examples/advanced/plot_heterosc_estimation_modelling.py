@@ -59,7 +59,7 @@ df = xdem.spatialstats.nd_binning(
     values=dh_arr,
     list_var=[slope_arr, aspect_arr, planc_arr, profc_arr],
     list_var_names=["slope", "aspect", "planc", "profc"],
-    statistics=["count", xdem.spatialstats.nmad],
+    statistics=["count", gu.stats.nmad],
     list_var_bins=30,
 )
 
@@ -109,7 +109,7 @@ df = xdem.spatialstats.nd_binning(
     values=dh_arr,
     list_var=[profc_arr],
     list_var_names=["profc"],
-    statistics=["count", np.nanmedian, xdem.spatialstats.nmad],
+    statistics=["count", np.nanmedian, gu.stats.nmad],
     list_var_bins=[np.nanquantile(profc_arr, np.linspace(0, 1, 1000))],
 )
 xdem.spatialstats.plot_1d_binning(df, "profc", "nmad", "Profile curvature (100 m$^{-1}$)", "NMAD of dh (m)")
@@ -124,7 +124,7 @@ df = xdem.spatialstats.nd_binning(
     values=dh_arr,
     list_var=[planc_arr],
     list_var_names=["planc"],
-    statistics=["count", np.nanmedian, xdem.spatialstats.nmad],
+    statistics=["count", np.nanmedian, gu.stats.nmad],
     list_var_bins=[np.nanquantile(planc_arr, np.linspace(0, 1, 1000))],
 )
 xdem.spatialstats.plot_1d_binning(df, "planc", "nmad", "Planform curvature (100 m$^{-1}$)", "NMAD of dh (m)")
@@ -138,7 +138,7 @@ df = xdem.spatialstats.nd_binning(
     values=dh_arr,
     list_var=[maxc_arr],
     list_var_names=["maxc"],
-    statistics=["count", np.nanmedian, xdem.spatialstats.nmad],
+    statistics=["count", np.nanmedian, gu.stats.nmad],
     list_var_bins=[np.nanquantile(maxc_arr, np.linspace(0, 1, 1000))],
 )
 xdem.spatialstats.plot_1d_binning(df, "maxc", "nmad", "Maximum absolute curvature (100 m$^{-1}$)", "NMAD of dh (m)")
@@ -156,7 +156,7 @@ df = xdem.spatialstats.nd_binning(
     values=dh_arr,
     list_var=[slope_arr, maxc_arr],
     list_var_names=["slope", "maxc"],
-    statistics=["count", np.nanmedian, xdem.spatialstats.nmad],
+    statistics=["count", np.nanmedian, gu.stats.nmad],
     list_var_bins=30,
 )
 
@@ -200,7 +200,7 @@ df = xdem.spatialstats.nd_binning(
     values=dh_arr,
     list_var=[slope_arr, maxc_arr],
     list_var_names=["slope", "maxc"],
-    statistics=["count", np.nanmedian, xdem.spatialstats.nmad],
+    statistics=["count", np.nanmedian, gu.stats.nmad],
     list_var_bins=[custom_bin_slope, custom_bin_curvature],
 )
 xdem.spatialstats.plot_2d_binning(
@@ -244,9 +244,7 @@ dh_err_stable = unscaled_dh_err_fun((slope_arr, maxc_arr))
 
 print(
     "The spread of elevation difference is {:.2f} "
-    "compared to a mean predicted elevation error of {:.2f}.".format(
-        xdem.spatialstats.nmad(dh_arr), np.nanmean(dh_err_stable)
-    )
+    "compared to a mean predicted elevation error of {:.2f}.".format(gu.stats.nmad(dh_arr), np.nanmean(dh_err_stable))
 )
 
 # %%

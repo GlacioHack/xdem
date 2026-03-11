@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+import logging
 import os
 import re
 
@@ -10,7 +12,7 @@ import yaml  # type: ignore
 from packaging.version import Version
 
 import xdem
-import xdem.misc
+from xdem._misc import deprecate, diff_environment_yml, get_progress
 
 
 class TestMisc:
@@ -45,8 +47,8 @@ class TestMisc:
         diff_conda_check = list(set(conda_dep_env) - set(conda_dep_devenv))
         assert len(diff_conda_check) == 0
 
-    @pytest.mark.parametrize("deprecation_increment", [-1, 0, 1, None])  # type: ignore
-    @pytest.mark.parametrize("details", [None, "It was completely useless!", "dunnowhy"])  # type: ignore
+    @pytest.mark.parametrize("deprecation_increment", [-1, 0, 1, None])
+    @pytest.mark.parametrize("details", [None, "It was completely useless!", "dunnowhy"])
     def test_deprecate(self, deprecation_increment: int | None, details: str | None) -> None:
         """
         Test the deprecation warnings/errors.
@@ -79,7 +81,7 @@ class TestMisc:
             removal_version = None
 
         # Define a function with no use that is marked as deprecated.
-        @xdem.misc.deprecate(removal_version, details=details)  # type: ignore
+        @deprecate(removal_version, details=details)
         def useless_func() -> int:
             return 1
 
@@ -120,49 +122,85 @@ class TestMisc:
 
         # Test with synthetic environment
         env = {"dependencies": ["python==3.9", "numpy", "pandas"]}
-        devenv = {"dependencies": ["python==3.9", "numpy", "pandas", "opencv"]}
+        devenv = {"dependencies": ["python==3.9", "numpy", "pandas", "otherdep"]}
 
         # This should print the difference between the two
-        xdem.misc.diff_environment_yml(env, devenv, input_dict=True, print_dep="conda")
+        diff_environment_yml(env, devenv, input_dict=True, print_dep="conda")
 
         # Capture the stdout and check it is indeed the right diff
         captured = capsys.readouterr().out
-        assert captured == "opencv\n"
+        assert captured == "otherdep\n"
 
         # This should print the difference including pip
-        xdem.misc.diff_environment_yml(env, devenv, input_dict=True, print_dep="both")
+        diff_environment_yml(env, devenv, input_dict=True, print_dep="both")
 
         captured = capsys.readouterr().out
-        assert captured == "opencv\nNone\n"
+        assert captured == "otherdep\nNone\n"
 
         env2 = {"dependencies": ["python==3.9", "numpy", "pandas"]}
-        devenv2 = {"dependencies": ["python==3.9", "numpy", "pandas", "opencv", {"pip": ["geoutils", "-e ./"]}]}
+        devenv2 = {"dependencies": ["python==3.9", "numpy", "pandas", "otherdep", {"pip": ["geoutils", "-e ./"]}]}
 
         # The diff function should not account for -e ./ that is the local install for developers
-        xdem.misc.diff_environment_yml(env2, devenv2, input_dict=True, print_dep="both")
+        diff_environment_yml(env2, devenv2, input_dict=True, print_dep="both")
         captured = capsys.readouterr().out
 
-        assert captured == "opencv\ngeoutils\n"
+        assert captured == "otherdep\ngeoutils\n"
 
         # This should print only pip
-        xdem.misc.diff_environment_yml(env2, devenv2, input_dict=True, print_dep="pip")
+        diff_environment_yml(env2, devenv2, input_dict=True, print_dep="pip")
         captured = capsys.readouterr().out
 
         assert captured == "geoutils\n"
 
         # This should raise an error because print_dep is not well defined
         with pytest.raises(ValueError, match='The argument "print_dep" can only be "conda", "pip" or "both".'):
-            xdem.misc.diff_environment_yml(env2, devenv2, input_dict=True, print_dep="lol")
+            diff_environment_yml(env2, devenv2, input_dict=True, print_dep="lol")
 
         # When the dependencies are not defined in dev-env but in env, it should raise an error
         # For normal dependencies
         env3 = {"dependencies": ["python==3.9", "numpy", "pandas", "lol"]}
-        devenv3 = {"dependencies": ["python==3.9", "numpy", "pandas", "opencv", {"pip": ["geoutils"]}]}
+        devenv3 = {"dependencies": ["python==3.9", "numpy", "pandas", "otherdep", {"pip": ["geoutils"]}]}
         with pytest.raises(ValueError, match="The following dependencies are listed in env but not dev-env: lol"):
-            xdem.misc.diff_environment_yml(env3, devenv3, input_dict=True, print_dep="pip")
+            diff_environment_yml(env3, devenv3, input_dict=True, print_dep="pip")
 
         # For pip dependencies
         env4 = {"dependencies": ["python==3.9", "numpy", "pandas", {"pip": ["lol"]}]}
-        devenv4 = {"dependencies": ["python==3.9", "numpy", "pandas", "opencv", {"pip": ["geoutils"]}]}
+        devenv4 = {"dependencies": ["python==3.9", "numpy", "pandas", "otherdep", {"pip": ["geoutils"]}]}
         with pytest.raises(ValueError, match="The following pip dependencies are listed in env but not dev-env: lol"):
-            xdem.misc.diff_environment_yml(env4, devenv4, input_dict=True, print_dep="pip")
+            diff_environment_yml(env4, devenv4, input_dict=True, print_dep="pip")
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("tqdm") is not None,
+        reason="Only runs if tqdm is missing",
+    )
+    def test_get_progress_without_tqdm(self, caplog: logging.caplog) -> None:
+        """
+        Test that get_progress returns a compatible FalseTQDM object
+        when tqdm is not available.
+        """
+
+        caplog.set_level(logging.INFO)
+
+        iterable = range(3)
+        pbar = get_progress(iterable)
+
+        # Test FalseTQDM class
+        assert list(pbar) == [0, 1, 2]
+        assert hasattr(pbar, "write")
+        pbar.write("test message")
+        assert "test message" in caplog.text
+
+    def test_get_progress_with_tqdm(self) -> None:
+        """
+        Test that get_progress returns a tqdm object
+        when tqdm is installed.
+        """
+        try:
+            from tqdm.auto import tqdm
+        except ImportError:
+            pytest.importorskip("tqdm")
+
+        iterable = range(3)
+        pbar = get_progress(iterable)
+
+        assert isinstance(pbar, tqdm)

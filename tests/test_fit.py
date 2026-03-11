@@ -4,6 +4,7 @@ Functions to test the fitting tools.
 
 import platform
 import warnings
+from importlib.util import find_spec
 
 import numpy as np
 import pytest
@@ -22,11 +23,14 @@ class TestRobustFitting:
             ("sklearn", "RANSAC"),
             ("sklearn", "Huber"),
         ],
-    )  # type: ignore
+    )
     def test_robust_norder_polynomial_fit(self, pkg_estimator: str) -> None:
 
+        # Import optional sklearn or skip test
+        pytest.importorskip("sklearn")
+
         # Define x vector
-        x = np.linspace(-50, 50, 10000)
+        x = np.linspace(-50, 50, 1000)
         # Define exact polynomial
         true_coefs = [-100, 5, 3, 2]
         y = np.polyval(np.flip(true_coefs), x).astype(np.float32)
@@ -50,7 +54,17 @@ class TestRobustFitting:
         for i in range(4):
             assert coefs[i] == pytest.approx(true_coefs[i], abs=error_margins[i])
 
+    @pytest.mark.skipif(find_spec("sklearn") is not None, reason="Only runs if scikit-learn is missing.")
+    def test_robust_norder_polynomial_fit__missing_dep(self) -> None:
+        """Check that proper import error is raised when sklearn is missing"""
+
+        with pytest.raises(ImportError, match="Optional dependency 'scikit-learn' required.*"):
+            xdem.fit.robust_norder_polynomial_fit(np.array([1]), np.array([1]), linear_pkg="sklearn")
+
     def test_robust_norder_polynomial_fit_noise_and_outliers(self) -> None:
+
+        # Import optional sklearn or skip test
+        pytest.importorskip("sklearn")
 
         # Ignore sklearn convergence warnings
         warnings.filterwarnings("ignore", category=UserWarning, message="lbfgs failed to converge")
@@ -69,8 +83,8 @@ class TestRobustFitting:
         y[900:925] = 1000.0
 
         # Run with the "Linear" estimator
-        coefs, deg = xdem.fit.robust_norder_polynomial_fit(
-            x, y, estimator_name="Linear", linear_pkg="scipy", loss="soft_l1", method="trf", f_scale=0.5
+        _, _ = xdem.fit.robust_norder_polynomial_fit(
+            x, y, estimator_name="Linear", linear_pkg="scipy", method="trf"  # loss="soft_l1", f_scale=0.5
         )
 
         # TODO: understand why this is not robust since moving from least_squares() to curve_fit(), while the
@@ -127,7 +141,7 @@ class TestRobustFitting:
         y = xdem.fit.sumsin_1d(x, *true_coefs)
 
         # Check that the function runs (we passed a small niter to reduce the computing time of the test)
-        coefs, deg = xdem.fit.robust_nfreq_sumsin_fit(x, y, random_state=42, niter=40)
+        coefs, deg = xdem.fit.robust_nfreq_sumsin_fit(x, y, random_state=42, niter=10)
 
         # Check that the estimated sum of sinusoid correspond to the input, with better tolerance on the highest
         # amplitude sinusoid

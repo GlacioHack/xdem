@@ -1,0 +1,288 @@
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Topo class from workflows.
+"""
+
+import logging
+import math
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict
+
+import xdem
+from xdem._misc import import_optional
+from xdem.workflows.schemas import TOPO_SCHEMA
+from xdem.workflows.workflows import _ALIAS, Workflows
+
+
+class Topo(Workflows):
+    """
+    Topo class from workflows.
+    """
+
+    def __init__(self, config_dem: str | Dict[str, Any], output: str | None = None) -> None:
+        """
+        Initialize Topo class
+        :param config_dem: Path to a user configuration file
+        """
+
+        yaml = import_optional("yaml", package_name="pyyaml")
+
+        self.elapsed: float | None = None
+        self.schema = TOPO_SCHEMA
+
+        super().__init__(config_dem, output)
+
+        self.config_attributes = self.config["terrain_attributes"]
+        if isinstance(self.config_attributes, dict):
+            self.list_attributes = list(self.config_attributes.keys())
+        else:
+            self.list_attributes = self.config_attributes
+
+        yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
+        Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
+
+        self.config = self.remove_none(self.config)  # type: ignore
+
+    def _load_data(self) -> None:
+        """
+        Load data defined in config file.
+        """
+
+        self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
+        self.generate_plot(
+            self.dem,
+            filename="elev_map",
+            title="Elevation",
+            cbar_title=f"Elevation ({self.dem.crs.linear_units})",
+        )
+
+        if self.inlier_mask is not None:
+            inlier_mask_crop = self.inlier_mask.reproject(self.dem).crop(self.dem)
+            self.dem.set_mask(~inlier_mask_crop)
+            self.generate_plot(
+                self.dem,
+                title="Masked elevation",
+                filename="masked_elev_map",
+                cbar_title=f"Elevation ({self.dem.crs.linear_units})",
+            )
+
+    def generate_terrain_attributes_tiff(self) -> None:
+        """
+        Generate terrain attributes tiff
+        """
+
+        attribute_extra = {}
+
+        from_str_to_fun = {
+            "slope": lambda: self.dem.slope(**attribute_extra),
+            "aspect": lambda: self.dem.aspect(**attribute_extra),
+            "hillshade": lambda: self.dem.hillshade(**attribute_extra),
+            "profile_curvature": lambda: self.dem.profile_curvature(**attribute_extra),
+            "tangential_curvature": lambda: self.dem.tangential_curvature(**attribute_extra),
+            "planform_curvature": lambda: self.dem.planform_curvature(**attribute_extra),
+            "flowline_curvature": lambda: self.dem.flowline_curvature(**attribute_extra),
+            "max_curvature": lambda: self.dem.max_curvature(**attribute_extra),
+            "min_curvature": lambda: self.dem.min_curvature(**attribute_extra),
+            "topographic_position_index": lambda: self.dem.topographic_position_index(**attribute_extra),
+            "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(**attribute_extra),
+            "roughness": lambda: self.dem.roughness(**attribute_extra),
+            "rugosity": lambda: self.dem.rugosity(**attribute_extra),
+            "texture_shading": lambda: self.dem.texture_shading(**attribute_extra),
+            "fractal_roughness": lambda: self.dem.fractal_roughness(**attribute_extra),
+        }
+        for attr in self.list_attributes:
+            if isinstance(self.config_attributes, dict):
+                attribute_extra = self.config_attributes.get(attr).get("extra_information", {})  # type: ignore
+            attribute = from_str_to_fun[attr]()
+            logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
+            attribute.to_file(self.outputs_folder / "rasters" / f"{attr}.tif")
+
+    def generate_terrain_attributes_png(self) -> None:
+        """
+        Generates an image png containing the plots of the terrain attributes requested by the user.
+        :return: None
+        """
+
+        logging.info(f"Computing attributes : {self.list_attributes}")
+
+        attributes = xdem.terrain.get_terrain_attribute(
+            self.dem,
+            attribute=self.list_attributes,
+        )
+
+        n = len(attributes)
+
+        ncols = 2
+        nrows = math.ceil(n / ncols)
+        unit = self.dem.crs.linear_units
+        attribute_params: dict[str, dict[str, Any]] = {
+            "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (0, 255)},
+            "texture_shading": {"label": "Texture shading", "cmap": "Greys_r", "vlim": (-20, 20)},
+            "slope": {"label": "Slope (°)", "cmap": "Reds", "vlim": (0, 90)},
+            "aspect": {"label": "Aspect (°)", "cmap": "twilight", "vlim": (0, 360)},
+            "profile_curvature": {"label": f"Profile curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "tangential_curvature": {"label": f"Tangential curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "planform_curvature": {"label": f"Planform curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "flowline_curvature": {"label": f"Flowline curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "max_curvature": {"label": f"Max. curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "min_curvature": {"label": f"Min. curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
+            "terrain_ruggedness_index": {"label": "Terrain Ruggedness Index", "cmap": "Purples", "vlim": (None, None)},
+            "rugosity": {"label": "Rugosity", "cmap": "YlOrRd", "vlim": (None, None)},
+            "topographic_position_index": {
+                "label": f"Topographic position index ({unit})",
+                "cmap": "Spectral",
+                "vlim": (None, None),
+            },
+            "roughness": {"label": f"Roughness ({self.dem.crs.linear_units})", "cmap": "Oranges", "vlim": (None, None)},
+            "fractal_dimension": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
+        }
+
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
+
+        fig, axes = plt.subplots(nrows, ncols)
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
+
+        axes = axes.flatten()
+        for i, attr in enumerate(self.list_attributes):
+
+            ax = axes[i]
+            params = attribute_params[attr]
+            cmap = params["cmap"]
+            label = params["label"]
+            vmin, vmax = params["vlim"]
+            attributes[i].plot(ax=ax, cmap=cmap, vmin=vmin, vmax=vmax, cbar_title=label)
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+        [fig.delaxes(ax) for ax in axes.flatten() if not ax.has_data()]
+        plt.tight_layout()
+        plt.savefig(self.outputs_folder / "plots" / "terrain_attributes_map.png", dpi=300)
+        plt.close()
+
+    def run(self) -> None:
+        """
+        Run function for the topography workflow.
+        :return: None
+        """
+
+        t0 = time.time()
+
+        self._load_data()
+
+        # Global information
+        dem_informations = {
+            "Driver": self.dem.driver,
+            "Filename": self.dem.filename,
+            "Grid size": self.dem.vcrs_grid,
+            "Number of band": self.dem.bands,
+            "Data types": self.dem.dtype,
+            "Nodata Value": self.dem.nodata,
+            "Pixel interpretation": self.dem.area_or_point,
+            "Pixel size": self.dem.res,
+            "Width": self.dem.width,
+            "Height": self.dem.height,
+            "Transform": self.dem.transform,
+            "Bounds": self.dem.bounds,
+        }
+        self.dico_to_show.append(("Elevation information", dem_informations))
+
+        # Statistics
+        list_metrics = self.config["statistics"]
+        if list_metrics is not None:
+            stats_dem = self.dem.get_stats(list_metrics)
+            stats_dem = {_ALIAS.get(k, k): v for k, v in stats_dem.items()}
+            self.save_stat_as_csv(stats_dem, "stats_elev")
+            self.dico_to_show.append(("Statistics", self.floats_process(stats_dem)))
+            logging.info(f"Computing metrics on reference elevation: {list_metrics}")
+
+        # Terrain attributes
+        if self.list_attributes is not None:
+            self.generate_terrain_attributes_png()
+            if self.level > 1:
+                self.generate_terrain_attributes_tiff()
+        else:
+            logging.info("Computing terrain attributes: None")
+
+        t1 = time.time()
+        self.elapsed = t1 - t0
+
+        self.create_html(self.dico_to_show)
+
+        # Remove empty folder
+        for folder in self.outputs_folder.rglob("*"):
+            if folder.is_dir():
+                try:
+                    folder.rmdir()
+                except OSError:
+                    pass
+
+    def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
+        """
+        Create HTML page from png files and table
+        :param list_dict: list containing tuples of title and various dictionaries
+        :return: None
+        """
+
+        html = "<html>\n<head><meta charset='UTF-8'><title>Topographic summary results</title></head>\n<body>\n"
+
+        # Title and version/date/time summary
+        html += "<h1>Topography summary report — xDEM</h1>\n"
+
+        html += f"<p>xDEM version: {xdem.__version__}</p>"
+        html += f"<p>Date: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</p>"
+        html += f"<p>Computing time: {self.elapsed:.2f} seconds</p>"
+
+        html += "<h2>Elevation input</h2>\n"
+        html += "<img src='plots/elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+
+        if self.inlier_mask is not None:
+            html += "<h2>Masked elevation data</h2>\n"
+            html += "<img src='plots/masked_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+
+        for title, dictionary in list_dict:
+            html += "<div style='clear: both; margin-bottom: 30px;'>\n"  # type: ignore
+            html += f"<h2>{title}</h2>\n"
+            html += "<table border='1' cellspacing='0' cellpadding='5'>\n"
+            html += "<tr><th>Information</th><th>Value</th></tr>\n"
+            for key, val in dictionary.items():
+                if "statistics" in title.lower():
+                    html += f"<tr><td>{key}</td><td>{self.format_values_stats(key, val)}</td></tr>\n"
+                else:
+                    html += f"<tr><td>{key}</td><td>{val}</td></tr>\n"
+            html += "</table>\n"
+            html += "</div>\n"
+
+        html += "<h2>Terrain attributes</h2>\n"
+        html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+
+        html += "</body>\n</html>"
+
+        with open(self.outputs_folder / "report.html", "w", encoding="utf-8") as f:
+            f.write(html)

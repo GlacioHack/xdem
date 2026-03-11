@@ -1,0 +1,81 @@
+name: verify-report
+
+on: pull_request
+
+jobs:
+  verify-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install package with optional dependencies
+        run: pip install -e .[opt]
+
+      - name: Trigger xDEM example data download
+        run: python -c "import xdem; xdem.examples.get_path('longyearbyen_ref_dem')"
+
+      - name: Verify reports for documentation are up to date
+        shell: bash
+        run: |
+          cd doc/source/_workflows
+
+          # Function to normalize HTML before comparison
+          normalize_html() {
+            # Strip volatile fields and whitespace
+            sed -E '
+              s|<p>xDEM version:.*</p>||g
+              s|<p>Date:.*</p>||g
+              s|<p>Computing time:.*</p>||g
+              s/^[[:space:]]+//g
+              s/[[:space:]]+$//g
+            ' "$1" | grep -v '^$'
+          }
+
+          set -euo pipefail
+
+          failures=()
+
+          check_report () {
+            name="$1"
+            cmd="$2"
+            expected="$3"
+
+            echo "Checking report: $name"
+            echo "1/ Running workflow:"
+            eval "$cmd"
+            echo "2/ Analyzing differences in HTML file:"
+
+            if ! diff -u \
+              <(normalize_html "$expected") \
+              <(normalize_html "outputs_${name}/report.html"); then
+              failures+=("$name")
+              echo "::error::Report '$name' is out of date (ignoring version/date metadata)."
+              echo "::error::Run:"
+              echo "::error::  cd doc/source/_workflows"
+              echo "::error::  xdem $name --config ${name}_config.yaml"
+            else
+              echo "No difference found!"
+            fi
+          }
+
+          check_report \
+            "accuracy" \
+            "xdem accuracy --config accuracy_config.yaml --output test_accuracy" \
+            "test_accuracy/report.html"
+
+          check_report \
+            "topo" \
+            "xdem topo --config topo_config.yaml --output test_topo" \
+            "test_topo/report.html"
+
+          if (( ${#failures[@]} > 0 )); then
+            echo ""
+            echo "The following reports are out of date:"
+            for r in "${failures[@]}"; do
+              echo "  - $r"
+            echo "See error output above to re-generate them."
+            done
+            exit 1
+          fi
+
+          echo "All reports are up to date."

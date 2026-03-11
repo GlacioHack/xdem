@@ -19,13 +19,13 @@ import geoutils as gu
 # sphinx_gallery_thumbnail_number = 4
 import matplotlib.pyplot as plt
 import numpy as np
+from geoutils.stats import nmad
 
 import xdem
-from xdem.spatialstats import nmad
 
 # %%
 # We start by estimating the elevation heteroscedasticity and deriving a terrain-dependent measurement error as a function of both
-# slope and maximum curvature, as shown in the :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py` example.
+# slope and max curvature, as shown in the :ref:`sphx_glr_basic_examples_plot_infer_heterosc.py` example.
 
 # Load the data
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
@@ -33,7 +33,7 @@ dh = xdem.DEM(xdem.examples.get_path("longyearbyen_ddem"))
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 mask_glacier = glacier_outlines.create_mask(dh)
 
-# Compute the slope and maximum curvature
+# Compute the slope and max curvature
 slope, planc, profc = xdem.terrain.get_terrain_attribute(
     dem=ref_dem, attribute=["slope", "planform_curvature", "profile_curvature"]
 )
@@ -46,7 +46,7 @@ profc_arr = profc[~mask_glacier].filled(np.nan)
 maxc_arr = np.maximum(np.abs(planc_arr), np.abs(profc_arr))
 
 # Remove large outliers
-dh_arr[np.abs(dh_arr) > 4 * xdem.spatialstats.nmad(dh_arr)] = np.nan
+dh_arr[np.abs(dh_arr) > 4 * gu.stats.nmad(dh_arr)] = np.nan
 
 # Define bins for 2D binning
 custom_bin_slope = np.unique(

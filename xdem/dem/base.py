@@ -1,4 +1,4 @@
-# Copyright (c) 2024 xDEM developers
+# Copyright (c) 2025 xDEM developers
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -16,28 +16,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module for the DEMBase class, parent of the DEM class and 'dem' Xarray accessor."""
+"""Module of DEMBase class, parent of DEM class and 'dem' accessor."""
+
 from __future__ import annotations
 
 import pathlib
 import warnings
-from typing import Any, Callable, Literal, overload, TypeVar
+from typing import Any, Callable, Literal, overload
 
 import geopandas as gpd
+import geoutils as gu
 import numpy as np
-
-from geoutils.raster import Mask, RasterType
+import rasterio as rio
+from affine import Affine
+from geoutils import profiler
+from geoutils._typing import NDArrayNum
+from geoutils.raster.base import RasterBase
+from geoutils.multiproc import MultiprocConfig
+from geoutils.stats import nmad
 from pyproj import CRS
 from pyproj.crs import CompoundCRS, VerticalCRS
-from skgstat import Variogram
 
+import xdem
 from xdem import coreg, terrain
+from xdem._misc import copy_doc
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
-from xdem.misc import copy_doc
+from xdem.coreg import Coreg
 from xdem.spatialstats import (
     infer_heteroscedasticity_from_stable,
     infer_spatial_correlation_from_stable,
-    nmad,
 )
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
@@ -46,9 +53,8 @@ from xdem.vcrs import (
     _vcrs_from_user_input,
 )
 
-from geoutils.raster.base import RasterBase
+dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
 
-DEMType = TypeVar("DEMType", bound="DEMBase")
 
 class DEMBase(RasterBase):
     """
@@ -63,11 +69,9 @@ class DEMBase(RasterBase):
         Initialize additional DEM metadata as None, for it to be overridden in sublasses.
         """
 
-        super().__init__()
         self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
         self._vcrs_name: str | None = None
         self._vcrs_grid: str | None = None
-        # Override data type to always be floating?
         self._data: NDArrayf
 
     @property
@@ -100,9 +104,8 @@ class DEMBase(RasterBase):
         return vcrs_name
 
     def set_vcrs(
-            self,
-            new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal[
-                "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        self,
+        new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int,
     ) -> None:
         """
         Set the vertical coordinate reference system of the DEM.
@@ -129,58 +132,43 @@ class DEMBase(RasterBase):
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-                           | str
-                           | pathlib.Path
-                           | VerticalCRS
-                           | int
-                           | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         *,
         inplace: Literal[False] = False,
-    ) -> DEMType:
-        ...
+    ) -> DEM: ...
 
     @overload
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-                           | str
-                           | pathlib.Path
-                           | VerticalCRS
-                           | int
-                           | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         *,
         inplace: Literal[True],
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @overload
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-                           | str
-                           | pathlib.Path
-                           | VerticalCRS
-                           | int
-                           | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         *,
         inplace: bool = False,
-    ) -> DEMType | None:
-        ...
+    ) -> DEM | None: ...
 
     def to_vcrs(
         self,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"]
-                           | str
-                           | pathlib.Path
-                           | VerticalCRS
-                           | int
-                           | None = None,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
         inplace: bool = False,
-    ) -> DEMType | None:
+    ) -> DEM | None:
         """
         Convert the DEM to another vertical coordinate reference system.
 
@@ -234,116 +222,219 @@ class DEMBase(RasterBase):
             return None
         # Otherwise, return new DEM
         else:
-            new_dem = self.from_array(
+            return DEM.from_array(
                 data=new_data,
                 transform=self.transform,
                 crs=self.crs,
                 nodata=self.nodata,
                 area_or_point=self.area_or_point,
                 tags=self.tags,
+                vcrs=vcrs,
                 cast_nodata=False,
             )
-            if self._is_xr:
-                new_dem.dem.set_vcrs(vcrs)
-            else:
-                new_dem.set_vcrs(vcrs)
-            return new_dem
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def slope(self, method: str = "Horn", degrees: bool = True) -> RasterType:
-        slope = terrain.slope(dem=self.data, resolution=self.res, method=method, degrees=degrees)
-        return self.copy(new_array=slope)
+    def slope(
+        self,
+        method: Literal["Horn", "ZevenbergThorne"] = None,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+        degrees: bool = True,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
+        # Deprecating method
+        if method is not None:
+            warnings.warn(
+                "'method' is deprecated, use 'surface_fit' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            surface_fit = method  # override
+            method = None
+
+        return terrain.slope(self, surface_fit=surface_fit, degrees=degrees, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def aspect(
-            self,
-            method: str = "Horn",
-            degrees: bool = True,
+        self,
+        method: Literal["Horn", "ZevenbergThorne"] = None,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+        degrees: bool = True,
+        mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        aspect = terrain.aspect(self.data, method=method, degrees=degrees)
-        return self.copy(new_array=aspect)
+        # Deprecating method
+        if method is not None:
+            warnings.warn(
+                "'method' is deprecated, use 'surface_fit' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            surface_fit = method  # override
+            method = None
+
+        return terrain.aspect(self, surface_fit=surface_fit, degrees=degrees, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def hillshade(
-            self, method: str = "Horn", azimuth: float = 315.0, altitude: float = 45.0, z_factor: float = 1.0
+        self,
+        method: Literal["Horn", "ZevenbergThorne"] = None,
+        surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
+        azimuth: float = 315.0,
+        altitude: float = 45.0,
+        z_factor: float = 1.0,
+        mp_config: MultiprocConfig | None = None,
     ) -> RasterType:
 
-        hillshade = terrain.hillshade(self.data, resolution=self.res, method=method, azimuth=azimuth, altitude=altitude, z_factor=z_factor)
-        return self.copy(new_array=hillshade)
+        # Deprecating method
+        if method is not None:
+            warnings.warn(
+                "'method' is deprecated, use 'surface_fit' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            surface_fit = method  # override
+            method = None
+
+        return terrain.hillshade(
+            self,
+            surface_fit=surface_fit,
+            azimuth=azimuth,
+            altitude=altitude,
+            z_factor=z_factor,
+            mp_config=mp_config,
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def curvature(self) -> RasterType:
+    def curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
-        curv = terrain.curvature(self.data, resolution=self.res)
-        return self.copy(new_array=curv)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def planform_curvature(self) -> RasterType:
-
-        plan_curv = terrain.planform_curvature(self.data, resolution=self.res)
-        return self.copy(new_array=plan_curv)
+        return terrain.curvature(self, surface_fit=surface_fit, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def profile_curvature(self) -> RasterType:
+    def profile_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
-        prof_curv = terrain.profile_curvature(self.data, resolution=self.res)
-        return self.copy(new_array=prof_curv)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def maximum_curvature(self) -> RasterType:
-
-        max_curv = terrain.maximum_curvature(self.data, resolution=self.res)
-        return self.copy(new_array=max_curv)
+        return terrain.profile_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def topographic_position_index(self, window_size: int = 3) -> RasterType:
+    def tangential_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
-        tpi = terrain.topographic_position_index(self.data, window_size=window_size)
-        return self.copy(new_array=tpi)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def terrain_ruggedness_index(self, method: str = "Riley", window_size: int = 3) -> RasterType:
-
-        tri = terrain.terrain_ruggedness_index(self.data, method=method, window_size=window_size)
-        return self.copy(new_array=tri)
+        return terrain.tangential_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def roughness(self, window_size: int = 3) -> RasterType:
+    def planform_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
-        roughness = terrain.roughness(self.data, window_size=window_size)
-        return self.copy(new_array=roughness)
-
-    @copy_doc(terrain, remove_dem_res_params=True)
-    def rugosity(self) -> RasterType:
-
-        rugosity = terrain.rugosity(self.data, resolution=self.res)
-        return self.copy(new_array=rugosity)
+        return terrain.planform_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def fractal_roughness(self, window_size: int = 13) -> RasterType:
+    def flowline_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
 
-        frac_roughness = terrain.fractal_roughness(self.data, window_size=window_size)
-        return self.copy(new_array=frac_roughness)
+        return terrain.flowline_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def max_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.max_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def min_curvature(
+        self,
+        surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
+        curv_method: Literal["geometric", "directional"] = "geometric",
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.min_curvature(self, surface_fit=surface_fit, curv_method=curv_method, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def topographic_position_index(
+        self,
+        window_size: int = 3,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.topographic_position_index(self, window_size=window_size, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def terrain_ruggedness_index(
+        self,
+        method: Literal["Riley", "Wilson"] = "Riley",
+        window_size: int = 3,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.terrain_ruggedness_index(self, method=method, window_size=window_size, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def roughness(self, window_size: int = 3, mp_config: MultiprocConfig | None = None) -> RasterType:
+
+        return terrain.roughness(self, window_size=window_size, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def rugosity(self, mp_config: MultiprocConfig | None = None) -> RasterType:
+
+        return terrain.rugosity(self, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def fractal_roughness(self, window_size: int = 13, mp_config: MultiprocConfig | None = None) -> RasterType:
+
+        return terrain.fractal_roughness(self, window_size=window_size, mp_config=mp_config)
+
+    @copy_doc(terrain, remove_dem_res_params=True)
+    def texture_shading(
+        self,
+        alpha: float = 0.8,
+        mp_config: MultiprocConfig | None = None,
+    ) -> RasterType:
+
+        return terrain.texture_shading(
+            self,
+            alpha=alpha,
+            mp_config=mp_config,
+        )
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
-        attrs = terrain.get_terrain_attribute(self.data, attribute=attribute, resolution=self.res, **kwargs)
+        return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
-        if isinstance(attrs, list):
-            return [self.copy(new_array=a) for a in attrs]
-        else:
-            return self.copy(new_array=attrs)
-
-    def coregister_3d(
-            self,
-            reference_elev: DEMType | gpd.GeoDataFrame,
-            coreg_method: coreg.Coreg = None,
-            inlier_mask: Mask | NDArrayb = None,
-            bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
-            **kwargs: Any,
-    ) -> DEMType:
+    @profiler.profile("xdem.dem.coregister_3d", memprof=True)
+    def coregister_3d(  # type: ignore
+        self,
+        reference_elev: DEM | gpd.GeoDataFrame | xdem.EPC,
+        coreg_method: coreg.Coreg,
+        inlier_mask: Raster | NDArrayb = None,
+        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
+        random_state: int | np.random.Generator | None = None,
+        **kwargs,
+    ) -> DEM:
         """
         Coregister DEM to a reference DEM in three dimensions.
 
@@ -354,38 +445,47 @@ class DEMBase(RasterBase):
         :param coreg_method: Coregistration method or pipeline.
         :param inlier_mask: Optional. 2D boolean array or mask of areas to include in the analysis (inliers=True).
         :param bias_vars: Optional, only for some bias correction methods. 2D array or rasters of bias variables used.
+        :param random_state: Random state or seed number to use for subsampling and optimizer.
+        :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, only \
+            the array/transform will be updated (if possible) and no resampling is done. \
+            Useful to avoid spreading data gaps.
         :param kwargs: Keyword arguments passed to Coreg.fit().
 
-        :return: Coregistered DEM.
+        :return: Coregistered DEM
         """
 
-        if coreg_method is None:
-            coreg_method = coreg.NuthKaab()
+        src_dem = self.copy()
 
-        coreg_method.fit(
-            reference_elev=reference_elev,
-            to_be_aligned_elev=self,
+        # Check inputs
+        if not isinstance(coreg_method, Coreg):
+            raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
+
+        aligned_dem = coreg_method.fit_and_apply(
+            reference_elev,
+            src_dem,
             inlier_mask=inlier_mask,
+            random_state=random_state,
             bias_vars=bias_vars,
             **kwargs,
         )
-        return coreg_method.apply(self)  # type: ignore
+
+        return aligned_dem
 
     def estimate_uncertainty(
-            self,
-            other_elev: DEMType | gpd.GeoDataFrame,
-            stable_terrain: Mask | NDArrayb = None,
-            approach: Literal["H2022", "R2009", "Basic"] = "H2022",
-            precision_of_other: Literal["finer"] | Literal["same"] = "finer",
-            spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
-            variogram_estimator: Literal["matheron", "cressie", "genton", "dowd"] = "dowd",
-            list_vars: tuple[RasterType | str, ...] = ("slope", "maximum_curvature"),
-            list_vario_models: str | tuple[str, ...] = ("gaussian", "spherical"),
-            z_name: str = "z",
-            random_state: int | np.random.Generator | None = None,
-    ) -> tuple[RasterType, Variogram]:
+        self,
+        other_elev: DEM | gpd.GeoDataFrame,
+        stable_terrain: Raster | NDArrayb = None,
+        approach: Literal["H2022", "R2009", "Basic"] = "H2022",
+        precision_of_other: Literal["finer"] | Literal["same"] = "finer",
+        spread_estimator: Callable[[NDArrayf], np.floating[Any]] = nmad,
+        variogram_estimator: Literal["matheron", "cressie", "genton", "dowd"] = "dowd",
+        list_vars: tuple[RasterType | str, ...] = ("slope", "max_curvature"),
+        list_vario_models: str | tuple[str, ...] = ("gaussian", "spherical"),
+        z_name: str = "z",
+        random_state: int | np.random.Generator | None = None,
+    ) -> tuple[RasterType, Callable[[NDArrayf], NDArrayf]]:
         """
-        Estimate uncertainty of DEM.
+        Estimate the uncertainty of DEM.
 
         Derives either a map of variable errors (based on slope and curvature by default) and a function describing the
         spatial correlation of error (between 0 and 1) with spatial lag (distance between observations).
@@ -396,7 +496,7 @@ class DEMBase(RasterBase):
 
         :param other_elev: Other elevation dataset to use for estimation, either of finer or similar precision for
             reliable estimates.
-        :param stable_terrain: Mask of stable terrain to use as error proxy.
+        :param stable_terrain: Raster of stable terrain to use as error proxy.
         :param approach: Whether to use Hugonnet et al., 2022 (variable errors, multiple ranges of error correlation),
             or Rolstad et al., 2009 (constant error, multiple ranges of error correlation), or a basic approach
             (constant error, single range of error correlation). Note that all approaches use robust estimators of
@@ -409,10 +509,12 @@ class DEMBase(RasterBase):
         :param variogram_estimator: Estimator for empirical variogram, defaults to Dowd for robustness and consistency
             with the NMAD estimator for the spread.
         :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+        :param random_state: Random state or seed number to use for subsampling and optimizer.
         :param list_vars: Variables to use to predict error variability (= elevation heteroscedasticity). Either rasters
             or names of a terrain attributes. Defaults to slope and maximum curvature of the DEM.
         :param list_vario_models: Variogram forms to model the spatial correlation of error. A list translates into
             a sum of models. Uses three by default for a method allowing multiple correlation range, otherwise one.
+        :param random_state: State or seed to use for randomization.
 
         :return: Uncertainty raster, Variogram of uncertainty correlation.
         """
@@ -425,7 +527,7 @@ class DEMBase(RasterBase):
         }
 
         # Elevation change with the other DEM or elevation point cloud
-        if isinstance(other_elev, DEMBase):
+        if isinstance(other_elev, DEM):
             dh = other_elev.reproject(self, silent=True) - self
         elif isinstance(other_elev, gpd.GeoDataFrame):
             other_elev = other_elev.to_crs(self.crs)
@@ -440,9 +542,9 @@ class DEMBase(RasterBase):
         if precision_of_other == "same":
             dh /= np.sqrt(2)
 
-        # If approach allows heteroscedasticity, derive a map of errors
+        # If the approach allows heteroscedasticity, derive a map of errors
         if approach_dict[approach]["heterosc"]:
-            # Derive terrain attributes of DEM if string are passed in the list of variables
+            # Derive terrain attributes of DEM if string is passed in the list of variables
             list_var_rast = []
             for var in list_vars:
                 if isinstance(var, str):
@@ -452,7 +554,10 @@ class DEMBase(RasterBase):
 
             # Estimate variable error from these variables
             sig_dh = infer_heteroscedasticity_from_stable(
-                dvalues=dh, list_var=list_var_rast, spread_statistic=spread_estimator, stable_mask=stable_terrain
+                dvalues=dh,
+                list_var=list_var_rast,
+                spread_statistic=spread_estimator,
+                stable_mask=stable_terrain,
             )[0]
         # Otherwise, return a constant error raster
         else:
@@ -479,3 +584,33 @@ class DEMBase(RasterBase):
         )[2]
 
         return sig_dh, corr_sig
+
+    def to_pointcloud(
+        self,
+        data_column_name: str = "b1",
+        data_band: int = 1,
+        auxiliary_data_bands: list[int] | None = None,
+        auxiliary_column_names: list[str] | None = None,
+        subsample: float | int = 1,
+        skip_nodata: bool = True,
+        as_array: bool = False,
+        random_state: int | np.random.Generator | None = None,
+        force_pixel_offset: Literal["center", "ul", "ur", "ll", "lr"] = "ul",
+    ) -> NDArrayNum | xdem.EPC:
+
+        pc = super().to_pointcloud(
+            data_column_name=data_column_name,
+            data_band=data_band,
+            auxiliary_data_bands=auxiliary_data_bands,
+            auxiliary_column_names=auxiliary_column_names,
+            subsample=subsample,
+            skip_nodata=skip_nodata,
+            as_array=as_array,
+            random_state=random_state,
+            force_pixel_offset=force_pixel_offset,
+        )
+
+        if isinstance(pc, gu.PointCloud):
+            return xdem.EPC(pc)
+        else:
+            return pc

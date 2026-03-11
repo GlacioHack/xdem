@@ -2,42 +2,52 @@ name: xdem-dev
 channels:
   - conda-forge
 dependencies:
-  - python>=3.10,<3.13
+  - python>=3.10,<3.15
+  # Core dependencies
+  - geoutils=0.2.5
+  # First-order dependency on the above
   - geopandas>=0.12.0
-  - numba=0.*
-  - numpy=1.*
-  - matplotlib=3.*
-  - pyproj>=3.4,<4
   - rasterio>=1.3,<2
   - scipy=1.*
-  - tqdm
-  - scikit-image=0.*
-  - scikit-gstat>=1.0.18,<1.1
   - xarray
   - rioxarray=0.*
-  - geocube
-  - dask
-  - geoutils=0.1.12
+  # Second-order or plus dependency on the above
+  - numpy>=1,<3
+  - pyproj>=3.4,<4
+  - affine
+  - pandas
+  - pyogrio
+  - shapely
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
 
   # Optional dependencies
-  - pytransform3d
+  - dask  # For scalable operations
+  - numba=0.*  # For fast numerical operations (terrain)
+  - matplotlib=3.*  # For plotting
+  - scikit-learn  # For optimizations
+  - laspy  # For LAS file support
+  - lazrs-python  # For LAZ file support
+  - cerberus  # For CLI
+  - pyyaml  # For CLI
+  - weasyprint  # For CLI
+  - tqdm  # For progress bars
 
   # Test dependencies
-  - gdal  # To test against GDAL
   - pytest
   - pytest-xdist
-  - pyyaml
+  - pytest-instafail
+  - pytest-socket
+  - pytest-cov
+  - coveralls
   - flake8
   - pylint
-  - richdem
+  - pre-commit
 
   # Doc dependencies
   - sphinx
-  - pydata-sphinx-theme
-  - sphinx-book-theme>=1.0
+  - sphinx-book-theme
   - sphinxcontrib-programoutput
   - sphinx-design
   - sphinx-autodoc-typehints
@@ -48,11 +58,11 @@ dependencies:
   - numpydoc
 
   - pip:
-    # Optional dependency
-    - -e ./
+      # Optional dependencies with Pip
+      # SciKit-GStat temporarily here until Conda version supports Python 3.13
+      - scikit-gstat>=1.0.18
 
-    # "Headless" needed for opencv to install without requiring system dependencies
-    - opencv-contrib-python-headless
+      - -e ./
 
     # To run CI against latest GeoUtils
 #    - git+https://github.com/rhugonnet/geoutils.git

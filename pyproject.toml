@@ -2,7 +2,7 @@
 # Minimum requirements for the build system to execute.
 requires = [
     "setuptools>=64",
-    "setuptools_scm[toml]>=8",
+    "setuptools_scm[toml]>=8,<9.0.0",
     "wheel",
 ]
 build-backend = "setuptools.build_meta"
@@ -11,12 +11,19 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools_scm]
 version_file = "xdem/_version.py"
 fallback_version = "0.0.1"
+# Use no-local-version by default for CI builds
+local_scheme = "no-local-version"
 
 [tool.black]
 target_version = ['py310']
 
+[tool.mypy]
+allow_untyped_decorators = true
+disable_error_code = ["untyped-decorator"]
+
 [tool.pytest.ini_options]
-addopts = "--doctest-modules -W error::UserWarning"
+addopts = "--doctest-modules --doctest-ignore-import-errors -W error::UserWarning"
+log_level = "INFO"
 testpaths = [
 	"tests",
 	"xdem"

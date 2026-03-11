@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Bias corrections (i.e., non-affine coregistration) classes."""
+
 from __future__ import annotations
 
 import logging
@@ -290,6 +291,7 @@ class BiasCorr(Coreg):
                     df=self._meta["outputs"]["fitorbin"]["bin_dataframe"],
                     list_var_names=list(bias_vars.keys()),
                     statistic=self._meta["inputs"]["fitorbin"]["bin_statistic"],
+                    min_count=kwargs.get("min_count", 0),
                 )
                 corr = bin_interpolator(tuple(var.flatten() for var in bias_vars.values()))
                 first_var = list(bias_vars.keys())[0]
@@ -460,7 +462,7 @@ class TerrainBias(BiasCorr):
 
     def __init__(
         self,
-        terrain_attribute: str = "maximum_curvature",
+        terrain_attribute: str = "max_curvature",
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin",
         fit_func: (
             Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]

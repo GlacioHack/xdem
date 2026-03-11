@@ -1,0 +1,28 @@
+name: documentation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      # Pip does not install the graphviz binary, only bindings
+      # We need this system install
+      - name: Install system dependencies
+        run: |
+            sudo apt-get update
+            sudo apt-get install -y graphviz
+      - name: Install project with documentation dependencies
+        run: python -m pip install -e .[doc,opt]
+      - name: Sphinx build with full traceback
+        run: |
+          cd doc
+          sphinx-build -T -b html source/ build/

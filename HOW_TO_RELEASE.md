@@ -66,6 +66,12 @@ An automatic GitHub action will start to push and publish the new release to PyP
      It should now build automatically.
  15. Issue the release announcement!
 
+
+## TestPypi
+
+You can publish a test version of xDEM on TestPyPI by manually triggering the `testpypi-publish` workflow
+from the GitHub Actions in the xDEM repository.
+
 ## Conda-forge
 
 Conda-forge distributions work by having a "feedstock" version of the package, containing instructions on how to bundle it for conda.

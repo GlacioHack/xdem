@@ -24,8 +24,8 @@ identify on **a map of elevation differences with another elevation dataset (loo
 
 ## Cheatsheet
 
-The patterns of errors categories listed in this spreadsheet **are linked to visual examples further below** that
-you use to compare to your own elevation differences.
+The patterns of error categories listed in this spreadsheet **are linked to visual examples further below** that
+you can use to compare to your own elevation differences.
 
 ```{list-table}
    :widths: 1 2 2 2
@@ -40,6 +40,10 @@ you use to compare to your own elevation differences.
      - Positive and negative errors that are larger near high slopes and symmetric with opposite slope orientation, making landforms appear visually.
      - Likely horizontal shift due to geopositioning errors, use a {ref}`coregistration` such as {class}`~xdem.coreg.NuthKaab`.
      - Even a tiny horizontal misalignment can be visually identified! To not confuse with {ref}`peak-cavity`.
+   * - {ref}`peak-cavity`
+     - Positive and negative errors, with one sign located exclusively near peaks and the other exclusively near cavities.
+     - Likely resolution-type errors, use a {ref}`biascorr` such as {class}`~xdem.coreg.TerrainBias`.
+     - Can be over-corrected, sometimes better to simply ignore during analysis. Or avoid by downsampling all elevation data to the lowest resolution, rather than upsampling to the highest.
    * - {ref}`smooth-large-field`
      - Smooth offsets varying at scale of 10 km+, often same sign (either positive or negative).
      - Likely wrong {ref}`vertical-ref`, can set and transform with {func}`~xdem.DEM.set_vcrs` and {func}`~xdem.DEM.to_vcrs`.
@@ -52,10 +56,6 @@ you use to compare to your own elevation differences.
      - Positive and negative errors undulating patterns at one or several frequencies well larger than pixel size.
      - Likely jitter-type errors, use a {ref}`biascorr` such as {class}`~xdem.coreg.DirectionalBias`.
      - Can sometimes be more rigorously fixed ahead of DEM generation with jitter correction.
-   * - {ref}`peak-cavity`
-     - Positive and negative errors, with one sign located exclusively near peaks and the other exclusively near cavities.
-     - Likely resolution-type errors, use a {ref}`biascorr` such as {class}`~xdem.coreg.TerrainBias`.
-     - Can be over-corrected, sometimes better to simply ignore during analysis. Or avoid by downsampling all elevation data to the lowest resolution, rather than upsampling to the highest.
    * - {ref}`point-alternating`
      - Point data errors that alternate between negative and positive, higher on steeper slopes.
      - Likely wrong point-raster comparison, use [point interpolation or reduction on the raster instead](https://geoutils.readthedocs.io/en/stable/raster_vector_point.html#rasterpoint-operations) such as {func}`~xdem.DEM.interp_points`.
@@ -128,6 +128,27 @@ dh = dem - dem_shift.reproject(dem)
 dh.plot(cmap='RdYlBu', vmin=-3, vmax=3, cbar_title="Elevation differences of\nhorizontal shift (m)")
 ```
 
+(peak-cavity)=
+### Peak cuts and cavity fills
+
+Example of peak cutting and cavity filling errors. We here downsampled our DEM from 20 m to 100 m to simulate a lower
+native resolution, then upsample it again to 20 m, to show the errors affect areas near high curvatures such as
+peaks and cavities.
+
+```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show code to simulate resolution errors"
+:  code_prompt_hide: "Hide code to simulate resolution errors"
+
+# Downsample DEM (bilinear)
+dem_100m = dem.reproject(res=100)
+
+# Upsample (bilinear again) and compare
+dh = dem - dem_100m.reproject(dem)
+dh.plot(cmap='RdYlBu', vmin=-40, vmax=40, cbar_title="Elevation differences of\nresolution change (m)")
+```
+
 (smooth-large-field)=
 ### Smooth-field offset
 
@@ -141,9 +162,9 @@ geoid added on top of the ellipsoid.
 :  code_prompt_hide: "Hide code to simulate vertical referencing errors"
 
 # Set current vertical CRS as ellipsoid
-dem.set_vcrs("Ellipsoid")
+dem.set_vcrs("EGM96")
 # Transform vertical reference to geoid
-trans_dem = dem.to_vcrs("EGM96")
+trans_dem = dem.to_vcrs("Ellipsoid")
 
 # Plot the elevation differences of the vertical transformation
 dh = dem - trans_dem
@@ -210,27 +231,6 @@ synthetic_bias = dem.copy(new_array=synthetic_bias_arr)
 synthetic_bias.plot(cmap='RdYlBu', vmin=-3, vmax=3, cbar_title="Elevation differences of\nundulations (m)")
 ```
 
-(peak-cavity)=
-### Peak cuts and cavity fills
-
-Example of peak cutting and cavity filling errors. We here downsampled our DEM from 20 m to 100 m to simulate a lower
-native resolution, then upsample it again to 20 m, to show the errors affect areas near high curvatures such as
-peaks and cavities.
-
-```{code-cell} ipython3
-:tags: [hide-input]
-:mystnb:
-:  code_prompt_show: "Show code to simulate resolution errors"
-:  code_prompt_hide: "Hide code to simulate resolution errors"
-
-# Downsample DEM (bilinear)
-dem_100m = dem.reproject(res=100)
-
-# Upsample (bilinear again) and compare
-dh = dem - dem_100m.reproject(dem)
-dh.plot(cmap='RdYlBu', vmin=-40, vmax=40, cbar_title="Elevation differences of\nresolution change (m)")
-```
-
 (point-alternating)=
 ### Point alternating
 
@@ -250,17 +250,17 @@ y = np.linspace(dem.bounds.top - 5000, dem.bounds.bottom + 5000, 100)
 # Interpolate DEM at these coordinates to build the point cloud
 # (to approximate the real elevation at these coordinates,
 # which has negligible impact compared to rasterization)
-z = dem.interp_points((x,y))
-epc = gu.Vector(gpd.GeoDataFrame(geometry=gpd.points_from_xy(x=x, y=y, crs=dem.crs), data={"z": z}))
+z = dem.interp_points((x,y), as_array=True)
+epc = xdem.EPC.from_xyz(x, y, z, crs=dem.crs)
 
 # Rasterize point cloud back on the DEM grid
 epc_rast = epc.rasterize(dem, in_value=z, out_value=np.nan)
 
 # For easier plotting, convert the valid dh values to points
 dh = dem - epc_rast
-dh_pc = dh.to_pointcloud(data_column_name="dh")
+dh_pc = dh.to_pointcloud()
 
 # Plot the elevation differences of the rasterization on top of a hillshade
 hs.plot(cmap="Greys_r", add_cbar=False)
-dh_pc.plot(column="dh", cmap='RdYlBu', vmin=-10, vmax=10, legend=True, cbar_title="Elevation differences of\npoint-raster differencing (m)")
+dh_pc.plot(cmap='RdYlBu', vmin=-10, vmax=10, legend=True, cbar_title="Elevation differences of\npoint-raster differencing (m)")
 ```

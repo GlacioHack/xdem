@@ -31,7 +31,7 @@ Below, we only repeat some core attributes and methods of GeoUtils, see
     :toctree: gen_modules/
 
     DEM
-    DEM.save
+    DEM.to_file
 ```
 
 ### Plotting or summarize info
@@ -137,6 +137,15 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
     DEM.interp_points
 ```
 
+### Statistics
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.get_stats
+```
+
 ### Terrain attributes
 
 ```{eval-rst}
@@ -146,15 +155,18 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
     DEM.slope
     DEM.aspect
     DEM.hillshade
-    DEM.curvature
     DEM.profile_curvature
+    DEM.tangential_curvature
     DEM.planform_curvature
-    DEM.maximum_curvature
+    DEM.flowline_curvature
+    DEM.max_curvature
+    DEM.min_curvature
     DEM.topographic_position_index
     DEM.terrain_ruggedness_index
     DEM.roughness
     DEM.rugosity
     DEM.fractal_roughness
+    DEM.texture_shading
 ```
 
 Or to get multiple related terrain attributes at once (for performance):
@@ -186,6 +198,142 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     :toctree: gen_modules/
 
     DEM.estimate_uncertainty
+```
+
+
+## EPC
+
+```{important}
+An {class}`~xdem.EPC` inherits all point cloud methods and attributes from the {class}`~geoutils.PointCloud` object of GeoUtils.
+Below, we only repeat some core attributes and methods of GeoUtils, see
+[the PointCloud API in GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#point-cloud) for the full list.
+```
+
+### Opening or saving
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC
+    EPC.to_file
+```
+
+### Plotting or summarize info
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.info
+    EPC.plot
+```
+
+### Create from arrays or tuples
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.from_xyz
+    EPC.from_tuples
+    EPC.from_array
+```
+
+### Unique attributes
+
+#### Inherited from {class}`~geoutils.PointCloud`
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.ds
+    EPC.data_column
+```
+
+#### Specific to {class}`~xdem.EPC`
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.vcrs
+```
+
+### Other attributes
+
+#### Inherited from {class}`~geoutils.PointCloud`
+
+See the full list in [the PointCloud API of GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#point-cloud).
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.point_count
+    EPC.bounds
+    EPC.crs
+```
+
+### Georeferencing
+
+#### Inherited from {class}`~geoutils.PointCloud`
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.info
+    EPC.reproject
+    EPC.crop
+    EPC.subsample
+```
+
+#### Vertical referencing for {class}`~xdem.DEM`
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.set_vcrs
+    EPC.to_vcrs
+```
+
+### Interface with rasters and vectors
+
+```{note}
+See the full list of vector methods in [GeoUtils' documentation](https://geoutils.readthedocs.io/en/latest/api.html#vector).
+```
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.grid
+    EPC.rasterize
+```
+
+### Statistics
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.get_stats
+```
+
+### Coregistration and bias corrections
+
+```{tip}
+To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d`, see the API of {ref}`api-geo-handle`.
+```
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    EPC.coregister_3d
 ```
 
 (api-geo-handle)=
@@ -251,7 +399,9 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     coreg.VerticalShift
     coreg.NuthKaab
     coreg.DhMinimize
+    coreg.LZD
     coreg.ICP
+    coreg.CPD
 ```
 
 #### Manipulating affine transforms
@@ -260,15 +410,10 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 .. autosummary::
     :toctree: gen_modules/
 
-    coreg.AffineCoreg.from_matrix
-    coreg.AffineCoreg.to_matrix
-    coreg.AffineCoreg.from_translations
-    coreg.AffineCoreg.to_translations
-    coreg.AffineCoreg.from_rotations
-    coreg.AffineCoreg.to_rotations
-
     coreg.apply_matrix
     coreg.invert_matrix
+    coreg.matrix_from_translations_rotations
+    coreg.translations_rotations_from_matrix
 ```
 
 ### Bias-correction
