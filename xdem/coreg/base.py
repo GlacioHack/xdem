@@ -2538,7 +2538,7 @@ class Coreg:
         apply_kwargs: dict[str, Any] | None = None,
     ) -> RasterType | gpd.GeoDataFrame: ...
 
-    @profiler.profile("xdem.coreg.base.fit_and_apply", memprof=True)  # type: ignore
+    @profiler.profile("xdem.coreg.base.fit_and_apply", memprof=True)
     def fit_and_apply(
         self,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,

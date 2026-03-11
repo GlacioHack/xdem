@@ -103,157 +103,178 @@ The parameters to pass to the `topo` workflow are divided into four categories:
 
 These categories and detailed parameter values are further detailed below:
 
-```{eval-rst}
-.. tabs::
+:::::{tab-set}
+::::{tab-item} `inputs`
 
-   .. tab:: ``inputs``
+**Required:** Yes
 
-     **Required:** Yes
+Elevation input information.
 
-     Elevation input information.
+:::{table} Inputs parameters for elevation
+:widths: 20, 35, 17, 18, 10
 
-     .. csv-table:: Inputs parameters for elevation
-        :header: "Name", "Description", "Type", "Default value", "Required"
-        :widths: 20, 40, 20, 10, 10
+| Name                  | Description                              | Type       | Default | Required |
+|-----------------------|------------------------------------------|------------|---------|----------|
+| `path_to_elev`        | Path to reference elevation              | str        |         | Yes      |
+| `force_source_nodata` | No data elevation                        | int        |         | No       |
+| `path_to_mask`        | Path to mask associated to the elevation | str        |         | No       |
+| `from_vcrs`           | Original vcrs                            | int, str   | `null`  | No       |
+| `to_vcrs`             | Destination vcrs                         | int, str   | `null`  | No       |
+| `downsample`          | Downsampling elevation factor >= 1       | int, float | 1       | No       |
+:::
 
-        "``path_to_elev``", "Path to reference elevation", "str", "", "Yes"
-        "``force_source_nodata``", "No data elevation", "int", "", "No"
-        "``path_to_mask``", "Path to mask associated to the elevation", "str", "", "No"
-        "``from_vcrs``", "Original vcrs", "int, str", None, "No"
-        "``to_vcrs``", "Destination vcrs", "int, str", None, "No"
-        "``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
+:::{note}
+For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to {ref}`vertical-ref`.
+The ``downsample`` parameter allows the user to resample the elevation by a round factor.
+The default value of 1 means no downsampling.
 
-     .. note::
-        For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
-        The ``downsample`` parameter allows the user to resample the elevation by a round factor. The default value of 1 means no downsampling.
+And, if you want to test the CLI with xDEM example data, they can also refer to data alias.
+Please refer to {ref}`data-example` to have more information.
+:::
+
+:::{code-block} yaml
+inputs:
+  reference_elev:
+    path_to_elev: "path_to/reference_elev.tif"
+    force_source_nodata: -32768
+    from_vcrs: null
+    to_vcrs: null
+:::
+
+:::{note}
+The `null` and `None` values are both accepted in YAML files, which correspond to `None` in the Python API.
+:::
+
+::::
 
 
-     .. code-block:: yaml
+::::{tab-item} `statistics`
 
-         inputs:
-           reference_elev:
-             path_to_elev: "path_to/reference_elev.tif"
-             force_source_nodata: -32768
-             from_vcrs: None
-             to_vcrs: None
+**Required:** No
 
-   .. tab:: ``statistics``
+Statistics step information. This section relates to the computed statistics:
 
-      **Required:** No
+1. If no block is specified, all available statistics are calculated by default:
+   [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
+   percentage valid points, inter quartile range]
 
-      Statistics step information. This section relates to the computed statistics:
-        1. If no block is specified, all available statistics are calculated by default.
-        [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
-        percentage valid points, inter quartile range]
+2. If a block is specified but no statistics are provided, then no statistics will be computed.
 
-        2. If a block is specified but no statistics are provided, then no statistics will be computed.
+3. If a block is specified and some statistics are provided, then only these statistics are computed.
 
-        3. If a block is specified and some statistics are provided, then only these statistics are computed.
+:::{code-block} yaml
+statistics:
+  - min
+  - max
+  - mean
+:::
 
-      .. code-block:: yaml
+If a mask is provided, the statistics are also computed inside the mask.
 
-         statistics:
-           - min
-           - max
-           - mean
+::::
 
-      If a mask is provided, the statistics are also computed inside the mask.
+::::{tab-item} `terrain_attributes`
 
-   .. tab:: ``terrain_attributes``
+**Required:** No
 
-      **Required:** No
+List or set of dictionaries for extra information.
 
-      List or set of dictionaries for extra information.
+:::{note}
+- If no block is specified, slope, aspect, and curvature attributes are calculated by default.
+- If a block is specified but no information is provided, then no attributes will be calculated.
+:::
 
-      .. note::
-          - If no block is specified, slope, aspect, and curvature attributes are calculated by default.
-          - If a block is specified but no information is provided, then no attributes will be calculated.
+:::{code-block} yaml
+terrain_attributes:
+  - hillshade
+  - slope
+:::
 
-      .. code-block:: yaml
+or
 
-         terrain_attributes:
-           - hillshade
-           - slope
+:::{code-block} yaml
+terrain_attributes:
+  hillshade:
+      extra_information:
+  slope:
+      extra_information:
+  aspect:
+      extra_information:
+          degrees: False
+:::
 
-      or
+:::{note}
+The data provided in extra_information is not checked for errors before executing the code.
+Its use is entirely the responsibility of the user.
+:::
 
-      .. code-block:: yaml
+::::
 
-         terrain_attributes:
-           hillshade:
-               extra_information:
-           slope:
-              extra_information:
-           aspect:
-            extra_information:
-                degrees: False
+::::{tab-item} `outputs`
 
-      .. note::
-        The data provided in extra_information is not checked for errors before executing the code.
-        Its use is entirely the responsibility of the user.
+**Required:** No
 
-   .. tab:: ``outputs``
+Outputs information. Operates by levels:
 
-    **Required:** No
+1. Level 1 → aligned elevation only
+2. Level 2 → more detailed output
 
-    Outputs information.
+:::{table} Output parameters
+:widths: 20, 40, 10, 10, 10, 10
 
-    Operates by levels:
+| Name    | Description                | Type | Default value | Available Value                       | Required |
+|---------|----------------------------|------|---------------|--------------------------------------|---------|
+| `path`  | Path for outputs           | str  | outputs       |                                      | No      |
+| `level` | Level for detailed outputs | int  | 1             | 1 or 2                               | No      |
+:::
 
-    1. Level 1 → aligned elevation only
-    2. Level 2 → more detailed output
+:::{code-block} yaml
+outputs:
+  level: 1
+  path: "path_to/outputs"
+:::
 
-    .. csv-table:: Output parameters
-       :header: "Name", "Description", "Type", "Default value", "Available Value", "Required"
-       :widths: 20, 40, 10, 10, 10, 10
+Tree of outputs for level 1:
 
-       "``path``", "Path for outputs", "str", "outputs", "", "No"
-       "``level``", "Level for detailed outputs", "int", "1", "1 or 2", "No"
+:::{code-block} text
+- root
+  ├─ tables
+  │   ├─ elev_stats.csv
+  │   └─ elev_with_mask_stats.csv
+  ├─ plots
+  │   ├─ elev_map.png
+  │   ├─ masked_elev_map.png (if mask_elev is given in input)
+  │   └─ terrain_attributes_map.png
+  ├─ rasters
+  ├─ report.html
+  ├─ report.pdf
+  └─ used_config.yaml
+:::
 
-    .. code-block:: yaml
+Tree of outputs for level 2:
 
-      outputs:
-          level : 1
-          path : "path_to/outputs"
+:::{code-block} text
+- root
+  ├─ tables
+  │   ├─ elev_stats.csv
+  │   └─ elev_with_mask_stats.csv
+  ├─ plots
+  │   ├─ elev_map.png
+  │   ├─ masked_elev_map.png (if mask_elev is given in input)
+  │   └─ terrain_attributes_map.png
+  ├─ rasters
+  │   ├─ aspect.tif
+  │   ├─ curvature.tif
+  │   ├─ hillshade.tif
+  │   ├─ rugosity.tif
+  │   ├─ slope.tif
+  │   ├─ terrain_ruggedness_index.tif
+  │   └─ ...
+  ├─ report.html
+  ├─ report.pdf
+  └─ used_config.yaml
+:::
 
-    Tree of outputs for level 1
+::::
 
-    .. code-block:: text
-
-      - root
-        ├─ tables
-        │   ├─ elev_stats.csv
-        │   └─ elev_with_mask_stats.csv
-        ├─ plots
-        │   ├─ elev_map.png
-        │   ├─ masked_elev_map.png (if mask_elev is given in input)
-        │   └─ terrain_attributes_map.png
-        ├─ rasters
-        ├─ report.html
-        ├─ report.pdf
-        └─ used_config.yaml
-
-    Tree of outputs for level 2
-
-    .. code-block:: text
-
-      - root
-        ├─ tables
-        │   ├─ elev_stats.csv
-        │   └─ elev_with_mask_stats.csv
-        ├─ plots
-        │   ├─ elev_map.png
-        │   ├─ masked_elev_map.png (if mask_elev is given in input)
-        │   └─ terrain_attributes_map.png
-        ├─ rasters
-        │   ├─ aspect.tif
-        │   ├─ curvature.tif
-        │   ├─ hillshade.tif
-        │   ├─ rugosity.tif
-        │   ├─ slope.tif
-        │   ├─ terrain_ruggedness_index.tif
-        │   └─ ...
-        ├─ report.html
-        ├─ report.pdf
-        └─ used_config.yaml
-```
+:::::

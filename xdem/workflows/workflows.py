@@ -35,6 +35,7 @@ import xdem
 from xdem import DEM
 from xdem._misc import import_optional
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
+from xdem.examples import _FILEPATHS_ALL
 from xdem.workflows.schemas import validate_configuration
 
 # Inheritance of optional dependency class
@@ -45,6 +46,24 @@ try:
 except ImportError:
     SafeDumper = object
     _HAS_YAML = False
+
+_ALIAS = {
+    "mean": "Mean",
+    "median": "Median",
+    "max": "Maximum",
+    "min": "Minimum",
+    "sum": "Sum",
+    "sumofsquares": "Sum of squares",
+    "90thpercentile": "90th percentile",
+    "le90": "LE90",
+    "nmad": "NMAD",
+    "rmse": "RMSE",
+    "std": "Standard deviation",
+    "standarddeviation": "Standard deviation",
+    "validcount": "Valid count",
+    "totalcount": "Total count",
+    "percentagevalidpoints": "Percentage valid points",
+}
 
 
 class Workflows(ABC):
@@ -106,7 +125,6 @@ class Workflows(ABC):
         """
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-
             if not _HAS_YAML:
                 import_optional("yaml", package_name="pyyaml")
             super().__init__(*args, **kwargs)
@@ -120,6 +138,7 @@ class Workflows(ABC):
     def load_config(self) -> Dict[str, Any]:
         """
         Load a configuration file
+        Note: all null values in the .yaml are translated to None in the dict
         :return: Configuration dictionary
         """
         yaml = import_optional("yaml", package_name="pyyaml")
@@ -127,36 +146,77 @@ class Workflows(ABC):
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"File not found : {self.config_path}")
         with open(self.config_path) as f:
-            return yaml.safe_load(f)
 
-    def generate_plot(self, dem: RasterType, title: str, filename: str, mask_path: str = None, **kwargs: Any) -> None:
+            def replace_none_str_with_none_type(some_dict: Dict[str, Any]) -> Dict[str, Any]:
+                """Replace all "None" (None after serialization) values to None"""
+                for k, v in some_dict.items():
+                    if isinstance(v, dict):
+                        some_dict[k] = replace_none_str_with_none_type(v)
+                    elif v == "None":
+                        some_dict[k] = None
+                    else:
+                        some_dict[k] = v
+                return some_dict
+
+            return replace_none_str_with_none_type(yaml.safe_load(f))
+
+    def generate_plot(
+        self,
+        dem: RasterType,
+        title: str,
+        filename: str,
+        dem_right: str = None,
+        title_dem_right: str = None,
+        **kwargs: Any,
+    ) -> None:
         """
         Generate plot from a DEM.
 
-        :param dem: Input digital elevation model.
-        :param title: Title of figure.
+        :param dem: Input digital elevation model (left)
+        :param title: Title of dem plot (left)
         :param filename: Filename of figure.
+        :param dem_right: Input digital elevation model (right)
+        :param title_dem_right: Title of dem_right plot (right)
         :param mask_path: Path to mask file.
-
         :return: None
         """
-
         import_optional("matplotlib")
         import matplotlib.pyplot as plt
 
-        if mask_path is None:
-            dem.plot(**kwargs)
-            plt.title(title)
-            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300)
-            plt.close()
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
+
+        # Apply default cmap if not given in inputs
+        if "cmap" in kwargs:
+            print(kwargs["cmap"])
+            cmap = plt.get_cmap(name=kwargs["cmap"])
         else:
-            mask = gu.Vector(mask_path)
-            mask = mask.crop(dem)
-            dem.plot(**kwargs)
-            mask.plot(dem, ec="k", fc="none")
-            plt.title(title)
-            plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300)
-            plt.close()
+            cmap = plt.get_cmap(name="terrain")
+        cmap.set_bad(color="k", alpha=None)
+        kwargs["cmap"] = cmap
+
+        # Force figsize with the good ratio to prevent larger right axe if not filled
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
+
+        # Add the first image to the figure (left position)
+        dem.plot(ax=ax1, **kwargs)
+        plt.title(title)
+
+        # If exists, add the second image to the figure
+        if dem_right is not None:
+            dem_right.plot(ax=ax2, **kwargs)
+            plt.title(title_dem_right)
+        else:
+            ax2.set_axis_off()
+
+        plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
+        plt.close()
 
     def floats_process(
         self, dict_with_floats: Dict[str, Any] | InputCoregDict | OutputCoregDict | Any
@@ -188,7 +248,13 @@ class Workflows(ABC):
         """
         mask_path = None
         if config_dem is not None:
-            dem = xdem.DEM(config_dem["path_to_elev"], downsample=config_dem.get("downsample", 1))
+
+            path_to_elev = config_dem["path_to_elev"]
+            # If alias, get its path
+            if path_to_elev in list(_FILEPATHS_ALL.keys()):
+                path_to_elev = xdem.examples.get_path(path_to_elev)
+
+            dem = xdem.DEM(path_to_elev, downsample=config_dem.get("downsample", 1))
             inlier_mask = None
             from_vcrs = config_dem.get("from_vcrs", None)
             to_vcrs = config_dem.get("to_vcrs", None)
@@ -206,6 +272,10 @@ class Workflows(ABC):
                 dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
             if config_dem.get("path_to_mask") is not None:
                 mask_path = config_dem["path_to_mask"]
+                # If alias, get its path
+                if mask_path in list(_FILEPATHS_ALL.keys()):
+                    mask_path = xdem.examples.get_path(mask_path)
+
                 mask = gu.Vector(mask_path)
                 inlier_mask = ~mask.create_mask(dem)
 
@@ -268,3 +338,16 @@ class Workflows(ABC):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerow(cleaned_data)
+
+    def format_values_stats(self, key: str, val: Union[float, int]) -> str:
+        """Format values for the statistics."""
+        if "count" in key.lower():
+            return str(int(val))
+        if "percentage" in key.lower():
+            return f"{val:.2f}" + "%"
+        elif abs(val) > 10e4:
+            return np.format_float_scientific(val, precision=3)
+        elif abs(val) < 10e-4:
+            return np.format_float_scientific(val, precision=3)
+        else:
+            return f"{val:.3f}"

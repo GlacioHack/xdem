@@ -19,6 +19,7 @@
 """
 Schema constants and validation function
 """
+
 from __future__ import (
     annotations,  # Required to have Validator=object (when cerberus missing) understood for typing
 )
@@ -29,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError, URLError
 
 from xdem._misc import import_optional
+from xdem.examples import _FILEPATHS_ALL
 from xdem.vcrs import _vcrs_from_user_input
 
 if TYPE_CHECKING:
@@ -58,7 +60,8 @@ class CustomValidator(Validator):  # type: ignore
         {'type': 'boolean'}
         """
         if value is not None:
-            if path_exists and not os.path.exists(value):
+            # if path does not exist and not an alias
+            if (path_exists and not os.path.exists(value)) and (value not in list(_FILEPATHS_ALL.keys())):
                 self._error(field, f"Path does not exist: {value}")
         return True
 
@@ -88,6 +91,19 @@ INPUTS_DEM = {
 }
 
 COREG_METHODS = ["NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD", None]
+
+
+MIN_STATS = [
+    "min",
+    "max",
+    "mean",
+    "median",
+    "standarddeviation",
+    "nmad",
+    "validcount",
+    "totalcount",
+    "percentagevalidpoints",
+]
 
 STATS_METHODS = [
     "mean",
@@ -165,7 +181,7 @@ def validate_configuration(user_config: dict[str, Any], schema: dict[str, Any]) 
             raise ValueError(f"User configuration invalid for '{field}': {errors}")
 
     if "statistics" not in validator.document:
-        validator.document["statistics"] = STATS_METHODS
+        validator.document["statistics"] = MIN_STATS
 
     if "terrain_attributes" not in validator.document and "coregistration" not in validator.document:
         validator.document["terrain_attributes"] = TERRAIN_ATTRIBUTES_DEFAULT
@@ -180,6 +196,13 @@ ACCURACY_SCHEMA = {
         "schema": {
             "reference_elev": {"type": "dict", "schema": INPUTS_DEM, "required": False, "nullable": True},
             "to_be_aligned_elev": {"type": "dict", "schema": INPUTS_DEM, "required": True},
+            "sampling_grid": {
+                "type": "string",
+                "allowed": ["reference_elev", "to_be_aligned_elev"],
+                "default": "reference_elev",
+                "nullable": True,
+                "required": False,
+            },
         },
     },
     "outputs": {
@@ -200,17 +223,11 @@ ACCURACY_SCHEMA = {
     "coregistration": {
         "type": "dict",
         "required": False,
-        "default": {"step_one": {"method": "NuthKaab"}, "sampling_grid": "reference_elev"},
+        "default": {"step_one": {"method": "LZD", "extra_information": {"subsample": 10000}}},
         "schema": {
-            "step_one": make_coreg_step(default_method="NuthKaab"),
+            "step_one": make_coreg_step(default_method="LZD"),
             "step_two": make_coreg_step(required=False),
             "step_three": make_coreg_step(required=False),
-            "sampling_grid": {
-                "type": "string",
-                "allowed": ["reference_elev", "to_be_aligned_elev"],
-                "default": "reference_elev",
-                "required": False,
-            },
             "process": {"type": "boolean", "default": True, "required": False},
         },
     },
@@ -277,6 +294,7 @@ COMPLETE_CONFIG_ACCURACY = {
             "path_to_mask": None,
             "downsample": 1,
         },
+        "sampling_grid": "reference_elev",
     },
     "outputs": {
         "level": 1,
@@ -284,10 +302,9 @@ COMPLETE_CONFIG_ACCURACY = {
         "output_grid": "reference_elev",
     },
     "coregistration": {
-        "sampling_grid": "reference_elev",
         "step_one": {
-            "method": "NuthKaab",
-            "extra_information": None,
+            "method": "LZD",
+            "extra_information": {"subsample": 10000},
         },
         "step_two": {
             "method": None,
@@ -297,24 +314,9 @@ COMPLETE_CONFIG_ACCURACY = {
             "method": None,
             "extra_information": None,
         },
+        "process": True,
     },
-    "statistics": [
-        "mean",
-        "median",
-        "max",
-        "min",
-        "sum",
-        "sumofsquares",
-        "90thpercentile",
-        "le90",
-        "nmad",
-        "rmse",
-        "std",
-        "standarddeviation",
-        "validcount",
-        "totalcount",
-        "percentagevalidpoints",
-    ],
+    "statistics": MIN_STATS,
 }
 
 COMPLETE_CONFIG_TOPO = {
@@ -329,22 +331,6 @@ COMPLETE_CONFIG_TOPO = {
         },
     },
     "outputs": {"level": 1, "path": "outputs"},
-    "statistics": [
-        "mean",
-        "median",
-        "max",
-        "min",
-        "sum",
-        "sumofsquares",
-        "90thpercentile",
-        "le90",
-        "nmad",
-        "rmse",
-        "std",
-        "standarddeviation",
-        "validcount",
-        "totalcount",
-        "percentagevalidpoints",
-    ],
+    "statistics": MIN_STATS,
     "terrain_attributes": ["slope", "aspect", "max_curvature"],
 }

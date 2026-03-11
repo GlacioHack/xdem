@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+import logging
 import os
 import re
 
@@ -10,7 +12,7 @@ import yaml  # type: ignore
 from packaging.version import Version
 
 import xdem
-from xdem._misc import deprecate, diff_environment_yml
+from xdem._misc import deprecate, diff_environment_yml, get_progress
 
 
 class TestMisc:
@@ -45,8 +47,8 @@ class TestMisc:
         diff_conda_check = list(set(conda_dep_env) - set(conda_dep_devenv))
         assert len(diff_conda_check) == 0
 
-    @pytest.mark.parametrize("deprecation_increment", [-1, 0, 1, None])  # type: ignore
-    @pytest.mark.parametrize("details", [None, "It was completely useless!", "dunnowhy"])  # type: ignore
+    @pytest.mark.parametrize("deprecation_increment", [-1, 0, 1, None])
+    @pytest.mark.parametrize("details", [None, "It was completely useless!", "dunnowhy"])
     def test_deprecate(self, deprecation_increment: int | None, details: str | None) -> None:
         """
         Test the deprecation warnings/errors.
@@ -79,7 +81,7 @@ class TestMisc:
             removal_version = None
 
         # Define a function with no use that is marked as deprecated.
-        @deprecate(removal_version, details=details)  # type: ignore
+        @deprecate(removal_version, details=details)
         def useless_func() -> int:
             return 1
 
@@ -166,3 +168,39 @@ class TestMisc:
         devenv4 = {"dependencies": ["python==3.9", "numpy", "pandas", "otherdep", {"pip": ["geoutils"]}]}
         with pytest.raises(ValueError, match="The following pip dependencies are listed in env but not dev-env: lol"):
             diff_environment_yml(env4, devenv4, input_dict=True, print_dep="pip")
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("tqdm") is not None,
+        reason="Only runs if tqdm is missing",
+    )
+    def test_get_progress_without_tqdm(self, caplog: logging.caplog) -> None:
+        """
+        Test that get_progress returns a compatible FalseTQDM object
+        when tqdm is not available.
+        """
+
+        caplog.set_level(logging.INFO)
+
+        iterable = range(3)
+        pbar = get_progress(iterable)
+
+        # Test FalseTQDM class
+        assert list(pbar) == [0, 1, 2]
+        assert hasattr(pbar, "write")
+        pbar.write("test message")
+        assert "test message" in caplog.text
+
+    def test_get_progress_with_tqdm(self) -> None:
+        """
+        Test that get_progress returns a tqdm object
+        when tqdm is installed.
+        """
+        try:
+            from tqdm.auto import tqdm
+        except ImportError:
+            pytest.importorskip("tqdm")
+
+        iterable = range(3)
+        pbar = get_progress(iterable)
+
+        assert isinstance(pbar, tqdm)

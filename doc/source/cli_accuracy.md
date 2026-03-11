@@ -111,207 +111,239 @@ The parameters to pass to the `accuracy` workflow are divided into four categori
 
 These categories and detailed parameter values are further detailed below:
 
-```{eval-rst}
-.. tabs::
+:::::::{tab-set}
+::::::{tab-item} `inputs`
 
-   .. tab:: ``inputs``
+**Required:** Yes
 
-      **Required:** Yes
+Inputs information, split between reference and to-be-aligned elevation data.
 
-      Elevation input information, split between reference and to-be-aligned elevation data.
+:::::{tab-set}
+::::{tab-item} `reference_elev` / `to_be_aligned_elev`
 
-      .. tabs::
+:::{table} Inputs parameters for `reference_elev` and  `to_be_aligned_elev`
+:widths: 20, 40, 20, 10, 10
 
-        .. tab:: ``reference_elev``
+| Name                  | Description                              | Type       | Default | Required |
+|-----------------------|------------------------------------------|------------|---------|----------|
+| `path_to_elev`        | Path to reference elevation              | str        |         | Yes      |
+| `force_source_nodata` | No data elevation                        | int        |         | No       |
+| `path_to_mask`        | Path to mask associated to the elevation | str        |         | No       |
+| `from_vcrs`           | Original vcrs                            | int, str   | `null`  | No       |
+| `to_vcrs`             | Destination vcrs                         | int, str   | `null`  | No       |
+| `downsample`          | Downsampling elevation factor >= 1       | int, float | 1       | No       |
+:::
 
-            .. csv-table:: Inputs parameters for ``reference_elev``
-               :header: "Name", "Description", "Type", "Default value", "Required"
-               :widths: 20, 40, 20, 10, 10
+:::{note}
+For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to {ref}`vertical-ref`.
+The ``downsample`` parameter allows the user to resample the elevation by a round factor.
+The default value of 1 means no downsampling.
 
-               "``path_to_elev``", "Path to reference elevation", "str", "", "Yes"
-               "``force_source_nodata``", "No data elevation", "int", "", "No"
-               "``path_to_mask``", "Path to mask associated to the elevation", "str", "", "No"
-               "``from_vcrs``", "Original vcrs", "int, str", None, "No"
-               "``to_vcrs``", "Destination vcrs", "int, str", None, "No"
-               "``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
-
-            .. note::
-              For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
-              The ``downsample`` parameter allows the user to resample the elevation by a round factor. The default value of 1 means no downsampling.
-
-        .. tab:: ``to_be_aligned_elev``
-
-            .. csv-table:: Inputs parameters for ``to_be_aligned_elev``
-               :header: "Name", "Description", "Type", "Default value", "Required"
-               :widths: 20, 40, 20, 10, 10
-
-               "``path_to_elev``", "Path to to-be-aligned elevation", "str", "", "Yes"
-               "``force_source_nodata``", "No data elevation", "int", "", "No"
-               "``path_to_mask``", "Path to mask associated to the elevation", "str", "", "No"
-               "``from_vcrs``", "Original vcrs", "int, str", None, "No"
-               "``to_vcrs``", "Destination vcrs", "int, str", None, "No"
-               "``downsample``", "Downsampling elevation factor >= 1", "int, float", 1, "No"
-
-            .. note::
-              For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to :doc:`vertical_ref`.
-              The ``downsample`` parameter allows the user to resample the elevation by a round factor. The default value of 1 means no downsampling.
-
-      .. code-block:: yaml
-
-        inputs:
-            reference_elev:
-                path_to_elev: "path_to/reference_elev.tif"
-                force_source_nodata: -32768
-                from_vcrs: None
-                to_vcrs: None
-            to_be_aligned_elev:
-                path_to_elev: "path_to/to_be_aligned_elev.tif"
-                path_to_mask: "path_to/mask.tif"
-
-   .. tab:: ``coregistration``
-
-      **Required:** No
-
-      Coregistration step details.
-
-      You can create a pipeline with up to three coregistration steps by using the keys
-      ``step_one``, ``step_two`` and ``step_three``.
-
-      Available coregistration method see : :ref:`coregistration`
-
-      .. note::
-        By default, coregistration is carried out using the :ref:`nuthkaab` method.
-        To disable coregistration, set ``process: False`` in the configuration file.
-
-      .. tabs::
-
-        .. csv-table:: Inputs parameters for coregistration
-           :header: "Parameter namer", "Subparameter name", "Description", "Type", "Default value", "Available Value", "Required"
-           :widths: 30, 20, 10, 10, 10, 10, 10
-
-           "``step_[one | two | three]``", "``method``", "Name of coregistration method", "str", "NuthKaab", "Every available coregistration method", "No"
-           "", "``extra_information``", "Extra parameters fitting with the method", "dict", "", "", "No"
-           "``sampling_grid``", "", "Destination elevation for reprojection", "str", "reference_elev", "reference_elev or to_be_aligned_elev", "No"
-           "``process``", "", "Activate the coregistration", "bool", "True", "True or False", "No"
-
-        .. note::
-            The data provided in ``extra_information`` is not checked for errors before executing the code. Its use is entirely the responsibility of the user.
-
-      .. code-block:: yaml
-
-        coregistration:
-          step_one:
-            method: "NuthKaab"
-            extra_information : {"max_iterations": 10}
-          step_two:
-            method: "DHMinimize"
-          sampling_grid: "reference_elev"
-          process: True
-
-      other example :
-
-      .. code-block:: yaml
-
-        coregistration:
-          step_one:
-            method: "VerticalShift"
-          sampling_grid: "reference_elev"
-          process: True
-
-   .. tab:: ``statistics``
-
-      **Required:** No
-
-      Statistics step information. This section relates to the computed statistics:
-
-      1. If no block is specified, all available statistics are calculated by default:
-
-         [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std, valid count, total count,
-         percentage valid points, inter quartile range]
-
-      2. If a block is specified but no statistics are provided, then no statistics will be computed.
-
-      3. If a block is specified and some statistics are provided, then only these statistics are computed.
+And, if you want to test the CLI with xDEM example data, they can also refer to data alias.
+Please refer to {ref}`data-example` to have more information.
+:::
 
 
-      .. code-block:: yaml
+::::
 
-         statistics:
-           - min
-           - max
-           - mean
 
-      If a mask is provided, the statistics are also computed inside the mask.
+::::{tab-item} `sampling_grid`
 
-   .. tab:: ``outputs``
+Raster to match for reprojection.
 
-     **Required:** No
+:::{table} Values for ``sampling_grid``
+:widths: 30, 60, 10
 
-     Outputs information.
-     Operates by levels:
+| Value                | Description                                                             | Default |
+|----------------------|-------------------------------------------------------------------------|---------|
+| `reference_elev`     | To-be-aligned elevation will be reprojected to the reference elevation  | Yes     |
+| `to_be_aligned_elev` | Reference elevation will be reprojected to the to-be-aligned elevation  | No      |
+| `null`               | No reprojection with coregistration process or not                      | No      |
+:::
 
-     1. **Level 1** → aligned elevation only
-     2. **Level 2** → more detailed output
+:::{note}
+If the coregistration process is activated, `sampling_grid` must be set.
+Otherwise, the reprojection can be skipped (indicated by `sampling grid: null`).
+In that case, the two inputs need to have the same shape, transform and CRS.
+.:::
 
-     .. csv-table:: Outputs parameters
-       :header: "Name", "Description", "Type", "Default value", "Available Value", "Required"
-       :widths: 20, 40, 10, 10, 10, 10
 
-       "``path``", "Path for outputs", "str", "outputs", "", "No"
-       "``level``", "Level for detailed outputs", "int", "1", "1 or 2", "No"
-       "``output_grid``", "Grid for outputs resampling", "str", "reference_elev", "reference_elev or to_be_aligned_elev", "No"
+::::
 
-     .. code-block:: yaml
 
-       outputs:
-           level: 1
-           path: "path_to/outputs"
-           output_grid: "reference_elev"
+:::::
 
-     Tree of outputs for level 1 (including coregistration step)
+:::::{code-block} yaml
+inputs:
+    reference_elev:
+        path_to_elev: "path_to/reference_elev.tif"
+        force_source_nodata: -32768
+        from_vcrs: null
+        to_vcrs: null
+    to_be_aligned_elev:
+        path_to_elev: "path_to/to_be_aligned_elev.tif"
+        path_to_mask: "path_to/mask.tif"
+    sampling_grid: "reference_elev"
+:::::
 
-     .. code-block:: text
+:::::{note}
+The `null` and `None` values are both accepted in YAML files, which correspond to `None` in the Python API.
+:::::
 
-      - root
-        ├─ tables
-        │   └─ aligned_elev_stats.csv
-        ├─ plots
-        │   ├─ diff_elev_after_coreg_map.png
-        │   ├─ diff_elev_before_coreg_map.png
-        │   ├─ diff_elev_before_after_hist.png
-        │   ├─ reference_elev_map.png
-        │   ├─ masked_elev_map.png (if mask_elev is given in input)
-        │   └─ to_be_aligned_elev_map.png
-        ├─ rasters
-        │   └─ aligned_elev.tif
-        ├─ report.html
-        ├─ report.pdf
-        └─ used_config.yaml
+::::::
 
-     Tree of outputs for level 2 (including coregistration step)
+::::::{tab-item} `coregistration`
 
-     .. code-block:: text
+**Required:** No
 
-      - root
-        ├─ tables
-        │   ├─ aligned_elev_stats.csv
-        │   ├─ diff_elev_after_coreg_stats.csv
-        │   ├─ diff_elev_before_coreg_stats.csv
-        │   ├─ reference_elev_stats.csv
-        │   └─ to_be_aligned_elev_stats.csv
-        ├─ plots
-        │   ├─ diff_elev_after_coreg_map.png
-        │   ├─ diff_elev_before_coreg_map.png
-        │   ├─ diff_elev_before_after_hist.png
-        │   ├─ reference_elev_map.png
-        │   ├─ masked_elev_map.png (if mask_elev is given in input)
-        │   └─ to_be_aligned_elev_map.png
-        ├─ rasters
-        │   ├─ aligned_elev.tif
-        │   ├─ diff_elev_after_coreg.tif
-        │   ├─ diff_elev_before_coreg.tif
-        │   └─ to_be_aligned_elev_reprojected.tif
-        ├─ report.html
-        ├─ report.pdf
-        └─ used_config.yaml
-```
+Coregistration step details.
+
+You can create a pipeline with up to three coregistration steps by using the keys
+``step_one``, ``step_two`` and ``step_three``.
+
+Available coregistration method see {ref}`coregistration`.
+
+:::{note}
+By default, coregistration is carried out using the {ref}`nuthkaab` method.
+To disable coregistration, set ``process: False`` in the configuration file.
+:::
+
+:::{table} Inputs parameters for coregistration
+:widths: 30, 20, 10, 10, 10, 10, 10
+
+| Parameter name           | Subparameter name        | Description                       | Type  | Default    | Available                       | Required |
+|--------------------------|-------------------------|----------------------------------|-------|----------------|-------------------------------------|---------|
+| `step_[one, two, three]` | `method`                | Name of coregistration method    | str   | NuthKaab        | Every available coregistration method | No      |
+|                          | `extra_information`     | Extra parameters fitting with the method | dict  |                |                                     | No      |
+| `process`                |                         | Activate the coregistration       | bool  | True           | True or False                        | No      |
+:::
+
+:::{note}
+The data provided in ``extra_information`` is not checked for errors before executing the code.
+Its use is entirely the responsibility of the user.
+:::
+
+:::{code-block} yaml
+coregistration:
+  step_one:
+    method: "NuthKaab"
+    extra_information: {"max_iterations": 10}
+  step_two:
+    method: "DHMinimize"
+  process: True
+:::
+
+Other example:
+
+:::{code-block} yaml
+coregistration:
+  step_one:
+    method: "VerticalShift"
+  sampling_grid: "reference_elev"
+  process: True
+:::
+
+::::::
+
+::::::{tab-item} `statistics`
+
+**Required:** No
+
+Statistics step information. This section relates to the computed statistics:
+
+1. If no block is specified, all available statistics are calculated by default:
+
+   [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std,
+   valid count, total count, percentage valid points, inter quartile range]
+
+2. If a block is specified but no statistics are provided, then no statistics will be computed.
+
+3. If a block is specified and some statistics are provided, then only these statistics are computed.
+
+:::{code-block} yaml
+statistics:
+  - min
+  - max
+  - mean
+:::
+
+If a mask is provided, the statistics are also computed inside the mask.
+
+::::::
+
+::::::{tab-item} `outputs`
+
+**Required:** No
+
+Outputs information. Operates by levels:
+
+1. **Level 1** → aligned elevation only
+2. **Level 2** → more detailed output
+
+:::{table} Outputs parameters
+:widths: 20, 40, 10, 10, 10, 10
+
+| Name           | Description                   | Type | Default  | Available                          | Required |
+|----------------|-------------------------------|------|---------------|----------------------------------------|---------|
+| `path`         | Path for outputs               | str  | outputs/      |                                        | No      |
+| `level`        | Level for detailed outputs     | int  | 1             | 1 or 2                                 | No      |
+| `output_grid`  | Grid for outputs resampling    | str  | reference_elev | reference_elev or to_be_aligned_elev   | No      |
+:::
+
+:::{code-block} yaml
+outputs:
+    level: 1
+    path: "path_to/outputs"
+    output_grid: "reference_elev"
+:::
+
+Tree of outputs for level 1 (including coregistration step):
+
+:::{code-block} text
+- root
+  ├─ tables
+  │   └─ aligned_elev_stats.csv
+  ├─ plots
+  │   ├─ diff_elev_after_coreg_map.png
+  │   ├─ diff_elev_before_coreg_map.png
+  │   ├─ diff_elev_before_after_hist.png
+  │   ├─ reference_elev_map.png
+  │   ├─ masked_elev_map.png (if mask_elev is given in input)
+  │   └─ to_be_aligned_elev_map.png
+  ├─ rasters
+  │   └─ aligned_elev.tif
+  ├─ report.html
+  ├─ report.pdf
+  └─ used_config.yaml
+:::
+
+Tree of outputs for level 2 (including coregistration step):
+
+:::{code-block} text
+- root
+  ├─ tables
+  │   ├─ aligned_elev_stats.csv
+  │   ├─ diff_elev_after_coreg_stats.csv
+  │   ├─ diff_elev_before_coreg_stats.csv
+  │   ├─ reference_elev_stats.csv
+  │   └─ to_be_aligned_elev_stats.csv
+  ├─ plots
+  │   ├─ diff_elev_after_coreg_map.png
+  │   ├─ diff_elev_before_coreg_map.png
+  │   ├─ diff_elev_before_after_hist.png
+  │   ├─ reference_elev_map.png
+  │   ├─ masked_elev_map.png (if mask_elev is given in input)
+  │   └─ to_be_aligned_elev_map.png
+  ├─ rasters
+  │   ├─ aligned_elev.tif
+  │   ├─ diff_elev_after_coreg.tif
+  │   ├─ diff_elev_before_coreg.tif
+  │   └─ to_be_aligned_elev_reprojected.tif
+  ├─ report.html
+  ├─ report.pdf
+  └─ used_config.yaml
+:::
+
+::::::
+
+:::::::

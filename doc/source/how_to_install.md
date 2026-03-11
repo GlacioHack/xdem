@@ -66,7 +66,7 @@ with second-order required dependencies being notably [NumPy](https://numpy.org/
 Optional dependencies are:
 - [Matplotlib](https://matplotlib.org/) for plotting,
 - [LasPy](https://laspy.readthedocs.io/en/latest/) for reading and writing LAS/LAZ/COPC point cloud files,
-- [Numba](https://numba.pydata.org/) as engine for certain numerical operations (terrain attributes, filters),
+- [Numba](https://numba.pydata.org/) as engine for certain numerical operations (terrain attributes),
 - [Dask](https://www.dask.org/) for out-of-memory operations (coming soon),
 - [tqdm](https://tqdm.github.io/) for displaying progress bars,
 - [Cerberus](https://docs.python-cerberus.org/), [Pyyaml](https://pyyaml.org/) and [Weasyprint](https://weasyprint.org/) for the command-line interface and workflows.

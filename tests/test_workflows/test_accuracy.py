@@ -18,15 +18,21 @@
 """
 Test DiffAnalysis class
 """
+
+import logging
+
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
 
 import geoutils as gu
+import numpy as np
+import pandas as pd
 import pytest
 
 import xdem
 from xdem.workflows import Accuracy
-from xdem.workflows.workflows import Workflows
+from xdem.workflows.schemas import MIN_STATS
+from xdem.workflows.workflows import _ALIAS, Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 pytest.importorskip("cerberus")
@@ -40,16 +46,14 @@ def test_init_diff_analysis(get_accuracy_object_with_run, tmp_path):
 
     assert isinstance(workflows, Workflows)
     assert isinstance(workflows, Accuracy)
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("inputs.png").exists()
     dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
     mask = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
     inlier_mask = ~mask.create_mask(dem)
-    assert workflows.inlier_mask == inlier_mask
+    assert workflows.to_be_aligned_elev.get_mask() == inlier_mask
 
 
-def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path):
+def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path, caplog, assert_and_allow_log):
     """
     Test _get_reference_elevation function
     """
@@ -59,16 +63,20 @@ def test__get_reference_elevation(get_accuracy_inputs_config, tmp_path):
     workflows = Accuracy(user_config)
     workflows._load_data()
 
-    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
+    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference elevation"):
         workflows._get_reference_elevation()
 
     user_config = get_accuracy_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     user_config["inputs"]["reference_elev"] = None
 
-    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference DEM"):
-        workflows = Accuracy(user_config)
-        workflows._load_data()
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(NotImplementedError, match="This is not implemented, add a reference elevation"):
+            workflows = Accuracy(user_config)
+            workflows._load_data()
+
+    # Check logging warning exists and tag as expected
+    assert_and_allow_log(caplog, match="No DEM provided", level=logging.WARNING)
 
 
 @pytest.mark.skip("Not implemented")
@@ -78,56 +86,30 @@ def test__compute_coregistration():
     """
 
 
-def test__get_stats(get_accuracy_inputs_config, tmp_path):
+@pytest.mark.parametrize(
+    "stats_name, res",
+    [
+        [MIN_STATS, [_ALIAS.get(k) for k in MIN_STATS]],
+        [list(_ALIAS.keys()), [_ALIAS.get(k) for k in _ALIAS.keys()]],
+        [["std"], ["Standard deviation"]],
+        [["standarddeviation"], ["Standard deviation"]],
+        [["std", "standarddeviation"], ["Standard deviation"]],
+    ],
+)
+def test__get_stats(get_accuracy_inputs_config, tmp_path, stats_name, res):
     """
     Test _get_stats function
     """
     user_config = get_accuracy_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
+    user_config["statistics"] = stats_name
     workflows = Accuracy(user_config)
 
     dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
-    stats_gt = dem.get_stats(
-        [
-            "mean",
-            "median",
-            "max",
-            "min",
-            "sum",
-            "sumofsquares",
-            "90thpercentile",
-            "le90",
-            "nmad",
-            "rmse",
-            "std",
-            "standarddeviation",
-            "validcount",
-            "totalcount",
-            "percentagevalidpoints",
-        ]
-    )
+    stats_gt = dem.get_stats(stats_name)
 
-    # Aliases for nicer CSV headers
-    aliases = {
-        "mean": "Mean",
-        "median": "Median",
-        "max": "Maximum",
-        "min": "Minimum",
-        "sum": "Sum",
-        "sumofsquares": "Sum of squares",
-        "90thpercentile": "90th percentile",
-        "le90": "LE90",
-        "nmad": "NMAD",
-        "rmse": "RMSE",
-        "std": "STD",
-        "standarddeviation": "Standard deviation",
-        "validcount": "Valid count",
-        "totalcount": "Total count",
-        "percentagevalidpoints": "Percentage valid points",
-    }
-
-    stats_gt = {aliases.get(k, k): v for k, v in stats_gt.items()}
-    assert workflows._get_stats(dem) == stats_gt
+    assert list(set(workflows._get_stats(dem).keys())) == list(set(res))  # type: ignore
+    assert workflows._get_stats(dem) == {_ALIAS.get(k, k): v for k, v in stats_gt.items()}
 
 
 def test__compute_histogram(get_accuracy_object_with_run, tmp_path):
@@ -156,12 +138,10 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
 
     assert Path(tmp_path / "tables").joinpath("aligned_elev_stats.csv").exists()
 
-    assert Path(tmp_path / "plots").joinpath("diff_elev_after_coreg_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("diff_elev_before_coreg_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_diff_coreg_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("inputs.png").exists()
 
     assert Path(tmp_path / "rasters").joinpath("aligned_elev.tif").exists()
 
@@ -219,14 +199,13 @@ def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
     workflows = Accuracy(user_config)
     workflows.run()
 
-    assert Path(tmp_path / "tables").joinpath("diff_elev_stats.csv").exists()
+    assert Path(tmp_path / "tables").joinpath("diff_elev_without_coreg_stats.csv").exists()
 
-    assert Path(tmp_path / "plots").joinpath("diff_elev.png").exists()
-    assert not Path(tmp_path / "plots").joinpath("diff_elev_before_coreg.png").exists()
+    assert Path(tmp_path / "plots").joinpath("diff_elev_without_coreg_map.png").exists()
+    assert not Path(tmp_path / "plots").joinpath("diff_elev_diff_coreg_map.png").exists()
     assert not Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("reference_elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("to_be_aligned_elev_map.png").exists()
+    assert Path(tmp_path / "plots").joinpath("inputs.png").exists()
 
     assert not Path(tmp_path / "rasters").joinpath("aligned_elev.tif").exists()
 
@@ -236,12 +215,12 @@ def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
     assert Path(tmp_path).joinpath("used_config.yaml").exists()
 
     csv_files = [
-        "diff_elev_stats.csv",
+        "diff_elev_without_coreg_stats.csv",
         "reference_elev_stats.csv",
         "to_be_aligned_elev_stats.csv",
     ]
 
-    raster_files = ["diff_elev.tif"]
+    raster_files = ["diff_elev_without_coreg_map.tif"]
 
     if level == 1:
         for file in csv_files:
@@ -253,7 +232,168 @@ def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
         for file in csv_files:
             assert (Path(tmp_path) / "tables" / file).exists()
         for file in raster_files:
-            assert not (Path(tmp_path) / "rasters" / file).exists()
+            assert (Path(tmp_path) / "rasters" / file).exists()
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        (True, "reference_elev", "reference_elev", None),
+        (False, "reference_elev", "reference_elev", None),
+        (True, "to_be_aligned_elev", "to_be_aligned_elev", None),
+        (False, "to_be_aligned_elev", "to_be_aligned_elev", None),
+        (True, None, None, "must be set to"),
+        (True, None, "reference_elev", "must be set to"),
+        (False, None, None, None),
+        (False, None, "reference_elev", "same shape, transform and CRS"),
+    ],
+)
+def test_run_prepare_datas(get_accuracy_inputs_config, tmp_path, config):
+    """
+    Test preparation data with all sampling_grid values in a coreg/no coreg process.
+    """
+
+    process, sampling_grid, dem_to_crop, error = config
+    user_config = get_accuracy_inputs_config
+    user_config["outputs"] = {"path": str(tmp_path), "level": 2}
+    user_config["coregistration"] = {"process": process}
+    user_config["inputs"]["sampling_grid"] = sampling_grid
+
+    if dem_to_crop is not None:
+        dem = xdem.DEM(user_config["inputs"][dem_to_crop]["path_to_elev"])
+        nrows, ncols = dem.shape
+
+        dem_crop = dem.icrop((0, 0, ncols - 3, nrows - 3))
+        dem_crop.to_file(Path(tmp_path / (dem_to_crop + "_crop.tif")))
+        user_config["inputs"][dem_to_crop]["path_to_elev"] = Path(tmp_path / (dem_to_crop + "_crop.tif")).as_posix()
+
+    if error is not None:
+        with pytest.raises(ValueError, match=error):
+            workflows = Accuracy(user_config)
+            workflows.run()
+    else:
+        workflows = Accuracy(user_config)
+        workflows.run()
+
+        if sampling_grid is not None:
+            raster_files = [
+                "to_be_aligned_elev_reprojected.tif",
+                "reference_elev_reprojected.tif",
+            ]
+
+            for file in raster_files:
+                dem_test = xdem.DEM(Path(tmp_path) / "rasters" / file)
+                assert dem_crop.shape == dem_test.shape
+
+            csv_files = [
+                "reference_elev_stats.csv",
+                "to_be_aligned_elev_stats.csv",
+            ]
+            for file in csv_files:
+                stats = pd.read_csv(Path(tmp_path / "tables" / file).as_posix())
+                assert stats["Total count"].values[0] == dem_crop.shape[0] * dem_crop.shape[1]
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        ("reference_elev", ["reference_elev"]),
+        ("reference_elev", ["to_be_aligned_elev"]),
+        ("to_be_aligned_elev", ["reference_elev"]),
+        ("to_be_aligned_elev", ["to_be_aligned_elev"]),
+        ("reference_elev", ["reference_elev", "to_be_aligned_elev"]),
+        ("to_be_aligned_elev", ["reference_elev", "to_be_aligned_elev"]),
+    ],
+)
+def test_prepare_datas(get_accuracy_inputs_config, tmp_path, config):
+    """
+    Test preparation data with all sampling_grid values
+    """
+
+    sampling_grid, dem_to_crop_list = config
+    user_config = get_accuracy_inputs_config
+
+    # Save path before crop(s)
+    original_ref_path = user_config["inputs"]["reference_elev"]["path_to_elev"]
+    original_tba_path = user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"]
+    user_config["inputs"]["reference_elev"]["path_to_mask"] = None
+    user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = None
+
+    # Update user_config
+    user_config["outputs"] = {"path": str(tmp_path), "level": 2}
+    user_config["coregistration"] = {"process": False}
+    user_config["inputs"]["sampling_grid"] = sampling_grid
+    user_config["inputs"]["reference_elev"]["path_to_mask"] = None
+    user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = None
+
+    # Init crops possible values
+    crop = dict()
+    nrows, ncols = xdem.DEM(user_config["inputs"]["reference_elev"]["path_to_elev"]).shape
+    crop["reference_elev"] = (0, 0, int(ncols / 2) - 1, int(nrows / 2) - 1)
+    crop["to_be_aligned_elev"] = (int(ncols / 2) + 1, int(nrows / 2) + 1, ncols, nrows)
+
+    # Crop dems(s) and update config
+    for dem_to_crop in dem_to_crop_list:
+        dem = xdem.DEM(user_config["inputs"][dem_to_crop]["path_to_elev"])
+        dem_crop = dem.icrop(crop[dem_to_crop])
+        dem_crop.to_file(Path(tmp_path / (dem_to_crop + "_crop.tif")))
+        user_config["inputs"][dem_to_crop]["path_to_elev"] = Path(tmp_path / (dem_to_crop + "_crop.tif")).as_posix()
+
+    workflows = Accuracy(user_config)
+    workflows.run()
+
+    raster_files = [
+        "to_be_aligned_elev_reprojected.tif",
+        "reference_elev_reprojected.tif",
+    ]
+
+    # Verify shape and CRS of both outputs
+    final_shape = xdem.DEM(user_config["inputs"][sampling_grid]["path_to_elev"]).shape
+    final_crs = xdem.DEM(user_config["inputs"][sampling_grid]["path_to_elev"]).get_metric_crs()
+    for raster_file in raster_files:
+        dem_raster_file = xdem.DEM(Path(tmp_path) / "rasters" / raster_file)
+        assert dem_raster_file.shape == final_shape
+        assert dem_raster_file.crs == final_crs
+
+    # Verify array of both outputs by means to the array wanted
+    reference_elev_reprojected_mean = xdem.DEM(Path(tmp_path) / "rasters" / "reference_elev_reprojected.tif").get_stats(
+        "mean"
+    )
+    to_be_aligned_elev_reprojected_mean = xdem.DEM(
+        Path(tmp_path) / "rasters" / "to_be_aligned_elev_reprojected.tif"
+    ).get_stats("mean")
+
+    if sampling_grid == "reference_elev":
+
+        # If reference_elev is cropped or not
+        dem_ref_ref = xdem.DEM(original_ref_path)
+        if "reference_elev" in dem_to_crop_list:
+            dem_ref_ref = dem_ref_ref.icrop(crop["reference_elev"])
+        assert dem_ref_ref.get_stats("mean") == reference_elev_reprojected_mean
+
+        # If intersection between ref and tba is not null
+        if len(dem_to_crop_list) == 1:
+            assert xdem.DEM(original_tba_path).icrop(crop[dem_to_crop_list[0]]).get_stats("mean") == pytest.approx(
+                to_be_aligned_elev_reprojected_mean
+            )
+        else:
+            assert np.isnan(to_be_aligned_elev_reprojected_mean)
+
+    else:
+
+        # If to_be_aligned_elev is cropped or not
+        dem_tba_ref = xdem.DEM(original_tba_path)
+        if "to_be_aligned_elev" in dem_to_crop_list:
+            dem_tba_ref = dem_tba_ref.icrop(crop["to_be_aligned_elev"])
+        assert dem_tba_ref.get_stats("mean") == to_be_aligned_elev_reprojected_mean
+
+        # If intersection between ref and tba is not null
+        if len(dem_to_crop_list) == 1:
+            assert xdem.DEM(original_ref_path).icrop(crop[dem_to_crop_list[0]]).get_stats("mean") == pytest.approx(
+                reference_elev_reprojected_mean
+            )
+        else:
+            assert np.isnan(reference_elev_reprojected_mean)
 
 
 def test_create_html(tmp_path, get_accuracy_object_with_run):
@@ -265,17 +405,75 @@ def test_create_html(tmp_path, get_accuracy_object_with_run):
     assert Path(tmp_path).joinpath("report.html").exists()
 
 
-def test_mask_init(tmp_path, get_accuracy_inputs_config):
+@pytest.mark.parametrize(
+    "masked",
+    [
+        [True, True],
+        [False, True],
+        [True, False],
+        [False, False],
+    ],
+)
+def test_mask(tmp_path, get_accuracy_inputs_config, masked):
     """
-    Test mask initialization
+    Test mask initialization and correg
     """
     user_config = get_accuracy_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
-    del user_config["inputs"]["reference_elev"]["path_to_mask"]
+    masked_ref, masked_tba = masked
+    user_config["outputs"] = {"path": str(tmp_path), "level": 2}
+    print(user_config)
+    ref_dem_path = xdem.examples.get_path_test("longyearbyen_ref_dem")
+    tba_dem_path = xdem.examples.get_path_test("longyearbyen_tba_dem")
+    mask_ref_dem_path = xdem.examples.get_path_test("longyearbyen_glacier_outlines")
+    mask_tba_dem_path = xdem.examples.get_path_test("longyearbyen_glacier_outlines_2010")
+
+    # Create 1/2 mask (up) for ref and 1/2 mask (bottom) for tba
+    ref_dem = xdem.DEM(ref_dem_path)
+    ref_dem.load()
+    tba_dem = xdem.DEM(tba_dem_path)
+    tba_dem.load()
+    ref_mask = gu.Vector(mask_ref_dem_path)
+    tba_mask = gu.Vector(mask_tba_dem_path)
+
+    user_config["inputs"]["reference_elev"]["path_to_elev"] = ref_dem_path
+    if masked_ref:
+        inlier_mask = ~ref_mask.create_mask(ref_dem)
+        inlier_mask_reproject = inlier_mask.reproject(ref_dem).crop(ref_dem)
+        ref_dem.set_mask(~inlier_mask_reproject)
+        user_config["inputs"]["reference_elev"]["path_to_mask"] = mask_ref_dem_path
+    else:
+        user_config["inputs"]["reference_elev"]["path_to_mask"] = None
+
+    user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"] = tba_dem_path
+    if masked_tba:
+        inlier_mask = ~tba_mask.create_mask(tba_dem)
+        inlier_mask_reproject = inlier_mask.reproject(tba_dem).crop(tba_dem)
+        tba_dem.set_mask(~inlier_mask_reproject)
+        user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = mask_tba_dem_path
+    else:
+        user_config["inputs"]["to_be_aligned_elev"]["path_to_mask"] = None
+
+    # Apply to config dict
     workflows = Accuracy(user_config)
-    workflows._load_data()
-    dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
-    mask = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
-    inlier_mask = ~mask.create_mask(dem)
-    assert workflows.inlier_mask == inlier_mask
-    assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
+    workflows.run()
+
+    # Verify 1/2 mask application for ref data
+    stats_ref = pd.read_csv(Path(tmp_path / "tables" / "reference_elev_stats.csv").as_posix())
+    assert stats_ref["Valid count"].values[0] == ref_dem.get_stats("Valid count")
+
+    # Count 1/2 mask application for tba data
+    stats_tba = pd.read_csv(Path(tmp_path / "tables" / "to_be_aligned_elev_stats.csv").as_posix())
+    assert stats_tba["Valid count"].values[0] == tba_dem.get_stats("Valid count")
+
+    stats_tba_aligned = pd.read_csv(Path(tmp_path / "tables" / "aligned_elev_stats.csv").as_posix())
+    aligned_tba = tba_dem.coregister_3d(ref_dem, xdem.coreg.LZD(subsample=10000), random_state=42)
+    assert stats_tba_aligned["Valid count"].values[0] == aligned_tba.get_stats("Valid count")
+
+    # Count full mask on diff elev data
+    stats_before = pd.read_csv(Path(tmp_path / "tables" / "diff_elev_before_coreg_stats.csv").as_posix())
+    stats_after = pd.read_csv(Path(tmp_path / "tables" / "diff_elev_after_coreg_stats.csv").as_posix())
+
+    diff_before = tba_dem - ref_dem
+    assert stats_before["Valid count"].values[0] == diff_before.get_stats("Valid count")
+    diff_after = aligned_tba.reproject(ref_dem) - ref_dem
+    assert stats_after["Valid count"].values[0] == diff_after.get_stats("Valid count")

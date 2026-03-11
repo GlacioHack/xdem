@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """This module defines the DEM class."""
+
 from __future__ import annotations
 
 import pathlib
@@ -88,7 +89,7 @@ class DEM(Raster):  # type: ignore
     See the API for more details.
     """
 
-    @profiler.profile("xdem.dem.__init__", memprof=True)  # type: ignore
+    @profiler.profile("xdem.dem.__init__", memprof=True)
     def __init__(
         self,
         filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
@@ -618,7 +619,7 @@ class DEM(Raster):  # type: ignore
     def get_terrain_attribute(self, attribute: str | list[str], **kwargs: Any) -> RasterType | list[RasterType]:
         return terrain.get_terrain_attribute(self, attribute=attribute, **kwargs)
 
-    @profiler.profile("xdem.dem.coregister_3d", memprof=True)  # type: ignore
+    @profiler.profile("xdem.dem.coregister_3d", memprof=True)
     def coregister_3d(  # type: ignore
         self,
         reference_elev: DEM | gpd.GeoDataFrame | xdem.EPC,

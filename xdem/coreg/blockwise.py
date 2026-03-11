@@ -42,7 +42,7 @@ from geoutils.multiproc import (
     compute_tiling
 )
 from xdem._misc import import_optional
-from xdem._typing import MArrayf, NDArrayb, NDArrayf
+from xdem._typing import MArrayf, NDArrayf
 from xdem.coreg.affine import NuthKaab
 from xdem.coreg.base import Coreg, CoregPipeline
 
@@ -80,6 +80,14 @@ class BlockwiseCoreg:
             raise ValueError(
                 "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
             )
+        if not step.is_affine:
+            raise ValueError("The blockwise coregistration only supports affine coregistration methods.")
+
+        if not step.meta["inputs"]["affine"].get("only_translation", True):
+            raise ValueError(
+                "The provided coregistration method is configured to only estimate translation. "
+                "Consider setting 'only_translation' to True to allow for more complex transformations."
+            )
 
         self.procstep = step
         self.block_size_fit = block_size_fit
@@ -88,10 +96,11 @@ class BlockwiseCoreg:
 
         if isinstance(step, NuthKaab):
             self.apply_z_correction = step.vertical_shift  # type: ignore
+        else:
+            self.apply_z_correction = True
 
         if mp_config is not None:
             self.mp_config = mp_config
-            self.mp_config.chunk_size = block_size_fit
             self.parent_path = Path(mp_config.outfile).parent
         else:
             self.mp_config = MultiprocConfig(chunk_size=self.block_size_fit, outfile="aligned_dem.tif")
@@ -99,13 +108,10 @@ class BlockwiseCoreg:
 
         os.makedirs(self.parent_path, exist_ok=True)
 
-        self.output_path_reproject = self.parent_path / "reprojected_dem.tif"
-        self.output_path_aligned = self.parent_path / "aligned_dem.tif"
+        self.output_path_aligned = self.parent_path / self.mp_config.outfile
 
         self.meta = {"inputs": {}, "outputs": {}}
         self.shape_tiling_grid = (0, 0, 0)
-
-        self.reproject_dem = None
 
     @staticmethod
     def _coreg_wrapper(
@@ -148,27 +154,19 @@ class BlockwiseCoreg:
 
     def fit(
         self: BlockwiseCoreg,
-        reference_elev: NDArrayf | MArrayf | RasterType,
-        to_be_aligned_elev: NDArrayf | MArrayf | RasterType,
-        inlier_mask: NDArrayb | Raster | None = None,
+        reference_elev: RasterType,
+        to_be_aligned_elev: RasterType,
+        inlier_mask: Raster | None = None,
     ) -> None:
         """
         Fit the coregistration model by estimating transformation parameters
         between the reference and target elevation data.
 
         :param reference_elev: Reference elevation data to align to.
-        :param to_be_aligned_elev: Elevation data to be aligned (transformed).
+        :param to_be_aligned_elev: Elevation data to be aligned.
         :param inlier_mask: Optional boolean mask indicating valid data points to use in the fitting.
         :return: None. Updates internal model parameters.
         """
-
-        self.mp_config.outfile = self.output_path_reproject
-
-        self.reproject_dem = to_be_aligned_elev.reproject(  # type: ignore
-            ref=reference_elev, multiproc_config=self.mp_config, silent=True
-        )
-
-        logging.info(f"No reprojected DEM returned, but saved at {self.output_path_reproject}")
 
         self.meta["inputs"] = self.procstep.meta["inputs"]  # type: ignore
 
@@ -176,7 +174,7 @@ class BlockwiseCoreg:
             self._coreg_wrapper,
             reference_elev,
             self.mp_config,
-            self.reproject_dem,
+            to_be_aligned_elev,
             self.procstep,
             inlier_mask,
             return_tile=True,
@@ -195,18 +193,15 @@ class BlockwiseCoreg:
         self.shifts_z = []  # type: ignore
 
         for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
-            try:
-                shift_x = coreg.meta["outputs"]["affine"]["shift_x"]
-                shift_y = coreg.meta["outputs"]["affine"]["shift_y"]
-                shift_z = coreg.meta["outputs"]["affine"]["shift_z"]
 
-            except KeyError:
-                continue
+            shift_x = coreg.meta["outputs"]["affine"].get("shift_x", np.nan)
+            shift_y = coreg.meta["outputs"]["affine"].get("shift_y", np.nan)
+            shift_z = coreg.meta["outputs"]["affine"].get("shift_z", np.nan)
 
             x, y = (
                 tile_coords[2] + self.block_size_fit / 2,
                 tile_coords[0] + self.block_size_fit / 2,
-            ) * self.reproject_dem.transform
+            ) * to_be_aligned_elev.transform  # type: ignore
 
             self.x_coords.append(x)
             self.y_coords.append(y)
@@ -248,6 +243,9 @@ class BlockwiseCoreg:
 
         import_optional("sklearn", package_name="scikit-learn")
         from sklearn.linear_model import LinearRegression, RANSACRegressor
+
+        if np.isnan(shifts).all():
+            shifts = np.zeros_like(shifts)
 
         # Stack and squeeze
         points = np.dstack([x_coords, y_coords, shifts])
@@ -351,12 +349,13 @@ class BlockwiseCoreg:
 
     def apply(
         self,
+        to_be_aligned_elev: NDArrayf | MArrayf | RasterType,
         threshold_ransac: float = 0.01,
         max_iterations_ransac: int = 2000,
     ) -> RasterType:
         """
         Apply the coregistration transformation to an elevation array using a ransac filter.
-
+        :param to_be_aligned_elev: Elevation data to be aligned.
         :param threshold_ransac: Maximum distance threshold to consider a point as an inlier.
         :param max_iterations_ransac: Maximum number of RANSAC iterations to perform.
         :return: The transformed elevation raster.
@@ -387,15 +386,15 @@ class BlockwiseCoreg:
         else:
             coeff_z = (0, 0, 0)
 
-        self.mp_config.outfile = self.output_path_aligned
         self.mp_config.chunk_size = self.block_size_apply
-
         # be careful with depth value if Out of Memory
         depth = max(np.abs(self.shifts_x).max(), np.abs(self.shifts_y).max())
+        if np.isnan(depth):
+            depth = 0
 
         aligned_dem = map_overlap_multiproc_save(
             self._wrapper_apply_epc,
-            self.reproject_dem,
+            to_be_aligned_elev,
             self.mp_config,
             coeff_x,
             coeff_y,

@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Terrain submodule on surface fit attributes: deriving and combining co-dependent fit coefficients."""
+
 from __future__ import annotations
 
 import warnings
@@ -944,7 +945,7 @@ def _make_attribute_from_coefs(
     return attrs
 
 
-@njit(inline="always", cache=True)  # type: ignore
+@njit(inline="always", cache=True)
 def _convolution_numba(
     dem: NDArrayf,
     filters: NDArrayf,
@@ -973,7 +974,7 @@ def _convolution_numba(
 _make_attribute_from_coefs_numba = njit(inline="always", cache=True)(_make_attribute_from_coefs)
 
 
-@njit(parallel=True, cache=True)  # type: ignore
+@njit(parallel=True, cache=True)
 def _get_surface_attributes_numba(
     dem: NDArrayf,
     filters: NDArrayf,

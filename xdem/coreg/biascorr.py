@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Bias corrections (i.e., non-affine coregistration) classes."""
+
 from __future__ import annotations
 
 import logging

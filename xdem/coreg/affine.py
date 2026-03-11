@@ -1845,7 +1845,7 @@ class AffineCoreg(Coreg):
 
         :param return_degrees: Whether to return degrees, otherwise radians.
 
-        :return: Extrinsinc Euler rotations along easting, northing and vertical directions (degrees).
+        :return: Extrinsic Euler rotations along easting, northing and vertical directions (degrees).
         """
 
         matrix = self.to_matrix()

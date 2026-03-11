@@ -19,6 +19,7 @@
 """
 test for schema files
 """
+
 import logging
 
 import pyproj
@@ -118,12 +119,12 @@ def test_validate_topo_configuration_with_errors(get_topo_inputs_config, new_par
     "new_param_config, expected",
     [
         pytest.param(
-            {"coregistration": {"sampling_grid": 3}},
+            {"inputs": {"sampling_grid": 3}},
             "must be of string type",
             id="sampling_grid",
         ),
         pytest.param(
-            {"coregistration": {"sampling_grid": "not_a_dem"}},
+            {"inputs": {"sampling_grid": "not_a_dem"}},
             "unallowed value not_a_dem",
             id="sampling_grid",
         ),
@@ -257,7 +258,7 @@ def test_valid_to_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
         ),
     ],
 )
-def test_invalid_vcrs(get_topo_inputs_config, pipeline_topo, wrong_vcrs, error, caplog):
+def test_invalid_vcrs(get_topo_inputs_config, pipeline_topo, wrong_vcrs, error, caplog, assert_and_allow_log):
     """
     Test invalid crs
     """
@@ -265,9 +266,9 @@ def test_invalid_vcrs(get_topo_inputs_config, pipeline_topo, wrong_vcrs, error, 
     topo_conf["inputs"]["reference_elev"].update({"from_vcrs": wrong_vcrs})
 
     if error == "LoggingError":
-        caplog.set_level(logging.ERROR)
-        _ = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
-        assert len(caplog.records) == 1
+        with caplog.at_level(logging.ERROR):
+            _ = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
+        assert_and_allow_log(caplog, level=logging.ERROR, match="'from_vcrs' field is not valid.*")
     else:
         with pytest.raises(error):
             _ = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)

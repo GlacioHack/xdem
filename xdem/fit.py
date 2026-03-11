@@ -19,6 +19,7 @@
 """
 Functions to perform normal, weighted and robust fitting.
 """
+
 from __future__ import annotations
 
 import inspect

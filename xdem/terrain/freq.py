@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Terrain submodule on frequency attributes computed on the full array, such as texture shading."""
+
 from __future__ import annotations
 
 import numpy as np

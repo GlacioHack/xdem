@@ -80,7 +80,7 @@ aligned_dem = tba_dem.coregister_3d(ref_dem, my_coreg_pipeline)
 
 Alternatively, the coregistration can be applied by calling {func}`~xdem.coreg.Coreg.fit_and_apply`, or sequentially
 calling the {func}`~xdem.coreg.Coreg.fit` and {func}`~xdem.coreg.Coreg.apply` steps,
-which allows a broader variety of arguments at each step, and re-using the same transformation on several objects
+which allows a broader variety of arguments at each step, and reusing the same transformation on several objects
 (e.g., horizontal shift of both a stereo DEM and its ortho-image).
 
 ```{code-cell} ipython3
@@ -575,7 +575,9 @@ for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at
 ### The {class}`~xdem.coreg.BlockwiseCoreg` object
 
 ```{caution}
-The {class}`~xdem.coreg.BlockwiseCoreg` feature is still experimental. Currently, it is only tested for the Nuth and Kaab method.
+The {class}`~xdem.coreg.BlockwiseCoreg` feature is still experimental. Currently, it is only tested for the affine
+coregistration methods and for translation only. Rotation shifts will be soon implemented, but not yet available.
+Please set `only_translation=True` when initializing the coregistration method ICP(), LZD() or CPD().
 ```
 
 A {class}`~xdem.coreg.BlockwiseCoreg` splits a coregistration across different spatial blocks of an elevation dataset, running that
@@ -596,7 +598,7 @@ blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
                                       parent_path="")
 
 blockwise.fit(ref_dem, tba_dem_shifted)
-aligned_dem = blockwise.apply()
+aligned_dem = blockwise.apply(tba_dem_shifted)
 aligned_dem.load()
 ```
 ```{code-cell} ipython3

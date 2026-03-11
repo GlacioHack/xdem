@@ -36,9 +36,9 @@ class TestTerrainAttribute:
         assert rugosity[1, 1] == pytest.approx(r, rel=10 ** (-4))
 
     # Loop for various elevation differences with the center
-    @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 3))  # type: ignore
+    @pytest.mark.parametrize("dh", np.linspace(0.01, 100, 3))
     # Loop for different resolutions
-    @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 3))  # type: ignore
+    @pytest.mark.parametrize("resolution", np.linspace(0.01, 100, 3))
     def test_rugosity_simple_cases(self, dh: float, resolution: float) -> None:
         """Test the rugosity calculation for simple cases."""
 
@@ -98,7 +98,7 @@ class TestTerrainAttribute:
             "rugosity",
             "fractal_roughness",
         ],
-    )  # type: ignore
+    )
     def test_get_windowed_attribute__engine(self, attribute: str) -> None:
         """Check that all windowed attributes give the same results with SciPy or Numba."""
 
@@ -126,7 +126,7 @@ class TestTerrainAttribute:
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
 
-    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")  # type: ignore
+    @pytest.mark.skipif(find_spec("numba") is not None, reason="Only runs if numba is missing.")
     def test_get_surface_attribute__missing_dep(self) -> None:
         """Check that proper import error is raised when numba is missing"""
 
@@ -142,7 +142,7 @@ class TestTerrainAttribute:
     @pytest.mark.skipif(
         Version(scipy.__version__) < Version("1.16.0"),
         reason="SciPy version is too old and does not yet support vectorized_filter.",
-    )  # type: ignore
+    )
     @pytest.mark.parametrize(
         "attribute",
         [
@@ -153,7 +153,7 @@ class TestTerrainAttribute:
             "rugosity",
             "fractal_roughness",
         ],
-    )  # type: ignore
+    )
     def test_get_windowed_attribute__scipy_backend(self, attribute: str) -> None:
         """Check that all windowed attributes give the same result with SciPy generic_filter or vectorized_filter."""
 
@@ -198,8 +198,8 @@ class TestTerrainAttribute:
             for attr in xdem.terrain.available_attributes
             if attr not in ["aspect", "slope", "hillshade"] and "curvature" not in attr
         ],
-    )  # type: ignore
-    @pytest.mark.parametrize("window_size", [3, 5, 7])  # type: ignore
+    )
+    @pytest.mark.parametrize("window_size", [3, 5, 7])
     def test_windowed_attribute__nan_propag(self, attribute: str, window_size: int) -> None:
         """
         Check that NaN propagation behaves as intended for windowed attributes, in short: NaN are propagated
