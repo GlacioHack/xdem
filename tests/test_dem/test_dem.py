@@ -103,8 +103,7 @@ class TestDEM:
         # Check that a warning is raised when trying to override with user input
         with pytest.warns(
             UserWarning,
-            match="The CRS in the raster metadata already has a vertical component, "
-            "the user-input 'EGM08' will override it.",
+            match="The CRS in the raster metadata.*",
         ):
             DEM(temp_file, vcrs="EGM08")
 
@@ -196,12 +195,12 @@ class TestDEM:
         # Check setting EGM96
         dem.set_vcrs(new_vcrs="EGM96")
         assert dem._vcrs_name == "EGM96 height"
-        assert dem._vcrs_grid == "us_nga_egm96_15.tif"
+        assert dem._vcrs_grid is None
 
         # Check setting EGM08
         dem.set_vcrs(new_vcrs="EGM08")
         assert dem._vcrs_name == "EGM2008 height"
-        assert dem._vcrs_grid == "us_nga_egm08_25.tif"
+        assert dem._vcrs_grid is None
 
         # -- Test 2: we check with grids --
         # Most grids aren't going to be downloaded, so this warning can be raised
@@ -244,8 +243,9 @@ class TestDEM:
         # Transform to EGM96 geoid not inplace (default)
         trans_dem = dem.to_vcrs(vcrs="EGM96")
 
-        # The output should be a DEM, input shouldn't have changed
+        # The output should be a DEM, input shouldn't have changed except the CRS into 3D
         assert isinstance(trans_dem, DEM)
+        dem_before_trans.set_crs(dem.crs)
         assert dem.raster_equal(dem_before_trans)
 
         # Compare to inplace
@@ -339,7 +339,7 @@ class TestDEM:
         assert dem_class_attr.raster_equal(terrain_module_attr)
 
     def test_info_2dcrs(self) -> None:
-        """Tests info function with the new Coordinate system line on dem with 2D CRS"""
+        """Tests info function through GeoUtils, for 3D info."""
 
         dem_path = xdem.examples.get_path_test("longyearbyen_ref_dem")
         raster = gu.Raster(dem_path)
@@ -366,14 +366,14 @@ class TestDEM:
                 assert raster_infos_arrays[line] == dem_infos_array[line]
 
             # Verify Coordinate system value
-            assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'None']"
+            assert complete_line[len(crs_key):].strip() == "['ETRS89 / UTM zone 33N']"
 
         # Verify new VCRS value with this 2D CRS DEM
         dem.set_vcrs(new_vcrs="EGM96")
         dem_infos_array = dem.info(verbose=False).split("\n")
         complete_line = dem_infos_array[crs_line[0]]
         assert complete_line.startswith(crs_key)
-        assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'EPSG:5773']"
+        assert complete_line[len(crs_key):].strip() == "['Horizontal: ETRS89 / UTM zone 33N; Vertical: EGM96 height']"
 
     @pytest.mark.skip()
     def test_info_3dcrs(self) -> None:

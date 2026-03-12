@@ -479,6 +479,7 @@ class TestClassVsAccessorConsistencyDEMBase:
             raise AssertionError(f"DEMBase methods not covered by tests: {list_missing}")
 
     chunked_methods_and_args = (
+        ("to_vcrs", {"vcrs": "EGM96", "force_source_vcrs": "Ellipsoid"}),
         ("slope", {}),
         ("aspect", {}),
         ("hillshade", {}),

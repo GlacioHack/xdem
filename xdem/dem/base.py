@@ -31,6 +31,7 @@ import numpy as np
 from affine import Affine
 from geoutils import profiler
 from geoutils._typing import NDArrayNum
+from geoutils._dispatch import has_geo_attr, get_geo_attr
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.base import RasterBase
 from geoutils.multiproc import MultiprocConfig
@@ -50,7 +51,7 @@ from xdem.spatialstats import (
 )
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
-    _to_vcrs,
+    _to_vcrs_2d,
     _vcrs_from_crs,
     _vcrs_from_user_input,
 )
@@ -110,73 +111,14 @@ class DEMBase(RasterBase):
 
         vcrs = CRS(self.vcrs)
 
-        # 1/ Try structured JSON first
         try:
-            crs_json = vcrs.to_json_dict()
+            op = vcrs.coordinate_operation
+            if op is not None and op.grids:
+                return op.grids[0].short_name
         except Exception:
-            crs_json = None
+            pass
 
-        if isinstance(crs_json, dict):
-
-            def _find_grid(obj: Any) -> str | None:
-                """Recursively search CRS JSON for a geoid/grid filename."""
-                if isinstance(obj, dict):
-                    for key, value in obj.items():
-                        key_low = str(key).lower()
-
-                        # Common cases for grid references
-                        if key_low in {"grids", "grid", "geoidgrids", "geoid_grid", "filename", "file"}:
-                            if isinstance(value, str):
-                                return value.split("@")[0]
-                            if isinstance(value, list):
-                                for item in value:
-                                    if isinstance(item, str):
-                                        return item.split("@")[0]
-                                    if isinstance(item, dict):
-                                        for subkey in ("name", "filename", "file", "value"):
-                                            subval = item.get(subkey)
-                                            if isinstance(subval, str):
-                                                return subval.split("@")[0]
-                        found = _find_grid(value)
-                        if found is not None:
-                            return found
-
-                elif isinstance(obj, list):
-                    for item in obj:
-                        found = _find_grid(item)
-                        if found is not None:
-                            return found
-
-                return None
-
-            grid_name = _find_grid(crs_json)
-            if grid_name is not None:
-                return grid_name
-
-        # 2/ Try PROJ string
-        try:
-            proj4 = vcrs.to_proj4()
-        except Exception:
-            proj4 = ""
-
-        match = re.search(r"(?:^|\s)\+?geoidgrids=([^\s]+)", proj4)
-        if match is not None:
-            return match.group(1).split(",")[0].split("@")[0]
-
-        match = re.search(r"(?:^|\s)\+?grids=([^\s]+)", proj4)
-        if match is not None:
-            return match.group(1).split(",")[0].split("@")[0]
-
-        # 3/ Fallback to CRS name, e.g. "unknown using geoidgrids=us_nga_egm08_25.tif"
-        name = vcrs.name or ""
-
-        match = re.search(r"geoidgrids=([^,\s]+)", name)
-        if match is not None:
-            return match.group(1).split("@")[0]
-
-        match = re.search(r"grids=([^,\s]+)", name)
-        if match is not None:
-            return match.group(1).split("@")[0]
+        return None
 
     def set_vcrs(
         self,
@@ -194,65 +136,39 @@ class DEMBase(RasterBase):
         new_crs = _build_ccrs_from_crs_and_vcrs(crs=self.crs, vcrs=new_vcrs)
         self.set_crs(new_crs)
 
-    @overload
     def to_vcrs(
         self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
-        ) = None,
-        *,
-        inplace: Literal[False] = False,
-    ) -> DEMLike: ...
-
-    @overload
-    def to_vcrs(
-        self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
-        ) = None,
-        *,
-        inplace: Literal[True],
-    ) -> None: ...
-
-    @overload
-    def to_vcrs(
-        self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
-        ) = None,
-        *,
-        inplace: bool = False,
-    ) -> DEMLike | None: ...
-
-    def to_vcrs(
-        self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
-        ) = None,
-        inplace: bool = False,
-    ) -> DEMLike | None:
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | VerticalCRS | int,
+        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | VerticalCRS | int | None = None,
+        mp_config: MultiprocConfig | None = None,
+        **kwargs: Any,
+    ) -> DEMLike:
         """
         Convert the DEM to another vertical coordinate reference system.
 
         :param vcrs: Destination vertical CRS. Either as a name ("WGS84", "EGM08", "EGM96"),
             an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data)
         :param force_source_vcrs: Force a source vertical CRS (uses metadata by default). Same formats as for `vcrs`.
-        :param inplace: Whether to return a new DEM (default) or the same DEM updated in-place.
+        :param mp_config: Multiprocessing configuration.
 
         :return: DEM with vertical reference transformed, or None.
         """
+
+        # Raise deprecation warning for old in-place behaviour
+        if "inplace" in kwargs and kwargs["inplace"]:
+            warnings.warn("Argument 'inplace' is deprecated and will be removed in future versions. "
+                          "Use dem = dem.to_vcrs() instead.",
+                          category=DeprecationWarning)
+            inplace = True
+        else:
+            inplace = False
+
         # Apply transformation
-        new_data, new_crs = _to_vcrs(data=self.data,
-                            transform=self.transform,
-                            crs=self.crs,
-                            dst_vcrs=vcrs,
-                            force_source_vcrs=force_source_vcrs)
+        new_dem = _to_vcrs_2d(dem=self, dst_vcrs=vcrs, force_source_vcrs=force_source_vcrs, mp_config=mp_config)
+
+        # Keep logic below until we deprecate 'inplace'
         # If early exit because no transformation was required
-        if new_data is None:
+        if new_dem is None:
             if inplace:
                 return None
             else:
@@ -260,20 +176,12 @@ class DEMBase(RasterBase):
 
         # If inplace, update DEM and vcrs
         if inplace:
-            self._data = new_data
-            self.set_crs(new_crs=new_crs)
+            self._data = new_dem.data
+            self.set_crs(new_crs=get_geo_attr(new_dem, "crs"))
             return None
         # Otherwise, return new DEM
         else:
-            return self.from_array(
-                data=new_data,
-                transform=self.transform,
-                crs=new_crs,
-                nodata=self.nodata,
-                area_or_point=self.area_or_point,
-                tags=self.tags,
-                cast_nodata=False,
-            )
+            return new_dem
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(
@@ -569,7 +477,7 @@ class DEMBase(RasterBase):
         }
 
         # Elevation change with the other DEM or elevation point cloud
-        if isinstance(other_elev, DEM):
+        if has_geo_attr(other_elev, "transform"):
             dh = other_elev.reproject(self, silent=True) - self
         elif isinstance(other_elev, gpd.GeoDataFrame):
             other_elev = other_elev.to_crs(self.crs)
