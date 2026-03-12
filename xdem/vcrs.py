@@ -23,9 +23,12 @@ from __future__ import annotations
 import os
 import pathlib
 import warnings
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, Any
 from urllib.error import HTTPError
 
+from geoutils.raster.referencing import _coords
+
+import affine
 import pyproj
 from pyproj import CRS
 from pyproj.crs import BoundCRS, CompoundCRS, GeographicCRS, VerticalCRS
@@ -57,6 +60,45 @@ vcrs_dem_products = {
     "COPDEM": "EGM08",
 }
 
+def _check_vcrs_input(vcrs: Any, crs: Any) -> Any:
+    """
+    Process user-input vertical CRS and CRS, and return normalized CRS output.
+
+    :param vcrs: Vertical CRS input.
+    :param crs: CRS input.
+
+    :return: Normalized CRS output.
+    """
+
+    # Parse 2D/3D CRS
+    crs = pyproj.CRS.from_user_input(crs)
+
+    # Vertical CRS from different sources
+    vcrs_from_crs = _vcrs_from_crs(crs)
+    if vcrs is None:
+        vcrs_from_user = None
+    else:
+        vcrs_from_user = _vcrs_from_user_input(vcrs)
+
+    # Determine which vertical CRS to use
+    if vcrs_from_user is not None:
+        # User input takes precedence over CRS metadata
+        if vcrs_from_crs is not None and vcrs_from_user != vcrs_from_crs:
+            warnings.warn(
+                "The CRS in the raster metadata already has a vertical component; "
+                f"the user-provided '{vcrs}' will override it."
+            )
+        out_vcrs = vcrs_from_user
+    else:
+        out_vcrs = vcrs_from_crs
+
+    # Build final CRS
+    if out_vcrs is not None:
+        out_crs = _build_ccrs_from_crs_and_vcrs(crs, out_vcrs)
+    else:
+        out_crs = crs
+
+    return out_crs
 
 def _parse_vcrs_name_from_product(product: str) -> str | None:
     """
@@ -206,9 +248,14 @@ _vcrs_meta: dict[str, VCRSMetaDict] = {
     "EGM96": {"grid": "us_nga_egm96_15.tif", "epsg": 5773},  # EGM1996 at 15 minute resolution
 }
 
-
-def _vcrs_from_crs(crs: CRS) -> CRS:
+def _vcrs_from_crs(crs: CRS | None) -> CRS | None:
     """Get the vertical CRS from a CRS."""
+
+    # If no CRS is defined
+    if crs is None:
+        return None
+    else:
+        crs = CRS(crs)
 
     # Check if CRS is 3D
     if len(crs.axis_info) > 2:
@@ -355,3 +402,49 @@ def _transform_zz(
     zz_trans = transformer.transform(xx, yy, zz)[2]
 
     return zz_trans
+
+def _to_vcrs(data: NDArrayf,
+            transform: affine.Affine,
+            crs: Any,
+            dst_vcrs: Any,
+            force_source_vcrs: (Any | None) = None) -> tuple[NDArrayf, CRS]:
+
+
+    # Get source VCRS from current CRS
+    src_vcrs = _vcrs_from_crs(crs)
+
+    # Early exit if conversion not defined
+    if src_vcrs is None and force_source_vcrs is None:
+        raise ValueError(
+            "The current DEM has no vertical reference, define one with .set_vcrs() "
+            "or by passing `vcrs` to perform a conversion."
+        )
+
+    # Initial Compound CRS (only exists if vertical CRS is not None, as checked above)
+    if force_source_vcrs is not None:
+        # Warn if a vertical CRS already existed for that DEM
+        if src_vcrs is not None:
+            warnings.warn(
+                category=UserWarning,
+                message="Overriding the vertical CRS of the DEM with the one provided in `vcrs`.",
+            )
+        src_ccrs = _build_ccrs_from_crs_and_vcrs(crs, vcrs=force_source_vcrs)
+    else:
+        src_ccrs = crs
+
+    # New destination Compound CRS
+    dst_ccrs = _build_ccrs_from_crs_and_vcrs(crs, vcrs=_vcrs_from_user_input(vcrs_input=dst_vcrs))
+
+    # If both compound CCRS are equal, do not run any transform
+    if src_ccrs.equals(dst_ccrs):
+        warnings.warn(
+            message="Source and destination vertical CRS are the same, skipping vertical transformation.",
+            category=UserWarning,
+        )
+        return None, None
+
+    # Transform elevation with new vertical CRS
+    zz = data
+    xx, yy = _coords(shape=data.shape, transform=transform, area_or_point=None)
+    zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz).astype(data.dtype, copy=False)
+    return zz_trans, dst_ccrs

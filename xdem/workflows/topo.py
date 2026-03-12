@@ -199,8 +199,7 @@ class Topo(Workflows):
         # Global information
         dem_informations = {
             "Driver": self.dem.driver,
-            "Filename": self.dem.filename,
-            "Grid size": self.dem.vcrs_grid,
+            "Filename": self.dem.name,
             "Number of band": self.dem.bands,
             "Data types": self.dem.dtype,
             "Nodata Value": self.dem.nodata,

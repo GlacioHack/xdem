@@ -72,7 +72,7 @@ class TestVCRS:
         warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         # Get user input
-        vcrs = xdem.dem._vcrs_from_user_input(vcrs_input)
+        vcrs = xdem.vcrs._vcrs_from_user_input(vcrs_input)
 
         # Check output type
         assert isinstance(vcrs, CRS)

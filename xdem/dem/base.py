@@ -22,19 +22,21 @@ from __future__ import annotations
 
 import pathlib
 import warnings
-from typing import Any, Callable, Literal, overload
+import re
+from typing import Any, Callable, Literal, overload, TypeVar, Union
 
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
-import rasterio as rio
 from affine import Affine
 from geoutils import profiler
 from geoutils._typing import NDArrayNum
+from geoutils.raster import Raster, RasterType
 from geoutils.raster.base import RasterBase
 from geoutils.multiproc import MultiprocConfig
 from geoutils.stats import nmad
 from pyproj import CRS
+import xarray as xr
 from pyproj.crs import CompoundCRS, VerticalCRS
 
 import xdem
@@ -48,13 +50,15 @@ from xdem.spatialstats import (
 )
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
-    _grid_from_user_input,
-    _transform_zz,
+    _to_vcrs,
+    _vcrs_from_crs,
     _vcrs_from_user_input,
 )
 
-dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
-
+# Input/output is a RasterType (= Raster or RasterAccessor subclass)
+DEMType = TypeVar("DEMType", bound="DEMBase")
+# For inputs, we also accept a xr.DataArray
+DEMLike = Union["DEMBase", xr.DataArray]
 
 class DEMBase(RasterBase):
     """
@@ -69,25 +73,19 @@ class DEMBase(RasterBase):
         Initialize additional DEM metadata as None, for it to be overridden in sublasses.
         """
 
+        super().__init__()
         self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
-        self._vcrs_name: str | None = None
-        self._vcrs_grid: str | None = None
         self._data: NDArrayf
 
     @property
     def vcrs(self) -> VerticalCRS | Literal["Ellipsoid"] | None:
-        """Vertical coordinate reference system of the DEM."""
-
-        return self._vcrs
-
-    @property
-    def vcrs_grid(self) -> str | None:
-        """Grid path of vertical coordinate reference system of the DEM."""
-
-        return self._vcrs_grid
+        """
+        Vertical coordinate reference system of the DEM.
+        """
+        return _vcrs_from_crs(self.crs)
 
     @property
-    def vcrs_name(self) -> str | None:
+    def _vcrs_name(self) -> str | None:
         """Name of vertical coordinate reference system of the DEM."""
 
         if self.vcrs is not None:
@@ -103,6 +101,83 @@ class DEMBase(RasterBase):
 
         return vcrs_name
 
+    @property
+    def _vcrs_grid(self) -> str | None:
+        """Human-readable vertical grid description of the DEM."""
+
+        if self.vcrs is None or isinstance(self.vcrs, str):
+            return None
+
+        vcrs = CRS(self.vcrs)
+
+        # 1/ Try structured JSON first
+        try:
+            crs_json = vcrs.to_json_dict()
+        except Exception:
+            crs_json = None
+
+        if isinstance(crs_json, dict):
+
+            def _find_grid(obj: Any) -> str | None:
+                """Recursively search CRS JSON for a geoid/grid filename."""
+                if isinstance(obj, dict):
+                    for key, value in obj.items():
+                        key_low = str(key).lower()
+
+                        # Common cases for grid references
+                        if key_low in {"grids", "grid", "geoidgrids", "geoid_grid", "filename", "file"}:
+                            if isinstance(value, str):
+                                return value.split("@")[0]
+                            if isinstance(value, list):
+                                for item in value:
+                                    if isinstance(item, str):
+                                        return item.split("@")[0]
+                                    if isinstance(item, dict):
+                                        for subkey in ("name", "filename", "file", "value"):
+                                            subval = item.get(subkey)
+                                            if isinstance(subval, str):
+                                                return subval.split("@")[0]
+                        found = _find_grid(value)
+                        if found is not None:
+                            return found
+
+                elif isinstance(obj, list):
+                    for item in obj:
+                        found = _find_grid(item)
+                        if found is not None:
+                            return found
+
+                return None
+
+            grid_name = _find_grid(crs_json)
+            if grid_name is not None:
+                return grid_name
+
+        # 2/ Try PROJ string
+        try:
+            proj4 = vcrs.to_proj4()
+        except Exception:
+            proj4 = ""
+
+        match = re.search(r"(?:^|\s)\+?geoidgrids=([^\s]+)", proj4)
+        if match is not None:
+            return match.group(1).split(",")[0].split("@")[0]
+
+        match = re.search(r"(?:^|\s)\+?grids=([^\s]+)", proj4)
+        if match is not None:
+            return match.group(1).split(",")[0].split("@")[0]
+
+        # 3/ Fallback to CRS name, e.g. "unknown using geoidgrids=us_nga_egm08_25.tif"
+        name = vcrs.name or ""
+
+        match = re.search(r"geoidgrids=([^,\s]+)", name)
+        if match is not None:
+            return match.group(1).split("@")[0]
+
+        match = re.search(r"grids=([^,\s]+)", name)
+        if match is not None:
+            return match.group(1).split("@")[0]
+
     def set_vcrs(
         self,
         new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int,
@@ -114,19 +189,10 @@ class DEMBase(RasterBase):
             an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
         """
 
-        # Get vertical CRS and set it and the grid
-        self._vcrs = _vcrs_from_user_input(vcrs_input=new_vcrs)
-        self._vcrs_grid = _grid_from_user_input(vcrs_input=new_vcrs)
-
-    @property
-    def ccrs(self) -> CompoundCRS | CRS | None:
-        """Compound horizontal and vertical coordinate reference system of the DEM."""
-
-        if self.vcrs is not None:
-            ccrs = _build_ccrs_from_crs_and_vcrs(crs=self.crs, vcrs=self.vcrs)
-            return ccrs
-        else:
-            return None
+        # Get vertical CRS and re-set the CRS
+        new_vcrs = _vcrs_from_user_input(vcrs_input=new_vcrs)
+        new_crs = _build_ccrs_from_crs_and_vcrs(crs=self.crs, vcrs=new_vcrs)
+        self.set_crs(new_crs)
 
     @overload
     def to_vcrs(
@@ -137,7 +203,7 @@ class DEMBase(RasterBase):
         ) = None,
         *,
         inplace: Literal[False] = False,
-    ) -> DEM: ...
+    ) -> DEMLike: ...
 
     @overload
     def to_vcrs(
@@ -159,7 +225,7 @@ class DEMBase(RasterBase):
         ) = None,
         *,
         inplace: bool = False,
-    ) -> DEM | None: ...
+    ) -> DEMLike | None: ...
 
     def to_vcrs(
         self,
@@ -168,7 +234,7 @@ class DEMBase(RasterBase):
             Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
         ) = None,
         inplace: bool = False,
-    ) -> DEM | None:
+    ) -> DEMLike | None:
         """
         Convert the DEM to another vertical coordinate reference system.
 
@@ -179,57 +245,33 @@ class DEMBase(RasterBase):
 
         :return: DEM with vertical reference transformed, or None.
         """
-
-        if self.vcrs is None and force_source_vcrs is None:
-            raise ValueError(
-                "The current DEM has no vertical reference, define one with .set_vref() "
-                "or by passing `src_vcrs` to perform a conversion."
-            )
-
-        # Initial Compound CRS (only exists if vertical CRS is not None, as checked above)
-        if force_source_vcrs is not None:
-            # Warn if a vertical CRS already existed for that DEM
-            if self.vcrs is not None:
-                warnings.warn(
-                    category=UserWarning,
-                    message="Overriding the vertical CRS of the DEM with the one provided in `src_vcrs`.",
-                )
-            src_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=force_source_vcrs)
-        else:
-            src_ccrs = self.ccrs
-
-        # New destination Compound CRS
-        dst_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=_vcrs_from_user_input(vcrs_input=vcrs))
-
-        # If both compound CCRS are equal, do not run any transform
-        if src_ccrs.equals(dst_ccrs):
-            warnings.warn(
-                message="Source and destination vertical CRS are the same, skipping vertical transformation.",
-                category=UserWarning,
-            )
-            return None
-
-        # Transform elevation with new vertical CRS
-        zz = self.data
-        xx, yy = self.coords()
-        zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
-        new_data = zz_trans.astype(self.dtype)  # type: ignore
+        # Apply transformation
+        new_data, new_crs = _to_vcrs(data=self.data,
+                            transform=self.transform,
+                            crs=self.crs,
+                            dst_vcrs=vcrs,
+                            force_source_vcrs=force_source_vcrs)
+        # If early exit because no transformation was required
+        if new_data is None:
+            if inplace:
+                return None
+            else:
+                return self.copy(deep=False)
 
         # If inplace, update DEM and vcrs
         if inplace:
             self._data = new_data
-            self.set_vcrs(new_vcrs=vcrs)
+            self.set_crs(new_crs=new_crs)
             return None
         # Otherwise, return new DEM
         else:
-            return DEM.from_array(
+            return self.from_array(
                 data=new_data,
                 transform=self.transform,
-                crs=self.crs,
+                crs=new_crs,
                 nodata=self.nodata,
                 area_or_point=self.area_or_point,
                 tags=self.tags,
-                vcrs=vcrs,
                 cast_nodata=False,
             )
 
@@ -428,13 +470,13 @@ class DEMBase(RasterBase):
     @profiler.profile("xdem.dem.coregister_3d", memprof=True)
     def coregister_3d(  # type: ignore
         self,
-        reference_elev: DEM | gpd.GeoDataFrame | xdem.EPC,
+        reference_elev: DEMLike | gpd.GeoDataFrame | xdem.EPC,
         coreg_method: coreg.Coreg,
         inlier_mask: Raster | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
         random_state: int | np.random.Generator | None = None,
         **kwargs,
-    ) -> DEM:
+    ) -> DEMLike:
         """
         Coregister DEM to a reference DEM in three dimensions.
 
@@ -473,7 +515,7 @@ class DEMBase(RasterBase):
 
     def estimate_uncertainty(
         self,
-        other_elev: DEM | gpd.GeoDataFrame,
+        other_elev: DEMLike | gpd.GeoDataFrame,
         stable_terrain: Raster | NDArrayb = None,
         approach: Literal["H2022", "R2009", "Basic"] = "H2022",
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",

@@ -28,16 +28,12 @@ from geoutils.raster import RasterType, Raster
 from pyproj import CRS
 from pyproj.crs import VerticalCRS
 
-from xdem._typing import MArrayf, NDArrayf
+from xdem._typing import NDArrayf
 from xdem.vcrs import (
     _parse_vcrs_name_from_product,
-    _vcrs_from_crs,
-    _vcrs_from_user_input,
+    _check_vcrs_input
 )
 from xdem.dem.base import DEMBase
-
-dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
-
 
 class DEM(Raster, DEMBase):  # type: ignore
     """
@@ -70,14 +66,14 @@ class DEM(Raster, DEMBase):  # type: ignore
     """
 
     def __init__(
-            self,
-            filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
-            vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None,
-            load_data: bool = False,
-            parse_sensor_metadata: bool = False,
-            silent: bool = True,
-            downsample: int = 1,
-            force_nodata: int | float | None = None,
+        self,
+        filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None,
+        load_data: bool = False,
+        parse_sensor_metadata: bool = False,
+        silent: bool = True,
+        downsample: int = 1,
+        force_nodata: int | float | None = None,
     ) -> None:
         """
         Instantiate a digital elevation model.
@@ -99,8 +95,6 @@ class DEM(Raster, DEMBase):  # type: ignore
 
         self.data: NDArrayf
         self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
-        self._vcrs_name: str | None = None
-        self._vcrs_grid: str | None = None
 
         # If DEM is passed, simply point back to DEM
         if isinstance(filename_or_dataset, DEM):
@@ -127,86 +121,10 @@ class DEM(Raster, DEMBase):  # type: ignore
                 "a single band on opening, or use .split_bands() on an opened raster."
             )
 
-        # If the CRS in the raster metadata has a 3rd dimension, could set it as a vertical reference
-        vcrs_from_crs = _vcrs_from_crs(CRS(self.crs))
-        if vcrs_from_crs is not None:
-            # If something was also provided by the user, user takes precedence
-            # (we leave vcrs as it was for input)
-            if vcrs is not None:
-                # Raise a warning if the two are not the same
-                vcrs_user = _vcrs_from_user_input(vcrs)
-                if not vcrs_from_crs == vcrs_user:
-                    warnings.warn(
-                        "The CRS in the raster metadata already has a vertical component, "
-                        "the user-input '{}' will override it.".format(vcrs)
-                    )
-            # Otherwise, use the one from the raster 3D CRS
-            else:
-                vcrs = vcrs_from_crs
-
         # If no vertical CRS was provided by the user or defined in the CRS
         if vcrs is None and "product" in self.tags:
             vcrs = _parse_vcrs_name_from_product(self.tags["product"])
 
-        # If a vertical reference was parsed or provided by user
-        if vcrs is not None:
-            self.set_vcrs(vcrs)
-
-    def copy(self, new_array: NDArrayf | None = None) -> DEM:
-        """
-        Copy the DEM, possibly updating the data array.
-
-        :param new_array: New data array.
-
-        :return: Copied DEM.
-        """
-
-        new_dem = super().copy(new_array=new_array)  # type: ignore
-        # The rest of attributes are immutable, including pyproj.CRS
-        for attrs in dem_attrs:
-            setattr(new_dem, attrs, getattr(self, attrs))
-
-        return new_dem  # type: ignore
-
-    @classmethod
-    def from_array(
-            cls: type[DEM],
-            data: NDArrayf | MArrayf,
-            transform: tuple[float, ...] | Affine,
-            crs: CRS | int | None,
-            nodata: int | float | None = None,
-            area_or_point: Literal["Area", "Point"] | None = None,
-            tags: dict[str, Any] = None,
-            cast_nodata: bool = True,
-            vcrs: (
-                    Literal["Ellipsoid"] | Literal["EGM08"] | Literal[
-                "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
-            ) = None,
-    ) -> DEM:
-        """Create a DEM from a numpy array and the georeferencing information.
-
-        :param data: Input array.
-        :param transform: Affine 2D transform. Either a tuple(x_res, 0.0, top_left_x,
-            0.0, y_res, top_left_y) or an affine.Affine object.
-        :param crs: Coordinate reference system. Either a rasterio CRS, or an EPSG integer.
-        :param nodata: Nodata value.
-        :param area_or_point: Pixel interpretation of the raster, will be stored in AREA_OR_POINT metadata.
-        :param tags: Metadata stored in a dictionary.
-        :param cast_nodata: Automatically cast nodata value to the default nodata for the new array type if not
-            compatible. If False, will raise an error when incompatible.
-        :param vcrs: Vertical coordinate reference system.
-
-        :returns: DEM created from the provided array and georeferencing.
-        """
-        # We first apply the from_array of the parent class
-        rast = Raster.from_array(
-            data=data,
-            transform=transform,
-            crs=crs,
-            nodata=nodata,
-            area_or_point=area_or_point,
-            tags=tags,
-            cast_nodata=cast_nodata,
-        )
-        # Then add the vcrs to the class call (that builds on top of the parent class)
-        return cls(filename_or_dataset=rast, vcrs=vcrs)
+        # Cast CRS with vertical CRS (returns 2D or 3D) and re-set
+        new_crs = _check_vcrs_input(vcrs, self.crs)
+        self.set_crs(new_crs)

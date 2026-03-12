@@ -339,17 +339,17 @@ class TestEPC:
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
-        epc_tba = dem_tba.to_pointcloud(subsample=5000, random_state=42)
-        epc_ref = dem_ref.to_pointcloud(subsample=5000, random_state=42)
+        epc_tba = dem_tba.to_pointcloud()
+        epc_ref = dem_ref.to_pointcloud()
 
         # Run coregistration with EPC as reference
-        epc_aligned = epc_tba.coregister_3d(dem_ref, coreg_method=coreg_method, random_state=42)
+        epc_aligned = epc_tba.coregister_3d(dem_ref, coreg_method=coreg_method)
 
         assert isinstance(epc_aligned, xdem.EPC)
         assert isinstance(coreg_method, xdem.coreg.Coreg)
 
         # Run coregistration with EPC as to-be-aligned
-        dem_aligned = dem_tba.coregister_3d(epc_ref, coreg_method=coreg_method, random_state=42)
+        dem_aligned = dem_tba.coregister_3d(epc_ref, coreg_method=coreg_method)
 
         assert isinstance(dem_aligned, xdem.DEM)
         assert isinstance(coreg_method, xdem.coreg.Coreg)
@@ -368,7 +368,7 @@ class TestEPC:
 
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
-        epc_tba = dem_tba.to_pointcloud(subsample=5000)
+        epc_tba = dem_tba.to_pointcloud()
 
         coreg_method = xdem.coreg.Deramp()
 

@@ -269,7 +269,7 @@ def test_load_dem(get_dem_config, from_vcrs, to_vcrs):
 
         # Check output_dem vcrs reference
         if to_vcrs == "EGM96" or (to_vcrs is None and from_vcrs == "EGM96"):
-            assert output_dem.vcrs_name == "EGM96 height"
+            assert output_dem._vcrs_name == "EGM96 height"
         elif to_vcrs == "Ellipsoid" or (to_vcrs is None and from_vcrs == "Ellipsoid"):
             assert output_dem.vcrs == "Ellipsoid"
         else:

@@ -1,18 +1,28 @@
 """Xarray accessor 'dem' for digital elevation models."""
 from __future__ import annotations
 
+from typing import Literal
+
+from pyproj.crs import VerticalCRS
 import xarray as xr
 
 from geoutils.raster.xr_accessor import RasterAccessor, open_raster
 
 from xdem.dem.base import DEMBase
+from xdem.vcrs import _check_vcrs_input
 
-def open_dem(filename: str, **kwargs):
+
+def open_dem(filename: str,
+             vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | VerticalCRS | str | int | None = None,
+             **kwargs):
+    """Wrapper around open_raster with vertical CRS input support."""
 
     # Use open raster
     ds = open_raster(filename, **kwargs)
 
-    # TODO: Force the DEM to be of type float, and get the vertical CRS if it exists
+    # Cast CRS with user-input vertical CRS (returns 2D or 3D) and re-set
+    new_crs = _check_vcrs_input(vcrs, ds.rst.crs)
+    ds.rst.set_crs(new_crs)
 
     return ds
 
