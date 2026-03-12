@@ -55,6 +55,27 @@ class TestVCRS:
             assert vcrs is None
 
     @pytest.mark.parametrize(
+        "crs, expected",
+        [
+            # Compound CRS with vertical meters
+            (CRS("EPSG:4326+5773"), "m"),  # WGS84 + EGM96 height
+            # Vertical CRS alone
+            (CRS("EPSG:5773"), "m"),  # EGM96 height
+            # Compound CRS projected + vertical
+            (CRS("EPSG:32633+5773"), "m"),  # UTM 33N + EGM96 height
+            # Vertical CRS in feet (NAVD88)
+            (CRS("EPSG:6360"), "ftUS"),
+            # Pure 2D CRS (no vertical axis)
+            (CRS("EPSG:4326"), None),
+            (CRS("EPSG:32633"), None),
+        ],
+    )
+    def test_vertical_unit_symbol(self, crs: CRS, expected: str | None) -> None:
+        """Test extraction of vertical unit symbols from CRS."""
+
+        assert xdem.vcrs.vertical_unit_symbol(crs) == expected
+
+    @pytest.mark.parametrize(
         "vcrs_input",
         [
             "EGM08",

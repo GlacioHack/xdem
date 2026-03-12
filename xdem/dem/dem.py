@@ -1,4 +1,4 @@
-# Copyright (c) 2024 xDEM developers
+# Copyright (c) 2026 xDEM developers
 #
 # This file is part of xDEM project:
 # https://github.com/glaciohack/xdem

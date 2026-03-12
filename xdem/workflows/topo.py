@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 import xdem
+from xdem.vcrs import vertical_unit_symbol
 from xdem._misc import import_optional
 from xdem.workflows.schemas import TOPO_SCHEMA
 from xdem.workflows.workflows import _ALIAS, Workflows
@@ -68,11 +69,12 @@ class Topo(Workflows):
         """
 
         self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
+        vunit = vertical_unit_symbol(self.dem.crs)
         self.generate_plot(
             self.dem,
             filename="elev_map",
             title="Elevation",
-            cbar_title=f"Elevation ({self.dem.crs.linear_units})",
+            cbar_title=f"Elevation ({vunit})" if vunit is not None else "Elevation",
         )
 
         if self.inlier_mask is not None:
@@ -82,7 +84,7 @@ class Topo(Workflows):
                 self.dem,
                 title="Masked elevation",
                 filename="masked_elev_map",
-                cbar_title=f"Elevation ({self.dem.crs.linear_units})",
+                cbar_title=f"Elevation ({vunit})" if vunit is not None else "Elevation",
             )
 
     def generate_terrain_attributes_tiff(self) -> None:
@@ -133,7 +135,7 @@ class Topo(Workflows):
 
         ncols = 2
         nrows = math.ceil(n / ncols)
-        unit = self.dem.crs.linear_units
+        unit = vertical_unit_symbol(self.dem.crs)
         attribute_params: dict[str, dict[str, Any]] = {
             "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (0, 255)},
             "texture_shading": {"label": "Texture shading", "cmap": "Greys_r", "vlim": (-20, 20)},
@@ -152,7 +154,7 @@ class Topo(Workflows):
                 "cmap": "Spectral",
                 "vlim": (None, None),
             },
-            "roughness": {"label": f"Roughness ({self.dem.crs.linear_units})", "cmap": "Oranges", "vlim": (None, None)},
+            "roughness": {"label": f"Roughness ({unit})", "cmap": "Oranges", "vlim": (None, None)},
             "fractal_dimension": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
         }
 

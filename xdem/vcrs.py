@@ -116,6 +116,57 @@ def _check_vcrs_input(vcrs: Any, crs: Any) -> Any:
 
     return out_crs
 
+def vertical_unit_symbol(crs) -> str | None:
+    """
+    Return the short unit symbol of the vertical axis (e.g. "m", "ft").
+
+    Returns None if the CRS has no vertical axis.
+    """
+
+    # EPSG codes for units
+    _UNIT_SYMBOLS = {
+        "9001": "m",  # metre
+        "9002": "ft",  # foot
+        "9003": "ftUS",  # US survey foot
+        "9036": "km",
+        "9102": "°",
+    }
+
+    # Process CRS input
+    crs = CRS(crs)
+
+    # If compound CRS, isolate the vertical CRS
+    if crs.is_compound:
+        crs = crs.sub_crs_list[1]
+
+    # Check axis is indeed vertical, otherwise return None
+    for axis in crs.axis_info:
+        if axis.direction in ("up", "down"):
+
+            # Prefer EPSG unit code if it exists
+            code = axis.unit_auth_code
+            if code and code in _UNIT_SYMBOLS:
+                return _UNIT_SYMBOLS[code]
+
+            # Fallback to normalized unit names
+            name = axis.unit_name.lower()
+
+            if name in {"metre", "meter"}:
+                return "m"
+
+            if name == "kilometre":
+                return "km"
+
+            if name == "foot":
+                return "ft"
+
+            if name == "us survey foot":
+                return "ftUS"
+
+            return axis.unit_name
+
+    return None
+
 def _parse_vcrs_name_from_product(product: str) -> str | None:
     """
     Parse vertical CRS name from DEM product name.
