@@ -15,8 +15,5 @@ sphinx:
   configuration: doc/source/conf.py
   fail_on_warning: false
 
-# Build the doc in offline formats
-formats:
-
 conda:
   environment: dev-environment.yml
