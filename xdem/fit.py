@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import scipy
-from geoutils.stats.sampling import subsample_array
+from geoutils.stats.sampling import _subsample_numpy
 from numpy.polynomial.polynomial import polyval, polyval2d
 
 from xdem._misc import import_optional
@@ -400,7 +400,7 @@ def robust_norder_polynomial_fit(
 
     # Subsample data
     if subsample != 1:
-        subsamp = subsample_array(x, subsample=subsample, return_indices=True, random_state=random_state)
+        subsamp = _subsample_numpy(x, subsample=subsample, return_indices=True, random_state=random_state)
         x = x[subsamp]
         y = y[subsamp]
 

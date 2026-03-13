@@ -157,7 +157,6 @@ def test_run(get_topo_inputs_config, tmp_path):
             "Data types": "float32",
             "Driver": "GTiff",
             "Filename": xdem.examples.get_path_test("longyearbyen_tba_dem"),
-            "Grid size": None,
             "Height": 54,
             "Nodata Value": -9999.0,
             "Number of band": (1,),

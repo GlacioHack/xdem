@@ -16,25 +16,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""This module defines the DEM class."""
+"""Module of DEMBase class, parent of DEM class and 'dem' accessor."""
 
 from __future__ import annotations
 
 import pathlib
 import warnings
-from typing import Any, Callable, Literal, overload
+import re
+from typing import Any, Callable, Literal, overload, TypeVar, Union
 
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
-import rasterio as rio
 from affine import Affine
 from geoutils import profiler
 from geoutils._typing import NDArrayNum
+from geoutils._dispatch import has_geo_attr, get_geo_attr
 from geoutils.raster import Raster, RasterType
-from geoutils.raster.distributed_computing import MultiprocConfig
+from geoutils.raster.base import RasterBase
+from geoutils.multiproc import MultiprocConfig
 from geoutils.stats import nmad
 from pyproj import CRS
+import xarray as xr
 from pyproj.crs import CompoundCRS, VerticalCRS
 
 import xdem
@@ -48,239 +51,42 @@ from xdem.spatialstats import (
 )
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
-    _grid_from_user_input,
-    _parse_vcrs_name_from_product,
-    _transform_zz,
+    _to_vcrs_2d,
     _vcrs_from_crs,
     _vcrs_from_user_input,
 )
 
-dem_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
+# Input/output is a RasterType (= Raster or RasterAccessor subclass)
+DEMType = TypeVar("DEMType", bound="DEMBase")
+# For inputs, we also accept a xr.DataArray
+DEMLike = Union["DEMBase", xr.DataArray]
 
-
-class DEM(Raster):  # type: ignore
+class DEMBase(RasterBase):
     """
-    The digital elevation model.
+    This class is non-public and made to be subclassed.
 
-    The DEM has a single main attribute in addition to that inherited from :class:`geoutils.Raster`:
-        vcrs: :class:`pyproj.VerticalCRS`
-            Vertical coordinate reference system of the DEM.
-
-    Other derivative attributes are:
-        vcrs_name: :class:`str`
-            Name of vertical CRS of the DEM.
-        vcrs_grid: :class:`str`
-            Grid path to the vertical CRS of the DEM.
-        ccrs: :class:`pyproj.CompoundCRS`
-            Compound vertical and horizontal CRS of the DEM.
-
-    The attributes inherited from :class:`geoutils.Raster` are:
-        data: :class:`np.ndarray`
-            Data array of the DEM, with dimensions corresponding to (count, height, width).
-        transform: :class:`affine.Affine`
-            Geotransform of the DEM.
-        crs: :class:`pyproj.crs.CRS`
-            Coordinate reference system of the DEM.
-        nodata: :class:`int` or :class:`float`
-            Nodata value of the DEM.
-
-    All other attributes are derivatives of those attributes, or read from the file on disk.
-    See the API for more details.
+    It is built on top of the RasterBase class. It implements all the functions shared by the DEM class and the
+    'dem' Xarray accessor.
     """
 
-    @profiler.profile("xdem.dem.__init__", memprof=True)
-    def __init__(
-        self,
-        filename_or_dataset: str | RasterType | rio.io.DatasetReader | rio.io.MemoryFile,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None,
-        load_data: bool = False,
-        parse_sensor_metadata: bool = False,
-        silent: bool = True,
-        downsample: int = 1,
-        nodata: int | float | None = None,
-    ) -> None:
+    def __init__(self):
         """
-        Instantiate a digital elevation model.
-
-        The vertical reference of the DEM can be defined by passing the `vcrs` argument.
-        Otherwise, a vertical reference is tentatively parsed from the DEM product name.
-
-        Inherits all attributes from the :class:`geoutils.Raster` class.
-
-        :param filename_or_dataset: The filename of the dataset.
-        :param vcrs: Vertical coordinate reference system either as a name ("WGS84", "EGM08", "EGM96"),
-            an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
-        :param load_data: Whether to load the array during instantiation. Default is False.
-        :param parse_sensor_metadata: Whether to parse sensor metadata from filename and similarly-named metadata files.
-        :param silent: Whether to display vertical reference parsing.
-        :param downsample: Downsample the array once loaded by a round factor. Default is no downsampling.
-        :param nodata: Nodata value to be used (overwrites the metadata). Default reads from metadata.
+        Initialize additional DEM metadata as None, for it to be overridden in sublasses.
         """
 
-        self.data: NDArrayf
+        super().__init__()
         self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
-        self._vcrs_name: str | None = None
-        self._vcrs_grid: str | None = None
-
-        # If DEM is passed, simply point back to DEM
-        if isinstance(filename_or_dataset, DEM):
-            for key in filename_or_dataset.__dict__:
-                setattr(self, key, filename_or_dataset.__dict__[key])
-            return
-        # Else rely on parent Raster class options (including raised errors)
-        else:
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
-                super().__init__(
-                    filename_or_dataset,
-                    load_data=load_data,
-                    parse_sensor_metadata=parse_sensor_metadata,
-                    silent=silent,
-                    downsample=downsample,
-                    nodata=nodata,
-                )
-
-        # Ensure DEM has only one band: self.bands can be None when data is not loaded through the Raster class
-        if self.bands is not None and len(self.bands) > 1:
-            raise ValueError(
-                "DEM rasters should be composed of one band only. Either use argument `bands` to specify "
-                "a single band on opening, or use .split_bands() on an opened raster."
-            )
-
-        # If the CRS in the raster metadata has a 3rd dimension, could set it as a vertical reference
-        vcrs_from_crs = _vcrs_from_crs(CRS(self.crs))
-        if vcrs_from_crs is not None:
-            # If something was also provided by the user, user takes precedence
-            # (we leave vcrs as it was for input)
-            if vcrs is not None:
-                # Raise a warning if the two are not the same
-                vcrs_user = _vcrs_from_user_input(vcrs)
-                if not vcrs_from_crs == vcrs_user:
-                    warnings.warn(
-                        "The CRS in the raster metadata already has a vertical component, "
-                        "the user-input '{}' will override it.".format(vcrs)
-                    )
-            # Otherwise, use the one from the raster 3D CRS
-            else:
-                vcrs = vcrs_from_crs
-
-        # If no vertical CRS was provided by the user or defined in the CRS
-        if vcrs is None and "product" in self.tags:
-            vcrs = _parse_vcrs_name_from_product(self.tags["product"])
-
-        # If a vertical reference was parsed or provided by user
-        if vcrs is not None:
-            self.set_vcrs(vcrs)
-
-    @overload
-    def info(self, stats: bool = False, *, verbose: Literal[True] = ...) -> None: ...
-
-    @overload
-    def info(self, stats: bool = False, *, verbose: Literal[False]) -> str: ...
-
-    def info(self, stats: bool = False, verbose: bool = True) -> None | str:
-        """
-        Print summary information about the DEM.
-
-        :param stats: Add statistics for each band of the dataset (max, min, median, mean, std. dev.). Default is to
-            not calculate statistics.
-        :param verbose: If set to True (default) will directly print to screen and return None
-
-        :returns: Summary string or None.
-        """
-
-        # Get raster.info()
-        raster_info = super().info(stats=stats, verbose=False)  # type: ignore
-        raster_info_split = raster_info.split("\n")
-
-        # Change crs values if not 3D
-        if len(CRS(self.crs).axis_info) > 2:
-            new_crs = [CRS(self.crs).name]
-        else:
-            new_crs = [self.crs.to_string() if self.crs is not None else None, str(self.vcrs)]
-
-        # Replace coordinate system line
-        cs_key_to_replace = "Coordinate system:"
-        line_cs = [raster_info_split.index(line) for line in raster_info_split if line.startswith(cs_key_to_replace)]
-        raster_info_split[line_cs[0]] = f"Coordinate system:    {new_crs}"
-
-        if verbose:
-            print("\n".join(raster_info_split))
-            return None
-        else:
-            return "\n".join(raster_info_split)
-
-    def copy(self, new_array: NDArrayf | None = None) -> DEM:
-        """
-        Copy the DEM, possibly updating the data array.
-
-        :param new_array: New data array.
-
-        :return: Copied DEM.
-        """
-
-        new_dem = super().copy(new_array=new_array)  # type: ignore
-        # The rest of attributes are immutable, including pyproj.CRS
-        for attrs in dem_attrs:
-            setattr(new_dem, attrs, getattr(self, attrs))
-
-        return new_dem  # type: ignore
-
-    @classmethod
-    def from_array(
-        cls: type[DEM],
-        data: NDArrayf | MArrayf,
-        transform: tuple[float, ...] | Affine,
-        crs: CRS | int | None,
-        nodata: int | float | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-        tags: dict[str, Any] = None,
-        cast_nodata: bool = True,
-        vcrs: (
-            Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int | None
-        ) = None,
-    ) -> DEM:
-        """Create a DEM from a numpy array and the georeferencing information.
-
-        :param data: Input array.
-        :param transform: Affine 2D transform. Either a tuple(x_res, 0.0, top_left_x,
-            0.0, y_res, top_left_y) or an affine.Affine object.
-        :param crs: Coordinate reference system. Either a rasterio CRS, or an EPSG integer.
-        :param nodata: Nodata value.
-        :param area_or_point: Pixel interpretation of the raster, will be stored in AREA_OR_POINT metadata.
-        :param tags: Metadata stored in a dictionary.
-        :param cast_nodata: Automatically cast nodata value to the default nodata for the new array type if not
-            compatible. If False, will raise an error when incompatible.
-        :param vcrs: Vertical coordinate reference system.
-
-        :returns: DEM created from the provided array and georeferencing.
-        """
-        rast = Raster.from_array(
-            data=data,
-            transform=transform,
-            crs=crs,
-            nodata=nodata,
-            area_or_point=area_or_point,
-            tags=tags,
-            cast_nodata=cast_nodata,
-        )
-
-        return cls(filename_or_dataset=rast, vcrs=vcrs)
+        self._data: NDArrayf
 
     @property
     def vcrs(self) -> VerticalCRS | Literal["Ellipsoid"] | None:
-        """Vertical coordinate reference system of the DEM."""
-
-        return self._vcrs
-
-    @property
-    def vcrs_grid(self) -> str | None:
-        """Grid path of vertical coordinate reference system of the DEM."""
-
-        return self._vcrs_grid
+        """
+        Vertical coordinate reference system of the DEM.
+        """
+        return _vcrs_from_crs(self.crs)
 
     @property
-    def vcrs_name(self) -> str | None:
+    def _vcrs_name(self) -> str | None:
         """Name of vertical coordinate reference system of the DEM."""
 
         if self.vcrs is not None:
@@ -296,6 +102,24 @@ class DEM(Raster):  # type: ignore
 
         return vcrs_name
 
+    @property
+    def _vcrs_grid(self) -> str | None:
+        """Human-readable vertical grid description of the DEM."""
+
+        if self.vcrs is None or isinstance(self.vcrs, str):
+            return None
+
+        vcrs = CRS(self.vcrs)
+
+        try:
+            op = vcrs.coordinate_operation
+            if op is not None and op.grids:
+                return op.grids[0].short_name
+        except Exception:
+            pass
+
+        return None
+
     def set_vcrs(
         self,
         new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int,
@@ -307,124 +131,57 @@ class DEM(Raster):  # type: ignore
             an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
         """
 
-        # Get vertical CRS and set it and the grid
-        self._vcrs = _vcrs_from_user_input(vcrs_input=new_vcrs)
-        self._vcrs_grid = _grid_from_user_input(vcrs_input=new_vcrs)
-
-    @property
-    def ccrs(self) -> CompoundCRS | CRS | None:
-        """Compound horizontal and vertical coordinate reference system of the DEM."""
-
-        if self.vcrs is not None:
-            ccrs = _build_ccrs_from_crs_and_vcrs(crs=self.crs, vcrs=self.vcrs)
-            return ccrs
-        else:
-            return None
-
-    @overload
-    def to_vcrs(
-        self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
-        ) = None,
-        *,
-        inplace: Literal[False] = False,
-    ) -> DEM: ...
-
-    @overload
-    def to_vcrs(
-        self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
-        ) = None,
-        *,
-        inplace: Literal[True],
-    ) -> None: ...
-
-    @overload
-    def to_vcrs(
-        self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
-        ) = None,
-        *,
-        inplace: bool = False,
-    ) -> DEM | None: ...
+        # Get vertical CRS and re-set the CRS
+        new_vcrs = _vcrs_from_user_input(vcrs_input=new_vcrs)
+        new_crs = _build_ccrs_from_crs_and_vcrs(crs=self.crs, vcrs=new_vcrs)
+        self.set_crs(new_crs)
 
     def to_vcrs(
         self,
-        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
-        force_source_vcrs: (
-            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
-        ) = None,
-        inplace: bool = False,
-    ) -> DEM | None:
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | VerticalCRS | int,
+        force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | VerticalCRS | int | None = None,
+        mp_config: MultiprocConfig | None = None,
+        **kwargs: Any,
+    ) -> DEMLike:
         """
         Convert the DEM to another vertical coordinate reference system.
 
         :param vcrs: Destination vertical CRS. Either as a name ("WGS84", "EGM08", "EGM96"),
             an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data)
         :param force_source_vcrs: Force a source vertical CRS (uses metadata by default). Same formats as for `vcrs`.
-        :param inplace: Whether to return a new DEM (default) or the same DEM updated in-place.
+        :param mp_config: Multiprocessing configuration.
 
         :return: DEM with vertical reference transformed, or None.
         """
 
-        if self.vcrs is None and force_source_vcrs is None:
-            raise ValueError(
-                "The current DEM has no vertical reference, define one with .set_vref() "
-                "or by passing `src_vcrs` to perform a conversion."
-            )
-
-        # Initial Compound CRS (only exists if vertical CRS is not None, as checked above)
-        if force_source_vcrs is not None:
-            # Warn if a vertical CRS already existed for that DEM
-            if self.vcrs is not None:
-                warnings.warn(
-                    category=UserWarning,
-                    message="Overriding the vertical CRS of the DEM with the one provided in `src_vcrs`.",
-                )
-            src_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=force_source_vcrs)
+        # Raise deprecation warning for old in-place behaviour
+        if "inplace" in kwargs and kwargs["inplace"]:
+            warnings.warn("Argument 'inplace' is deprecated and will be removed in future versions. "
+                          "Use dem = dem.to_vcrs() instead.",
+                          category=DeprecationWarning)
+            inplace = True
         else:
-            src_ccrs = self.ccrs
+            inplace = False
 
-        # New destination Compound CRS
-        dst_ccrs = _build_ccrs_from_crs_and_vcrs(self.crs, vcrs=_vcrs_from_user_input(vcrs_input=vcrs))
+        # Apply transformation
+        new_dem = _to_vcrs_2d(dem=self, dst_vcrs=vcrs, force_source_vcrs=force_source_vcrs, mp_config=mp_config)
 
-        # If both compound CCRS are equal, do not run any transform
-        if src_ccrs.equals(dst_ccrs):
-            warnings.warn(
-                message="Source and destination vertical CRS are the same, skipping vertical transformation.",
-                category=UserWarning,
-            )
-            return None
-
-        # Transform elevation with new vertical CRS
-        zz = self.data
-        xx, yy = self.coords()
-        zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
-        new_data = zz_trans.astype(self.dtype)  # type: ignore
+        # Keep logic below until we deprecate 'inplace'
+        # If early exit because no transformation was required
+        if new_dem is None:
+            if inplace:
+                return None
+            else:
+                return self.copy(deep=False)
 
         # If inplace, update DEM and vcrs
         if inplace:
-            self._data = new_data
-            self.set_vcrs(new_vcrs=vcrs)
+            self._data = new_dem.data
+            self.set_crs(new_crs=get_geo_attr(new_dem, "crs"))
             return None
         # Otherwise, return new DEM
         else:
-            return DEM.from_array(
-                data=new_data,
-                transform=self.transform,
-                crs=self.crs,
-                nodata=self.nodata,
-                area_or_point=self.area_or_point,
-                tags=self.tags,
-                vcrs=vcrs,
-                cast_nodata=False,
-            )
+            return new_dem
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(
@@ -621,13 +378,13 @@ class DEM(Raster):  # type: ignore
     @profiler.profile("xdem.dem.coregister_3d", memprof=True)
     def coregister_3d(  # type: ignore
         self,
-        reference_elev: DEM | gpd.GeoDataFrame | xdem.EPC,
+        reference_elev: DEMLike | gpd.GeoDataFrame | xdem.EPC,
         coreg_method: coreg.Coreg,
         inlier_mask: Raster | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
         random_state: int | np.random.Generator | None = None,
         **kwargs,
-    ) -> DEM:
+    ) -> DEMLike:
         """
         Coregister DEM to a reference DEM in three dimensions.
 
@@ -666,7 +423,7 @@ class DEM(Raster):  # type: ignore
 
     def estimate_uncertainty(
         self,
-        other_elev: DEM | gpd.GeoDataFrame,
+        other_elev: DEMLike | gpd.GeoDataFrame,
         stable_terrain: Raster | NDArrayb = None,
         approach: Literal["H2022", "R2009", "Basic"] = "H2022",
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
@@ -720,7 +477,7 @@ class DEM(Raster):  # type: ignore
         }
 
         # Elevation change with the other DEM or elevation point cloud
-        if isinstance(other_elev, DEM):
+        if has_geo_attr(other_elev, "transform"):
             dh = other_elev.reproject(self, silent=True) - self
         elif isinstance(other_elev, gpd.GeoDataFrame):
             other_elev = other_elev.to_crs(self.crs)
