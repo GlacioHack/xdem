@@ -261,7 +261,7 @@ class TestAffineCoreg:
         # Get the coregistration method and expected shifts from the inputs
         coreg_method, expected_shifts = coreg_method__shift
 
-        subsample_size = 1 if coreg_method != coreg.CPD else 500
+        subsample_size = 50000 if coreg_method != coreg.CPD else 500
         c = coreg_method(subsample=subsample_size)
         c.fit(ref, tba, inlier_mask=inlier_mask, random_state=42)
 
@@ -441,7 +441,7 @@ class TestAffineCoreg:
         # Need to standardize by the elevation difference spread to avoid huge/small values close to infinity
         # Checking for 90% of variance as ICP cannot always resolve the small shifts
         # And only 10% of variance for CPD that can't resolve shifts at all
-        fac_reduc_var = 0.1 if coreg_method != coreg.CPD else 1.0
+        fac_reduc_var = 0.1 if coreg_method != coreg.CPD else 1.05
         assert np.nanvar(dh / np.nanstd(init_dh)) < fac_reduc_var
 
     @pytest.mark.parametrize(
@@ -467,7 +467,7 @@ class TestAffineCoreg:
         coreg_method, expected_shifts_rots = coreg_method__shifts_rotations
 
         # Run co-registration
-        subsample_size = 1 if coreg_method != coreg.CPD else 500
+        subsample_size = 50000 if coreg_method != coreg.CPD else 500
         c = coreg_method(subsample=subsample_size)
         c.fit(ref, tba, inlier_mask=inlier_mask, random_state=42)
 

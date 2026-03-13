@@ -8,12 +8,15 @@ import warnings
 from typing import Any
 
 import numpy as np
+import xarray as xr
 import pytest
 from pyproj import CRS
+import geoutils as gu
+from geoutils.multiproc import MultiprocConfig
 
 import xdem
 import xdem.vcrs
-
+from xdem import examples
 
 class TestVCRS:
     def test_parse_vcrs_name_from_product(self) -> None:
@@ -166,7 +169,7 @@ class TestVCRS:
 
     # Test for WGS84 in 2D and 3D, UTM, CompoundCRS, everything should work
     @pytest.mark.parametrize("crs", [CRS("EPSG:4326"), CRS("EPSG:4979"), CRS("32610"), CRS("EPSG:4326+5773")])
-    @pytest.mark.parametrize("vcrs_input", [CRS("EPSG:5773"), "is_lmi_Icegeoid_ISN93.tif", "EGM96"])
+    @pytest.mark.parametrize("vcrs_input", [CRS("EPSG:5773"), "is_lmi_Icegeoid_ISN93.tif", "EGM96", "Ellipsoid"])
     def test_build_ccrs_from_crs_and_vcrs(self, crs: CRS, vcrs_input: CRS | str) -> None:
         """Test the function build_ccrs_from_crs_and_vcrs."""
 
@@ -201,7 +204,8 @@ class TestVCRS:
             ccrs = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs, vcrs=vcrs)
 
         assert isinstance(ccrs, CRS)
-        assert ccrs.is_vertical
+        is_3d = len(ccrs.axis_info) == 3
+        assert is_3d
 
     def test_build_ccrs_from_crs_and_vcrs__errors(self) -> None:
         """Test errors are correctly raised from the build_ccrs function."""
@@ -234,12 +238,97 @@ class TestVCRS:
         # Build the compound CRS
         vcrs_to = xdem.vcrs._vcrs_from_user_input(vcrs_input=grid_shifts["grid"])
         ccrs_to = xdem.vcrs._build_ccrs_from_crs_and_vcrs(crs=crs_from, vcrs=vcrs_to)
-
+        transformer = xdem.vcrs._build_vertical_transformer(crs_from=ccrs_from, crs_to=ccrs_to)
         # Apply the transformation
-        zz_trans = xdem.vcrs._transform_zz(crs_from=ccrs_from, crs_to=ccrs_to, xx=xx, yy=yy, zz=zz)
+        zz_trans = xdem.vcrs._transform_zz(transformer=transformer, xx=xx, yy=yy, zz=zz)
 
         # Compare the elevation difference
         z_diff = 100 - zz_trans
 
         # Check the shift is the one expect within 10%
         assert z_diff == pytest.approx(grid_shifts["shift"], rel=0.1)
+
+
+class TestToVCRSChunked:
+
+    @pytest.mark.parametrize(
+        "force_source_vcrs, dst_vcrs",
+        [
+            ("EGM96", "Ellipsoid"),
+            ("Ellipsoid", "EGM96"),
+        ],
+        ids=["egm96_to_ellipsoid", "ellipsoid_to_egm96"],
+    )
+    def test_to_vcrs_chunked_backends_equal(
+        self,
+        force_source_vcrs: str,
+        dst_vcrs: str,
+    ) -> None:
+        """
+        Test that to_vcrs yields identical or nearly identical output for base (in-memory),
+        chunked Dask, and Multiprocessing backends.
+
+        Notes:
+          - Vertical transforms are pointwise, so outputs should generally match exactly.
+          - We still use a small tolerance to remain robust to backend-specific casting/order.
+        """
+
+        pytest.importorskip("dask")
+        import dask.array as da
+
+        # Get DEM path
+        path_dem = examples.get_path_test("longyearbyen_ref_dem")
+
+        # 1/ Open test files
+        # DEM base input (in-memory)
+        dem_base = xdem.DEM(path_dem)
+        dem_base.load()
+
+        # Xarray base input (in-memory data array)
+        xr_base = gu.open_raster(path_dem)
+        xr_base.load()
+
+        # Multiprocessing input (keep lazy)
+        dem_mp = xdem.DEM(path_dem)
+        mp_config = MultiprocConfig(chunk_size=10)
+
+        # Dask input (lazy)
+        ds = gu.open_raster(path_dem, chunks={"x": 10, "y": 10})
+        assert not ds._in_memory
+        assert isinstance(ds.data, da.Array)
+        assert ds.data.chunks is not None
+
+        # 2/ Compute transforms and check output laziness
+        # DEM base
+        base_dem = dem_base.to_vcrs(vcrs=dst_vcrs, force_source_vcrs=force_source_vcrs)
+        assert isinstance(base_dem, xdem.DEM)
+
+        # Xarray base
+        base_xr = xr_base.dem.to_vcrs(vcrs=dst_vcrs, force_source_vcrs=force_source_vcrs)
+        assert isinstance(base_xr, xr.DataArray)
+
+        # Multiprocessing
+        mp_dem = dem_mp.to_vcrs(
+            vcrs=dst_vcrs,
+            force_source_vcrs=force_source_vcrs,
+            mp_config=mp_config,
+        )
+        assert isinstance(mp_dem, xdem.DEM)
+        assert not mp_dem.is_loaded
+
+        # Dask
+        dask_dem = ds.dem.to_vcrs(vcrs=dst_vcrs, force_source_vcrs=force_source_vcrs)
+        assert isinstance(dask_dem, xr.DataArray)
+        assert isinstance(dask_dem.data, da.Array)
+
+        # Inputs also stay lazy where expected
+        assert not dem_mp.is_loaded
+        assert not ds._in_memory
+        assert isinstance(ds.data, da.Array)
+
+        # 3/ Compare outputs
+        # Vertical CRS transform is pointwise, so differences should be tiny
+        dask_dem = dask_dem.compute()
+        assert base_dem.raster_equal(dask_dem, warn_failure_reason=True, strict_masked=False)
+        assert base_dem.raster_equal(mp_dem, warn_failure_reason=True, strict_masked=False)
+        assert base_dem.raster_equal(base_xr, warn_failure_reason=True, strict_masked=False)

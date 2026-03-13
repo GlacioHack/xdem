@@ -15,7 +15,7 @@ from geoutils import Raster, Vector
 from geoutils.raster import MultiprocConfig
 from pyproj import CRS
 
-from xdem import DEM, examples, open_dem
+from xdem import DEM, examples, open_dem, coreg
 from xdem.dem.base import DEMBase
 from xdem.dem.xr_accessor import DEMAccessor
 
@@ -376,6 +376,9 @@ class TestClassVsAccessorConsistencyDEMBase:
         ("fractal_roughness", {}),
         ("texture_shading", {}),
         ("get_terrain_attribute", {"attribute": ["slope", "aspect"]}),
+        ("to_pointcloud", {}),
+        ("coregister_3d", {"custom"}),  # Define inside function
+        ("estimate_uncertainty", {"custom"}),  # Define inside function
         # 2. Inplace, will not load
         ("set_vcrs", {"new_vcrs": "EGM96"})
     ]
@@ -397,6 +400,16 @@ class TestClassVsAccessorConsistencyDEMBase:
         warnings.simplefilter("ignore", category=FutureWarning)
 
         args = kwargs.copy()
+        if method == "coregister_3d":
+            # Temporary skip until coreg module is adapted
+            return
+            # other_dem = dem.translate(1, 1, distance_unit="pixel")
+            # args = {"reference_elev": other_dem, "coreg_method": coreg.LZD()}
+        elif method == "estimate_uncertainty":
+            # Temporary skip until uncertainty module is adapted
+            return
+            # other_dem = dem.copy()
+            # args = {"other_elev": other_dem}
 
         # Apply method for each class
         output_dem = getattr(dem, method)(**args)

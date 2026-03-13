@@ -116,21 +116,21 @@ def _check_vcrs_input(vcrs: Any, crs: Any) -> Any:
 
     return out_crs
 
+# EPSG codes for units
+_UNIT_SYMBOLS = {
+    "9001": "m",  # metre
+    "9002": "ft",  # foot
+    "9003": "ftUS",  # US survey foot
+    "9036": "km",
+    "9102": "°",
+}
+
 def vertical_unit_symbol(crs) -> str | None:
     """
     Return the short unit symbol of the vertical axis (e.g. "m", "ft").
 
     Returns None if the CRS has no vertical axis.
     """
-
-    # EPSG codes for units
-    _UNIT_SYMBOLS = {
-        "9001": "m",  # metre
-        "9002": "ft",  # foot
-        "9003": "ftUS",  # US survey foot
-        "9036": "km",
-        "9102": "°",
-    }
 
     # Process CRS input
     crs = CRS(crs)
@@ -184,14 +184,14 @@ def _parse_vcrs_name_from_product(product: str) -> str | None:
     return vcrs_name
 
 
-def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) -> CompoundCRS | CRS:
+def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) -> CRS:
     """
-    Build a compound CRS from a horizontal CRS and a vertical CRS.
+    Build a 3D CRS (compound or expanded) from a horizontal CRS and a vertical CRS input.
 
     :param crs: Horizontal CRS.
     :param vcrs: Vertical CRS.
 
-    :return: Compound CRS (horizontal + vertical).
+    :return: 3D CRS (horizontal + vertical).
     """
 
     # If a vertical CRS was passed, build a compound CRS with horizontal + vertical
@@ -201,7 +201,7 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) ->
         # If pyproj >= 3.5.1, we can use CRS.to_2d()
         from packaging.version import Version
 
-        if Version(pyproj.__version__) > Version("3.5.0"):
+        if Version(pyproj.__version__) >= Version("3.5.1"):
             crs_from = CRS(crs).to_2d()
             ccrs = CompoundCRS(
                 name="Horizontal: " + CRS(crs).name + "; Vertical: " + vcrs.name,
@@ -224,24 +224,24 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) ->
                     components=[crs_from, vcrs],
                 )
 
-    # Else if "Ellipsoid" was passed, there is no vertical reference
-    # We still have to return the CRS in 3D
+    # Else if "Ellipsoid" was passed, there is no vertical CRS, but we expand the ellipsoid to 3D
+    # We isolate the 2D horizontal CRS (removing potential geoids), then expand it to 3D
     elif isinstance(vcrs, str) and vcrs.lower() == "ellipsoid":
-        ccrs = CRS(crs).to_3d()
+        ccrs = CRS(crs).to_2d().to_3d()
     else:
         raise ValueError("Invalid vcrs given. Must be a vertical CRS or the literal string 'Ellipsoid'.")
 
     return ccrs
 
 
-def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> CompoundCRS:
+def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> BoundCRS:
     """
-    Build a compound CRS from a vertical CRS grid path.
+    Build a bound CRS from a vertical CRS grid path.
 
     :param grid: Path to grid for vertical reference.
     :param old_way: Whether to use the new or old way of building the compound CRS with pyproj (for testing purposes).
 
-    :return: Compound CRS (horizontal + vertical).
+    :return: Bound CRS.
     """
 
     if not os.path.exists(os.path.join(pyproj.datadir.get_data_dir(), grid)):
@@ -315,7 +315,7 @@ _vcrs_meta: dict[str, VCRSMetaDict] = {
     "EGM96": {"grid": "us_nga_egm96_15.tif", "epsg": 5773},  # EGM1996 at 15 minute resolution
 }
 
-def _vcrs_from_crs(crs: CRS | None) -> CRS | None:
+def _vcrs_from_crs(crs: CRS | None) -> CRS | Literal["Ellipsoid"] | None:
     """Get the vertical CRS from a CRS."""
 
     # If no CRS is defined
@@ -385,14 +385,17 @@ def _vcrs_from_user_input(
             )
             vcrs = _vcrs_from_crs(vcrs)
 
-    # If a string was passed
+    # If a string or path was passed
     else:
+        if isinstance(vcrs_input, pathlib.Path):
+            vcrs_input = vcrs_input.name
         # If a name is passed, define CRS based on dict
-        if isinstance(vcrs_input, str) and vcrs_input.upper() in _vcrs_meta.keys():
-            vcrs_meta = _vcrs_meta[vcrs_input]
+        key = vcrs_input.upper()
+        if isinstance(vcrs_input, str) and key in _vcrs_meta:
+            vcrs_meta = _vcrs_meta[key]
             vcrs = CRS.from_epsg(vcrs_meta["epsg"])
         # Otherwise, attempt to read a grid from the string
-        elif os.path.splitext(vcrs_input)[-1] in [".tif", ".json", ".pol"]:
+        elif os.path.splitext(vcrs_input)[-1].lower() in [".tif", ".json", ".pol"]:
             if isinstance(vcrs_input, pathlib.Path):
                 grid = vcrs_input.name
             else:
@@ -430,28 +433,18 @@ def _grid_from_user_input(vcrs_input: str | pathlib.Path | int | CRS) -> str | N
 
     return grid
 
-
-def _transform_zz(
-    crs_from: CRS, crs_to: CRS, xx: NDArrayf, yy: NDArrayf, zz: MArrayf | NDArrayf | int | float
-) -> MArrayf | NDArrayf | int | float:
+def _build_vertical_transformer(crs_from: CRS, crs_to: CRS) -> pyproj.Transformer:
     """
-    Transform elevation to a new 3D CRS.
+    Build the best available transformer for a vertical CRS transformation.
 
-    :param crs_from: Source CRS.
-    :param crs_to: Destination CRS.
-    :param xx: X coordinates.
-    :param yy: Y coordinates.
-    :param zz: Z coordinates.
-
-    :return: Transformed Z coordinates.
+    Downloads missing grids before returning, if needed.
     """
 
-    # Find all possible transforms
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "Best transformation is not available")
         trans_group = TransformerGroup(crs_from=crs_from, crs_to=crs_to, always_xy=True)
 
-    # Download grid if best available is not on disk, download and re-initiate the object
+    # Download grid if best available is not on disk, then re-initialize
     if not trans_group.best_available:
         trans_group.download_grids()
         trans_group = TransformerGroup(crs_from=crs_from, crs_to=crs_to, always_xy=True)
@@ -463,7 +456,18 @@ def _transform_zz(
             message="Best available grid for transformation could not be downloaded, "
             "applying the next best available (caution: might apply no transform at all).",
         )
-    transformer = trans_group.transformers[0]
+
+    return trans_group.transformers[0]
+
+def _transform_zz(
+    transformer: pyproj.Transformer,
+    xx: NDArrayf,
+    yy: NDArrayf,
+    zz: MArrayf | NDArrayf | int | float,
+) -> MArrayf | NDArrayf | int | float:
+    """
+    Transform elevation to a new 3D CRS using an already-built transformer.
+    """
 
     # Will preserve the mask of the masked-array since pyproj 3.4
     zz_trans = transformer.transform(xx, yy, zz)[2]
@@ -476,22 +480,14 @@ def _transform_zz(
 def _to_vcrs_2d_pyproj(
     data: NDArrayf,
     transform: affine.Affine,
-    src_ccrs: CRS,
-    dst_ccrs: CRS,
+    transformer: pyproj.Transformer,
 ) -> NDArrayf:
     """
     Base function: transforms one raster block from source to destination vertical CRS.
-
-    :param data: Block data.
-    :param transform: Affine transform of the block.
-    :param src_ccrs: Source compound CRS.
-    :param dst_ccrs: Destination compound CRS.
-    :returns: Vertically transformed block.
     """
     xx, yy = _coords(shape=data.shape, transform=transform, area_or_point=None)
     zz_trans = _transform_zz(
-        crs_from=src_ccrs,
-        crs_to=dst_ccrs,
+        transformer=transformer,
         xx=xx,
         yy=yy,
         zz=data,
@@ -502,11 +498,11 @@ def _to_vcrs_2d_block_dask(
     data: NDArrayf,
     *,
     transform: affine.Affine,
-    src_ccrs: CRS,
-    dst_ccrs: CRS,
+    src_ccrs_wkt: str,
+    dst_ccrs_wkt: str,
     block_info: list[dict[str, Any]] | None = None,
 ) -> NDArrayf:
-    """Dask blcok wrapper deriving the local transform from block_info."""
+    """Dask block wrapper deriving the local transform from block_info."""
 
     if block_info is None:
         raise ValueError("block_info must be provided.")
@@ -519,13 +515,17 @@ def _to_vcrs_2d_block_dask(
     col_start = col_loc.start if hasattr(col_loc, "start") else col_loc[0]
     block_transform = transform * affine.Affine.translation(col_start, row_start)
 
+    # Rebuild transformer inside the block (serialization issues with a Pyproj transformer if passing it)
+    transformer = _build_vertical_transformer(
+        crs_from=CRS.from_wkt(src_ccrs_wkt),
+        crs_to=CRS.from_wkt(dst_ccrs_wkt),
+    )
+
     return _to_vcrs_2d_pyproj(
         data=data,
         transform=block_transform,
-        src_ccrs=src_ccrs,
-        dst_ccrs=dst_ccrs,
+        transformer=transformer,
     )
-
 def _dask_to_vcrs_2d(
     darr: da.Array,
     transform: affine.Affine,
@@ -534,17 +534,45 @@ def _dask_to_vcrs_2d(
 ) -> da.Array:
     """Blockwise vertical CRS transform using Dask."""
 
-    # Simply use map_blocks, as all transformation are independent when purely vertical
+    # Simply use map_blocks, as all transformations are independent when purely vertical
     import_optional("dask")
     return darr.map_blocks(
         _to_vcrs_2d_block_dask,
         transform=transform,
-        src_ccrs=src_ccrs,
-        dst_ccrs=dst_ccrs,
+        src_ccrs_wkt=src_ccrs.to_wkt(),
+        dst_ccrs_wkt=dst_ccrs.to_wkt(),
         dtype=darr.dtype,
         meta=np.array((), dtype=darr.dtype),
     )
 
+def _to_vcrs_2d_block_mp(
+    dem: DEM,
+    src_ccrs_wkt: str,
+    dst_ccrs_wkt: str,
+) -> DEM:
+    """Multiprocessing block wrapper using the tile-local transform directly."""
+
+    # Rebuild transformer inside the block (serialization issues with a Pyproj transformer if passing it)
+    transformer = _build_vertical_transformer(
+        crs_from=CRS.from_wkt(src_ccrs_wkt),
+        crs_to=CRS.from_wkt(dst_ccrs_wkt),
+    )
+
+    # Transform
+    out_data = _to_vcrs_2d_pyproj(
+        data=dem.data,
+        transform=dem.transform,
+        transformer=transformer,
+    )
+
+    return dem.from_array(
+        data=out_data,
+        transform=dem.transform,
+        crs=dem.crs,
+        nodata=dem.nodata,
+        area_or_point=dem.area_or_point,
+        tags=dem.tags,
+    )
 
 def _multiproc_to_vcrs_2d(
     dem: DEM,
@@ -557,34 +585,18 @@ def _multiproc_to_vcrs_2d(
     Vertical CRS transform using multiprocessing.
     """
 
-    # Block function working on a DEM
-    def _to_vcrs_2d_block_mp(dem: DEM) -> DEM:
-        out_data = _to_vcrs_2d_pyproj(
-            data=dem.data,
-            transform=dem.transform,
-            src_ccrs=src_ccrs,
-            dst_ccrs=dst_ccrs,
-        )
-        return dem.from_array(
-            data=out_data,
-            transform=dem.transform,
-            crs=dst_ccrs,
-            nodata=dem.nodata,
-            area_or_point=dem.area_or_point,
-            tags=dem.tags,
-        )
-
-    # Map without any depth (equivalent map_blocks), as transformations are independent for vertical-only
     out_dem = map_overlap_multiproc_save(
         _to_vcrs_2d_block_mp,
         dem,
-        mp_config=mp_config,
+        mp_config,
+        src_ccrs.to_wkt(),
+        dst_ccrs.to_wkt(),
         depth=0,
     )
-    # Override output CRS
-    out_dem._crs = dst_ccrs
+    out_dem.set_crs(dst_ccrs)
 
-    return out_dem
+    from xdem.dem.dem import DEM
+    return DEM(out_dem)
 
 def _get_vertical_transform_crss(
     crs: Any,
@@ -610,9 +622,11 @@ def _get_vertical_transform_crss(
         if src_vcrs is not None:
             warnings.warn(
                 category=UserWarning,
-                message="Overriding the vertical CRS of the DEM with the one provided in `vcrs`.",
+                message=f"Overriding the vertical CRS of the DEM "
+                        f"with the one provided in `force_source_vcrs`: {force_source_vcrs}.",
             )
-        src_ccrs = _build_ccrs_from_crs_and_vcrs(crs, vcrs=force_source_vcrs)
+        force_src_vcrs = _vcrs_from_user_input(force_source_vcrs)
+        src_ccrs = _build_ccrs_from_crs_and_vcrs(crs, vcrs=force_src_vcrs)
     else:
         src_ccrs = crs
 
@@ -629,7 +643,7 @@ def _to_vcrs_2d(
     dst_vcrs: Any,
     force_source_vcrs: Any | None = None,
     mp_config: MultiprocConfig | None = None,
-) -> DEMBase:
+) -> DEMBase | None:
     """
     Transform DEM to a different vertical CRS (no change in horizontal CRS).
 
@@ -649,7 +663,7 @@ def _to_vcrs_2d(
     if mp_backend and dask_backend:
         raise ValueError(
             "Cannot use Multiprocessing and Dask simultaneously. To use Dask, remove mp_config parameter "
-            "from to_vcrs(). To use Multiprocessing, pass a NumPy-backed array."
+            "from to_vcrs(). To use Multiprocessing, use a DEM object input and pass mp_config."
         )
 
     # Build source and destination compound CRS from the input vertical CRSs
@@ -667,6 +681,11 @@ def _to_vcrs_2d(
             category=UserWarning,
         )
         return None
+
+    # Build transformer once to trigger grid download outside of parallelization + validate best available transform
+    # We won't be able to pass the transformer directly to the chunked functions (not serializable),
+    # so we'll repass the src/dst CRS
+    _build_vertical_transformer(crs_from=src_ccrs, crs_to=dst_ccrs)
 
     # Multiprocessing backend
     if mp_backend:
@@ -689,12 +708,19 @@ def _to_vcrs_2d(
             )
         else:
             # Direct NumPy backend
+            transformer = _build_vertical_transformer(crs_from=src_ccrs, crs_to=dst_ccrs)
             zz_trans = _to_vcrs_2d_pyproj(
                 data=dem.data,
                 transform=transform,
-                src_ccrs=src_ccrs,
-                dst_ccrs=dst_ccrs,
+                transformer=transformer,
             )
-        dem_out = dem.from_array(data=zz_trans, transform=transform, crs=dst_ccrs, nodata=dem.nodata,
-                       area_or_point=dem.area_or_point, tags=dem.tags)
+
+        dem_out = dem.from_array(
+            data=zz_trans,
+            transform=transform,
+            crs=dst_ccrs,
+            nodata=dem.nodata,
+            area_or_point=dem.area_or_point,
+            tags=dem.tags,
+        )
         return dem_out
