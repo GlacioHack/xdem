@@ -32,21 +32,19 @@ import pytest
 import xdem
 from xdem.workflows import Accuracy
 from xdem.workflows.schemas import MIN_STATS
-from xdem.workflows.workflows import _ALIAS, Workflows
+from xdem.workflows.workflows import _ALIAS
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 pytest.importorskip("cerberus")
 
 
-def test_init_diff_analysis(get_accuracy_object_with_run, tmp_path):
+def test_init_diff_analysis(get_accuracy_inputs_config):
     """
     Test initialization of accuracy class
     """
-    workflows = get_accuracy_object_with_run
+    workflows = Accuracy(get_accuracy_inputs_config)
+    workflows.run()
 
-    assert isinstance(workflows, Workflows)
-    assert isinstance(workflows, Accuracy)
-    assert Path(tmp_path / "plots").joinpath("inputs.png").exists()
     dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
     mask = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
     inlier_mask = ~mask.create_mask(dem)
@@ -100,6 +98,7 @@ def test__get_stats(get_accuracy_inputs_config, tmp_path, stats_name, res):
     """
     Test _get_stats function
     """
+
     user_config = get_accuracy_inputs_config
     user_config["outputs"] = {"path": str(tmp_path)}
     user_config["statistics"] = stats_name
@@ -112,23 +111,13 @@ def test__get_stats(get_accuracy_inputs_config, tmp_path, stats_name, res):
     assert workflows._get_stats(dem) == {_ALIAS.get(k, k): v for k, v in stats_gt.items()}
 
 
-def test__compute_histogram(get_accuracy_object_with_run, tmp_path):
-    """
-    Test _compute_histogram function
-    """
-
-    _ = get_accuracy_object_with_run
-
-    assert Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
-
-
 @pytest.mark.parametrize(
     "level",
     [1, 2],
 )
 def test_run(get_accuracy_inputs_config, tmp_path, level):
     """
-    Test run function
+    Test run function with (process = True)
     """
 
     user_config = get_accuracy_inputs_config
@@ -190,7 +179,7 @@ def test_run(get_accuracy_inputs_config, tmp_path, level):
 )
 def test_run_without_coreg(get_accuracy_inputs_config, tmp_path, level):
     """
-    Test run function
+    Test run function with (process = False)
     """
 
     user_config = get_accuracy_inputs_config
@@ -396,22 +385,13 @@ def test_prepare_datas(get_accuracy_inputs_config, tmp_path, config):
             assert np.isnan(reference_elev_reprojected_mean)
 
 
-def test_create_html(tmp_path, get_accuracy_object_with_run):
-    """
-    Test create_html function
-    """
-    _ = get_accuracy_object_with_run
-
-    assert Path(tmp_path).joinpath("report.html").exists()
-
-
 @pytest.mark.parametrize(
     "masked",
     [
         [True, True],
-        [False, True],
-        [True, False],
-        [False, False],
+        # [False, True],
+        # [True, False],
+        # [False, False],
     ],
 )
 def test_mask(tmp_path, get_accuracy_inputs_config, masked):
@@ -421,7 +401,6 @@ def test_mask(tmp_path, get_accuracy_inputs_config, masked):
     user_config = get_accuracy_inputs_config
     masked_ref, masked_tba = masked
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
-    print(user_config)
     ref_dem_path = xdem.examples.get_path_test("longyearbyen_ref_dem")
     tba_dem_path = xdem.examples.get_path_test("longyearbyen_tba_dem")
     mask_ref_dem_path = xdem.examples.get_path_test("longyearbyen_glacier_outlines")

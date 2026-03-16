@@ -50,7 +50,6 @@ class Topo(Workflows):
         self.schema = TOPO_SCHEMA
 
         super().__init__(config_dem, output)
-
         self.config_attributes = self.config["terrain_attributes"]
         if isinstance(self.config_attributes, dict):
             self.list_attributes = list(self.config_attributes.keys())
@@ -62,12 +61,16 @@ class Topo(Workflows):
 
         self.config = self.remove_none(self.config)  # type: ignore
 
-    def _load_data(self) -> None:
+    def _load_data(self, input: Dict[str, Any]) -> None:
         """
         Load data defined in config file.
+
+        :param input: input info (dict) to load
+        :return: None
         """
 
-        self.dem, self.inlier_mask, path_to_mask = self.load_dem(self.config["inputs"]["reference_elev"])
+        self.create_output_dir()
+        self.dem, self.inlier_mask, path_to_mask = self.load_dem(input)
         self.generate_plot(
             self.dem,
             filename="elev_map",
@@ -110,7 +113,7 @@ class Topo(Workflows):
             "fractal_roughness": lambda: self.dem.fractal_roughness(**attribute_extra),
         }
         for attr in self.list_attributes:
-            if isinstance(self.config_attributes, dict):
+            if isinstance(self.config_attributes, dict) and "extra_information" in attr:
                 attribute_extra = self.config_attributes.get(attr).get("extra_information", {})  # type: ignore
             attribute = from_str_to_fun[attr]()
             logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
@@ -128,6 +131,11 @@ class Topo(Workflows):
             self.dem,
             attribute=self.list_attributes,
         )
+
+        import geoutils as gu
+
+        if isinstance(attributes, gu.Raster):
+            attributes = [attributes]
 
         n = len(attributes)
 
@@ -193,55 +201,70 @@ class Topo(Workflows):
         """
 
         t0 = time.time()
+        self.dico_to_show = []
 
-        self._load_data()
+        general_output = self.outputs_folder
+        if isinstance(self.config["inputs"], dict):
+            self.config["inputs"] = [self.config["inputs"]]
 
-        # Global information
-        dem_informations = {
-            "Driver": self.dem.driver,
-            "Filename": self.dem.filename,
-            "Grid size": self.dem.vcrs_grid,
-            "Number of band": self.dem.bands,
-            "Data types": self.dem.dtype,
-            "Nodata Value": self.dem.nodata,
-            "Pixel interpretation": self.dem.area_or_point,
-            "Pixel size": self.dem.res,
-            "Width": self.dem.width,
-            "Height": self.dem.height,
-            "Transform": self.dem.transform,
-            "Bounds": self.dem.bounds,
-        }
-        self.dico_to_show.append(("Elevation information", dem_informations))
+        for k, input in enumerate(self.config["inputs"]):
+            if len(self.config["inputs"]) > 1:
+                self.outputs_folder = general_output / ("dem_" + str(k))
+            self._load_data(input)
+            self.dico_to_show.append(
+                [
+                    ("Information about inputs", input),
+                ]
+            )
 
-        # Statistics
-        list_metrics = self.config["statistics"]
-        if list_metrics is not None:
-            stats_dem = self.dem.get_stats(list_metrics)
-            stats_dem = {_ALIAS.get(k, k): v for k, v in stats_dem.items()}
-            self.save_stat_as_csv(stats_dem, "stats_elev")
-            self.dico_to_show.append(("Statistics", self.floats_process(stats_dem)))
-            logging.info(f"Computing metrics on reference elevation: {list_metrics}")
+            # Global information
+            dem_informations = {
+                "Driver": self.dem.driver,
+                "Filename": self.dem.filename,
+                "Grid size": self.dem.vcrs_grid,
+                "Number of band": self.dem.bands,
+                "Data types": self.dem.dtype,
+                "Nodata Value": self.dem.nodata,
+                "Pixel interpretation": self.dem.area_or_point,
+                "Pixel size": self.dem.res,
+                "Width": self.dem.width,
+                "Height": self.dem.height,
+                "Transform": self.dem.transform,
+                "Bounds": self.dem.bounds,
+            }
+            self.dico_to_show[k].append(("Elevation information", dem_informations))
 
-        # Terrain attributes
-        if self.list_attributes is not None:
-            self.generate_terrain_attributes_png()
-            if self.level > 1:
-                self.generate_terrain_attributes_tiff()
-        else:
-            logging.info("Computing terrain attributes: None")
+            # Statistics
+            list_metrics = self.config["statistics"]
+            if list_metrics is not None:
+                stats_dem = self.dem.get_stats(list_metrics)
+                stats_dem = {_ALIAS.get(k, k): v for k, v in stats_dem.items()}
+                self.save_stat_as_csv(stats_dem, "stats_elev")
+                self.dico_to_show[k].append(("Statistics", self.floats_process(stats_dem)))
+                logging.info(f"Computing metrics on reference elevation: {list_metrics}")
 
-        t1 = time.time()
-        self.elapsed = t1 - t0
+            # Terrain attributes
+            if self.list_attributes is not None:
+                self.generate_terrain_attributes_png()
+                if self.level > 1:
+                    self.generate_terrain_attributes_tiff()
+            else:
+                logging.info("Computing terrain attributes: None")
 
-        self.create_html(self.dico_to_show)
+            t1 = time.time()
+            self.elapsed = t1 - t0
 
-        # Remove empty folder
-        for folder in self.outputs_folder.rglob("*"):
-            if folder.is_dir():
-                try:
-                    folder.rmdir()
-                except OSError:
-                    pass
+            logging.info("Generating HTML and PDF report")
+            self.create_html(self.dico_to_show[k])
+            self.generate_pdf()
+
+            # Remove empty folder
+            for folder in self.outputs_folder.rglob("*"):
+                if folder.is_dir():
+                    try:
+                        folder.rmdir()
+                    except OSError:
+                        pass
 
     def create_html(self, list_dict: list[tuple[str, dict[str, Any]]]) -> None:
         """
@@ -280,7 +303,8 @@ class Topo(Workflows):
             html += "</div>\n"
 
         html += "<h2>Terrain attributes</h2>\n"
-        html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+        if self.list_attributes is not None:
+            html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         html += "</body>\n</html>"
 

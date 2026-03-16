@@ -108,14 +108,14 @@ These categories and detailed parameter values are further detailed below:
 
 **Required:** Yes
 
-Elevation input information.
+List of elevation inputs information.
 
 :::{table} Inputs parameters for elevation
 :widths: 20, 35, 17, 18, 10
 
 | Name                  | Description                              | Type       | Default | Required |
 |-----------------------|------------------------------------------|------------|---------|----------|
-| `path_to_elev`        | Path to reference elevation              | str        |         | Yes      |
+| `path_to_elev`        | Path to elevation                        | str        |         | Yes      |
 | `force_source_nodata` | No data elevation                        | int        |         | No       |
 | `path_to_mask`        | Path to mask associated to the elevation | str        |         | No       |
 | `from_vcrs`           | Original vcrs                            | int, str   | `null`  | No       |
@@ -134,8 +134,11 @@ Please refer to {ref}`data-example` to have more information.
 
 :::{code-block} yaml
 inputs:
-  reference_elev:
-    path_to_elev: "path_to/reference_elev.tif"
+  - path_to_elev: "path_to/one_elev.tif"
+    force_source_nodata: -32768
+    from_vcrs: null
+    to_vcrs: null
+  - path_to_elev: "path_to/another_elev.tif"
     force_source_nodata: -32768
     from_vcrs: null
     to_vcrs: null
@@ -180,8 +183,8 @@ If a mask is provided, the statistics are also computed inside the mask.
 List or set of dictionaries for extra information.
 
 :::{note}
-- If no block is specified, slope, aspect, and curvature attributes are calculated by default.
-- If a block is specified but no information is provided, then no attributes will be calculated.
+- If the block is specified, slope, aspect, and curvature attributes are calculated by default.
+- If the block is specified but no information is provided, then no attributes will be calculated.
 :::
 
 :::{code-block} yaml
@@ -195,7 +198,6 @@ or
 :::{code-block} yaml
 terrain_attributes:
   hillshade:
-      extra_information:
   slope:
       extra_information:
   aspect:
@@ -204,7 +206,7 @@ terrain_attributes:
 :::
 
 :::{note}
-The data provided in extra_information is not checked for errors before executing the code.
+The data provided in `extra_information` is not checked for errors before executing the code.
 Its use is entirely the responsibility of the user.
 :::
 
@@ -216,16 +218,16 @@ Its use is entirely the responsibility of the user.
 
 Outputs information. Operates by levels:
 
-1. Level 1 → aligned elevation only
-2. Level 2 → more detailed output
+1. Level 1 → save reports and stats and plots used in it
+2. Level 2 → save terrain attributes in addition (TIF format)
 
 :::{table} Output parameters
 :widths: 20, 40, 10, 10, 10, 10
 
 | Name    | Description                | Type | Default value | Available Value                       | Required |
-|---------|----------------------------|------|---------------|--------------------------------------|---------|
-| `path`  | Path for outputs           | str  | outputs       |                                      | No      |
-| `level` | Level for detailed outputs | int  | 1             | 1 or 2                               | No      |
+|---------|----------------------------|------|---------------|---------------------------------------|---------|
+| `path`  | Path for outputs           | str  | outputs       |                                       | No      |
+| `level` | Level for detailed outputs | int  | 1             | 1 or 2                                | No      |
 :::
 
 :::{code-block} yaml
@@ -238,16 +240,16 @@ Tree of outputs for level 1:
 
 :::{code-block} text
 - root
-  ├─ tables
-  │   ├─ elev_stats.csv
-  │   └─ elev_with_mask_stats.csv
-  ├─ plots
-  │   ├─ elev_map.png
-  │   ├─ masked_elev_map.png (if mask_elev is given in input)
-  │   └─ terrain_attributes_map.png
-  ├─ rasters
-  ├─ report.html
-  ├─ report.pdf
+  ├─ dem_[X]  (if several inputs)
+  │   ├─ tables
+  │   │   ├─ elev_stats.csv
+  │   │   └─ elev_with_mask_stats.csv (if mask_elev is given in input)
+  │   ├─ plots
+  │   │   ├─ elev_map.png
+  │   │   ├─ masked_elev_map.png (if mask_elev is given in input)
+  │   │   └─ terrain_attributes_map.png
+  │   ├─ report.html
+  │   ├─ report.pdf
   └─ used_config.yaml
 :::
 
@@ -255,23 +257,24 @@ Tree of outputs for level 2:
 
 :::{code-block} text
 - root
-  ├─ tables
-  │   ├─ elev_stats.csv
-  │   └─ elev_with_mask_stats.csv
-  ├─ plots
-  │   ├─ elev_map.png
-  │   ├─ masked_elev_map.png (if mask_elev is given in input)
-  │   └─ terrain_attributes_map.png
-  ├─ rasters
-  │   ├─ aspect.tif
-  │   ├─ curvature.tif
-  │   ├─ hillshade.tif
-  │   ├─ rugosity.tif
-  │   ├─ slope.tif
-  │   ├─ terrain_ruggedness_index.tif
-  │   └─ ...
-  ├─ report.html
-  ├─ report.pdf
+  ├─ dem_[X]  (if several inputs)
+  │   ├─ tables
+  │   │   ├─ elev_stats.csv
+  │   │   └─ elev_with_mask_stats.csv (if mask_elev is given in input)
+  │   ├─ plots
+  │   │   ├─ elev_map.png
+  │   │   ├─ masked_elev_map.png (if mask_elev is given in input)
+  │   │   └─ terrain_attributes_map.png
+  │   ├─ rasters
+  │   │   ├─ aspect.tif
+  │   │   ├─ curvature.tif
+  │   │   ├─ hillshade.tif
+  │   │   ├─ rugosity.tif
+  │   │   ├─ slope.tif
+  │   │   ├─ terrain_ruggedness_index.tif
+  │   │   └─ ...
+  │   ├─ report.html
+  │   ├─ report.pdf
   └─ used_config.yaml
 :::
 

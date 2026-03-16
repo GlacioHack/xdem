@@ -236,11 +236,10 @@ ACCURACY_SCHEMA = {
 
 TOPO_SCHEMA = {
     "inputs": {
-        "type": "dict",
-        "required": True,
-        "schema": {
-            "reference_elev": {"type": "dict", "schema": INPUTS_DEM, "required": False},
-        },
+        "anyof": [
+            {"type": "list", "required": True, "schema": {"type": "dict", "schema": INPUTS_DEM}},
+            {"type": "dict", "schema": INPUTS_DEM},
+        ]
     },
     "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "nullable": True},
     "terrain_attributes": {
@@ -261,8 +260,9 @@ TOPO_SCHEMA = {
                 "valuesrules": {
                     "type": "dict",
                     "schema": {
-                        "extra_information": {"type": "dict", "required": False},
+                        "extra_information": {"type": "dict", "required": False, "nullable": True},
                     },
+                    "nullable": True,
                 },
             },
         ],
