@@ -65,54 +65,97 @@ def files_attribute(workflows, level, attributes, tmp_path):
             assert Path(tmp_path / "rasters").joinpath(f"{attribute}.tif").exists()
 
 
+attributes_list_str = ["slope", "aspect"]
+attributes_list_dict = {
+    "slope": {},
+    "hillshade": {"extra_information": {}},
+    "aspect": {"extra_information": {"method": "ZevenbergThorne"}},
+}
+
+
 @pytest.mark.parametrize("level", [1, 2])
-@pytest.mark.parametrize("nb_inputs", [1, 2])
-@pytest.mark.parametrize(
-    "attributes",
-    [None, ["slope", "aspect"], {"hillshade": {"extra_information": {"method": "ZevenbergThorne", "azimuth": 90}}}],
-)
-def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list):
+@pytest.mark.parametrize("attributes", [None, attributes_list_str, attributes_list_dict])
+def test_run_list_one_dict(tmp_path, level, attributes, get_topo_inputs_config_list):
     """
-    Test run function with all the outputs generation
+    Test run function in case of an input list
     """
     user_config = dict()
-    user_config["inputs"] = get_topo_inputs_config_list[:nb_inputs]
+    user_config["inputs"] = get_topo_inputs_config_list[:1]
     user_config["outputs"] = {"path": str(tmp_path), "level": level}
     user_config["terrain_attributes"] = attributes
-
     workflows = Topo(user_config)
     workflows.run()
 
     # 1/ Test inputs
-    if nb_inputs == 1:
-        files_load_data(user_config["inputs"][0], tmp_path)
-    else:
-        for k in range(len(user_config["inputs"])):
-            dem_dir = "dem_" + str(k)
-            files_load_data(user_config["inputs"], Path(tmp_path / dem_dir))
+    files_load_data(user_config["inputs"][0], tmp_path)
 
     # 2/ Test attributes
     if attributes is not None:
         if len(attributes) == 0:
             attributes = TERRAIN_ATTRIBUTES_DEFAULT
         assert workflows.config_attributes == attributes
-        if nb_inputs == 1:
-            files_attribute(workflows, level, attributes, tmp_path)
-        else:
-            for k in range(len(user_config["inputs"])):
-                dem_dir = "dem_" + str(k)
-                files_attribute(workflows, level, attributes, Path(tmp_path / dem_dir))
+        files_attribute(workflows, level, attributes, tmp_path)
     else:
         assert workflows.config_attributes is None
         assert not Path(tmp_path / "plots").joinpath("terrain_attributes_map.png").exists()
 
     # 3/ Test stats
-    if nb_inputs == 1:
-        assert Path(tmp_path / "tables").joinpath("stats_elev_stats.csv").exists()
-    else:
-        for k in range(len(user_config["inputs"])):
-            dem_dir = "dem_" + str(k)
-            assert Path(tmp_path / dem_dir / "tables").joinpath("stats_elev_stats.csv").exists()
+    assert Path(tmp_path / "tables").joinpath("stats_elev_stats.csv").exists()
+
+    # 4/ Test reports
+    assert Path(tmp_path).joinpath("report.html").exists()
+    assert Path(tmp_path).joinpath("report.pdf").exists()
+
+
+@pytest.mark.parametrize("level", [1, 2])
+@pytest.mark.parametrize("attributes", [None, attributes_list_str, attributes_list_dict])
+def test_run_list_several_dicts(tmp_path, level, attributes, get_topo_inputs_config_list):
+    """
+    Test run function in case of an input list
+    """
+    user_config = dict()
+    user_config["inputs"] = get_topo_inputs_config_list
+    user_config["outputs"] = {"path": str(tmp_path), "level": level}
+    user_config["terrain_attributes"] = attributes
+    workflows = Topo(user_config)
+    workflows.run()
+
+    for k in range(len(user_config["inputs"])):
+        dem_dir = "dem_" + str(k)
+
+        # 1/ Test inputs
+        files_load_data(user_config["inputs"], Path(tmp_path / dem_dir))
+
+        # 2/ Test attributes
+        if attributes is not None:
+            if len(attributes) == 0:
+                attributes = TERRAIN_ATTRIBUTES_DEFAULT
+            assert workflows.config_attributes == attributes
+            files_attribute(workflows, level, attributes, Path(tmp_path / dem_dir))
+        else:
+            assert workflows.config_attributes is None
+            assert not Path(tmp_path / dem_dir / "plots").joinpath("terrain_attributes_map.png").exists()
+
+        # 3/ Test stats
+        assert Path(tmp_path / dem_dir / "tables").joinpath("stats_elev_stats.csv").exists()
+
+        # 4/ Test reports
+        assert Path(tmp_path / dem_dir).joinpath("report.html").exists()
+        assert Path(tmp_path / dem_dir).joinpath("report.pdf").exists()
+
+
+def test_run_one_input_dict(get_topo_inputs_config_list, tmp_path):
+    """
+    Test run in case of one input (dictionary form)
+    """
+
+    user_config = dict()
+    user_config["inputs"] = get_topo_inputs_config_list[0]
+    user_config["outputs"] = {"path": str(tmp_path)}
+    workflows = Topo(user_config)
+    workflows.run()
+
+    files_load_data(user_config["inputs"], tmp_path)
 
 
 @pytest.mark.parametrize("nb_inputs", [1, 2])

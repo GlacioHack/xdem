@@ -53,7 +53,6 @@ class Topo(Workflows):
         self.config_attributes = self.config["terrain_attributes"]
         if isinstance(self.config_attributes, dict):
             self.list_attributes = list(self.config_attributes.keys())
-            print(self.list_attributes)
         else:
             self.list_attributes = self.config_attributes
 
@@ -114,7 +113,7 @@ class Topo(Workflows):
             "fractal_roughness": lambda: self.dem.fractal_roughness(**attribute_extra),
         }
         for attr in self.list_attributes:
-            if isinstance(self.config_attributes, dict):
+            if isinstance(self.config_attributes, dict) and "extra_information" in attr:
                 attribute_extra = self.config_attributes.get(attr).get("extra_information", {})  # type: ignore
             attribute = from_str_to_fun[attr]()
             logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
@@ -127,7 +126,6 @@ class Topo(Workflows):
         """
 
         logging.info(f"Computing attributes : {self.list_attributes}")
-        print(self.list_attributes)
 
         attributes = xdem.terrain.get_terrain_attribute(
             self.dem,
@@ -204,17 +202,20 @@ class Topo(Workflows):
 
         t0 = time.time()
         self.dico_to_show = []
+
         general_output = self.outputs_folder
+        if isinstance(self.config["inputs"], dict):
+            self.config["inputs"] = [self.config["inputs"]]
+
         for k, input in enumerate(self.config["inputs"]):
+            if len(self.config["inputs"]) > 1:
+                self.outputs_folder = general_output / ("dem_" + str(k))
+            self._load_data(input)
             self.dico_to_show.append(
                 [
                     ("Information about inputs", input),
                 ]
             )
-            if len(self.config["inputs"]) > 1:
-                self.outputs_folder = general_output / ("dem_" + str(k))
-            self.create_output_dir(self.outputs_folder)
-            self._load_data(input)
 
             # Global information
             dem_informations = {
@@ -253,8 +254,9 @@ class Topo(Workflows):
             t1 = time.time()
             self.elapsed = t1 - t0
 
+            logging.info("Generating HTML and PDF report")
             self.create_html(self.dico_to_show[k])
-            # self.dico_to_show[k] = None
+            self.generate_pdf()
 
             # Remove empty folder
             for folder in self.outputs_folder.rglob("*"):
@@ -301,7 +303,8 @@ class Topo(Workflows):
             html += "</div>\n"
 
         html += "<h2>Terrain attributes</h2>\n"
-        html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+        if self.list_attributes is not None:
+            html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         html += "</body>\n</html>"
 
