@@ -35,7 +35,7 @@ import pandas as pd
 import scipy.ndimage
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
-from geoutils.stats.sampling import subsample_array
+from geoutils.stats.sampling import _subsample_numpy
 from geoutils.vector.vector import Vector, VectorType
 from numpy.typing import ArrayLike
 from packaging.version import Version
@@ -975,7 +975,7 @@ def _subsample_wrapper(
         values_sp = values
         coords_sp = coords
 
-    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=random_state)
+    index = _subsample_numpy(values_sp, subsample=subsample, return_indices=True, random_state=random_state)
     values_sub = values_sp[index[0]]
     coords_sub = coords_sp[index[0], :]
 

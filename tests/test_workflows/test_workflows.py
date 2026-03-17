@@ -269,7 +269,7 @@ def test_load_dem(get_dem_config, from_vcrs, to_vcrs):
 
         # Check output_dem vcrs reference
         if to_vcrs == "EGM96" or (to_vcrs is None and from_vcrs == "EGM96"):
-            assert output_dem.vcrs_name == "EGM96 height"
+            assert output_dem._vcrs_name == "EGM96 height"
         elif to_vcrs == "Ellipsoid" or (to_vcrs is None and from_vcrs == "Ellipsoid"):
             assert output_dem.vcrs == "Ellipsoid"
         else:
@@ -277,7 +277,10 @@ def test_load_dem(get_dem_config, from_vcrs, to_vcrs):
 
         # Check output_dem
         if from_vcrs == to_vcrs:
-            assert output_dem.raster_equal(input_dem)
+            # Need to convert input to the forced CRS, if it exists
+            if from_vcrs is not None:
+                input_dem.set_vcrs(from_vcrs)
+            assert output_dem.raster_equal(input_dem, warn_failure_reason=True)
 
         # About 32 meters of difference in Svalbard between EGM96 geoid and ellipsoid
         if to_vcrs == "Ellipsoid" and from_vcrs == "EGM96":

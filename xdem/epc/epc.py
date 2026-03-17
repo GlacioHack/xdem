@@ -40,6 +40,7 @@ from xdem.vcrs import (
     _transform_zz,
     _vcrs_from_crs,
     _vcrs_from_user_input,
+    _build_vertical_transformer
 )
 
 epc_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]
@@ -263,7 +264,8 @@ class EPC(PointCloud):  # type: ignore
         # Transform elevation with new vertical CRS
         zz = self.data  # type: ignore
         xx, yy = self.geometry.x.values, self.geometry.y.values
-        zz_trans = _transform_zz(crs_from=src_ccrs, crs_to=dst_ccrs, xx=xx, yy=yy, zz=zz)
+        transformer = _build_vertical_transformer(crs_from=src_ccrs, crs_to=dst_ccrs)
+        zz_trans = _transform_zz(transformer=transformer, xx=xx, yy=yy, zz=zz)
         new_data = zz_trans.astype(self.data.dtype)  # type: ignore
 
         # If inplace, update EPC and vcrs
