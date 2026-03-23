@@ -5,15 +5,15 @@ Blockwise coregistration
 Often, biases are spatially variable, and a "global" shift may not be enough to coregister a DEM properly.
 In the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example, we saw that the method improved the alignment significantly, but there were still possibly nonlinear artefacts in the result.
 Clearly, nonlinear coregistration approaches are needed.
-One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrarily small grid, and then "puppet warp" the DEM to fit the reference best.
+One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrarily grid. Thanks to this tool, local errors are detected more effectively and memory usage is reduced.
+Indeed entire DEM does not need to be loaded in memory, the processes run for each block, also enabling multiprocessing.
 
-The ``BlockwiseCoreg`` class runs in five steps:
+The ``BlockwiseCoreg`` class runs in four steps:
 
 1. Generate a subdivision grid to divide the DEM in N blocks.
-2. Run the requested coregistration approach in each block.
-3. Extract each result as a source and destination X/Y/Z point.
-4. Interpolate the X/Y/Z point-shifts into three shift-rasters.
-5. Warp the DEM to apply the X/Y/Z shifts.
+2. Run the requested coregistration approach in each block and save the results.
+3. Thanks to these results, interpolate the global shifting with a ransac method.
+4. Apply to the entire DEM also by block but this time with an overlap, this overlap corresponds to the maximum offset calculated step 2.
 
 """
 
@@ -23,6 +23,7 @@ import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np
 from geoutils.raster.distributed_computing import MultiprocConfig
+from geoutils.raster import ClusterGenerator
 
 import xdem
 
@@ -35,13 +36,6 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 
 # Create a stable ground mask (not glacierized) to mark "inlier data"
 inlier_mask = ~glacier_outlines.create_mask(reference_dem)
-
-plt_extent = [
-    reference_dem.bounds.left,
-    reference_dem.bounds.right,
-    reference_dem.bounds.bottom,
-    reference_dem.bounds.top,
-]
 
 # %%
 # The DEM to be aligned (a 1990 photogrammetry-derived DEM) has some vertical and horizontal biases that we want to avoid, as well as possible nonlinear distortions.
@@ -58,8 +52,10 @@ plt.show()
 # Let's prepare a coregistration class with a tiling configuration
 # BlockwiseCoreg is also available without mp_config but with parent_path parameters
 
-# Create a configuration without multiprocessing cluster (tasks will be processed sequentially)
-mp_config = MultiprocConfig(chunk_size=500, outfile="aligned_dem.tif", cluster=None)
+# Create a configuration with two processing nodes
+mp_config = MultiprocConfig(chunk_size=500, 
+                            outfile="aligned_dem.tif", 
+                            cluster=ClusterGenerator("multi", nb_workers=2))
 blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), mp_config=mp_config)
 
 # %%
@@ -69,7 +65,6 @@ blockwise.fit(reference_dem, dem_to_be_aligned, inlier_mask)
 blockwise.apply(dem_to_be_aligned)
 
 aligned_dem = xdem.DEM("aligned_dem.tif")
-
 
 # %%
 # The estimated shifts can be visualized by applying the coregistration to a completely flat surface.
@@ -118,7 +113,6 @@ plt.show()
 
 # %%
 # We can compare the NMAD to validate numerically that there was an improvement:
-
 
 print(f"Error before: {gu.stats.nmad(diff_before[inlier_mask]):.2f} m")
 print(f"Error after: {gu.stats.nmad(diff_after[inlier_mask]):.2f} m")
