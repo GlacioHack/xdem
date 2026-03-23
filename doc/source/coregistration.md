@@ -580,7 +580,7 @@ coregistration methods and for translation only. Rotation shifts will be soon im
 Please set `only_translation=True` when initializing the coregistration method ICP(), LZD() or CPD().
 ```
 
-A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs in grids, then a coregistration method (e.g. LZD) run independently in each block. After, an interpolation method is use to obtain the overall offset. The advantages of this tool are, the memory consumption reduce and a better detection of local errors.
+A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs in grids, then a coregistration method (e.g. LZD) runs independently in each block. After, an interpolation method is used to obtain the overall offset. The advantages of this tool are, the memory consumption reduces and a better detection of local errors.
 
 ```{note}
 The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
@@ -598,6 +598,7 @@ blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.LZD(only_translation=True),
 blockwise.fit(ref_dem, tba_dem_shifted)
 aligned_dem = blockwise.apply(tba_dem_shifted)
 ```
+
 In this example, processing is performed sequentially. However, it is possible to enable multiprocessing on {class}`~xdem.coreg.BlockwiseCoreg`, the configuration is described in the advanced examples.
 
 ```{code-cell} ipython3
@@ -605,6 +606,18 @@ In this example, processing is performed sequentially. However, it is possible t
 aligned_dem.load()
 import os
 os.remove("aligned_dem.tif")
+```
+
+To give you a clearer picture, here’s how {class}`~xdem.coreg.BlockwiseCoreg` divides the DEM.
+
+:::{figure} imgs/coregistration_blockwise_blocks.png
+:width: 100%
+:::
+
+The results of each tile coregistration are saved in the meta parameters of the "blockwise" class.
+
+```{code-cell} ipython3
+blockwise.meta
 ```
 
 ```{code-cell} ipython3
