@@ -779,7 +779,7 @@ def _preprocess_values_with_mask_to_array(
 
 @overload
 def infer_heteroscedasticity_from_stable(
-    dvalues: NDArrayf,
+    dvalues: gpd.GeoDataFrame,
     list_var: list[NDArrayf | RasterType],
     stable_mask: NDArrayf | Raster | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | Raster | VectorType | gpd.GeoDataFrame = None,
@@ -788,7 +788,7 @@ def infer_heteroscedasticity_from_stable(
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
-) -> tuple[NDArrayf, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]: ...
+) -> tuple[gpd.GeoDataFrame, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]: ...
 
 
 @overload
@@ -806,7 +806,7 @@ def infer_heteroscedasticity_from_stable(
 
 
 def infer_heteroscedasticity_from_stable(
-    dvalues: NDArrayf | RasterType,
+    dvalues: RasterType | gpd.GeoDataFrame,
     list_var: list[NDArrayf | RasterType],
     stable_mask: NDArrayf | Raster | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | Raster | VectorType | gpd.GeoDataFrame = None,
@@ -825,7 +825,7 @@ def infer_heteroscedasticity_from_stable(
 
     If no stable or unstable mask is provided to mask in or out the values, all terrain is used.
 
-    :param dvalues: Proxy values as array or Raster (i.e., differenced values where signal should be zero such as
+    :param dvalues: Proxy values as raster or point cloud (i.e., differenced values where signal should be zero such as
         elevation differences on stable terrain)
     :param list_var: List of size (L) of explanatory variables as array or Raster of same shape as dvalues
     :param stable_mask: Vector shapefile of stable terrain (if dvalues is Raster), or boolean array of same shape as
