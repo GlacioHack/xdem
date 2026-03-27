@@ -5,15 +5,15 @@ Blockwise coregistration
 Often, biases are spatially variable, and a "global" shift may not be enough to coregister a DEM properly.
 In the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example, we saw that the method improved the alignment significantly, but there were still possibly nonlinear artefacts in the result.
 Clearly, nonlinear coregistration approaches are needed.
-One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrarily grid. Thanks to this tool, local errors are detected more effectively and memory usage is reduced.
-Indeed entire DEM does not need to be loaded in memory, the processes run for each block, also enabling multiprocessing.
+One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrary grid. Thanks to this tool, local errors are detected more effectively and memory usage is reduced.
+Indeed, the entire DEM does not need to be loaded into memory, the processes run for each block, also enabling multiprocessing.
 
 The ``BlockwiseCoreg`` class runs in four steps:
 
 1. Generate a subdivision grid to divide the DEM in N blocks.
 2. Run the requested coregistration approach in each block and save the results.
-3. Thanks to these results, interpolate the global shifting with a ransac method.
-4. Apply to the entire DEM also by block but this time with an overlap, this overlap corresponds to the maximum offset calculated step 2.
+3. Based on these results, we can interpolate the global offset with a RANSAC method.
+4. Apply to the entire DEM also by block, but this time with an overlap, this overlap corresponds to the maximum offset calculated in step 2.
 
 """
 
