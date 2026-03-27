@@ -580,7 +580,7 @@ coregistration methods and for translation only. Rotation shifts will be soon im
 Please set `only_translation=True` when initializing the coregistration method ICP(), LZD() or CPD().
 ```
 
-A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs in grids, then a coregistration method (e.g. LZD) runs independently in each block. After, an interpolation method is used to obtain the overall offset. The advantages of this tool are, the memory consumption reduces and a better detection of local errors.
+A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs into grids, then a coregistration method (e.g. LZD) runs independently in each block. Afterwards, an interpolation method is used to obtain the overall offset. The advantages of this tool are that memory consumption is reduced and local errors are better detected.
 
 ```{note}
 The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
@@ -608,7 +608,7 @@ import os
 os.remove("aligned_dem.tif")
 ```
 
-To give you a clearer picture, here’s how {class}`~xdem.coreg.BlockwiseCoreg` divides the DEM.
+To give you a clearer picture, here is how {class}`~xdem.coreg.BlockwiseCoreg` divides the DEM.
 
 :::{figure} imgs/coregistration_blockwise_blocks.png
 :width: 100%
