@@ -413,17 +413,13 @@ def robust_norder_polynomial_fit(
         # If method is linear and package scipy
         if estimator_name == "Linear" and linear_pkg == "scipy":
 
-            # Define the initial guess
-            p0 = np.polyfit(x, y, deg)
-
-            # Run the linear method with scipy
-            try:
-                cost, coef = _wrapper_scipy_leastsquares(
-                    f=polynomial_1d, xdata=x, ydata=y, p0=p0, sigma=sigma, **kwargs
-                )
-            except RuntimeError:
-                cost = np.inf
-                coef = np.array([np.nan for i in range(len(p0))])
+            # Polynomial is linear in its coefficients; solve directly with OLS (no iteration needed).
+            # np.polyfit returns highest-degree-first; polynomial_1d (via numpy.polynomial.polyval) expects
+            # lowest-degree-first, so flip the output.
+            w = 1.0 / sigma if sigma is not None else None
+            coef = np.polyfit(x, y, deg, w=w)[::-1]
+            coef = np.array([np.round(c, 5) for c in coef])
+            cost = 0.5 * float(np.sum((polynomial_1d(x, *coef) - y) ** 2))
 
         else:
             # Otherwise, we use sklearn

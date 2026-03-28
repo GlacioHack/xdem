@@ -365,7 +365,8 @@ def _nuth_kaab_bin_fit(
     Optimize the Nuth and Kääb (2011) function based on observed values of elevation differences, slope tangent and
     aspect at the same locations, using either fitting or binning + fitting.
 
-    Called at each iteration step.
+    Uses a linearized OLS formulation: a*cos(b-x)+c = A*cos(x) + B*sin(x) + c, where A=a*cos(b), B=a*sin(b).
+    The easting and northing offsets are recovered directly as B and A respectively.
 
     :param dh: 1D array of elevation differences (in georeferenced unit, typically meters).
     :param slope_tan: 1D array of slope tangent (unitless).
@@ -380,33 +381,39 @@ def _nuth_kaab_bin_fit(
     with np.errstate(divide="ignore", invalid="ignore"):
         y = dh / slope_tan
 
-    # Make an initial guess of the a, b, and c parameters
-    p0 = (3 * np.nanstd(y) / (2**0.5), 0.0, np.nanmean(y))
-
     # For this type of method, the procedure can only be fit, or bin + fit (binning alone does not estimate parameters)
     if params_fit_or_bin["fit_or_bin"] not in ["fit", "bin_and_fit"]:
         raise ValueError("Nuth and Kääb method only supports 'fit' or 'bin_and_fit'.")
 
-    # Define fit and bin parameters
-    params_fit_or_bin["fit_func"] = _nuth_kaab_fit_func
     params_fit_or_bin["nd"] = 1
     params_fit_or_bin["bias_var_names"] = ["aspect"]
 
-    # Run bin and fit, returning dataframe of binning and parameters of fitting
-    _, results = _bin_or_and_fit_nd(
-        fit_or_bin=params_fit_or_bin["fit_or_bin"],
-        params_fit_or_bin=params_fit_or_bin,
-        values=y,
-        bias_vars={"aspect": aspect},
-        p0=p0,
-    )
-    # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
-    assert results is not None
-    easting_offset = results[0][0] * np.sin(results[0][1])
-    northing_offset = results[0][0] * np.cos(results[0][1])
-    vertical_offset = results[0][2]
+    if params_fit_or_bin["fit_or_bin"] == "bin_and_fit":
+        # Bin y by aspect and extract robust bin medians for fitting
+        df, _ = _bin_or_and_fit_nd(
+            fit_or_bin="bin",
+            params_fit_or_bin=params_fit_or_bin,
+            values=y,
+            bias_vars={"aspect": aspect},
+        )
+        df_nd = df[df.nd == 1]
+        aspect_fit = np.array([interval.mid for interval in df_nd["aspect"]])
+        y_fit = df_nd[params_fit_or_bin["bin_statistic"].__name__].values
+    else:
+        aspect_fit = aspect
+        y_fit = y
 
-    return easting_offset, northing_offset, vertical_offset
+    # Keep only finite values
+    valid = np.isfinite(aspect_fit) & np.isfinite(y_fit)
+    aspect_fit = aspect_fit[valid]
+    y_fit = y_fit[valid]
+
+    # Linearized OLS: a*cos(b-x)+c = A*cos(x) + B*sin(x) + c
+    # Easting offset = a*sin(b) = B, northing offset = a*cos(b) = A
+    X = np.column_stack([np.cos(aspect_fit), np.sin(aspect_fit), np.ones(len(aspect_fit))])
+    northing_offset, easting_offset, vertical_offset = np.linalg.lstsq(X, y_fit, rcond=None)[0]
+
+    return float(easting_offset), float(northing_offset), float(vertical_offset)
 
 
 def _nuth_kaab_aux_vars(
