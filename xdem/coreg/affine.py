@@ -355,6 +355,21 @@ def _nuth_kaab_fit_func(xx: NDArrayf, *params: tuple[float, float, float]) -> ND
     return params[0] * np.cos(params[1] - xx) + params[2]
 
 
+def _design_matrix_nuth_kaab(xdata: NDArrayf) -> NDArrayf:
+    """
+    Build the OLS design matrix for the linearized Nuth and Kääb (2011) fit.
+
+    The original model a*cos(b-x)+c is rewritten as A*cos(x) + B*sin(x) + c via the cosine
+    subtraction identity, where A=a*cos(b) and B=a*sin(b). The design matrix columns are
+    [cos(aspect), sin(aspect), 1].
+
+    :param xdata: 1D array of aspect values in radians.
+
+    :returns: Design matrix of shape (N, 3).
+    """
+    return np.column_stack([np.cos(xdata), np.sin(xdata), np.ones(len(xdata))])
+
+
 def _nuth_kaab_bin_fit(
     dh: NDArrayf,
     slope_tan: NDArrayf,
@@ -366,7 +381,8 @@ def _nuth_kaab_bin_fit(
     aspect at the same locations, using either fitting or binning + fitting.
 
     Uses a linearized OLS formulation: a*cos(b-x)+c = A*cos(x) + B*sin(x) + c, where A=a*cos(b), B=a*sin(b).
-    The easting and northing offsets are recovered directly as B and A respectively.
+    The easting and northing offsets are recovered directly as B and A respectively, without needing to
+    back-convert through a and b.
 
     :param dh: 1D array of elevation differences (in georeferenced unit, typically meters).
     :param slope_tan: 1D array of slope tangent (unitless).
@@ -385,33 +401,21 @@ def _nuth_kaab_bin_fit(
     if params_fit_or_bin["fit_or_bin"] not in ["fit", "bin_and_fit"]:
         raise ValueError("Nuth and Kääb method only supports 'fit' or 'bin_and_fit'.")
 
+    params_fit_or_bin["fit_func"] = _nuth_kaab_fit_func  # kept for logging in _bin_or_and_fit_nd
     params_fit_or_bin["nd"] = 1
     params_fit_or_bin["bias_var_names"] = ["aspect"]
+    params_fit_or_bin["design_matrix_func"] = _design_matrix_nuth_kaab
 
-    if params_fit_or_bin["fit_or_bin"] == "bin_and_fit":
-        # Bin y by aspect and extract robust bin medians for fitting
-        df, _ = _bin_or_and_fit_nd(
-            fit_or_bin="bin",
-            params_fit_or_bin=params_fit_or_bin,
-            values=y,
-            bias_vars={"aspect": aspect},
-        )
-        df_nd = df[df.nd == 1]
-        aspect_fit = np.array([interval.mid for interval in df_nd["aspect"]])
-        y_fit = df_nd[params_fit_or_bin["bin_statistic"].__name__].values
-    else:
-        aspect_fit = aspect
-        y_fit = y
-
-    # Keep only finite values
-    valid = np.isfinite(aspect_fit) & np.isfinite(y_fit)
-    aspect_fit = aspect_fit[valid]
-    y_fit = y_fit[valid]
-
-    # Linearized OLS: a*cos(b-x)+c = A*cos(x) + B*sin(x) + c
-    # Easting offset = a*sin(b) = B, northing offset = a*cos(b) = A
-    X = np.column_stack([np.cos(aspect_fit), np.sin(aspect_fit), np.ones(len(aspect_fit))])
-    northing_offset, easting_offset, vertical_offset = np.linalg.lstsq(X, y_fit, rcond=None)[0]
+    # Run bin and/or fit; _ols_fit is used internally because design_matrix_func is set
+    _, results = _bin_or_and_fit_nd(
+        fit_or_bin=params_fit_or_bin["fit_or_bin"],
+        params_fit_or_bin=params_fit_or_bin,
+        values=y,
+        bias_vars={"aspect": aspect},
+    )
+    assert results is not None
+    # results[0] = [A, B, c]; easting = a*sin(b) = B, northing = a*cos(b) = A
+    northing_offset, easting_offset, vertical_offset = results[0]
 
     return float(easting_offset), float(northing_offset), float(vertical_offset)
 
