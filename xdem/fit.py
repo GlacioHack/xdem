@@ -186,6 +186,13 @@ class design_matrix_polynomial_2d:
         cols = [x_n**i * y_n**j for i in range(n + 1) for j in range(n + 1)]
         return np.column_stack(cols)
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, design_matrix_polynomial_2d):
+            return NotImplemented
+        return (
+            self.poly_order == other.poly_order and self._x_scale == other._x_scale and self._y_scale == other._y_scale
+        )
+
     def unnormalize_coeffs(self, coeffs_norm: NDArrayf) -> NDArrayf:
         """
         Convert OLS coefficients from normalized to original coordinate space.
