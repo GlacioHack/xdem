@@ -608,7 +608,7 @@ import os
 os.remove("aligned_dem.tif")
 ```
 
-To give you a clearer picture, here is how {class}`~xdem.coreg.BlockwiseCoreg` divides the DEM.
+To give you a clearer picture, here is how {class}`~xdem.coreg.BlockwiseCoreg` divides a DEM of dimensions 1332 × 985 with a block size of 500.
 
 :::{figure} imgs/coregistration_blockwise_blocks.png
 :width: 100%
