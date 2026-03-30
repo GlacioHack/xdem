@@ -1757,30 +1757,46 @@ def fit_sum_model_variogram(
     if maxfev is None:
         maxfev = 10000
 
+    # Build curve_fit kwargs shared by both branches
+    _fit_kwargs: dict[str, Any] = dict(method="trf", bounds=final_bounds, maxfev=maxfev)
+
+    # Generate a sequence of p0 candidates to try: original, then perturbed versions.
+    # This handles multi-modal landscapes (e.g. swapping Gaussian/Spherical roles gives
+    # equal fit quality, causing TRF to stall near saddle points).
+    _p0_candidates = [
+        p0,
+        [v * 0.5 for v in p0],
+        [v * 2.0 for v in p0],
+        [(lo + hi) / 2 for (lo, hi) in zip(final_bounds[0], final_bounds[1])],
+    ]
+
+    def _try_curve_fit(extra_kwargs: dict[str, Any]) -> tuple[NDArrayf, NDArrayf]:
+        last_err = None
+        for p0_try in _p0_candidates:
+            try:
+                return curve_fit(variogram_sum, p0=p0_try, **extra_kwargs, **_fit_kwargs)
+            except RuntimeError as e:
+                last_err = e
+        raise last_err  # type: ignore[misc]
+
     # If the error provided is all NaNs (single variogram run), or all zeros (two variogram runs), run without weights
     if np.all(np.isnan(empirical_variogram.err_exp.values)) or np.all(empirical_variogram.err_exp.values == 0):
-        cof, cov = curve_fit(
-            variogram_sum,
-            empirical_variogram.lags.values,
-            empirical_variogram.exp.values,
-            method="trf",
-            p0=p0,
-            bounds=final_bounds,
-            maxfev=maxfev,
+        cof, cov = _try_curve_fit(
+            dict(
+                xdata=empirical_variogram.lags.values,
+                ydata=empirical_variogram.exp.values,
+            )
         )
     # Otherwise, use a weighted fit
     else:
         # We need to filter for possible no data in the error
         valid = np.isfinite(empirical_variogram.err_exp.values)
-        cof, cov = curve_fit(
-            variogram_sum,
-            empirical_variogram.lags.values[valid],
-            empirical_variogram.exp.values[valid],
-            method="trf",
-            p0=p0,
-            bounds=final_bounds,
-            sigma=empirical_variogram.err_exp.values[valid],
-            maxfev=maxfev,
+        cof, cov = _try_curve_fit(
+            dict(
+                xdata=empirical_variogram.lags.values[valid],
+                ydata=empirical_variogram.exp.values[valid],
+                sigma=empirical_variogram.err_exp.values[valid],
+            )
         )
 
     # Store optimized parameters
