@@ -580,9 +580,7 @@ coregistration methods and for translation only. Rotation shifts will be soon im
 Please set `only_translation=True` when initializing the coregistration method ICP(), LZD() or CPD().
 ```
 
-A {class}`~xdem.coreg.BlockwiseCoreg` splits a coregistration across different spatial blocks of an elevation dataset, running that
-method independently in each block.
-By default, these blocks are loaded sequentially to reduce the memory used during a coregistration.
+A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs into grids, then a coregistration method (e.g. LZD) runs independently in each block. Afterwards, an interpolation method is used to obtain the overall offset. The advantages of this tool are that memory consumption is reduced and local errors are better detected.
 
 ```{note}
 The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
@@ -592,34 +590,46 @@ These two parameters do **not** need to be the same size.
 ```
 
 ```{code-cell} ipython3
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
+blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.LZD(only_translation=True),
                                       block_size_fit=500,
-                                      block_size_apply=100,
+                                      block_size_apply=1000,
                                       parent_path="")
 
 blockwise.fit(ref_dem, tba_dem_shifted)
 aligned_dem = blockwise.apply(tba_dem_shifted)
-aligned_dem.load()
 ```
+
+In this example, processing is performed sequentially. However, it is possible to enable multiprocessing on {class}`~xdem.coreg.BlockwiseCoreg`, the configuration is described in the advanced examples.
+
 ```{code-cell} ipython3
 :tags: [remove-cell]
+aligned_dem.load()
 import os
 os.remove("aligned_dem.tif")
 ```
 
-The subdivision corresponds to the chunk_size. The results of each tile coregistration are saved in the meta parameters
-of the "blockwise" class.
+To give you a clearer picture, here is how {class}`~xdem.coreg.BlockwiseCoreg` divides a DEM of dimensions 1332 × 985 with a block size of 500.
+
+:::{figure} imgs/coregistration_blockwise_blocks.png
+:width: 100%
+:::
+
+The results of each tile coregistration are saved in the meta parameters of the "blockwise" class.
 
 ```{code-cell} ipython3
 blockwise.meta
 ```
 
 ```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show plotting code"
+:  code_prompt_hide: "Hide plotting code"
 # Plot before and after
 f, ax = plt.subplots(1, 2)
-ax[0].set_title("Before block NK")
+ax[0].set_title("Before block LZD")
 (tba_dem_shifted - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
-ax[1].set_title("After block NK")
+ax[1].set_title("After block LZD")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
 ```
