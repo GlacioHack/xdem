@@ -81,9 +81,9 @@ dict_key_to_str = {
     "fit_or_bin": "Fit, bin or bin+fit",
     "fit_func": "Function to fit",
     "fit_optimizer": "Optimizer for fitting",
-    "design_matrix_func": "OLS design matrix builder",
     "fit_minimizer": "Minimizer of method",
     "fit_loss_func": "Loss function of method",
+    "design_matrix_func": "OLS design matrix (internal)",
     "bin_statistic": "Binning statistic",
     "bin_sizes": "Bin sizes or edges",
     "bin_apply_method": "Bin apply method",
@@ -983,8 +983,8 @@ def _bin_or_and_fit_nd(
     # Get number of variables
     nd = len(bias_vars)
 
-    # Remove random state for keyword argument if its value is not in the optimizer function
-    if fit_or_bin in ["fit", "bin_and_fit"]:
+    # Remove random_state kwarg if the optimizer doesn't accept it (skip for None/OLS default)
+    if fit_or_bin in ["fit", "bin_and_fit"] and params_fit_or_bin.get("fit_optimizer") is not None:
         fit_func_args = inspect.getfullargspec(params_fit_or_bin["fit_optimizer"]).args
         if "random_state" not in fit_func_args and "random_state" in kwargs:
             kwargs.pop("random_state")
@@ -1014,10 +1014,13 @@ def _bin_or_and_fit_nd(
         sigma = weights.flatten() if weights is not None else None
 
         design_matrix_func = params_fit_or_bin.get("design_matrix_func")
-        if design_matrix_func is not None:
+        fit_optimizer = params_fit_or_bin.get("fit_optimizer")
+        # Default linear path: no user optimizer provided and design matrix available → OLS
+        if fit_optimizer is None and design_matrix_func is not None:
             results = _ols_fit(design_matrix_func, xdata, ydata, sigma)
         else:
-            results = params_fit_or_bin["fit_optimizer"](
+            effective_optimizer = fit_optimizer if fit_optimizer is not None else scipy.optimize.curve_fit
+            results = effective_optimizer(
                 f=params_fit_or_bin["fit_func"],
                 xdata=xdata,
                 ydata=ydata,
@@ -1082,10 +1085,13 @@ def _bin_or_and_fit_nd(
         sigma_bin = weights[ind_valid].flatten() if weights is not None else None
 
         design_matrix_func = params_fit_or_bin.get("design_matrix_func")
-        if design_matrix_func is not None:
+        fit_optimizer = params_fit_or_bin.get("fit_optimizer")
+        # Default linear path: no user optimizer provided and design matrix available → OLS
+        if fit_optimizer is None and design_matrix_func is not None:
             results = _ols_fit(design_matrix_func, xdata_bin, ydata_bin, sigma_bin)
         else:
-            results = params_fit_or_bin["fit_optimizer"](
+            effective_optimizer = fit_optimizer if fit_optimizer is not None else scipy.optimize.curve_fit
+            results = effective_optimizer(
                 f=params_fit_or_bin["fit_func"],
                 xdata=xdata_bin,
                 ydata=ydata_bin,

@@ -76,9 +76,10 @@ def _check_inputs_bin_before_fit(
     :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
     """
 
-    if not callable(fit_optimizer):
+    if fit_optimizer is not None and not callable(fit_optimizer):
         raise TypeError(
-            "Argument `fit_optimizer` must be a function (callable), " "got {}.".format(type(fit_optimizer))
+            "Argument `fit_optimizer` must be a function (callable) or None, "
+            "got {}.".format(type(fit_optimizer))
         )
 
     if bin_before_fit:
@@ -2383,7 +2384,7 @@ class NuthKaab(AffineCoreg):
         max_iterations: int = 10,
         offset_threshold: float = 0.001,
         bin_before_fit: bool = True,
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 72,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         subsample: int | float = 5e5,
