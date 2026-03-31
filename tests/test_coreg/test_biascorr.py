@@ -120,7 +120,7 @@ class TestBiasCorr:
 
         # For fit optimizer
         with pytest.raises(
-            TypeError, match=re.escape("Argument `fit_optimizer` must be a function (callable), " "got <class 'int'>.")
+            TypeError, match=re.escape("Argument `fit_optimizer` must be a function (callable) or None, got <class 'int'>.")
         ):
             biascorr.BiasCorr(fit_optimizer=3)  # type: ignore
 
@@ -494,12 +494,41 @@ class TestBiasCorr:
 
         assert deramp.meta["inputs"]["fitorbin"]["fit_or_bin"] == "fit"
         assert deramp.meta["inputs"]["fitorbin"]["fit_func"] == polynomial_2d
-        assert deramp.meta["inputs"]["fitorbin"]["fit_optimizer"] == scipy.optimize.curve_fit
+        assert deramp.meta["inputs"]["fitorbin"]["fit_optimizer"] is None
         assert deramp.meta["inputs"]["specific"]["poly_order"] == 2
         assert deramp._needs_vars is False
 
         # Check that variable names are defined during instantiation
         assert deramp.meta["inputs"]["fitorbin"]["bias_var_names"] == ["xx", "yy"]
+
+    @pytest.mark.parametrize("fit_args", all_fit_args)
+    def test_deramp_fit_optimizer_override(self, fit_args: Any) -> None:
+        """A user-provided fit_optimizer overrides the OLS default even when a design_matrix_func is set.
+
+        Deramp defaults to OLS (fit_optimizer=None + design_matrix_func). Passing an explicit optimizer
+        such as scipy.optimize.curve_fit must bypass OLS and use the given optimizer instead. Both
+        should produce numerically close results since they minimise the same polynomial cost.
+        """
+        fit_args_rr = fit_args.copy()
+
+        # Default: OLS path (fit_optimizer=None, design_matrix_func is set internally)
+        deramp_ols = biascorr.Deramp(poly_order=2)
+        assert deramp_ols.meta["inputs"]["fitorbin"]["fit_optimizer"] is None
+        deramp_ols.fit(**fit_args_rr, subsample=2000, random_state=42)
+
+        # Override: explicit curve_fit bypasses OLS (models RANSAC or any other custom optimizer)
+        deramp_cf = biascorr.Deramp(poly_order=2, fit_optimizer=scipy.optimize.curve_fit)
+        assert deramp_cf.meta["inputs"]["fitorbin"]["fit_optimizer"] is scipy.optimize.curve_fit
+        deramp_cf.fit(**fit_args_rr, subsample=2000, random_state=42)
+
+        # Both should produce finite fit parameters
+        params_ols = deramp_ols.meta["outputs"]["fitorbin"]["fit_params"]
+        params_cf = deramp_cf.meta["outputs"]["fitorbin"]["fit_params"]
+        assert np.all(np.isfinite(params_ols))
+        assert np.all(np.isfinite(params_cf))
+
+        # Results should be close — same polynomial problem, different solver
+        assert np.allclose(params_ols, params_cf, atol=0.5)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)
     @pytest.mark.parametrize("order", [1, 2, 3, 4])
