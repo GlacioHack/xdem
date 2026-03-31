@@ -19,6 +19,8 @@ from scipy.ndimage import binary_dilation
 from xdem import coreg, examples
 from xdem.coreg.affine import (
     AffineCoreg,
+    _design_matrix_nuth_kaab,
+    _nuth_kaab_fit_func,
     _reproject_horizontal_shift_samecrs,
     invert_matrix,
     matrix_from_translations_rotations,
@@ -623,3 +625,49 @@ class TestAffineCoreg:
         assert (dem_aligned_is.data == dem_aligned.data).min()
         assert dem_aligned_is.transform == dem_aligned.transform
         assert dem_aligned_is.crs == dem_aligned.crs
+
+
+class TestNuthKaabDesignMatrix:
+    """Tests for the linearized Nuth & Kääb OLS design matrix."""
+
+    def test_shape(self) -> None:
+        """Design matrix has shape (N, 3)."""
+        aspect = np.linspace(0, 2 * np.pi, 200)
+        X = _design_matrix_nuth_kaab(aspect)
+        assert X.shape == (200, 3)
+
+    def test_columns(self) -> None:
+        """Columns are exactly [cos(aspect), sin(aspect), 1]."""
+        aspect = np.linspace(0, 2 * np.pi, 300)
+        X = _design_matrix_nuth_kaab(aspect)
+        assert np.allclose(X[:, 0], np.cos(aspect))
+        assert np.allclose(X[:, 1], np.sin(aspect))
+        assert np.all(X[:, 2] == 1.0)
+
+    def test_roundtrip_with_fit_func(self) -> None:
+        """OLS via the design matrix recovers the same offsets as evaluating _nuth_kaab_fit_func directly."""
+        rng = np.random.default_rng(42)
+        aspect = rng.uniform(0, 2 * np.pi, 500)
+        a, b, c = 3.5, 1.2, -0.8
+        y = _nuth_kaab_fit_func(aspect, a, b, c)  # type: ignore[arg-type]
+
+        X = _design_matrix_nuth_kaab(aspect)
+        A, B, fitted_c = np.linalg.lstsq(X, y, rcond=None)[0]
+
+        # Easting = a*sin(b) = B, northing = a*cos(b) = A
+        assert A == pytest.approx(a * np.cos(b), abs=1e-6)
+        assert B == pytest.approx(a * np.sin(b), abs=1e-6)
+        assert fitted_c == pytest.approx(c, abs=1e-6)
+
+    def test_prediction_matches_fit_func(self) -> None:
+        """X @ [A, B, c] reproduces _nuth_kaab_fit_func(aspect, a, b, c) exactly."""
+        rng = np.random.default_rng(0)
+        aspect = rng.uniform(0, 2 * np.pi, 1000)
+        a, b, c = 2.1, 0.7, 1.3
+
+        y_expected = _nuth_kaab_fit_func(aspect, a, b, c)  # type: ignore[arg-type]
+        A, B = a * np.cos(b), a * np.sin(b)
+        X = _design_matrix_nuth_kaab(aspect)
+        y_pred = X @ np.array([A, B, c])
+
+        assert np.allclose(y_pred, y_expected)
