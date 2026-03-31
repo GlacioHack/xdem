@@ -120,7 +120,8 @@ class TestBiasCorr:
 
         # For fit optimizer
         with pytest.raises(
-            TypeError, match=re.escape("Argument `fit_optimizer` must be a function (callable) or None, got <class 'int'>.")
+            TypeError,
+            match=re.escape("Argument `fit_optimizer` must be a function (callable) or None, got <class 'int'>."),
         ):
             biascorr.BiasCorr(fit_optimizer=3)  # type: ignore
 

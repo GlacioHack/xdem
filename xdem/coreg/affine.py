@@ -63,7 +63,7 @@ from xdem.coreg.base import (
 
 def _check_inputs_bin_before_fit(
     bin_before_fit: bool,
-    fit_optimizer: Callable[..., tuple[NDArrayf, Any]],
+    fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None,
     bin_sizes: int | dict[str, int | Iterable[float]],
     bin_statistic: Callable[[NDArrayf], np.floating[Any]],
 ) -> None:
@@ -78,8 +78,7 @@ def _check_inputs_bin_before_fit(
 
     if fit_optimizer is not None and not callable(fit_optimizer):
         raise TypeError(
-            "Argument `fit_optimizer` must be a function (callable) or None, "
-            "got {}.".format(type(fit_optimizer))
+            "Argument `fit_optimizer` must be a function (callable) or None, " "got {}.".format(type(fit_optimizer))
         )
 
     if bin_before_fit:

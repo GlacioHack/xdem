@@ -27,7 +27,6 @@ import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import rasterio as rio
-import scipy
 
 import xdem.spatialstats
 from xdem._typing import NDArrayb, NDArrayf
