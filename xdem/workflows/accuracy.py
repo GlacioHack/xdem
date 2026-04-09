@@ -57,6 +57,7 @@ class Accuracy(Workflows):
         self.df_stats: pd.DataFrame | None = None
 
         super().__init__(config_dem, output)
+        self.create_output_dir()
 
         self.compute_coreg = self.config["coregistration"]["process"]
 
@@ -117,6 +118,10 @@ class Accuracy(Workflows):
                 cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
+        self.dico_to_show = [
+            ("Information about inputs", self.config["inputs"]),
+        ]
+
         return vmin, vmax
 
     def _get_reference_elevation(self) -> float:
@@ -157,6 +162,7 @@ class Accuracy(Workflows):
         aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, random_state=42)
         aligned_elev.to_file(self.outputs_folder / "rasters" / "aligned_elev.tif")
 
+        print(self.dico_to_show)
         self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
 
         for idx, step in enumerate(coreg_steps):
@@ -422,6 +428,7 @@ class Accuracy(Workflows):
         self.elapsed = t1 - t0
 
         self.create_html(self.dico_to_show)
+        self.generate_pdf()
 
         # Remove empty folder
         for folder in self.outputs_folder.rglob("*"):

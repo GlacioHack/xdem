@@ -107,17 +107,23 @@ class Workflows(ABC):
             self.outputs_folder = Path(output)
         else:
             self.outputs_folder = Path(self.config["outputs"]["path"])
-
         logging.info(f"Outputs folder: {self.outputs_folder.absolute()}")
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
+
+    def create_output_dir(self, sub_dir: Path | None = None) -> None:
+        """
+        Create sub directories table/rasters/tables
+
+        :param sub_dir: path to replace outputs_folder
+        :return: None
+        """
+        if sub_dir:
+            self.outputs_folder = sub_dir
+            self.outputs_folder.mkdir(parents=True, exist_ok=True)
         logging.info(f"Outputs will be saved at {self.outputs_folder}")
 
         for folder in ["plots", "rasters", "tables"]:
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
-
-        self.dico_to_show = [
-            ("Information about inputs", self.config["inputs"]),
-        ]
 
     class NoAliasDumper(SafeDumper):  # type: ignore
         """
@@ -194,7 +200,6 @@ class Workflows(ABC):
 
         # Apply default cmap if not given in inputs
         if "cmap" in kwargs:
-            print(kwargs["cmap"])
             cmap = plt.get_cmap(name=kwargs["cmap"])
         else:
             cmap = plt.get_cmap(name="terrain")
