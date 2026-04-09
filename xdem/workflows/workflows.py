@@ -20,6 +20,7 @@ Workflow class
 """
 
 import csv
+import ctypes.util
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -66,6 +67,20 @@ _ALIAS = {
 }
 
 
+try:
+    lib_gobject_name = ctypes.util.find_library("gobject-2.0")
+    lib_pango_name = ctypes.util.find_library("pango-1.0")
+    if lib_gobject_name and lib_pango_name:
+        from weasyprint import HTML
+
+        _has_libgobject = True
+    else:
+        _has_libgobject = False
+    _has_weasyprint = _has_libgobject
+except ImportError:
+    _has_weasyprint = False
+
+
 class Workflows(ABC):
     """
     Abstract Class for workflows
@@ -93,6 +108,7 @@ class Workflows(ABC):
             config_not_verify = self.load_config()
         elif isinstance(user_config, dict):
             config_not_verify = user_config
+
         else:
             raise ValueError(
                 "The configuration should be provided either as a path to the configuration file"
@@ -252,6 +268,7 @@ class Workflows(ABC):
         :return: DEM.
         """
         mask_path = None
+
         if config_dem is not None:
 
             path_to_elev = config_dem["path_to_elev"]
@@ -259,7 +276,10 @@ class Workflows(ABC):
             if path_to_elev in list(_FILEPATHS_ALL.keys()):
                 path_to_elev = xdem.examples.get_path(path_to_elev)
 
-            dem = xdem.DEM(path_to_elev, downsample=config_dem.get("downsample", 1))
+            # Get default value
+            config_dem["downsample"] = config_dem.get("downsample", 1)
+
+            dem = xdem.DEM(path_to_elev, downsample=config_dem["downsample"])
             inlier_mask = None
             from_vcrs = config_dem.get("from_vcrs", None)
             to_vcrs = config_dem.get("to_vcrs", None)
@@ -326,6 +346,19 @@ class Workflows(ABC):
         :param list_dict: List containing tuples of title and various dictionaries.
         :return: None
         """
+
+    def generate_pdf(self) -> None:
+        """
+        Create PDF report page from HTML page.
+
+        :return: None
+        """
+
+        if not _has_weasyprint:
+            msg = "Optional dependency 'weasyprint' required. " "Install it directly or through: pip install xdem[opt]."
+            raise ImportError(msg)
+
+        HTML(self.outputs_folder / "report.html").write_pdf(self.outputs_folder / "report.pdf")
 
     def save_stat_as_csv(self, data: dict[str, float], file_name: str) -> None:
         """

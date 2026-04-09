@@ -169,11 +169,13 @@ def test_pipeline_accuracy_default_values(get_accuracy_inputs_test, tmp_path):
     """
     accuracy_config = get_accuracy_inputs_test
     yaml_str = yaml.dump(accuracy_config, allow_unicode=True)
+    print(accuracy_config)
+
     Path(tmp_path / "temp_config.yaml").write_text(yaml_str, encoding="utf-8")
-    workflow_topo = Topo(str(tmp_path / "temp_config.yaml"))
-    assert isinstance(workflow_topo, Workflows)
-    assert isinstance(workflow_topo, Accuracy)
-    pipeline_accuracy_test = workflow_topo.load_config()
+    workflow_accuracy = Accuracy(str(tmp_path / "temp_config.yaml"))
+    assert isinstance(workflow_accuracy, Workflows)
+    assert isinstance(workflow_accuracy, Accuracy)
+    pipeline_accuracy_test = workflow_accuracy.config
 
     for elev in ["reference_elev", "to_be_aligned_elev"]:
         input_elev = pipeline_accuracy_test["inputs"][elev]
@@ -181,16 +183,17 @@ def test_pipeline_accuracy_default_values(get_accuracy_inputs_test, tmp_path):
         assert input_elev["path_to_elev"] == input_elev_input["path_to_elev"]
         if "path_to_mask" in input_elev_input:
             assert input_elev["path_to_mask"] == input_elev_input["path_to_mask"]
-        assert input_elev["from_vcrs"] is None
-        assert input_elev["to_vcrs"] is None
+        assert "from_vcrs" not in input_elev
+        assert "to_vcrs" not in input_elev
+        print("# elev", elev, input_elev)
         assert input_elev["downsample"] == 1
     assert pipeline_accuracy_test["inputs"]["sampling_grid"] == "reference_elev"
 
-    assert list(pipeline_accuracy_test["coregistration"].keys()) == ["step_one", "process"]
-    assert (
-        pipeline_accuracy_test["coregistration"]["step_one"] == COMPLETE_CONFIG_ACCURACY["coregistration"]["step_one"]
-    )
+    pipeline_corg = pipeline_accuracy_test["coregistration"]
+    assert list(pipeline_corg.keys()) == ["step_one", "process"]
+    assert pipeline_corg["step_one"] == COMPLETE_CONFIG_ACCURACY["coregistration"]["step_one"]  # type: ignore
     assert pipeline_accuracy_test["coregistration"]["process"]
+
     assert pipeline_accuracy_test["statistics"] == COMPLETE_CONFIG_ACCURACY["statistics"]
     assert pipeline_accuracy_test["outputs"] == COMPLETE_CONFIG_ACCURACY["outputs"]
 
@@ -207,15 +210,16 @@ def test_pipeline_topo_default_values(get_topo_inputs_config_list, tmp_path):
     workflow_topo = Topo(str(tmp_path / "temp_config.yaml"))
     assert isinstance(workflow_topo, Workflows)
     assert isinstance(workflow_topo, Topo)
-    pipeline_topo_test = workflow_topo.load_config()
+    pipeline_topo_test = workflow_topo.config
 
     assert len(pipeline_topo_test["inputs"]) == len(topo_config["inputs"])
     for k, input_elev in enumerate(pipeline_topo_test["inputs"]):
         assert input_elev["path_to_elev"] == topo_config["inputs"][k]["path_to_elev"]
         if "path_to_mask" in topo_config["inputs"][k]:
             assert input_elev["path_to_mask"] == topo_config["inputs"][k]["path_to_mask"]
-        assert input_elev["from_vcrs"] is None
-        assert input_elev["to_vcrs"] is None
+
+        assert "from_vcrs" not in input_elev
+        assert "to_vcrs" not in input_elev
         assert input_elev["downsample"] == 1
 
     assert pipeline_topo_test["statistics"] == MIN_STATS

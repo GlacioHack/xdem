@@ -200,10 +200,7 @@ def test_extra_information_is_optional():
 @pytest.mark.parametrize(
     "prefix, vcrs",
     [
-        (
-            "from_vcrs",
-            "EGM96",
-        ),
+        ("from_vcrs", "EGM96"),
         ("from_vcrs", "EGM08"),
         ("from_vcrs", "Ellipsoid"),
         # ("from_vcrs", "no_kv_arcgp-2006-sk.tif"),

@@ -300,8 +300,10 @@ class Topo(Workflows):
             html += "</table>\n"
             html += "</div>\n"
 
-        html += "<h2>Terrain attributes</h2>\n"
-        html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+        # Terrain attributes
+        if self.list_attributes is not None:
+            html += "<h2>Terrain attributes</h2>\n"
+            html += "<img src='plots/terrain_attributes_map.png' alt='Image PNG' style='width: 100%; height: auto;'>\n"
 
         html += "</body>\n</html>"
 
