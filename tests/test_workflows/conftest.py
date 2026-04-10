@@ -24,23 +24,34 @@ Fixtures for test_workflows
 import pytest
 
 import xdem
-from xdem.workflows import Accuracy
 from xdem.workflows.schemas import MIN_STATS, TERRAIN_ATTRIBUTES_DEFAULT
 
 
 @pytest.fixture()
-def get_topo_inputs_config():
+def get_topo_inputs_config_list():
     """
     Return minimal configuration for inputs in topo
     """
-    return {
-        "inputs": {
-            "reference_elev": {
-                "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
-                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
-            }
+    return [
+        {
+            "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
+            "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
         },
-    }
+        {
+            "path_to_elev": xdem.examples.get_path_test("longyearbyen_ref_dem"),
+        },
+    ]
+
+
+@pytest.fixture()
+def get_topo_config_test(get_topo_inputs_config_list, tmp_path):
+    """
+    Generate classical accuracy object
+    """
+    user_config = dict()
+    user_config["inputs"] = get_topo_inputs_config_list[:1]
+    user_config["outputs"] = {"path": str(tmp_path)}
+    return user_config
 
 
 @pytest.fixture()
@@ -59,7 +70,7 @@ def get_dem_config():
 
 
 @pytest.fixture()
-def get_accuracy_inputs_config():
+def get_accuracy_inputs_test():
     """
     Return minimal configuration for inputs in accuracy
     """
@@ -71,34 +82,19 @@ def get_accuracy_inputs_config():
             },
             "to_be_aligned_elev": {
                 "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
-                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
             },
         },
     }
 
 
 @pytest.fixture()
-def get_accuracy_object_with_run(tmp_path):
+def get_accuracy_config_test(tmp_path, get_accuracy_inputs_test):
     """
     Generate classical accuracy object
     """
-    user_config = {
-        "inputs": {
-            "reference_elev": {
-                "path_to_elev": xdem.examples.get_path_test("longyearbyen_ref_dem"),
-                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
-            },
-            "to_be_aligned_elev": {
-                "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
-                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
-            },
-        },
-        "outputs": {"path": str(tmp_path)},
-    }
-    workflows = Accuracy(user_config)
-    workflows.run()
-
-    return workflows
+    user_config = get_accuracy_inputs_test
+    user_config["outputs"] = {"path": str(tmp_path)}
+    return user_config
 
 
 @pytest.fixture()
@@ -107,22 +103,14 @@ def pipeline_topo():
     Return default configuration for pipeline topo_summary
     """
     return {
-        "inputs": {
-            "reference_elev": {
+        "inputs": [
+            {
                 "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
                 "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
                 "downsample": 1,
             }
-        },
+        ],
         "statistics": MIN_STATS,
         "terrain_attributes": TERRAIN_ATTRIBUTES_DEFAULT,
         "outputs": {"path": "outputs", "level": 1},
     }
-
-
-@pytest.fixture()
-def list_default_terrain_attributes():
-    """
-    Return default list of terrain attributes
-    """
-    return TERRAIN_ATTRIBUTES_DEFAULT
