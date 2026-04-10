@@ -243,13 +243,26 @@ def test_pipeline_topo_default_values(get_topo_inputs_config_list):
         assert input_elev["path_to_elev"] == topo_config["inputs"][k]["path_to_elev"]
         if "path_to_mask" in topo_config["inputs"][k]:
             assert input_elev["path_to_mask"] == topo_config["inputs"][k]["path_to_mask"]
-        assert input_elev["from_vcrs"] is None
-        assert input_elev["to_vcrs"] is None
-        assert input_elev["downsample"] == 1
+        assert "from_vcrs" not in input_elev  # default value not taken in "anyof" schema
+        assert "to_vcrs" not in input_elev  # default value not taken in "anyof" schema
+        assert "downsample" not in input_elev  # default value not taken in "anyof" schema
 
     assert pipeline_topo_test["statistics"] == MIN_STATS
     assert pipeline_topo_test["terrain_attributes"] == TERRAIN_ATTRIBUTES_DEFAULT
     assert pipeline_topo_test["outputs"] == {"path": "outputs", "level": 1}
+
+    topo_config = dict()
+    topo_config["inputs"] = get_topo_inputs_config_list[:1]
+    pipeline_topo_test_1_via_list = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
+    topo_config = dict()
+    topo_config["inputs"] = get_topo_inputs_config_list[0]
+    pipeline_topo_test_1_via_dict = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
+
+    for key in pipeline_topo_test_1_via_list.keys():
+        if key == "inputs":
+            assert pipeline_topo_test_1_via_dict["inputs"] == pipeline_topo_test_1_via_list["inputs"][0]
+        else:
+            assert pipeline_topo_test_1_via_dict[key] == pipeline_topo_test_1_via_list[key]
 
 
 def test_pipeline_accuracy_default_values(get_accuracy_inputs_test):

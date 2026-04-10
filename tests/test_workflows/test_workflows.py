@@ -169,7 +169,6 @@ def test_pipeline_accuracy_default_values(get_accuracy_inputs_test, tmp_path):
     """
     accuracy_config = get_accuracy_inputs_test
     yaml_str = yaml.dump(accuracy_config, allow_unicode=True)
-    print(accuracy_config)
 
     Path(tmp_path / "temp_config.yaml").write_text(yaml_str, encoding="utf-8")
     workflow_accuracy = Accuracy(str(tmp_path / "temp_config.yaml"))
@@ -183,10 +182,11 @@ def test_pipeline_accuracy_default_values(get_accuracy_inputs_test, tmp_path):
         assert input_elev["path_to_elev"] == input_elev_input["path_to_elev"]
         if "path_to_mask" in input_elev_input:
             assert input_elev["path_to_mask"] == input_elev_input["path_to_mask"]
+
         assert "from_vcrs" not in input_elev
         assert "to_vcrs" not in input_elev
-        print("# elev", elev, input_elev)
         assert input_elev["downsample"] == 1
+
     assert pipeline_accuracy_test["inputs"]["sampling_grid"] == "reference_elev"
 
     pipeline_corg = pipeline_accuracy_test["coregistration"]
@@ -220,7 +220,7 @@ def test_pipeline_topo_default_values(get_topo_inputs_config_list, tmp_path):
 
         assert "from_vcrs" not in input_elev
         assert "to_vcrs" not in input_elev
-        assert input_elev["downsample"] == 1
+        assert "downsample" not in input_elev  # default value not taken in "anyof" schema
 
     assert pipeline_topo_test["statistics"] == MIN_STATS
     assert pipeline_topo_test["terrain_attributes"] == TERRAIN_ATTRIBUTES_DEFAULT

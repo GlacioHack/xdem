@@ -31,6 +31,7 @@ import pytest
 import yaml  # type: ignore  # noqa
 
 import xdem.cli as cli
+from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOPO
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
@@ -111,9 +112,6 @@ def test_run_workflow_accuracy(get_accuracy_config_test, tmp_path, capsys, caplo
 
 @pytest.mark.parametrize("workflow", ["topo", "accuracy"])
 def test_default_config(workflow, tmp_path, caplog):
-    import yaml
-
-    from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOPO
 
     if workflow == "topo":
         COMPLETE_CONFIG = COMPLETE_CONFIG_TOPO
@@ -123,7 +121,7 @@ def test_default_config(workflow, tmp_path, caplog):
     # Output from bash
     with caplog.at_level(logging.INFO):
         cli.main([workflow, "--template-config"])
-    yaml_part = ("\n").join(caplog.text.split("\n")[1:-3])
+    yaml_part = "\n".join(caplog.text.split("\n")[1:-3])
     dict_from_cli = yaml.safe_load(yaml_part)
     assert dict_from_cli == COMPLETE_CONFIG
 

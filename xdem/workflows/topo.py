@@ -50,12 +50,19 @@ class Topo(Workflows):
         self.schema = TOPO_SCHEMA
 
         super().__init__(config_dem, output)
+
         self.config_attributes = self.config["terrain_attributes"]
         if isinstance(self.config_attributes, dict):
             self.list_attributes = list(self.config_attributes.keys())
-            print(self.list_attributes)
         else:
             self.list_attributes = self.config_attributes
+
+        print(self.config["inputs"])
+        print(type(self.config["inputs"]))
+        if isinstance(self.config["inputs"], dict):
+            self.config["inputs"] = [self.config["inputs"]]
+        print(self.config["inputs"])
+        print(type(self.config["inputs"]))
 
         yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
         Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
