@@ -167,7 +167,12 @@ class Workflows(ABC):
 
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"File not found : {self.config_path}")
+
+        if not Path(self.config_path).suffix in [".yaml", ".yml"]:
+            raise ValueError("Unsupported configuration file format. " "Please use .yaml, or .yml file.")
+
         with open(self.config_path) as f:
+            config_dict = yaml.safe_load(f)
 
             def replace_none_str_with_none_type(some_dict: Dict[str, Any]) -> Dict[str, Any]:
                 """Replace all "None" (None after serialization) values to None"""
@@ -180,7 +185,7 @@ class Workflows(ABC):
                         some_dict[k] = v
                 return some_dict
 
-            return replace_none_str_with_none_type(yaml.safe_load(f))
+            return replace_none_str_with_none_type(config_dict)
 
     def generate_plot(
         self,
