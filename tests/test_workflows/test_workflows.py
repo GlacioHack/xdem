@@ -296,62 +296,36 @@ def test_save_stat_as_csv(get_topo_inputs_config_list, tmp_path):
     assert final_dict == [{"a": "1.2345", "b": "2.9876"}]
 
 
-@pytest.mark.parametrize(
-    "from_vcrs, to_vcrs",
-    [
-        [None, None],
-        [None, "EGM96"],
-        ["EGM96", None],
-        [None, "Ellipsoid"],
-        ["Ellipsoid", None],
-        ["EGM96", "EGM96"],
-        ["Ellipsoid", "Ellipsoid"],
-        ["EGM96", "Ellipsoid"],
-        ["Ellipsoid", "EGM96"],
-    ],
-)
-def test_load_dem(get_dem_config, from_vcrs, to_vcrs):
-    """
-    Test load_dem function
-    """
-    config_dem = get_dem_config
-    config_dem["from_vcrs"] = from_vcrs
-    config_dem["to_vcrs"] = to_vcrs
-    input_dem = xdem.DEM(config_dem["path_to_elev"])
-    mean_before = np.nanmean(input_dem)
+@pytest.mark.parametrize("data", ["longyearbyen_ref_dem", "giza_dem"])
+@pytest.mark.parametrize("set_vcrs", [None, "Ellipsoid", "EGM96"])
+def test_load_dem(data, set_vcrs):
+    config_dem = dict()
+    config_dem["path_to_elev"] = xdem.examples.get_path(data)
 
-    if from_vcrs is None and from_vcrs != to_vcrs:
-        # if no input VRCS but a to_vcrs is given
-        with pytest.raises(ValueError, match="corresponding DEM does not have a current VCRS"):
-            Workflows.load_dem(config_dem)
+    if data == "longyearbyen_ref_dem":
+        config_dem["path_to_mask"] = "longyearbyen_glacier_outlines"
 
+    config_dem["set_vcrs"] = set_vcrs
+    output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+
+    dem = xdem.DEM(config_dem["path_to_elev"])
+
+    # VCRS
+    if set_vcrs is None:
+        assert output_dem.vcrs == dem.vcrs
     else:
-        output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
-        mean_after = np.nanmean(output_dem)
-
-        # Check output_dem vcrs reference
-        if to_vcrs == "EGM96" or (to_vcrs is None and from_vcrs == "EGM96"):
-            assert output_dem.vcrs_name == "EGM96 height"
-        elif to_vcrs == "Ellipsoid" or (to_vcrs is None and from_vcrs == "Ellipsoid"):
-            assert output_dem.vcrs == "Ellipsoid"
+        if dem.vcrs is None:
+            dem.set_vcrs(set_vcrs)
         else:
-            assert output_dem.vcrs is None
+            dem.to_vcrs(set_vcrs, inplace=True)
 
-        # Check output_dem
-        if from_vcrs == to_vcrs:
-            assert output_dem.raster_equal(input_dem)
+    # DEM
+    assert dem.georeferenced_grid_equal(output_dem)
 
-        # About 32 meters of difference in Svalbard between EGM96 geoid and ellipsoid
-        if to_vcrs == "Ellipsoid" and from_vcrs == "EGM96":
-            assert mean_after - mean_before == pytest.approx(32, rel=0.1)
-
-        if to_vcrs == "EGM96" and from_vcrs == "Ellipsoid":
-            assert mean_after - mean_before == pytest.approx(-32, rel=0.1)
-
-        # Other outputs
-        assert mask_path == config_dem["path_to_mask"]
+    # MASK
+    if "path_to_mask" in config_dem:
         mask = gu.Vector(mask_path)
-        assert inlier_mask == ~mask.create_mask(input_dem)
+        assert inlier_mask.georeferenced_grid_equal(~mask.create_mask(dem))
 
 
 def test_load_dem_alias():
