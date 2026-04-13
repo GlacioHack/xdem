@@ -239,7 +239,7 @@ outputs:
 Tree of outputs for level 1:
 
 :::{code-block} text
-- root
+path_to/outputs
   ├─ dem_[X]  (if several inputs)
   │   ├─ tables
   │   │   ├─ elev_stats.csv
@@ -256,7 +256,7 @@ Tree of outputs for level 1:
 Tree of outputs for level 2:
 
 :::{code-block} text
-- root
+path_to/outputs
   ├─ dem_[X]  (if several inputs)
   │   ├─ tables
   │   │   ├─ elev_stats.csv

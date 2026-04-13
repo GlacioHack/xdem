@@ -27,6 +27,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
+from geoutils.raster import Raster
+
 import xdem
 from xdem._misc import import_optional
 from xdem.workflows.schemas import TOPO_SCHEMA
@@ -57,12 +59,8 @@ class Topo(Workflows):
         else:
             self.list_attributes = self.config_attributes
 
-        print(self.config["inputs"])
-        print(type(self.config["inputs"]))
         if isinstance(self.config["inputs"], dict):
             self.config["inputs"] = [self.config["inputs"]]
-        print(self.config["inputs"])
-        print(type(self.config["inputs"]))
 
         yaml_str = yaml.dump(self.config, allow_unicode=True, Dumper=self.NoAliasDumper)
         Path(self.outputs_folder / "used_config.yaml").write_text(yaml_str, encoding="utf-8")
@@ -134,23 +132,21 @@ class Topo(Workflows):
         """
 
         logging.info(f"Computing attributes : {self.list_attributes}")
-        print(self.list_attributes)
 
         attributes = xdem.terrain.get_terrain_attribute(
             self.dem,
             attribute=self.list_attributes,
         )
 
-        import geoutils as gu
-
-        if isinstance(attributes, gu.Raster):
+        # if only one attribute, put it in a list
+        if isinstance(attributes, Raster):
             attributes = [attributes]
 
         n = len(attributes)
-
         ncols = 2
         nrows = math.ceil(n / ncols)
         unit = self.dem.crs.linear_units
+
         attribute_params: dict[str, dict[str, Any]] = {
             "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (0, 255)},
             "texture_shading": {"label": "Texture shading", "cmap": "Greys_r", "vlim": (-20, 20)},
@@ -212,14 +208,19 @@ class Topo(Workflows):
         t0 = time.time()
         self.dico_to_show = []
         general_output = self.outputs_folder
+
+        # For each input
         for k, input in enumerate(self.config["inputs"]):
             self.dico_to_show.append(
                 [
                     ("Information about inputs", input),
                 ]
             )
+
+            # If several inputs, corresponding outputs stored in outputs_folder/dem_index
             if len(self.config["inputs"]) > 1:
                 self.outputs_folder = general_output / ("dem_" + str(k))
+
             self.create_output_dir(self.outputs_folder)
             self._load_data(input)
 

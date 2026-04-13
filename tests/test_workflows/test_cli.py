@@ -71,7 +71,7 @@ def test_invalid_command(capsys, invalid_arg):
 
 
 @pytest.mark.parametrize("workflow", ["topo", "accuracy"])
-def test_missing_config(capsys, workflow):
+def test_missing_param_after_workflow(capsys, workflow):
     """No config file"""
     with pytest.raises(SystemExit):
         cli.main([workflow])
@@ -98,7 +98,7 @@ def run_and_check_workflow(workflow, user_config, caplog, capsys, tmp_file):
     # assert not capsys.readouterr().err # Progress bar in err
 
 
-def test_run_workflow_topo(get_topo_config_test, tmp_path, capsys, caplog):
+def termlm(get_topo_config_test, tmp_path, capsys, caplog):
     """Run Topo Workflow"""
     user_config = get_topo_config_test
     run_and_check_workflow("topo", user_config, caplog, capsys, Path(tmp_path / "temp_config.yaml"))

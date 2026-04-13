@@ -108,7 +108,6 @@ class Workflows(ABC):
             config_not_verify = self.load_config()
         elif isinstance(user_config, dict):
             config_not_verify = user_config
-
         else:
             raise ValueError(
                 "The configuration should be provided either as a path to the configuration file"
@@ -123,6 +122,7 @@ class Workflows(ABC):
             self.outputs_folder = Path(output)
         else:
             self.outputs_folder = Path(self.config["outputs"]["path"])
+
         logging.info(f"Outputs folder: {self.outputs_folder.absolute()}")
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
 
