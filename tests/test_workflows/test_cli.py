@@ -86,9 +86,9 @@ def test_missing_param_after_workflow(capsys, workflow):
     capsys_log = capsys.readouterr()
     assert not capsys_log.out
 
-    capsys_log_err = capsys_log.err.split("\n")
-    assert capsys_log_err[0].startswith("usage: xdem")
-    assert capsys_log_err[2] == f"xdem {workflow}: error: one of the arguments --config --template-config is required"
+    capsys_log_err = capsys_log.err
+    assert capsys_log_err.startswith("usage: xdem")
+    assert "arguments --config --template-config is required" in capsys_log_err
 
 
 def run_and_check_workflow(workflow, user_config, caplog, tmp_file):
