@@ -24,13 +24,12 @@ Fixtures for test_workflows
 import pytest
 
 import xdem
-from xdem.workflows.schemas import MIN_STATS, TERRAIN_ATTRIBUTES_DEFAULT
 
 
 @pytest.fixture()
 def get_topo_inputs_config_list():
     """
-    Return minimal configuration for inputs in topo
+    Return a list of two inputs for topo workflow
     """
     return [
         {
@@ -46,7 +45,7 @@ def get_topo_inputs_config_list():
 @pytest.fixture()
 def get_topo_config_test(get_topo_inputs_config_list, tmp_path):
     """
-    Generate classical accuracy object
+    Return a minimal topo config file with one input
     """
     user_config = dict()
     user_config["inputs"] = get_topo_inputs_config_list[:1]
@@ -57,7 +56,7 @@ def get_topo_config_test(get_topo_inputs_config_list, tmp_path):
 @pytest.fixture()
 def get_dem_config():
     """
-    Return minimal configuration for inputs in topo
+    Return a full dem configuration
     """
     return {
         "path_to_elev": xdem.examples.get_path_test("longyearbyen_ref_dem"),
@@ -71,7 +70,7 @@ def get_dem_config():
 @pytest.fixture()
 def get_accuracy_inputs_test():
     """
-    Return minimal configuration for inputs in accuracy
+    Return a minimal accuracy inputs
     """
     return {
         "inputs": {
@@ -89,27 +88,8 @@ def get_accuracy_inputs_test():
 @pytest.fixture()
 def get_accuracy_config_test(tmp_path, get_accuracy_inputs_test):
     """
-    Generate classical accuracy object
+    Return a minimal accuracy config file
     """
     user_config = get_accuracy_inputs_test
     user_config["outputs"] = {"path": str(tmp_path)}
     return user_config
-
-
-@pytest.fixture()
-def pipeline_topo():
-    """
-    Return default configuration for pipeline topo_summary
-    """
-    return {
-        "inputs": [
-            {
-                "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
-                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
-                "downsample": 1,
-            }
-        ],
-        "statistics": MIN_STATS,
-        "terrain_attributes": TERRAIN_ATTRIBUTES_DEFAULT,
-        "outputs": {"path": "outputs", "level": 1},
-    }

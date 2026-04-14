@@ -38,7 +38,9 @@ pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
 @pytest.mark.parametrize("help_arg", [[], ["-h"], ["--help"]])
 def test_raises_help(capsys, help_arg):
-    """Test help"""
+    """
+    Test help
+    """
     with pytest.raises(SystemExit):
         cli.main(help_arg)
 
@@ -52,7 +54,9 @@ def test_raises_help(capsys, help_arg):
 
 @pytest.mark.parametrize("invalid_arg", ["arg", "-arg", "1"])
 def test_invalid_parameters(capsys, invalid_arg):
-    """Invalid argument"""
+    """
+    Invalid argument
+    """
     with pytest.raises(SystemExit):
         cli.main([invalid_arg])
 
@@ -72,7 +76,9 @@ def test_invalid_parameters(capsys, invalid_arg):
 
 @pytest.mark.parametrize("workflow", ["topo", "accuracy"])
 def test_missing_param_after_workflow(capsys, workflow):
-    """No config file"""
+    """
+    No config file
+    """
     with pytest.raises(SystemExit):
         cli.main([workflow])
 
@@ -84,8 +90,10 @@ def test_missing_param_after_workflow(capsys, workflow):
     assert capsys_log_err[2] == f"xdem {workflow}: error: one of the arguments --config --template-config is required"
 
 
-def run_and_check_workflow(workflow, user_config, caplog, capsys, tmp_file):
-    # Read working config
+def run_and_check_workflow(workflow, user_config, caplog, tmp_file):
+    """
+    Sub function to run and check a workflow
+    """
     yaml_str = yaml.dump(user_config, allow_unicode=True)
     tmp_file.write_text(yaml_str, encoding="utf-8")
 
@@ -95,19 +103,21 @@ def run_and_check_workflow(workflow, user_config, caplog, capsys, tmp_file):
     assert f"root:{workflow}.py" in caplog.text
     assert "End of execution" in caplog.text
 
-    # assert not capsys.readouterr().err # Progress bar in err
 
-
-def test_run_workflow_topo(get_topo_config_test, tmp_path, capsys, caplog):
-    """Run Topo Workflow"""
+def test_run_workflow_topo(get_topo_config_test, tmp_path, caplog):
+    """
+    Run Topo Workflow
+    """
     user_config = get_topo_config_test
-    run_and_check_workflow("topo", user_config, caplog, capsys, Path(tmp_path / "temp_config.yaml"))
+    run_and_check_workflow("topo", user_config, caplog, Path(tmp_path / "temp_config.yaml"))
 
 
-def test_run_workflow_accuracy(get_accuracy_config_test, tmp_path, capsys, caplog):
-    """Run Accuracy Workflow"""
+def test_run_workflow_accuracy(get_accuracy_config_test, tmp_path, caplog):
+    """
+    Run Accuracy Workflow
+    """
     user_config = get_accuracy_config_test
-    run_and_check_workflow("accuracy", user_config, caplog, capsys, Path(tmp_path / "temp_config.yaml"))
+    run_and_check_workflow("accuracy", user_config, caplog, Path(tmp_path / "temp_config.yaml"))
 
 
 @pytest.mark.parametrize("workflow", ["topo", "accuracy"])
@@ -135,7 +145,9 @@ def test_default_config(workflow, tmp_path, caplog):
 
 
 def test_errors_config_file(get_topo_config_test, tmp_path):
-    """Config file errors"""
+    """
+    Config file errors
+    """
     user_config = get_topo_config_test
     yaml_str = yaml.dump(user_config, allow_unicode=True)
     tmp_file = Path(tmp_path / "temp_config.yaml")

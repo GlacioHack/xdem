@@ -122,9 +122,6 @@ def test_load_config_none(get_topo_inputs_config_list, get_accuracy_inputs_test,
     """
     Test None values in yaml reading function
     """
-
-    # Topo workflow
-
     # Change values
     user_config = dict()
     user_config["inputs"] = get_topo_inputs_config_list[:1]
@@ -197,7 +194,6 @@ def test_pipeline_topo_default_values(get_topo_inputs_config_list, tmp_path):
     """
     Test valid VCRS function for 'from' and 'to'
     """
-
     topo_config = dict()
     topo_config["inputs"] = get_topo_inputs_config_list
     yaml_str = yaml.dump(topo_config, allow_unicode=True)

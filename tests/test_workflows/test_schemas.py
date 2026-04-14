@@ -246,15 +246,16 @@ def test_pipeline_accuracy_default_values(get_accuracy_inputs_test):
         assert input_elev["path_to_elev"] == input_elev_input["path_to_elev"]
         if "path_to_mask" in input_elev_input:
             assert input_elev["path_to_mask"] == input_elev_input["path_to_mask"]
-        assert input_elev["from_vcrs"] is None
-        assert input_elev["to_vcrs"] is None
+        assert input_elev["set_vcrs"] is None
         assert input_elev["downsample"] == 1
     assert pipeline_accuracy_test["inputs"]["sampling_grid"] == "reference_elev"
 
-    assert list(pipeline_accuracy_test["coregistration"].keys()) == ["step_one", "process"]
-    """assert (
-        pipeline_accuracy_test["coregistration"]["step_one"] == COMPLETE_CONFIG_ACCURACY["coregistration"]["step_one"]
-    )"""  # TODO
+    coreg = pipeline_accuracy_test["coregistration"]
+    assert list(coreg.keys()) == ["step_one", "process"]
+    assert list(coreg["step_one"].keys()) == ["method", "extra_information"]
+    assert coreg["step_one"]["method"] == "LZD"
+    assert coreg["step_one"]["extra_information"] == {"subsample": 10000}
+
     assert pipeline_accuracy_test["coregistration"]["process"]
     assert pipeline_accuracy_test["statistics"] == COMPLETE_CONFIG_ACCURACY["statistics"]
     assert pipeline_accuracy_test["outputs"] == COMPLETE_CONFIG_ACCURACY["outputs"]
@@ -266,7 +267,7 @@ def test_pipeline_accuracy_default_values(get_accuracy_inputs_test):
         ("EGM96", None),
         ("EGM08", None),
         ("Ellipsoid", None),
-        # ("to_vcrs", "no_kv_arcgp-2006-sk.tif"),
+        ("no_kv_arcgp-2006-sk.tif", None),
         (4326, None),
         ("wrong", "LoggingError"),
         ("wrong.txt", "LoggingError"),

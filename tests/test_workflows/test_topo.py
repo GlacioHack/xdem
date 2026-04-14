@@ -40,12 +40,18 @@ pytest.importorskip("cerberus")
 
 
 def files_load_data(input, tmp_path):
+    """
+    Check outputs of load_data function
+    """
     assert Path(tmp_path / "plots").joinpath("elev_map.png").exists()
     if "path_to_mask" in input:
         assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
 
 
-def files_attribute(workflows, level, attributes, tmp_path):
+def files_attributes(workflows, level, attributes, tmp_path):
+    """
+    Check outputs of generatate attributes function
+    """
     if isinstance(attributes, list):
         for attr in attributes:
             if attributes:
@@ -74,6 +80,8 @@ def files_attribute(workflows, level, attributes, tmp_path):
 def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list):
     """
     Test run function with all the outputs generation
+
+    NB: nb_inputs = -1 is when "input" is a dict
     """
     user_config = dict()
     if nb_inputs == -1:
@@ -104,11 +112,11 @@ def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list
             attributes = TERRAIN_ATTRIBUTES_DEFAULT
         assert workflows.config_attributes == attributes
         if nb_inputs <= 1:
-            files_attribute(workflows, level, attributes, tmp_path)
+            files_attributes(workflows, level, attributes, tmp_path)
         else:
             for k in range(len(user_config_list["inputs"])):
                 dem_dir = "dem_" + str(k)
-                files_attribute(workflows, level, attributes, Path(tmp_path / dem_dir))
+                files_attributes(workflows, level, attributes, Path(tmp_path / dem_dir))
     else:
         assert workflows.config_attributes is None
         assert not Path(tmp_path / "plots").joinpath("terrain_attributes_map.png").exists()
@@ -126,6 +134,8 @@ def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list
 def test_run_dico_to_show(get_topo_inputs_config_list, nb_inputs, tmp_path):
     """
     Test run function and dico_to_show values
+
+    NB: nb_inputs = -1 is when "input" is a dict
     """
 
     user_config = dict()
@@ -200,6 +210,8 @@ def test_run_dico_to_show(get_topo_inputs_config_list, nb_inputs, tmp_path):
 def test_stats_list(get_topo_inputs_config_list, nb_inputs, tmp_path, stats_name, res):
     """
     Test to check the output stats from several input stats list
+
+    NB: nb_inputs = -1 is when "input" is a dict
     """
 
     user_config = dict()
