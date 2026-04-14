@@ -152,7 +152,6 @@ class Accuracy(Workflows):
             config_coreg = self.config["coregistration"].get(step)
             if config_coreg:
                 method_name = config_coreg.get("method")
-                print(method_name)
                 coreg_extra = config_coreg.get("extra_information", {})
                 coreg_fun = partial(method_map[method_name], **coreg_extra)
                 coreg_functions.append(coreg_fun())
@@ -162,7 +161,6 @@ class Accuracy(Workflows):
         aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, random_state=42)
         aligned_elev.to_file(self.outputs_folder / "rasters" / "aligned_elev.tif")
 
-        print(self.dico_to_show)
         self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
 
         for idx, step in enumerate(coreg_steps):
@@ -243,7 +241,6 @@ class Accuracy(Workflows):
         # Compute user statistics
         dict_stats_aliased = {}
         list_to_compute = self.config["statistics"]
-        print("list_to_compute", list_to_compute)
 
         if list_to_compute is not None:
             logging.info(f"Computing statistics on {name_of_data}: {list_to_compute}")

@@ -456,3 +456,35 @@ def test_mask(tmp_path, get_accuracy_inputs_test, masked):
     assert stats_before["Valid count"].values[0] == diff_before.get_stats("Valid count")
     diff_after = aligned_tba.reproject(ref_dem) - ref_dem
     assert stats_after["Valid count"].values[0] == diff_after.get_stats("Valid count")
+
+
+@pytest.mark.skip("Todo when VCRS will be a part of CRS")
+@pytest.mark.parametrize("vcrs_first_step", [[None, "Ellipsoid"], ["Ellipsoid", None]])
+# @pytest.mark.parametrize("vcrs_second_step", [[None, "EGM96"],["EGM96", None]])
+@pytest.mark.parametrize("sampling_grid_first_step", ["reference_elev", "to_be_aligned_elev"])
+# @pytest.mark.parametrize("sampling_grid_second_step", ["reference_elev", "to_be_aligned_elev"])
+def test_vcrs_change(
+    tmp_path, get_accuracy_inputs_test, vcrs_first_step, sampling_grid_first_step  # vcrs_second_step,
+):
+    user_config = get_accuracy_inputs_test
+    user_config["inputs"]["reference_elev"]["set_vcrs"] = vcrs_first_step[0]
+    user_config["inputs"]["to_be_aligned_elev"]["set_vcrs"] = vcrs_first_step[1]
+
+    ref = xdem.DEM(user_config["inputs"]["reference_elev"]["path_to_elev"])
+    ref.set_vcrs("Ellipsoid")
+    ref.to_vcrs("EGM96", inplace=True)
+
+    user_config["inputs"]["reference_elev"]["path_to_mask"] = None
+    user_config["inputs"]["sampling_grid"] = sampling_grid_first_step
+    user_config["outputs"] = {"path": str(tmp_path), "level": 2}
+    workflows = Accuracy(user_config)
+    workflows.run()
+
+    if sampling_grid_first_step == "reference_elev":
+        vcrs_res = vcrs_first_step[0]
+    else:
+        vcrs_res = vcrs_first_step[1]
+
+    assert xdem.DEM(Path(tmp_path / "rasters" / "reference_elev_reprojected.tif")).vcrs == vcrs_res
+    assert xdem.DEM(Path(tmp_path / "rasters" / "to_be_aligned_elev_reprojected.tif")).vcrs == vcrs_res
+    assert xdem.DEM(Path(tmp_path / "rasters" / "aligned_elev.tif")).vcrs == vcrs_res

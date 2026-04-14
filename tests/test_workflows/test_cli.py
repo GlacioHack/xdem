@@ -34,6 +34,7 @@ import xdem.cli as cli
 from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOPO
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
+pytest.importorskip("cerberus")
 
 
 @pytest.mark.parametrize("help_arg", [[], ["-h"], ["--help"]])
