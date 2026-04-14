@@ -51,7 +51,7 @@ def test_raises_help(capsys, help_arg):
 
 
 @pytest.mark.parametrize("invalid_arg", ["arg", "-arg", "1"])
-def test_invalid_command(capsys, invalid_arg):
+def test_invalid_parameters(capsys, invalid_arg):
     """Invalid argument"""
     with pytest.raises(SystemExit):
         cli.main([invalid_arg])
@@ -98,7 +98,7 @@ def run_and_check_workflow(workflow, user_config, caplog, capsys, tmp_file):
     # assert not capsys.readouterr().err # Progress bar in err
 
 
-def termlm(get_topo_config_test, tmp_path, capsys, caplog):
+def test_run_workflow_topo(get_topo_config_test, tmp_path, capsys, caplog):
     """Run Topo Workflow"""
     user_config = get_topo_config_test
     run_and_check_workflow("topo", user_config, caplog, capsys, Path(tmp_path / "temp_config.yaml"))
@@ -112,20 +112,20 @@ def test_run_workflow_accuracy(get_accuracy_config_test, tmp_path, capsys, caplo
 
 @pytest.mark.parametrize("workflow", ["topo", "accuracy"])
 def test_default_config(workflow, tmp_path, caplog):
-
+    """Get default config (print + file)"""
     if workflow == "topo":
         COMPLETE_CONFIG = COMPLETE_CONFIG_TOPO
     else:
         COMPLETE_CONFIG = COMPLETE_CONFIG_ACCURACY
 
-    # Output from bash
+    # Print output
     with caplog.at_level(logging.INFO):
         cli.main([workflow, "--template-config"])
     yaml_part = "\n".join(caplog.text.split("\n")[1:-3])
     dict_from_cli = yaml.safe_load(yaml_part)
     assert dict_from_cli == COMPLETE_CONFIG
 
-    # Output from file
+    # File output
     with caplog.at_level(logging.INFO):
         cli.main([workflow, "--template-config", str(Path(tmp_path / "temp_config.yaml"))])
 
@@ -135,6 +135,7 @@ def test_default_config(workflow, tmp_path, caplog):
 
 
 def test_errors_config_file(get_topo_config_test, tmp_path):
+    """Config file errors"""
     user_config = get_topo_config_test
     yaml_str = yaml.dump(user_config, allow_unicode=True)
     tmp_file = Path(tmp_path / "temp_config.yaml")

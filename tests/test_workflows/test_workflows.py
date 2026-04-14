@@ -128,8 +128,7 @@ def test_load_config_none(get_topo_inputs_config_list, get_accuracy_inputs_test,
     # Change values
     user_config = dict()
     user_config["inputs"] = get_topo_inputs_config_list[:1]
-    user_config["inputs"][0]["from_vcrs"] = None
-    user_config["inputs"][0]["to_vcrs"] = None
+    user_config["inputs"][0]["set_vcrs"] = None
 
     # Read working config
     yaml_str = yaml.dump(user_config, allow_unicode=True)
@@ -138,15 +137,13 @@ def test_load_config_none(get_topo_inputs_config_list, get_accuracy_inputs_test,
     assert isinstance(workflow_topo, Workflows)
     assert isinstance(workflow_topo, Topo)
     config_output = workflow_topo.load_config()
-    assert config_output["inputs"][0]["from_vcrs"] is None
-    assert config_output["inputs"][0]["to_vcrs"] is None
+    assert config_output["inputs"][0]["set_vcrs"] is None
 
     # Accuracy workflow
 
     # Change values
     cfg = get_accuracy_inputs_test
-    cfg["inputs"]["reference_elev"]["from_vcrs"] = "None"
-    cfg["inputs"]["reference_elev"]["to_vcrs"] = "None"
+    cfg["inputs"]["reference_elev"]["set_vcrs"] = "None"
     cfg["inputs"]["sampling_grid"] = "None"
     cfg["coregistration"] = {}
     cfg["coregistration"]["process"] = False
@@ -158,8 +155,7 @@ def test_load_config_none(get_topo_inputs_config_list, get_accuracy_inputs_test,
     assert isinstance(workflow_accuracy, Workflows)
     assert isinstance(workflow_accuracy, Accuracy)
     config_output = workflow_accuracy.load_config()
-    assert config_output["inputs"]["reference_elev"]["from_vcrs"] is None
-    assert config_output["inputs"]["reference_elev"]["to_vcrs"] is None
+    assert config_output["inputs"]["reference_elev"]["set_vcrs"] is None
     assert config_output["inputs"]["sampling_grid"] is None
 
 
@@ -183,8 +179,7 @@ def test_pipeline_accuracy_default_values(get_accuracy_inputs_test, tmp_path):
         if "path_to_mask" in input_elev_input:
             assert input_elev["path_to_mask"] == input_elev_input["path_to_mask"]
 
-        assert "from_vcrs" not in input_elev
-        assert "to_vcrs" not in input_elev
+        assert "set_vcrs" not in input_elev
         assert input_elev["downsample"] == 1
 
     assert pipeline_accuracy_test["inputs"]["sampling_grid"] == "reference_elev"
@@ -218,8 +213,7 @@ def test_pipeline_topo_default_values(get_topo_inputs_config_list, tmp_path):
         if "path_to_mask" in topo_config["inputs"][k]:
             assert input_elev["path_to_mask"] == topo_config["inputs"][k]["path_to_mask"]
 
-        assert "from_vcrs" not in input_elev
-        assert "to_vcrs" not in input_elev
+        assert "set_vcrs" not in input_elev
         assert "downsample" not in input_elev  # default value not taken in "anyof" schema
 
     assert pipeline_topo_test["statistics"] == MIN_STATS

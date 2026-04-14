@@ -75,7 +75,6 @@ class Topo(Workflows):
         :return: None
         """
 
-        self.create_output_dir()
         self.dem, self.inlier_mask, path_to_mask = self.load_dem(input)
         self.generate_plot(
             self.dem,
@@ -221,7 +220,8 @@ class Topo(Workflows):
             if len(self.config["inputs"]) > 1:
                 self.outputs_folder = general_output / ("dem_" + str(k))
 
-            self.create_output_dir(self.outputs_folder)
+            logging.info(f"Input elev {k}")
+            self.create_output_dir()
             self._load_data(input)
 
             # Global information

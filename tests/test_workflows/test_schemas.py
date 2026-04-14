@@ -197,38 +197,6 @@ def test_extra_information_is_optional():
     assert not schema["schema"]["extra_information"]["required"]
 
 
-@pytest.mark.parametrize(
-    "prefix, vcrs",
-    [
-        ("from_vcrs", "EGM96"),
-        ("from_vcrs", "EGM08"),
-        ("from_vcrs", "Ellipsoid"),
-        # ("from_vcrs", "no_kv_arcgp-2006-sk.tif"),
-        ("from_vcrs", 4326),
-    ],
-)
-def test_valid_from_vcrs(get_accuracy_config_test, pipeline_topo, prefix, vcrs):
-    """
-    Test valid VCRS function for 'from' and 'to'
-    """
-    accuracy_config = get_accuracy_config_test
-    accuracy_config["inputs"]["reference_elev"].update({prefix: vcrs})
-    accuracy_config["inputs"]["reference_elev"].update({prefix: vcrs})
-    accuracy_config["inputs"]["to_be_aligned_elev"].update({prefix: vcrs})
-
-    """for input_elev in pipeline_test["inputs"]:
-        assert input["path_to_elev"] == accuracy_config["path_to_elev"]
-        if "path_to_mask" in input:
-            assert input["path_to_mask"] == accuracy_config["path_to_mask"]
-        assert input[prefix] == vcrs
-        assert input["to_vcrs"] == None
-        assert input["downsample"] == 1
-
-    assert pipeline_test["statistics"] == MIN_STATS
-    assert pipeline_test["terrain_attributes"] == TERRAIN_ATTRIBUTES_DEFAULT
-    assert pipeline_test["outputs"] == {"path": "outputs", "level": 1}"""
-
-
 def test_pipeline_topo_default_values(get_topo_inputs_config_list):
     """
     Test valid VCRS function for 'from' and 'to'
@@ -295,57 +263,30 @@ def test_pipeline_accuracy_default_values(get_accuracy_inputs_test):
 @pytest.mark.parametrize(
     "vcrs, error",
     [
-        ("EGM96", False),
-        ("EGM08", False),
-        ("Ellipsoid", False),
+        ("EGM96", None),
+        ("EGM08", None),
+        ("Ellipsoid", None),
         # ("to_vcrs", "no_kv_arcgp-2006-sk.tif"),
-        (4326, False),
+        (4326, None),
+        ("wrong", "LoggingError"),
+        ("wrong.txt", "LoggingError"),
+        (0000, pyproj.exceptions.CRSError),
     ],
 )
-def test_valid_vcrs(get_topo_config_test, vcrs, error):
+def test_valid_vcrs(get_topo_config_test, vcrs, error, caplog, assert_and_allow_log):
     """
     Test valid VCRS function for 'from' and 'to'
     """
     topo_config = get_topo_config_test
-    topo_config["inputs"][0]["to_vcrs"] = vcrs
-    topo_config["inputs"][0]["from_vcrs"] = vcrs
-    if error is False:
+    topo_config["inputs"][0]["set_vcrs"] = vcrs
+    if error is None:
         pipeline_test = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
-        assert pipeline_test["inputs"][0]["to_vcrs"] == vcrs
-        assert pipeline_test["inputs"][0]["from_vcrs"] == vcrs
+        assert pipeline_test["inputs"][0]["set_vcrs"] == vcrs
 
-
-@pytest.mark.parametrize(
-    "wrong_vcrs, error",
-    [
-        pytest.param(
-            "wrong",
-            "LoggingError",
-            id="wrong_common",
-        ),
-        pytest.param(
-            "wrong.txt",
-            "LoggingError",
-            id="wrong_proj_grid",
-        ),
-        pytest.param(
-            0000,
-            pyproj.exceptions.CRSError,
-            id="wrong_epsg_code",
-        ),
-    ],
-)
-def test_invalid_vcrs(get_topo_config_test, wrong_vcrs, error, caplog, assert_and_allow_log):
-    """
-    Test invalid crs
-    """
-    topo_config = get_topo_config_test
-    topo_config["inputs"][0].update({"from_vcrs": wrong_vcrs})
-
-    if error == "LoggingError":
+    elif error == "LoggingError":
         with caplog.at_level(logging.ERROR):
             _ = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
-        assert_and_allow_log(caplog, level=logging.ERROR, match="'from_vcrs' field is not valid.*")
+        assert_and_allow_log(caplog, level=logging.ERROR, match="'set_vcrs' field is not valid.*")
     else:
         with pytest.raises(error):
             _ = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
