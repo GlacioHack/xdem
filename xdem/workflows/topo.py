@@ -84,7 +84,7 @@ class Topo(Workflows):
         )
 
         if self.inlier_mask is not None:
-            inlier_mask_crop = self.inlier_mask.reproject(self.dem).crop(self.dem)
+            inlier_mask_crop = self.inlier_mask.reproject(self.dem, silent=True).crop(self.dem)
             self.dem.set_mask(~inlier_mask_crop)
             self.generate_plot(
                 self.dem,
@@ -219,8 +219,8 @@ class Topo(Workflows):
             # If several inputs, corresponding outputs stored in outputs_folder/dem_index
             if len(self.config["inputs"]) > 1:
                 self.outputs_folder = general_output / ("dem_" + str(k))
+                logging.info(f"Elevation input #{k}")
 
-            logging.info(f"Input elev {k}")
             self.create_output_dir()
             self._load_data(input)
 
