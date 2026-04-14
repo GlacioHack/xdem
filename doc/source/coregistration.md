@@ -580,7 +580,7 @@ coregistration methods and for translation only. Rotation shifts will be soon im
 Please set `only_translation=True` when initializing the coregistration method ICP(), LZD() or CPD().
 ```
 
-A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs into grids, then a coregistration method (e.g. LZD) runs independently in each block. Afterwards, an interpolation method is used to obtain the overall offset. The advantages of this tool are that memory consumption is reduced and local errors are better detected.
+A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs into grids, then a coregistration method runs independently in each block. Afterwards, an interpolation method is used to obtain the overall offset. The advantages of this tool are that memory consumption is reduced and local errors are better detected.
 
 ```{note}
 The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
@@ -589,36 +589,45 @@ Smaller blocks during the apply step reduce memory usage but increase computing 
 These two parameters do **not** need to be the same size.
 ```
 
+In this example, processing is performed sequentially. However, it is possible to enable multiprocessing on {class}`~xdem.coreg.BlockwiseCoreg`, the configuration is described in the advanced example.
+
 ```{code-cell} ipython3
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.LZD(only_translation=True),
+blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
                                       block_size_fit=500,
-                                      block_size_apply=1000,
+                                      block_size_apply=500,
                                       parent_path="")
-
 blockwise.fit(ref_dem, tba_dem_shifted)
-aligned_dem = blockwise.apply(tba_dem_shifted)
 ```
 
-In this example, processing is performed sequentially. However, it is possible to enable multiprocessing on {class}`~xdem.coreg.BlockwiseCoreg`, the configuration is described in the advanced examples.
+To give you a clearer picture, here is how {func}`~xdem.coreg.BlockwiseCoreg.fit`, divides a DEM with a block size of 500.
 
-```{code-cell} ipython3
-:tags: [remove-cell]
-aligned_dem.load()
-import os
-os.remove("aligned_dem.tif")
-```
-
-To give you a clearer picture, here is how {class}`~xdem.coreg.BlockwiseCoreg` divides a DEM of dimensions 1332 × 985 with a block size of 500.
-
-:::{figure} imgs/coregistration_blockwise_blocks.png
+:::{figure} imgs/fit_blocks.png
 :width: 100%
 :::
 
-The results of each tile coregistration are saved in the meta parameters of the "blockwise" class.
+The results of each tile coregistration are saved in the meta parameters, they will be used to estimate the overall offset.
 
 ```{code-cell} ipython3
 blockwise.meta
 ```
+
+Once this first step has been completed, you can proceed to the {func}`~xdem.coreg.BlockwiseCoreg.apply` step. At this step, an interpolation method will be used to estimate the overall offset. The result obtained is then applied to the entire DEM, also by blocks, but this time with an overlap to avoid edge effects. This overlap corresponds to the maximum offset obtained during the {func}`~xdem.coreg.BlockwiseCoreg.fit`.
+
+```{code-cell} ipython3
+aligned_dem = blockwise.apply(tba_dem_shifted)
+```
+
+```{code-cell} ipython3
+:tags: [remove-cell]
+import os
+aligned_dem.load()
+os.remove("aligned_dem.tif")
+```
+Here are the blocks for the {func}`~xdem.coreg.BlockwiseCoreg.apply`, but this time with the overlap.
+
+:::{figure} imgs/apply_blocks.png
+:width: 100%
+:::
 
 ```{code-cell} ipython3
 :tags: [hide-input]
@@ -627,9 +636,9 @@ blockwise.meta
 :  code_prompt_hide: "Hide plotting code"
 # Plot before and after
 f, ax = plt.subplots(1, 2)
-ax[0].set_title("Before block LZD")
+ax[0].set_title("Before block NK")
 (tba_dem_shifted - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
-ax[1].set_title("After block LZD")
+ax[1].set_title("After block NK")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
 ```
