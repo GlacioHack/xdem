@@ -12,7 +12,7 @@ The ``BlockwiseCoreg`` class runs in four steps:
 
 1. Generate a subdivision grid to divide the DEM in N blocks.
 2. Run the requested coregistration approach in each block and save the results.
-3. Based on these results, we can interpolate the global offset.
+3. Based on these results, calculation of the overall offset.
 4. Apply to the entire DEM also by block, but this time with an overlap, this overlap corresponds to the maximum offset calculated in step 2.
 
 """
@@ -50,7 +50,7 @@ plt.show()
 # %%
 # Horizontal and vertical shifts can be estimated using :class:`xdem.coreg.NuthKaab`.
 # Let's prepare a coregistration class with a tiling configuration
-# BlockwiseCoreg is also available without mp_config but with parent_path parameters.
+# BlockwiseCoreg is also available without ``mp_config`` by specifying the block size and the save directory.
 
 # Create a configuration with two processing nodes
 mp_config = MultiprocConfig(chunk_size=500, 
