@@ -577,10 +577,10 @@ for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at
 ```{caution}
 The {class}`~xdem.coreg.BlockwiseCoreg` feature is still experimental. Currently, it is only tested for the affine
 coregistration methods and for translation only. Rotation shifts will be soon implemented, but not yet available.
-Please set `only_translation=True` when initializing the coregistration method ICP(), LZD() or CPD().
+Please set `only_translation=True` when initializing the coregistration method `ICP()`, `LZD()` or `CPD()`.
 ```
 
-A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs into grids, then a coregistration method runs independently in each block. Afterwards, an interpolation method is used to obtain the overall offset. The advantages of this tool are that memory consumption is reduced and local errors are better detected.
+A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs into grids, then the selected coregistration method runs independently in each block. After this step, the results are combined (using interpolation or soon aggregation) to obtain the overall offset. The first advantage is improved detection of local errors. The second is that, by default, blocks are loaded sequentially, which helps reduce memory usage. As a result, it is possible to work with larger datasets.
 
 ```{note}
 The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
@@ -589,7 +589,7 @@ Smaller blocks during the apply step reduce memory usage but increase computing 
 These two parameters do **not** need to be the same size.
 ```
 
-In this example, processing is performed sequentially. However, it is possible to enable multiprocessing on {class}`~xdem.coreg.BlockwiseCoreg`, the configuration is described in the advanced example.
+In this example, processing is performed sequentially. However, it is possible to enable multiprocessing on {class}`~xdem.coreg.BlockwiseCoreg`, the configuration is described in {doc}`Blockwise coregistration example </advanced_examples/plot_blockwise_coreg>`.
 
 ```{code-cell} ipython3
 blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
@@ -599,7 +599,7 @@ blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
 blockwise.fit(ref_dem, tba_dem_shifted)
 ```
 
-To give you a clearer picture, here is how {func}`~xdem.coreg.BlockwiseCoreg.fit`, divides a DEM with a block size of 500.
+To better visualize the blocks, here is how {func}`~xdem.coreg.BlockwiseCoreg.fit`, divides a DEM with a `block_size_fit` of 500.
 
 :::{figure} imgs/fit_blocks.png
 :width: 100%
