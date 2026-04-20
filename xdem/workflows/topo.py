@@ -106,8 +106,8 @@ class Topo(Workflows):
             "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(**attribute_extra),
             "roughness": lambda: self.dem.roughness(**attribute_extra),
             "rugosity": lambda: self.dem.rugosity(**attribute_extra),
-            "texture_shading": lambda: self.dem.texture_shading(**attribute_extra),
             "fractal_roughness": lambda: self.dem.fractal_roughness(**attribute_extra),
+            "texture_shading": lambda: self.dem.texture_shading(**attribute_extra),
         }
         for attr in self.list_attributes:
             if isinstance(self.config_attributes, dict):
@@ -135,25 +135,25 @@ class Topo(Workflows):
         nrows = math.ceil(n / ncols)
         unit = self.dem.crs.linear_units
         attribute_params: dict[str, dict[str, Any]] = {
-            "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (0, 255)},
-            "texture_shading": {"label": "Texture shading", "cmap": "Greys_r", "vlim": (-20, 20)},
             "slope": {"label": "Slope (°)", "cmap": "Reds", "vlim": (0, 90)},
             "aspect": {"label": "Aspect (°)", "cmap": "twilight", "vlim": (0, 360)},
+            "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (0, 255)},
             "profile_curvature": {"label": f"Profile curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
             "tangential_curvature": {"label": f"Tangential curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
             "planform_curvature": {"label": f"Planform curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
             "flowline_curvature": {"label": f"Flowline curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
             "max_curvature": {"label": f"Max. curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
             "min_curvature": {"label": f"Min. curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "terrain_ruggedness_index": {"label": "Terrain Ruggedness Index", "cmap": "Purples", "vlim": (None, None)},
-            "rugosity": {"label": "Rugosity", "cmap": "YlOrRd", "vlim": (None, None)},
             "topographic_position_index": {
                 "label": f"Topographic position index ({unit})",
                 "cmap": "Spectral",
                 "vlim": (None, None),
             },
+            "terrain_ruggedness_index": {"label": "Terrain Ruggedness Index", "cmap": "Purples", "vlim": (None, None)},
             "roughness": {"label": f"Roughness ({self.dem.crs.linear_units})", "cmap": "Oranges", "vlim": (None, None)},
-            "fractal_dimension": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
+            "rugosity": {"label": "Rugosity", "cmap": "YlOrRd", "vlim": (None, None)},
+            "fractal_roughness": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
+            "texture_shading": {"label": "Texture shading", "cmap": "Greys_r", "vlim": (-20, 20)},
         }
 
         import_optional("matplotlib")
