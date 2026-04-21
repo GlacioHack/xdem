@@ -129,6 +129,9 @@ class Topo(Workflows):
             attribute=self.list_attributes,
         )
 
+        if len (self.list_attributes) == 1:
+            attributes = [attributes]
+
         n = len(attributes)
 
         ncols = 2
