@@ -286,16 +286,14 @@ class Workflows(ABC):
 
             dem = xdem.DEM(path_to_elev, downsample=config_dem["downsample"])
             inlier_mask = None
-            set_vcrs = config_dem.get("set_vcrs", None)
 
-            if set_vcrs:
-                if dem.vcrs is None:
-                    dem.set_vcrs(set_vcrs)
-                else:
-                    dem.to_vcrs(set_vcrs, inplace=True)
+            force_vcrs = config_dem.get("force_vcrs", None)
+            if force_vcrs:
+                dem.set_vcrs(force_vcrs)
 
             if config_dem.get("force_source_nodata") is not None:
                 dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
+
             if config_dem.get("path_to_mask") is not None:
                 mask_path = config_dem["path_to_mask"]
                 # If alias, get its path

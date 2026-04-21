@@ -125,7 +125,7 @@ def test_load_config_none(get_topo_inputs_config_list, get_accuracy_inputs_test,
     # Change values
     user_config = dict()
     user_config["inputs"] = get_topo_inputs_config_list[:1]
-    user_config["inputs"][0]["set_vcrs"] = None
+    user_config["inputs"][0]["force_vcrs"] = None
 
     # Read working config
     yaml_str = yaml.dump(user_config, allow_unicode=True)
@@ -134,13 +134,13 @@ def test_load_config_none(get_topo_inputs_config_list, get_accuracy_inputs_test,
     assert isinstance(workflow_topo, Workflows)
     assert isinstance(workflow_topo, Topo)
     config_output = workflow_topo.load_config()
-    assert config_output["inputs"][0]["set_vcrs"] is None
+    assert config_output["inputs"][0]["force_vcrs"] is None
 
     # Accuracy workflow
 
     # Change values
     cfg = get_accuracy_inputs_test
-    cfg["inputs"]["reference_elev"]["set_vcrs"] = "None"
+    cfg["inputs"]["reference_elev"]["force_vcrs"] = "None"
     cfg["inputs"]["sampling_grid"] = "None"
     cfg["coregistration"] = {}
     cfg["coregistration"]["process"] = False
@@ -152,7 +152,7 @@ def test_load_config_none(get_topo_inputs_config_list, get_accuracy_inputs_test,
     assert isinstance(workflow_accuracy, Workflows)
     assert isinstance(workflow_accuracy, Accuracy)
     config_output = workflow_accuracy.load_config()
-    assert config_output["inputs"]["reference_elev"]["set_vcrs"] is None
+    assert config_output["inputs"]["reference_elev"]["force_vcrs"] is None
     assert config_output["inputs"]["sampling_grid"] is None
 
 
@@ -176,7 +176,7 @@ def test_pipeline_accuracy_default_values(get_accuracy_inputs_test, tmp_path):
         if "path_to_mask" in input_elev_input:
             assert input_elev["path_to_mask"] == input_elev_input["path_to_mask"]
 
-        assert "set_vcrs" not in input_elev
+        assert "force_vcrs" not in input_elev
         assert input_elev["downsample"] == 1
 
     assert pipeline_accuracy_test["inputs"]["sampling_grid"] == "reference_elev"
@@ -209,7 +209,7 @@ def test_pipeline_topo_default_values(get_topo_inputs_config_list, tmp_path):
         if "path_to_mask" in topo_config["inputs"][k]:
             assert input_elev["path_to_mask"] == topo_config["inputs"][k]["path_to_mask"]
 
-        assert "set_vcrs" not in input_elev
+        assert "force_vcrs" not in input_elev
         assert "downsample" not in input_elev  # default value not taken in "anyof" schema
 
     assert pipeline_topo_test["statistics"] == MIN_STATS
@@ -287,27 +287,25 @@ def test_save_stat_as_csv(get_topo_inputs_config_list, tmp_path):
 
 
 @pytest.mark.parametrize("data", ["longyearbyen_ref_dem", "giza_dem"])
-@pytest.mark.parametrize("set_vcrs", [None, "Ellipsoid", "EGM96"])
-def test_load_dem(data, set_vcrs):
+@pytest.mark.parametrize("force_vcrs", [None, "Ellipsoid", "EGM96"])
+def test_load_dem(data, force_vcrs):
     config_dem = dict()
     config_dem["path_to_elev"] = xdem.examples.get_path(data)
 
     if data == "longyearbyen_ref_dem":
         config_dem["path_to_mask"] = "longyearbyen_glacier_outlines"
 
-    config_dem["set_vcrs"] = set_vcrs
+    config_dem["force_vcrs"] = force_vcrs
     output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
 
     dem = xdem.DEM(config_dem["path_to_elev"])
 
     # VCRS
-    if set_vcrs is None:
+    if force_vcrs is None:
         assert output_dem.vcrs == dem.vcrs
     else:
-        if dem.vcrs is None:
-            dem.set_vcrs(set_vcrs)
-        else:
-            dem.to_vcrs(set_vcrs, inplace=True)
+        dem.set_vcrs(force_vcrs)
+        assert output_dem.vcrs == dem.vcrs
 
     # DEM
     assert dem.georeferenced_grid_equal(output_dem)

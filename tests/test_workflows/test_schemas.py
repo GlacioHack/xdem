@@ -246,7 +246,7 @@ def test_pipeline_accuracy_default_values(get_accuracy_inputs_test):
         assert input_elev["path_to_elev"] == input_elev_input["path_to_elev"]
         if "path_to_mask" in input_elev_input:
             assert input_elev["path_to_mask"] == input_elev_input["path_to_mask"]
-        assert input_elev["set_vcrs"] is None
+        assert input_elev["force_vcrs"] is None
         assert input_elev["downsample"] == 1
     assert pipeline_accuracy_test["inputs"]["sampling_grid"] == "reference_elev"
 
@@ -279,15 +279,15 @@ def test_valid_vcrs(get_topo_config_test, vcrs, error, caplog, assert_and_allow_
     Test valid VCRS function for 'from' and 'to'
     """
     topo_config = get_topo_config_test
-    topo_config["inputs"][0]["set_vcrs"] = vcrs
+    topo_config["inputs"][0]["force_vcrs"] = vcrs
     if error is None:
         pipeline_test = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
-        assert pipeline_test["inputs"][0]["set_vcrs"] == vcrs
+        assert pipeline_test["inputs"][0]["force_vcrs"] == vcrs
 
     elif error == "LoggingError":
         with caplog.at_level(logging.ERROR):
             _ = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
-        assert_and_allow_log(caplog, level=logging.ERROR, match="'set_vcrs' field is not valid.*")
+        assert_and_allow_log(caplog, level=logging.ERROR, match="'force_vcrs' field is not valid.*")
     else:
         with pytest.raises(error):
             _ = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)

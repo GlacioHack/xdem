@@ -31,7 +31,11 @@ from rasterio.coords import BoundingBox
 
 import xdem
 from xdem.workflows import Topo
-from xdem.workflows.schemas import MIN_STATS, TERRAIN_ATTRIBUTES_DEFAULT
+from xdem.workflows.schemas import (
+    MIN_STATS,
+    TERRAIN_ATTRIBUTES,
+    TERRAIN_ATTRIBUTES_DEFAULT,
+)
 from xdem.workflows.workflows import _ALIAS
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
@@ -230,3 +234,39 @@ def test_stats_list(get_topo_inputs_config_list, nb_inputs, tmp_path, stats_name
 
     for k, _ in enumerate(user_config_list["inputs"]):
         assert list(workflows.dico_to_show[k][2][1].keys()) == res
+
+
+@pytest.mark.parametrize("attributes", [TERRAIN_ATTRIBUTES, None])
+def test_attributes(get_topo_inputs_config_list, attributes, tmp_path):
+    user_config = dict()
+    user_config["inputs"] = get_topo_inputs_config_list[0]
+    user_config["terrain_attributes"] = attributes
+
+    user_config["outputs"] = {"path": str(Path(tmp_path / "list")), "level": 2}
+    workflows = Topo(user_config)
+    workflows.run()
+
+    if attributes is None:
+        assert not Path(tmp_path / "list" / "rasters").exists()
+    else:
+        for attr in attributes:
+            assert Path(tmp_path / "list" / "rasters").joinpath(f"{attr}.tif").exists()
+
+    """att = dict()
+    for name in attributes:
+        att[name] = dict()
+        att[name]["extra_information"] = None
+
+    user_config["terrain_attributes"] = att
+    print (user_config["terrain_attributes"])
+    user_config["outputs"] = {"path": str(Path(tmp_path / "indi")), "level": 2}
+    workflows = Topo(user_config)
+    workflows.run()
+
+    if attributes is None:
+        assert not Path(tmp_path / "indi" / "rasters").exists()
+    else:
+        for attr in attributes:
+            assert Path(tmp_path / "indi" / "rasters").joinpath(f"{attr}.tif").exists()
+
+    """

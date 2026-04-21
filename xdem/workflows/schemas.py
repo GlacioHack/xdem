@@ -85,7 +85,7 @@ INPUTS_DEM = {
     "path_to_elev": {"type": "string", "required": True, "path_exists": True},
     "force_source_nodata": {"type": ["integer", "float"], "required": False, "nullable": True},
     "path_to_mask": {"type": "string", "required": False, "path_exists": True, "nullable": True},
-    "set_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
+    "force_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
     "downsample": {"type": ["integer", "float"], "required": False, "default": 1, "min": 1},
 }
 
@@ -280,13 +280,13 @@ COMPLETE_CONFIG_ACCURACY = {
         "reference_elev": {
             "path_to_elev": "",
             "force_source_nodata": None,
-            "set_vcrs": None,
+            "force_vcrs": None,
             "downsample": 1,
         },
         "to_be_aligned_elev": {
             "path_to_elev": "",
             "force_source_nodata": None,
-            "set_vcrs": None,
+            "force_vcrs": None,
             "path_to_mask": None,
             "downsample": 1,
         },
@@ -320,7 +320,7 @@ COMPLETE_CONFIG_TOPO = {
         "reference_elev": {
             "path_to_elev": "",
             "force_source_nodata": None,
-            "set_vcrs": None,
+            "force_vcrs": None,
             "path_to_mask": None,
             "downsample": 1,
         },

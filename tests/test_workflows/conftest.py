@@ -61,7 +61,7 @@ def get_dem_config():
     return {
         "path_to_elev": xdem.examples.get_path_test("longyearbyen_ref_dem"),
         "force_source_nodata": -9999,
-        "set_vcrs": "Ellipsoid",
+        "force_vcrs": "Ellipsoid",
         "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
         "downsample": 1,
     }

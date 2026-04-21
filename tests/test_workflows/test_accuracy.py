@@ -467,8 +467,8 @@ def test_vcrs_change(
     tmp_path, get_accuracy_inputs_test, vcrs_first_step, sampling_grid_first_step  # vcrs_second_step,
 ):
     user_config = get_accuracy_inputs_test
-    user_config["inputs"]["reference_elev"]["set_vcrs"] = vcrs_first_step[0]
-    user_config["inputs"]["to_be_aligned_elev"]["set_vcrs"] = vcrs_first_step[1]
+    user_config["inputs"]["reference_elev"]["force_vcrs"] = vcrs_first_step[0]
+    user_config["inputs"]["to_be_aligned_elev"]["force_vcrs"] = vcrs_first_step[1]
 
     ref = xdem.DEM(user_config["inputs"]["reference_elev"]["path_to_elev"])
     ref.set_vcrs("Ellipsoid")

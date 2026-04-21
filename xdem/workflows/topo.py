@@ -124,25 +124,53 @@ class Topo(Workflows):
             logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
             attribute.to_file(self.outputs_folder / "rasters" / f"{attr}.tif")
 
-    def generate_terrain_attributes_png(self) -> None:
+    def generate_terrain_attributes(self, export_tif: bool) -> None:
         """
         Generates an image png containing the plots of the terrain attributes requested by the user.
+
+        :param export_tif: export tif for each terrain attributes
         :return: None
         """
 
+        attribute_extra = {}
+
+        from_str_to_fun = {
+            "slope": lambda: self.dem.slope(**attribute_extra),
+            "aspect": lambda: self.dem.aspect(**attribute_extra),
+            "hillshade": lambda: self.dem.hillshade(**attribute_extra),
+            "profile_curvature": lambda: self.dem.profile_curvature(**attribute_extra),
+            "tangential_curvature": lambda: self.dem.tangential_curvature(**attribute_extra),
+            "planform_curvature": lambda: self.dem.planform_curvature(**attribute_extra),
+            "flowline_curvature": lambda: self.dem.flowline_curvature(**attribute_extra),
+            "max_curvature": lambda: self.dem.max_curvature(**attribute_extra),
+            "min_curvature": lambda: self.dem.min_curvature(**attribute_extra),
+            "topographic_position_index": lambda: self.dem.topographic_position_index(**attribute_extra),
+            "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(**attribute_extra),
+            "roughness": lambda: self.dem.roughness(**attribute_extra),
+            "rugosity": lambda: self.dem.rugosity(**attribute_extra),
+            "texture_shading": lambda: self.dem.texture_shading(**attribute_extra),
+            "fractal_roughness": lambda: self.dem.fractal_roughness(**attribute_extra),
+        }
+
         logging.info(f"Computing attributes : {self.list_attributes}")
 
-        attributes = xdem.terrain.get_terrain_attribute(
-            self.dem,
-            attribute=self.list_attributes,
-        )
+        if isinstance(self.list_attributes, list):
+            attributes = xdem.terrain.get_terrain_attribute(
+                self.dem,
+                attribute=self.list_attributes,
+            )
 
-        # if only one attribute, put it in a list
-        if isinstance(attributes, Raster):
-            attributes = [attributes]
+            # if only one attribute, put it in a list
+            if isinstance(attributes, Raster):
+                attributes = [attributes]
 
         n = len(attributes)
-        ncols = 2
+
+        if n > 6:
+            ncols = 3
+        else:
+            ncols = 2
+
         nrows = math.ceil(n / ncols)
         unit = self.dem.crs.linear_units
 
@@ -165,7 +193,7 @@ class Topo(Workflows):
                 "vlim": (None, None),
             },
             "roughness": {"label": f"Roughness ({self.dem.crs.linear_units})", "cmap": "Oranges", "vlim": (None, None)},
-            "fractal_dimension": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
+            "fractal_roughness": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
         }
 
         import_optional("matplotlib")
@@ -196,7 +224,15 @@ class Topo(Workflows):
         [fig.delaxes(ax) for ax in axes.flatten() if not ax.has_data()]
         plt.tight_layout()
         plt.savefig(self.outputs_folder / "plots" / "terrain_attributes_map.png", dpi=300)
-        plt.close()
+        plt.show()
+
+        if export_tif:
+            for attr in self.list_attributes:
+                print("export tif", attr)
+                print(from_str_to_fun)
+                attribute = from_str_to_fun[attr]()
+                logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
+                attribute.to_file(self.outputs_folder / "rasters" / f"{attr}.tif")
 
     def run(self) -> None:
         """
@@ -252,9 +288,8 @@ class Topo(Workflows):
 
             # Terrain attributes
             if self.list_attributes is not None:
-                self.generate_terrain_attributes_png()
-                if self.level > 1:
-                    self.generate_terrain_attributes_tiff()
+                self.generate_terrain_attributes(self.level > 1)
+
             else:
                 logging.info("Computing terrain attributes: None")
 
