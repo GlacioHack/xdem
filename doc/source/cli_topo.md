@@ -134,11 +134,13 @@ Please refer to {ref}`data-example` to have more information.
 
 :::{code-block} yaml
 inputs:
-  - path_to_elev: "path_to/one_elev.tif"
+  - path_to_elev: "path_to/first_elev.tif"
+    path_to_mask: "path_to/first_mask.tif"
     force_source_nodata: -32768
     from_vcrs: null
     to_vcrs: null
-  - path_to_elev: "path_to/another_elev.tif"
+  - path_to_elev: "path_to/second_elev.tif"
+    path_to_mask: null
     force_source_nodata: -32768
     from_vcrs: null
     to_vcrs: null
@@ -183,8 +185,8 @@ If a mask is provided, the statistics are also computed inside the mask.
 List or set of dictionaries for extra information.
 
 :::{note}
-- If the block is specified, slope, aspect, and curvature attributes are calculated by default.
-- If the block is specified but no information is provided, then no attributes will be calculated.
+- If no block is specified: slope, aspect, and curvature attributes are calculated by default.
+- If the block is specified but but empty, no attributes will be calculated.
 :::
 
 :::{code-block} yaml
@@ -240,7 +242,7 @@ Tree of outputs for level 1:
 
 :::{code-block} text
 path_to/outputs
-  ├─ dem_[X]  (if several inputs)
+  ├─ [dem_X]  (if several inputs)
   │   ├─ tables
   │   │   ├─ elev_stats.csv
   │   │   └─ elev_with_mask_stats.csv (if mask_elev is given in input)
