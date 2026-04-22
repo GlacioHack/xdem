@@ -118,10 +118,21 @@ class TestTerrainAttribute:
             tri_method = "Wilson"
 
         attrs_scipy = xdem.terrain.window._get_windowed_indexes(
-            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method
+            dem=dem,
+            window_size=3,
+            window_size_fractal=13,
+            resolution=1,
+            windowed_indexes=[attribute],
+            tri_method=tri_method,
         )
         attrs_numba = xdem.terrain.window._get_windowed_indexes(
-            dem=dem, window_size=3, resolution=1, windowed_indexes=[attribute], tri_method=tri_method, engine="numba"
+            dem=dem,
+            window_size=3,
+            window_size_fractal=13,
+            resolution=1,
+            windowed_indexes=[attribute],
+            tri_method=tri_method,
+            engine="numba",
         )
 
         assert np.allclose(attrs_scipy, attrs_numba, equal_nan=True)
@@ -173,6 +184,7 @@ class TestTerrainAttribute:
         attrs_vectorized = xdem.terrain.window._get_windowed_indexes(
             dem=dem,
             window_size=3,
+            window_size_fractal=13,
             resolution=1,
             windowed_indexes=[attribute],
             tri_method=tri_method,
@@ -182,6 +194,7 @@ class TestTerrainAttribute:
         attrs_generic = xdem.terrain.window._get_windowed_indexes(
             dem=dem,
             window_size=3,
+            window_size_fractal=13,
             resolution=1,
             windowed_indexes=[attribute],
             tri_method=tri_method,

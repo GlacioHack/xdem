@@ -93,76 +93,10 @@ class Topo(Workflows):
                 cbar_title=f"Elevation ({self.dem.crs.linear_units})",
             )
 
-    def generate_terrain_attributes_tiff(self) -> None:
+    def generate_terrain_attributes_png(self, attributes: list[Raster]) -> None:
         """
-        Generate terrain attributes tiff
+        Generate terrain attributes png
         """
-
-        attribute_extra = {}
-
-        from_str_to_fun = {
-            "slope": lambda: self.dem.slope(**attribute_extra),
-            "aspect": lambda: self.dem.aspect(**attribute_extra),
-            "hillshade": lambda: self.dem.hillshade(**attribute_extra),
-            "profile_curvature": lambda: self.dem.profile_curvature(**attribute_extra),
-            "tangential_curvature": lambda: self.dem.tangential_curvature(**attribute_extra),
-            "planform_curvature": lambda: self.dem.planform_curvature(**attribute_extra),
-            "flowline_curvature": lambda: self.dem.flowline_curvature(**attribute_extra),
-            "max_curvature": lambda: self.dem.max_curvature(**attribute_extra),
-            "min_curvature": lambda: self.dem.min_curvature(**attribute_extra),
-            "topographic_position_index": lambda: self.dem.topographic_position_index(**attribute_extra),
-            "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(**attribute_extra),
-            "roughness": lambda: self.dem.roughness(**attribute_extra),
-            "rugosity": lambda: self.dem.rugosity(**attribute_extra),
-            "texture_shading": lambda: self.dem.texture_shading(**attribute_extra),
-            "fractal_roughness": lambda: self.dem.fractal_roughness(**attribute_extra),
-        }
-        for attr in self.list_attributes:
-            if isinstance(self.config_attributes, dict):
-                attribute_extra = self.config_attributes.get(attr).get("extra_information", {})  # type: ignore
-            attribute = from_str_to_fun[attr]()
-            logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
-            attribute.to_file(self.outputs_folder / "rasters" / f"{attr}.tif")
-
-    def generate_terrain_attributes(self, export_tif: bool) -> None:
-        """
-        Generates an image png containing the plots of the terrain attributes requested by the user.
-
-        :param export_tif: export tif for each terrain attributes
-        :return: None
-        """
-
-        attribute_extra = {}
-
-        from_str_to_fun = {
-            "slope": lambda: self.dem.slope(**attribute_extra),
-            "aspect": lambda: self.dem.aspect(**attribute_extra),
-            "hillshade": lambda: self.dem.hillshade(**attribute_extra),
-            "profile_curvature": lambda: self.dem.profile_curvature(**attribute_extra),
-            "tangential_curvature": lambda: self.dem.tangential_curvature(**attribute_extra),
-            "planform_curvature": lambda: self.dem.planform_curvature(**attribute_extra),
-            "flowline_curvature": lambda: self.dem.flowline_curvature(**attribute_extra),
-            "max_curvature": lambda: self.dem.max_curvature(**attribute_extra),
-            "min_curvature": lambda: self.dem.min_curvature(**attribute_extra),
-            "topographic_position_index": lambda: self.dem.topographic_position_index(**attribute_extra),
-            "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(**attribute_extra),
-            "roughness": lambda: self.dem.roughness(**attribute_extra),
-            "rugosity": lambda: self.dem.rugosity(**attribute_extra),
-            "texture_shading": lambda: self.dem.texture_shading(**attribute_extra),
-            "fractal_roughness": lambda: self.dem.fractal_roughness(**attribute_extra),
-        }
-
-        logging.info(f"Computing attributes : {self.list_attributes}")
-
-        if isinstance(self.list_attributes, list):
-            attributes = xdem.terrain.get_terrain_attribute(
-                self.dem,
-                attribute=self.list_attributes,
-            )
-
-            # if only one attribute, put it in a list
-            if isinstance(attributes, Raster):
-                attributes = [attributes]
 
         n = len(attributes)
 
@@ -211,7 +145,6 @@ class Topo(Workflows):
 
         axes = axes.flatten()
         for i, attr in enumerate(self.list_attributes):
-
             ax = axes[i]
             params = attribute_params[attr]
             cmap = params["cmap"]
@@ -224,15 +157,59 @@ class Topo(Workflows):
         [fig.delaxes(ax) for ax in axes.flatten() if not ax.has_data()]
         plt.tight_layout()
         plt.savefig(self.outputs_folder / "plots" / "terrain_attributes_map.png", dpi=300)
-        plt.show()
+        plt.close()
 
-        if export_tif:
+    def generate_terrain_attributes(self, export_tif: bool) -> None:
+        """
+        Generates an image png containing the plots of the terrain attributes requested by the user.
+
+        :param export_tif: export tif for each terrain attributes
+        :return: None
+        """
+
+        attribute_extra = {}
+
+        from_str_to_fun = {
+            "slope": lambda: self.dem.slope(**attribute_extra),
+            "aspect": lambda: self.dem.aspect(**attribute_extra),
+            "hillshade": lambda: self.dem.hillshade(**attribute_extra),
+            "profile_curvature": lambda: self.dem.profile_curvature(**attribute_extra),
+            "tangential_curvature": lambda: self.dem.tangential_curvature(**attribute_extra),
+            "planform_curvature": lambda: self.dem.planform_curvature(**attribute_extra),
+            "flowline_curvature": lambda: self.dem.flowline_curvature(**attribute_extra),
+            "max_curvature": lambda: self.dem.max_curvature(**attribute_extra),
+            "min_curvature": lambda: self.dem.min_curvature(**attribute_extra),
+            "topographic_position_index": lambda: self.dem.topographic_position_index(**attribute_extra),
+            "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(**attribute_extra),
+            "roughness": lambda: self.dem.roughness(**attribute_extra),
+            "rugosity": lambda: self.dem.rugosity(**attribute_extra),
+            "texture_shading": lambda: self.dem.texture_shading(**attribute_extra),
+            "fractal_roughness": lambda: self.dem.fractal_roughness(**attribute_extra),
+        }
+
+        logging.info(f"Computing attributes : {self.list_attributes}")
+        if isinstance(self.config_attributes, list):
+            attributes = xdem.terrain.get_terrain_attribute(
+                self.dem,
+                attribute=self.list_attributes,
+            )
+            # if only one attribute, put it in a list
+            if isinstance(attributes, Raster):
+                attributes = [attributes]
+        else:
+            attributes = []
             for attr in self.list_attributes:
-                print("export tif", attr)
-                print(from_str_to_fun)
-                attribute = from_str_to_fun[attr]()
+                attribute_extra = self.config_attributes.get(attr) or {}  # type: ignore
+                attributes.append(from_str_to_fun[attr]())
+
+        # Generate terrain attributes png
+        self.generate_terrain_attributes_png(attributes)
+
+        # Generate terrain attributes tif
+        if export_tif:
+            for k, attr in enumerate(self.list_attributes):
                 logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
-                attribute.to_file(self.outputs_folder / "rasters" / f"{attr}.tif")
+                attributes[k].to_file(self.outputs_folder / "rasters" / f"{attr}.tif")
 
     def run(self) -> None:
         """
@@ -287,11 +264,11 @@ class Topo(Workflows):
                 logging.info(f"Computing metrics on reference elevation: {list_metrics}")
 
             # Terrain attributes
-            if self.list_attributes is not None:
+            if self.list_attributes is not None and len(self.list_attributes):
                 self.generate_terrain_attributes(self.level > 1)
 
             else:
-                logging.info("Computing terrain attributes: None")
+                logging.info("No terrain attributes to compute")
 
             t1 = time.time()
             self.elapsed = t1 - t0

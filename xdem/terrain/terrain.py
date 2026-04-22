@@ -332,7 +332,6 @@ def get_terrain_attribute(
 
     # Warn if default window size for fractal roughness
     if "fractal_roughness" in attribute and window_size_fractal == 3:
-        print("fractal_roughness", window_size_fractal)
         warnings.warn(
             category=UserWarning,
             stacklevel=2,

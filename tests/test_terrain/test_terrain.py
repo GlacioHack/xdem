@@ -266,12 +266,17 @@ class TestTerrainAttribute:
         )
 
         # Unpack argument of surface fit/window size
+
         surface_fit, window_size = surfit_windowsize
         kwargs: dict[str, Any]
         if attribute in xdem.terrain.list_requiring_surface_fit:
             kwargs = {"surface_fit": surface_fit}
         elif attribute in xdem.terrain.list_requiring_windowed_index and attribute != "rugosity":
-            kwargs = {"window_size": window_size}
+            if attribute == "fractal_roughness":
+                kwargs = {"window_size_fractal": window_size}
+            else:
+                kwargs = {"window_size": window_size}
+
         # Rugosity is an exception: window size is not variable
         else:
             kwargs = {}

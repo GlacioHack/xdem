@@ -256,12 +256,7 @@ TOPO_SCHEMA = {
             {
                 "type": "dict",
                 "keysrules": {"type": "string", "allowed": TERRAIN_ATTRIBUTES},
-                "valuesrules": {
-                    "type": "dict",
-                    "schema": {
-                        "extra_information": {"type": "dict", "required": False},
-                    },
-                },
+                "valuesrules": {"type": "dict", "required": False, "nullable": True},
             },
         ],
     },

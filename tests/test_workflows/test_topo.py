@@ -79,7 +79,7 @@ def files_attributes(workflows, level, attributes, tmp_path):
 @pytest.mark.parametrize("nb_inputs", [-1, 1, 2])
 @pytest.mark.parametrize(
     "attributes",
-    [None, ["slope", "aspect"], {"hillshade": {"extra_information": {"method": "ZevenbergThorne", "azimuth": 90}}}],
+    [None, ["slope", "aspect"], {"hillshade": {"method": "ZevenbergThorne", "azimuth": 90}}],
 )
 def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list):
     """
@@ -236,37 +236,76 @@ def test_stats_list(get_topo_inputs_config_list, nb_inputs, tmp_path, stats_name
         assert list(workflows.dico_to_show[k][2][1].keys()) == res
 
 
-@pytest.mark.parametrize("attributes", [TERRAIN_ATTRIBUTES, None])
-def test_attributes(get_topo_inputs_config_list, attributes, tmp_path):
-    user_config = dict()
-    user_config["inputs"] = get_topo_inputs_config_list[0]
-    user_config["terrain_attributes"] = attributes
+def test_attributes(get_topo_inputs_config_list, tmp_path):
+    """
+    Test terrain attributes values
+    """
 
-    user_config["outputs"] = {"path": str(Path(tmp_path / "list")), "level": 2}
+    # Test all TERRAIN_ATTRIBUTES (list and dict)
+
+    user_config = dict()
+    user_config["inputs"] = get_topo_inputs_config_list[1]
+    user_config["terrain_attributes"] = TERRAIN_ATTRIBUTES
+    tmp_path_list = Path(tmp_path / "list")
+    user_config["outputs"] = {"path": str(tmp_path_list), "level": 2}
     workflows = Topo(user_config)
     workflows.run()
 
-    if attributes is None:
-        assert not Path(tmp_path / "list" / "rasters").exists()
-    else:
-        for attr in attributes:
-            assert Path(tmp_path / "list" / "rasters").joinpath(f"{attr}.tif").exists()
-
-    """att = dict()
-    for name in attributes:
-        att[name] = dict()
-        att[name]["extra_information"] = None
+    att = dict()
+    for name in TERRAIN_ATTRIBUTES:
+        att[name] = None
 
     user_config["terrain_attributes"] = att
-    print (user_config["terrain_attributes"])
-    user_config["outputs"] = {"path": str(Path(tmp_path / "indi")), "level": 2}
+    tmp_path_indi = Path(tmp_path / "individual")
+    user_config["outputs"] = {"path": str(tmp_path_indi), "level": 2}
     workflows = Topo(user_config)
     workflows.run()
 
-    if attributes is None:
-        assert not Path(tmp_path / "indi" / "rasters").exists()
-    else:
-        for attr in attributes:
-            assert Path(tmp_path / "indi" / "rasters").joinpath(f"{attr}.tif").exists()
+    for attr in TERRAIN_ATTRIBUTES:
+        assert Path(tmp_path_list / "rasters").joinpath(f"{attr}.tif").exists()
+        assert Path(tmp_path_indi / "rasters").joinpath(f"{attr}.tif").exists()
+        terrain_list = xdem.DEM(Path(tmp_path_list / "rasters").joinpath(f"{attr}.tif"))
+        terrain_indi = xdem.DEM(Path(tmp_path_indi / "rasters").joinpath(f"{attr}.tif"))
+        assert terrain_indi.georeferenced_grid_equal(terrain_list)
 
-    """
+    # Test with an empty terrain attributes list
+
+    user_config["terrain_attributes"] = None
+    tmp_path_ = Path(tmp_path / "None")
+    user_config["outputs"] = {"path": str(tmp_path_), "level": 2}
+    assert not Path(tmp_path_ / "rasters").exists()
+
+    # Test adding information in terrain attributes
+
+    user_config = dict()
+    user_config["inputs"] = get_topo_inputs_config_list[1]
+    user_config["terrain_attributes"] = {
+        "aspect": {"surface_fit": "ZevenbergThorne", "degrees": False},
+        "slope": {"surface_fit": "ZevenbergThorne"},
+    }
+    tmp_path_ = Path(tmp_path / "info")
+    user_config["outputs"] = {"path": str(tmp_path_), "level": 2}
+    workflows = Topo(user_config)
+    workflows.run()
+
+    input_dem = xdem.DEM(user_config["inputs"]["path_to_elev"])
+
+    res_aspect = xdem.DEM(Path(tmp_path_ / "rasters").joinpath("aspect.tif"))
+    ref_aspect = input_dem.aspect(surface_fit="ZevenbergThorne", degrees=False)
+    """import numpy as np
+    print ([
+                np.array_equal(res_aspect.data.data, ref_aspect.data.data, equal_nan=True),
+                np.array_equal(np.ma.getmaskarray(res_aspect.data), np.ma.getmaskarray(ref_aspect.data)),
+                res_aspect.data.fill_value == ref_aspect.data.fill_value,
+                res_aspect.data.dtype == ref_aspect.data.dtype,
+                res_aspect.transform == ref_aspect.transform,
+                res_aspect.crs == ref_aspect.crs,
+                res_aspect.nodata == ref_aspect.nodata,
+            ])
+    print (np.nanmax(res_aspect.data.data - ref_aspect.data.data))
+    print (np.ma.allequal(res_aspect.data, ref_aspect.data))"""
+    assert res_aspect.raster_equal(ref_aspect)
+
+    res_slope = xdem.DEM(Path(tmp_path_ / "rasters").joinpath("slope.tif"))
+    ref_slope = input_dem.slope(surface_fit="ZevenbergThorne")
+    assert res_slope.raster_equal(ref_slope)
