@@ -453,7 +453,6 @@ def _fractal_roughness_func_scipy(
     force_backend: Literal["generic", "vectorized"] | None = None,
 ) -> NDArrayf:
     """SciPy wrapper for fractal roughness implementation, with option of forcing backend for tests."""
-
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice.")
         warnings.filterwarnings(
@@ -773,6 +772,7 @@ def _preprocess_windowed_indexes(
 def _make_windowed_indexes(
     dem_window: NDArrayf,
     window_size: int,
+    window_size_fractal: int,
     resolution: float,
     make_attrs: list[bool],
     tpi_idx: int,
@@ -813,7 +813,7 @@ def _make_windowed_indexes(
     if make_fractal_roughness:
 
         attrs[frac_roughness_idx] = _fractal_roughness_func_numba(
-            dem_window, window_size_fractal=window_size, out_dtype=out_dtype
+            dem_window, window_size_fractal=window_size_fractal, out_dtype=out_dtype
         )
 
     return attrs
@@ -859,6 +859,7 @@ def _get_windowed_indexes_numba(
             attrs = _make_windowed_indexes(
                 dem_window,
                 window_size=window_size,
+                window_size_fractal=window_size_fractal,
                 resolution=resolution,
                 make_attrs=make_attrs,
                 tpi_idx=tpi_idx,
