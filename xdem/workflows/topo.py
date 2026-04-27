@@ -164,16 +164,15 @@ class Topo(Workflows):
         :return: None
         """
 
+        proj_crs = None
         if self.dem.crs.is_geographic:
             if (
                 self.config.get("reproject", None) is None
                 or self.config["reproject"].get("to_crs", None) is None
                 or self.config["reproject"]["to_crs"] is True
             ):
-                logging.info(f"Reprojection in default projected CRS ({self.dem.get_metric_crs()})")
-                self.dem = self.dem.reproject(crs=self.dem.get_metric_crs())
-                if self.level > 1:
-                    self.dem.to_file(self.outputs_folder / "rasters" / "dem_reprojected.tif")
+                proj_crs = self.dem.get_metric_crs()
+                logging.info(f"Reprojection in default projected CRS ({proj_crs})")
 
             elif not self.config["reproject"]["to_crs"]:
                 warnings.warn(
@@ -184,9 +183,6 @@ class Topo(Workflows):
             else:
                 proj_crs = self.config["reproject"]["to_crs"]
                 logging.info(f"Reprojection with crs = {proj_crs}")
-                self.dem = self.dem.reproject(crs=self.config["reproject"]["to_crs"])
-                if self.level > 1:
-                    self.dem.to_file(self.outputs_folder / "rasters" / "dem_reprojected.tif")
 
                 if CRS.from_user_input(self.config["reproject"]["to_crs"]).is_geographic:
                     warnings.warn(
@@ -195,8 +191,12 @@ class Topo(Workflows):
                         UserWarning,
                     )
 
-        attribute_extra = {}
+        if proj_crs is not None:
+            self.dem = self.dem.reproject(crs=proj_crs)
+            if self.level > 1:
+                self.dem.to_file(self.outputs_folder / "rasters" / "elev_reprojected.tif")
 
+        attribute_extra = {}
         from_str_to_fun = {
             "slope": lambda: self.dem.slope(**attribute_extra),
             "aspect": lambda: self.dem.aspect(**attribute_extra),

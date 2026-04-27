@@ -371,6 +371,6 @@ def test_reprojection(input_utm, reproject_warnings_newraster, get_topo_inputs_c
             workflows.run()
 
     if reprojection and level > 1:
-        assert Path(tmp_path / "rasters").joinpath("dem_reprojected.tif").exists()
+        assert Path(tmp_path / "rasters").joinpath("elev_reprojected.tif").exists()
     else:
-        assert not Path(tmp_path / "rasters").joinpath("dem_reprojected.tif").exists()
+        assert not Path(tmp_path / "rasters").joinpath("elev_reprojected.tif").exists()
