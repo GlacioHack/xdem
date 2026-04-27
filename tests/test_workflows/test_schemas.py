@@ -80,7 +80,7 @@ def test_wrong_path(get_topo_config_test):
             id="terrain_attributes_wrong_attr",
         ),
         pytest.param(
-            {"terrain_attributes": {"slope": {"extra_information": 2}}},
+            {"terrain_attributes": {"slope": 2}},
             "must be of dict type",
             id="terrain_attributes_dict_attr",
         ),
@@ -116,6 +116,7 @@ def test_validate_topo_configuration_with_errors(get_topo_config_test, new_param
     """
     topo_config = get_topo_config_test
     topo_config.update(new_param_config)
+    print(topo_config)
 
     with pytest.raises(ValueError, match=expected):
         _ = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)

@@ -65,13 +65,34 @@ class CustomValidator(Validator):  # type: ignore
                 self._error(field, f"Path does not exist: {value}")
         return True
 
-    def _validate_crs(self, crs: bool, field: str, value: str | int) -> bool:
+    def _validate_vcrs(self, vcrs: bool, field: str, value: str | int) -> bool:
         """
         {'type': 'boolean'}
         """
         if value is not None:
+            print(field)
+            print(value)
             try:
                 _vcrs_from_user_input(value)
+                return True
+            except (ValueError, TypeError, ConnectionResetError, HTTPError, URLError) as e:
+                logging.error(
+                    f"'{field}' field is not valid. {e} See: https://xdem.readthedocs.io/en/stable/vertical_ref.html"
+                )
+                return False
+        return True
+
+    def _validate_crs(self, crs: bool, field: str, value: str | int) -> bool:
+        """
+        {'type': 'boolean'}
+        """
+        if value is not None and not isinstance(value, bool):
+            print(value)
+            from pyproj import CRS
+
+            try:
+
+                CRS.from_user_input(value)
                 return True
             except (ValueError, TypeError, ConnectionResetError, HTTPError, URLError) as e:
                 logging.error(
@@ -85,7 +106,7 @@ INPUTS_DEM = {
     "path_to_elev": {"type": "string", "required": True, "path_exists": True},
     "force_source_nodata": {"type": ["integer", "float"], "required": False, "nullable": True},
     "path_to_mask": {"type": "string", "required": False, "path_exists": True, "nullable": True},
-    "force_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
+    "force_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "vcrs": True, "default": None},
     "downsample": {"type": ["integer", "float"], "required": False, "default": 1, "min": 1},
 }
 
@@ -239,6 +260,20 @@ TOPO_SCHEMA = {
             {"type": "list", "required": True, "schema": {"type": "dict", "schema": INPUTS_DEM}},
             {"type": "dict", "schema": INPUTS_DEM},
         ]
+    },
+    "reproject": {
+        "type": "dict",
+        "required": False,
+        "nullable": True,
+        "schema": {
+            "to_crs": {
+                "type": ["boolean", "integer", "string"],
+                "required": False,
+                "nullable": True,
+                "crs": True,
+                "default": None,
+            }
+        },
     },
     "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "nullable": True},
     "terrain_attributes": {

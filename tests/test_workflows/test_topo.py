@@ -309,3 +309,42 @@ def test_attributes(get_topo_inputs_config_list, tmp_path):
     res_slope = xdem.DEM(Path(tmp_path_ / "rasters").joinpath("slope.tif"))
     ref_slope = input_dem.slope(surface_fit="ZevenbergThorne")
     assert res_slope.raster_equal(ref_slope)
+
+
+@pytest.mark.parametrize("input_utm", [False])
+@pytest.mark.parametrize(
+    "reproject_warnings",
+    [
+        (None, None),
+        ({"reproject": None}, None),
+        ({"reproject": {"to_crs": True}}, None),
+        ({"reproject": {"to_crs": None}}, None),
+        ({"reproject": {"to_crs": False}}, "Please use a projected CRS"),
+        ({"reproject": {"to_crs": 25833}}, None),
+        ({"reproject": {"to_crs": "EPSG:25833"}}, None),
+        ({"reproject": {"to_crs": 4326}}, '"reproject/to_crs" either'),
+    ],
+)
+def test_reprojection(input_utm, reproject_warnings, get_topo_inputs_config_list, tmp_path):
+    reproject_dict, warning_if_not_utm = reproject_warnings
+
+    user_config = dict()
+    user_config["inputs"] = get_topo_inputs_config_list[1]
+    input_dem_path = get_topo_inputs_config_list[1]["path_to_elev"]
+    if not input_utm:
+        dem = xdem.DEM(input_dem_path).reproject(crs=4326)
+        dem.to_file(Path(tmp_path / "dem.tif"))
+        user_config["inputs"]["path_to_elev"] = str(Path(tmp_path / "dem.tif"))
+
+    user_config["terrain_attributes"] = ["slope"]
+    if reproject_dict is not None:
+        user_config.update(reproject_dict)
+        print(user_config["reproject"])
+    user_config["outputs"] = {"path": str(tmp_path), "level": 2}
+    workflows = Topo(user_config)
+
+    if input_utm or warning_if_not_utm is None:
+        workflows.run()
+    else:
+        with pytest.warns(UserWarning, match=warning_if_not_utm):
+            workflows.run()
