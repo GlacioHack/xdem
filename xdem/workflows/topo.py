@@ -42,8 +42,6 @@ class Topo(Workflows):
     Topo class from workflows.
     """
 
-    reproject = None
-
     def __init__(self, config_dem: str | Dict[str, Any], output: str | None = None) -> None:
         """
         Initialize Topo class
@@ -175,14 +173,14 @@ class Topo(Workflows):
                 self.dem = self.dem.reproject(crs=self.dem.get_metric_crs())
             elif not self.config["reproject"]["to_crs"]:
                 warnings.warn(
-                    "The CRS is a geographic CRS, the following surface fit attributes might be wrong."
+                    "As the input dem is not in a projected CRS, the following surface fit attributes might be wrong."
                     "Please use a projected CRS or let it empty to reproject in default projected CRS.",
                     UserWarning,
                 )
             else:
                 if CRS.from_user_input(self.config["reproject"]["to_crs"]).is_geographic:
                     warnings.warn(
-                        'As input dem is not in a projected CRS and the "reproject/to_crs" either,'
+                        'As the input dem is not in a projected CRS and the "reproject/to_crs" either,'
                         "the following surface fit attributes might be wrong.",
                         UserWarning,
                     )
@@ -211,8 +209,6 @@ class Topo(Workflows):
             "fractal_roughness": lambda: dem_proj_utm.fractal_roughness(**attribute_extra),
         }
 
-        logging.info(dem_proj_utm.crs.is_projected)
-        logging.info(dem_proj_utm.crs.is_geographic)
         logging.info(f"Computing attributes : {self.list_attributes}")
         if isinstance(self.config_attributes, list):
             attributes = xdem.terrain.get_terrain_attribute(

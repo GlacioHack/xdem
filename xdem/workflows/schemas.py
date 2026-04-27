@@ -29,6 +29,8 @@ import os
 from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError, URLError
 
+from pyproj import CRS
+
 from xdem._misc import import_optional
 from xdem.examples import _FILEPATHS_ALL
 from xdem.vcrs import _vcrs_from_user_input
@@ -70,8 +72,6 @@ class CustomValidator(Validator):  # type: ignore
         {'type': 'boolean'}
         """
         if value is not None:
-            print(field)
-            print(value)
             try:
                 _vcrs_from_user_input(value)
                 return True
@@ -87,9 +87,6 @@ class CustomValidator(Validator):  # type: ignore
         {'type': 'boolean'}
         """
         if value is not None and not isinstance(value, bool):
-            print(value)
-            from pyproj import CRS
-
             try:
 
                 CRS.from_user_input(value)
@@ -270,7 +267,7 @@ TOPO_SCHEMA = {
                 "type": ["boolean", "integer", "string"],
                 "required": False,
                 "nullable": True,
-                "crs": True,
+                # "crs": True,
                 "default": None,
             }
         },
