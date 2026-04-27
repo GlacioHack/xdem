@@ -236,7 +236,7 @@ class Topo(Workflows):
         # Generate terrain attributes tif
         if export_tif:
             for k, attr in enumerate(self.list_attributes):
-                logging.info(f"Saving {attr} as a raster file ({attr}.tif)")
+                logging.info(f"Saving {attr} as a raster file (rasters/{attr}.tif)")
                 attributes[k].to_file(self.outputs_folder / "rasters" / f"{attr}.tif")
 
     def run(self) -> None:
@@ -289,7 +289,7 @@ class Topo(Workflows):
                 stats_dem = {_ALIAS.get(k, k): v for k, v in stats_dem.items()}
                 self.save_stat_as_csv(stats_dem, "stats_elev")
                 self.dico_to_show[k].append(("Statistics", self.floats_process(stats_dem)))
-                logging.info(f"Computing metrics on reference elevation: {list_metrics}")
+                logging.info(f"Computing metrics on elevation: {list_metrics}")
 
             # Terrain attributes
             if self.list_attributes is not None and len(self.list_attributes):

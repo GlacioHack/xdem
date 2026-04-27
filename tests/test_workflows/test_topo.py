@@ -332,7 +332,7 @@ def test_attributes(get_topo_inputs_config_list, tmp_path):
     assert res_slope.raster_equal(ref_slope)
 
 
-@pytest.mark.parametrize("input_utm", [False])
+@pytest.mark.parametrize("input_utm", [True, False])
 @pytest.mark.parametrize(
     "reproject_warnings_newraster",
     [
@@ -370,7 +370,7 @@ def test_reprojection(input_utm, reproject_warnings_newraster, get_topo_inputs_c
         with pytest.warns(UserWarning, match=warning_if_not_utm):
             workflows.run()
 
-    if reprojection and level > 1:
+    if not input_utm and reprojection and level > 1:
         assert Path(tmp_path / "rasters").joinpath("elev_reprojected.tif").exists()
     else:
         assert not Path(tmp_path / "rasters").joinpath("elev_reprojected.tif").exists()

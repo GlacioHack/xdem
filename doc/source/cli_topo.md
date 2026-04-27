@@ -119,7 +119,7 @@ List of elevation inputs information.
 | `path_to_elev`        | Path to elevation                        | str        |         | Yes      |
 | `force_source_nodata` | No data elevation                        | int        |         | No       |
 | `path_to_mask`        | Path to mask associated to the elevation | str        |         | No       |
-| `force_vcrs`          | Vertical CRS of the elevation            | int, str   | `null`  | No       |
+| `force_vcrs`          | Vertical CRS of the elevation            | int, str   |         | No       |
 | `downsample`          | Downsampling elevation factor >= 1       | int, float | 1       | No       |
 :::
 
@@ -147,6 +147,16 @@ inputs:
 :::{note}
 The `null` and `None` values are both accepted in YAML files, which correspond to `None` in the Python API.
 :::
+
+::::
+
+
+::::{tab-item} `reprojection`
+
+**Required:** No
+
+TODO TODO TODO TODO
+
 
 ::::
 
@@ -214,8 +224,8 @@ Its use is entirely the responsibility of the user.
 
 Outputs information. Operates by levels:
 
-1. Level 1 → save reports (HTML and PDF formats), stats (CSV formats) and plots (PNG formats)
-2. Level 2 → save raster terrain attributes (TIFF formats)
+1. Level 1 → saves report(s) (HTML and PDF if activated), stats (CSV) and plots (PNG)
+2. Level 2 → saves raster terrain attributes (TIFF) and temporary rasters (TIFF)
 
 :::{table} Output parameters
 :widths: 20, 40, 10, 10, 10, 10
@@ -224,7 +234,7 @@ Outputs information. Operates by levels:
 |----------------|----------------------------|---------|---------------|-----------------|---------|
 | `path`         | Path for outputs           | str     | outputs       |                 | No      |
 | `level`        | Level for detailed outputs | int     | 1             | 1 or 2          | No      |
-| `generate_pdf` | Generate PDF report        | boolean | True          |                 | No      |
+| `generate_pdf` | Generate PDF report(s)     | boolean | True          |                 | No      |
 :::
 
 :::{code-block} yaml
@@ -246,7 +256,7 @@ path_to/outputs
   │   │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
   │   │   └─ terrain_attributes_map.png
   │   ├─ report.html
-  │   ├─ [report.pdf] (if `generate_pdf` if `True`)
+  │   └─ [report.pdf] (if `generate_pdf` if `True`)
   └─ used_config.yaml
 :::
 
@@ -263,11 +273,12 @@ path_to/outputs
   │   │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
   │   │   └─ terrain_attributes_map.png
   │   ├─ rasters
+  │   │   ├─ [elev_reprojected.tif] (if reprojection needed)
   │   │   ├─ aspect.tif
   │   │   ├─ slope.tif
   │   │   └─ [...]
   │   ├─ report.html
-  │   ├─ [report.pdf] (if `generate_pdf` if `True`)
+  │   └─ [report.pdf] (if `generate_pdf` if `True`)
   └─ used_config.yaml
 :::
 
