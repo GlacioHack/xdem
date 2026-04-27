@@ -75,13 +75,25 @@ def files_attributes(workflows, level, attributes, tmp_path):
             assert Path(tmp_path / "rasters").joinpath(f"{attribute}.tif").exists()
 
 
+def files_report(generate_pdf, tmp_path):
+    """
+    Check report outputs
+    """
+    assert Path(tmp_path).joinpath("report.html").exists()
+    if generate_pdf:
+        assert Path(tmp_path).joinpath("report.pdf").exists()
+    else:
+        assert not Path(tmp_path).joinpath("report.pdf").exists()
+
+
 @pytest.mark.parametrize("level", [1, 2])
 @pytest.mark.parametrize("nb_inputs", [-1, 1, 2])
+@pytest.mark.parametrize("generate_pdf", [True, False])
 @pytest.mark.parametrize(
     "attributes",
     [None, ["slope", "aspect"], {"hillshade": {"method": "ZevenbergThorne", "azimuth": 90}}],
 )
-def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list):
+def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list, generate_pdf):
     """
     Test run function with all the outputs generation
 
@@ -92,7 +104,7 @@ def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list
         user_config["inputs"] = get_topo_inputs_config_list[0]
     else:
         user_config["inputs"] = get_topo_inputs_config_list[:nb_inputs]
-    user_config["outputs"] = {"path": str(tmp_path), "level": level}
+    user_config["outputs"] = {"path": str(tmp_path), "level": level, "generate_pdf": generate_pdf}
     user_config["terrain_attributes"] = attributes
 
     workflows = Topo(user_config)
@@ -132,6 +144,15 @@ def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list
         for k in range(len(user_config_list["inputs"])):
             dem_dir = "dem_" + str(k)
             assert Path(tmp_path / dem_dir / "tables").joinpath("stats_elev_stats.csv").exists()
+
+    # 4/ Test reports
+    if nb_inputs <= 1:
+        assert Path(tmp_path).joinpath("report.html").exists()
+        files_report(generate_pdf, tmp_path)
+    else:
+        for k in range(len(user_config_list["inputs"])):
+            dem_dir = "dem_" + str(k)
+            files_report(generate_pdf, Path(tmp_path / dem_dir))
 
 
 @pytest.mark.parametrize("nb_inputs", [-1, 1, 2])
@@ -313,20 +334,21 @@ def test_attributes(get_topo_inputs_config_list, tmp_path):
 
 @pytest.mark.parametrize("input_utm", [False])
 @pytest.mark.parametrize(
-    "reproject_warnings",
+    "reproject_warnings_newraster",
     [
-        (None, None),
-        ({"reproject": None}, None),
-        ({"reproject": {"to_crs": True}}, None),
-        ({"reproject": {"to_crs": None}}, None),
-        ({"reproject": {"to_crs": False}}, "Please use a projected CRS"),
-        ({"reproject": {"to_crs": 25833}}, None),
-        ({"reproject": {"to_crs": "EPSG:25833"}}, None),
-        ({"reproject": {"to_crs": 4326}}, '"reproject/to_crs" either'),
+        (None, None, True),
+        ({"reproject": None}, None, True),
+        ({"reproject": {"to_crs": True}}, None, True),
+        ({"reproject": {"to_crs": None}}, None, True),
+        ({"reproject": {"to_crs": False}}, "Please use a projected CRS", False),
+        ({"reproject": {"to_crs": 25833}}, None, True),
+        ({"reproject": {"to_crs": "EPSG:25833"}}, None, True),
+        ({"reproject": {"to_crs": 4326}}, '"reproject/to_crs" either', True),
     ],
 )
-def test_reprojection(input_utm, reproject_warnings, get_topo_inputs_config_list, tmp_path):
-    reproject_dict, warning_if_not_utm = reproject_warnings
+@pytest.mark.parametrize("level", [1, 2])
+def test_reprojection(input_utm, reproject_warnings_newraster, get_topo_inputs_config_list, tmp_path, level):
+    reproject_dict, warning_if_not_utm, reprojection = reproject_warnings_newraster
 
     user_config = dict()
     user_config["inputs"] = get_topo_inputs_config_list[1]
@@ -339,7 +361,7 @@ def test_reprojection(input_utm, reproject_warnings, get_topo_inputs_config_list
     user_config["terrain_attributes"] = ["slope"]
     if reproject_dict is not None:
         user_config.update(reproject_dict)
-    user_config["outputs"] = {"path": str(tmp_path), "level": 2}
+    user_config["outputs"] = {"path": str(tmp_path), "level": level}
     workflows = Topo(user_config)
 
     if input_utm or warning_if_not_utm is None:
@@ -347,3 +369,8 @@ def test_reprojection(input_utm, reproject_warnings, get_topo_inputs_config_list
     else:
         with pytest.warns(UserWarning, match=warning_if_not_utm):
             workflows.run()
+
+    if reprojection and level > 1:
+        assert Path(tmp_path / "rasters").joinpath("dem_reprojected.tif").exists()
+    else:
+        assert not Path(tmp_path / "rasters").joinpath("dem_reprojected.tif").exists()

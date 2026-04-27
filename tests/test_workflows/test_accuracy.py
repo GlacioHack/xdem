@@ -111,11 +111,9 @@ def test__get_stats(get_accuracy_inputs_test, tmp_path, stats_name, res):
     assert workflows._get_stats(dem) == {_ALIAS.get(k, k): v for k, v in stats_gt.items()}
 
 
-@pytest.mark.parametrize(
-    "level",
-    [1, 2],
-)
-def test_run(get_accuracy_inputs_test, tmp_path, level):
+@pytest.mark.parametrize("level", [1, 2])
+@pytest.mark.parametrize("generated_pdf", [True, False])
+def test_run(get_accuracy_inputs_test, tmp_path, level, generated_pdf):
     """
     Test run function with (process = True)
     """
@@ -136,7 +134,8 @@ def test_run(get_accuracy_inputs_test, tmp_path, level):
 
     assert Path(tmp_path).joinpath("report.html").exists()
     # sometimes the PDF creation fails for no reason
-    # assert Path(tmp_path).joinpath("report.pdf").exists()
+    if generated_pdf:
+        assert Path(tmp_path).joinpath("report.pdf").exists()
     assert Path(tmp_path).joinpath("used_config.yaml").exists()
 
     csv_files_level_1 = [
@@ -173,11 +172,9 @@ def test_run(get_accuracy_inputs_test, tmp_path, level):
             assert (Path(tmp_path) / "rasters" / file).exists()
 
 
-@pytest.mark.parametrize(
-    "level",
-    [1, 2],
-)
-def test_run_without_coreg(get_accuracy_inputs_test, tmp_path, level):
+@pytest.mark.parametrize("level", [1, 2])
+@pytest.mark.parametrize("generated_pdf", [True, False])
+def test_run_without_coreg(get_accuracy_inputs_test, tmp_path, level, generated_pdf):
     """
     Test run function with (process = False)
     """
@@ -200,7 +197,8 @@ def test_run_without_coreg(get_accuracy_inputs_test, tmp_path, level):
 
     assert Path(tmp_path).joinpath("report.html").exists()
     # sometimes the PDF creation fails for no reason
-    # assert Path(tmp_path).joinpath("report.pdf").exists()
+    if generated_pdf:
+        assert Path(tmp_path).joinpath("report.pdf").exists()
     assert Path(tmp_path).joinpath("used_config.yaml").exists()
 
     csv_files = [

@@ -250,10 +250,8 @@ coregistration:
 
 Statistics step information. This section relates to the computed statistics:
 
-1. If no block is specified, all available statistics are calculated by default:
-
-   [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std,
-   valid count, total count, percentage valid points, inter quartile range]
+1. If no block is specified, a list of statistics are calculated by default:
+   [mean, median, max, min, nmad, standard deviation, valid count, total count, percentage valid points]
 
 2. If a block is specified but no statistics are provided, then no statistics will be computed.
 

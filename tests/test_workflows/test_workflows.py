@@ -33,6 +33,7 @@ import xdem
 from xdem.workflows.accuracy import Accuracy
 from xdem.workflows.schemas import (
     COMPLETE_CONFIG_ACCURACY,
+    COMPLETE_CONFIG_TOPO,
     MIN_STATS,
     TERRAIN_ATTRIBUTES_DEFAULT,
 )
@@ -214,7 +215,7 @@ def test_pipeline_topo_default_values(get_topo_inputs_config_list, tmp_path):
 
     assert pipeline_topo_test["statistics"] == MIN_STATS
     assert pipeline_topo_test["terrain_attributes"] == TERRAIN_ATTRIBUTES_DEFAULT
-    assert pipeline_topo_test["outputs"] == {"path": "outputs", "level": 1}
+    assert pipeline_topo_test["outputs"] == COMPLETE_CONFIG_TOPO["outputs"]
 
 
 def test_generate_graph(get_topo_inputs_config_list, tmp_path):
