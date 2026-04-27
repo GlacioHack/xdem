@@ -339,7 +339,6 @@ def test_reprojection(input_utm, reproject_warnings, get_topo_inputs_config_list
     user_config["terrain_attributes"] = ["slope"]
     if reproject_dict is not None:
         user_config.update(reproject_dict)
-        print(user_config["reproject"])
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
     workflows = Topo(user_config)
 

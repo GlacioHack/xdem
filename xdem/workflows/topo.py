@@ -156,7 +156,7 @@ class Topo(Workflows):
         plt.savefig(self.outputs_folder / "plots" / "terrain_attributes_map.png", dpi=300)
         plt.close()
 
-    def generate_terrain_attributes(self, export_tif: bool) -> None:
+    def generate_terrain_attributes(self, export_tif: bool = False) -> None:
         """
         Generates an image png containing the plots of the terrain attributes requested by the user.
 
@@ -170,6 +170,7 @@ class Topo(Workflows):
                 or self.config["reproject"].get("to_crs", None) is None
                 or self.config["reproject"]["to_crs"] is True
             ):
+                logging.info("Reprojection in default projected CRS")
                 self.dem = self.dem.reproject(crs=self.dem.get_metric_crs())
             elif not self.config["reproject"]["to_crs"]:
                 warnings.warn(
@@ -178,41 +179,41 @@ class Topo(Workflows):
                     UserWarning,
                 )
             else:
+                proj_crs = self.config["reproject"]["to_crs"]
+                logging.info(f"Reprojection {proj_crs}")
+                self.dem = self.dem.reproject(crs=self.config["reproject"]["to_crs"])
+
                 if CRS.from_user_input(self.config["reproject"]["to_crs"]).is_geographic:
                     warnings.warn(
                         'As the input dem is not in a projected CRS and the "reproject/to_crs" either,'
                         "the following surface fit attributes might be wrong.",
                         UserWarning,
                     )
-                self.dem = self.dem.reproject(crs=self.config["reproject"]["to_crs"])
-
-        dem_proj_utm = self.dem
-        logging.info("Computing reprojection in needed")
 
         attribute_extra = {}
 
         from_str_to_fun = {
-            "slope": lambda: dem_proj_utm.slope(**attribute_extra),
-            "aspect": lambda: dem_proj_utm.aspect(**attribute_extra),
-            "hillshade": lambda: dem_proj_utm.hillshade(**attribute_extra),
-            "profile_curvature": lambda: dem_proj_utm.profile_curvature(**attribute_extra),
-            "tangential_curvature": lambda: dem_proj_utm.tangential_curvature(**attribute_extra),
-            "planform_curvature": lambda: dem_proj_utm.planform_curvature(**attribute_extra),
-            "flowline_curvature": lambda: dem_proj_utm.flowline_curvature(**attribute_extra),
-            "max_curvature": lambda: dem_proj_utm.max_curvature(**attribute_extra),
-            "min_curvature": lambda: dem_proj_utm.min_curvature(**attribute_extra),
-            "topographic_position_index": lambda: dem_proj_utm.topographic_position_index(**attribute_extra),
-            "terrain_ruggedness_index": lambda: dem_proj_utm.terrain_ruggedness_index(**attribute_extra),
-            "roughness": lambda: dem_proj_utm.roughness(**attribute_extra),
-            "rugosity": lambda: dem_proj_utm.rugosity(**attribute_extra),
-            "texture_shading": lambda: dem_proj_utm.texture_shading(**attribute_extra),
-            "fractal_roughness": lambda: dem_proj_utm.fractal_roughness(**attribute_extra),
+            "slope": lambda: self.dem.slope(**attribute_extra),
+            "aspect": lambda: self.dem.aspect(**attribute_extra),
+            "hillshade": lambda: self.dem.hillshade(**attribute_extra),
+            "profile_curvature": lambda: self.dem.profile_curvature(**attribute_extra),
+            "tangential_curvature": lambda: self.dem.tangential_curvature(**attribute_extra),
+            "planform_curvature": lambda: self.dem.planform_curvature(**attribute_extra),
+            "flowline_curvature": lambda: self.dem.flowline_curvature(**attribute_extra),
+            "max_curvature": lambda: self.dem.max_curvature(**attribute_extra),
+            "min_curvature": lambda: self.dem.min_curvature(**attribute_extra),
+            "topographic_position_index": lambda: self.dem.topographic_position_index(**attribute_extra),
+            "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(**attribute_extra),
+            "roughness": lambda: self.dem.roughness(**attribute_extra),
+            "rugosity": lambda: self.dem.rugosity(**attribute_extra),
+            "texture_shading": lambda: self.dem.texture_shading(**attribute_extra),
+            "fractal_roughness": lambda: self.dem.fractal_roughness(**attribute_extra),
         }
 
         logging.info(f"Computing attributes : {self.list_attributes}")
         if isinstance(self.config_attributes, list):
             attributes = xdem.terrain.get_terrain_attribute(
-                dem_proj_utm,
+                self.dem,
                 attribute=self.list_attributes,
             )
             # if only one attribute, put it in a list

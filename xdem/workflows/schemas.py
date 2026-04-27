@@ -235,6 +235,7 @@ ACCURACY_SCHEMA = {
                 "default": "reference_elev",
                 "required": False,
             },
+            "generate_pdf": {"type": "boolean", "default": True, "required": False},
         },
     },
     "coregistration": {
@@ -298,6 +299,7 @@ TOPO_SCHEMA = {
         "schema": {
             "path": {"type": "string", "default": "outputs"},
             "level": {"type": "integer", "default": 1, "required": False, "allowed": [1, 2]},
+            "generate_pdf": {"type": "boolean", "default": True, "required": False},
         },
     },
 }
@@ -319,11 +321,7 @@ COMPLETE_CONFIG_ACCURACY = {
         },
         "sampling_grid": "reference_elev",
     },
-    "outputs": {
-        "level": 1,
-        "path": "outputs",
-        "output_grid": "reference_elev",
-    },
+    "outputs": {"level": 1, "path": "outputs", "output_grid": "reference_elev", "generate_pdf": True},
     "coregistration": {
         "step_one": {
             "method": "LZD",
@@ -352,7 +350,8 @@ COMPLETE_CONFIG_TOPO = {
             "downsample": 1,
         },
     },
-    "outputs": {"level": 1, "path": "outputs"},
+    "reprojection": {"to_crs": None},
+    "outputs": {"level": 1, "path": "outputs", "generate_pdf": True},
     "statistics": MIN_STATS,
     "terrain_attributes": ["slope", "aspect", "max_curvature"],
 }

@@ -352,12 +352,15 @@ class Workflows(ABC):
 
         :return: None
         """
+        if self.config["outputs"]["generate_pdf"]:
+            if not _has_weasyprint:
+                msg = (
+                    "Optional dependency 'weasyprint' required. "
+                    "Install it directly or through: pip install xdem[opt]."
+                )
+                raise ImportError(msg)
 
-        if not _has_weasyprint:
-            msg = "Optional dependency 'weasyprint' required. " "Install it directly or through: pip install xdem[opt]."
-            raise ImportError(msg)
-
-        HTML(self.outputs_folder / "report.html").write_pdf(self.outputs_folder / "report.pdf")
+            HTML(self.outputs_folder / "report.html").write_pdf(self.outputs_folder / "report.pdf")
 
     def save_stat_as_csv(self, data: dict[str, float], file_name: str) -> None:
         """
