@@ -22,8 +22,8 @@ import geoutils as gu
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
 import numpy as np
-from geoutils.raster.distributed_computing import MultiprocConfig
 from geoutils.raster import ClusterGenerator
+from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
 
@@ -53,14 +53,10 @@ plt.show()
 # BlockwiseCoreg is also available without ``mp_config`` by specifying the block size and the save directory.
 
 # Create a configuration with two processing nodes
-mp_config = MultiprocConfig(chunk_size=500, 
-                            outfile="aligned_dem.tif", 
-                            cluster=ClusterGenerator("multi", nb_workers=2))
+mp_config = MultiprocConfig(chunk_size=500, outfile="aligned_dem.tif", cluster=ClusterGenerator("multi", nb_workers=2))
 # Currently, with mp_config, block_size_fit must be equal to chunk_size
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
-                                      mp_config=mp_config,
-                                      block_size_fit=500,
-                                      block_size_apply=1000)
+blockwise = xdem.coreg.BlockwiseCoreg(
+  xdem.coreg.NuthKaab(), mp_config=mp_config, block_size_fit=500, block_size_apply=1000)
 
 # %%
 # Coregistration is performed with the ``.fit()`` method.
