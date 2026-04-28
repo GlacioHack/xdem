@@ -577,12 +577,10 @@ for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at
 ```{caution}
 The {class}`~xdem.coreg.BlockwiseCoreg` feature is still experimental. Currently, it is only tested for the affine
 coregistration methods and for translation only. Rotation shifts will be soon implemented, but not yet available.
-Please set `only_translation=True` when initializing the coregistration method ICP(), LZD() or CPD().
+Please set `only_translation=True` when initializing the coregistration method `ICP()`, `LZD()` or `CPD()`.
 ```
 
-A {class}`~xdem.coreg.BlockwiseCoreg` splits a coregistration across different spatial blocks of an elevation dataset, running that
-method independently in each block.
-By default, these blocks are loaded sequentially to reduce the memory used during a coregistration.
+A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs into grids, then the selected coregistration method runs independently in each block. After this step, the results are combined (using interpolation or soon aggregation) to obtain the overall offset. The first advantage is improved detection of local errors. The second is that, by default, blocks are loaded sequentially, which helps reduce memory usage. As a result, it is possible to work with larger datasets.
 
 ```{note}
 The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
@@ -591,30 +589,51 @@ Smaller blocks during the apply step reduce memory usage but increase computing 
 These two parameters do **not** need to be the same size.
 ```
 
+In this example, processing is performed sequentially. However, it is possible to enable multiprocessing on {class}`~xdem.coreg.BlockwiseCoreg`, the configuration is described in {doc}`Blockwise coregistration example </advanced_examples/plot_blockwise_coreg>`.
+
 ```{code-cell} ipython3
 blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
                                       block_size_fit=500,
-                                      block_size_apply=100,
+                                      block_size_apply=500,
                                       parent_path="")
-
 blockwise.fit(ref_dem, tba_dem_shifted)
-aligned_dem = blockwise.apply(tba_dem_shifted)
-aligned_dem.load()
-```
-```{code-cell} ipython3
-:tags: [remove-cell]
-import os
-os.remove("aligned_dem.tif")
 ```
 
-The subdivision corresponds to the chunk_size. The results of each tile coregistration are saved in the meta parameters
-of the "blockwise" class.
+To better visualize the blocks, here is how {func}`~xdem.coreg.BlockwiseCoreg.fit`, divides a DEM with a `block_size_fit` of 500.
+
+:::{figure} imgs/fit_blocks.png
+:width: 100%
+:::
+
+The results of each tile coregistration are saved in the meta parameters, they will be used to estimate the overall offset.
 
 ```{code-cell} ipython3
 blockwise.meta
 ```
 
+Once this first step has been completed, you can proceed to the {func}`~xdem.coreg.BlockwiseCoreg.apply` step. At this step, an interpolation method will be used to estimate the overall offset. The result obtained is then applied to the entire DEM, also by blocks, but this time with an overlap to avoid edge effects. This overlap corresponds to the maximum offset obtained during the {func}`~xdem.coreg.BlockwiseCoreg.fit`.
+
 ```{code-cell} ipython3
+aligned_dem = blockwise.apply(tba_dem_shifted)
+```
+
+```{code-cell} ipython3
+:tags: [remove-cell]
+import os
+aligned_dem.load()
+os.remove("aligned_dem.tif")
+```
+Here are the blocks for the {func}`~xdem.coreg.BlockwiseCoreg.apply`, but this time with the overlap.
+
+:::{figure} imgs/apply_blocks.png
+:width: 100%
+:::
+
+```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show plotting code"
+:  code_prompt_hide: "Hide plotting code"
 # Plot before and after
 f, ax = plt.subplots(1, 2)
 ax[0].set_title("Before block NK")
