@@ -33,8 +33,8 @@ import rasterio as rio
 import scipy.optimize
 import scipy.spatial
 from geoutils._typing import Number
-from geoutils.interface.interpolate import _interp_points
-from geoutils.raster.georeferencing import _coords, _res
+from geoutils.interface.interpolation import _interp_points_base
+from geoutils.raster.referencing import _coords, _res
 from geoutils.stats import nmad
 
 from xdem._misc import get_progress
@@ -206,7 +206,7 @@ def _subsample_on_mask_interpolator(
 
         # Interpolate raster array to the subsample point coordinates
         # Convert ref or tba depending on which is the point dataset
-        rst_elev_interpolator = _interp_points(
+        rst_elev_interpolator = _interp_points_base(
             array=rst_elev,
             transform=transform,
             area_or_point=area_or_point,
@@ -234,7 +234,7 @@ def _subsample_on_mask_interpolator(
         if aux_vars is not None:
             sub_bias_vars = {}
             for var in aux_vars.keys():
-                sub_bias_vars[var] = _interp_points(
+                sub_bias_vars[var] = _interp_points_base(
                     array=aux_vars[var], transform=transform, points=sub_coords, area_or_point=area_or_point
                 )
         else:

@@ -49,13 +49,13 @@ import scipy.ndimage
 import scipy.optimize
 from geoutils import profiler
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.interface.interpolate import _interp_points
+from geoutils.interface.interpolation import _interp_points_base
 from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
 from geoutils.raster import Raster, RasterType, raster
-from geoutils.raster._geotransformations import _resampling_method_from_str
+from geoutils.raster.transformation import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
-from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
-from geoutils.raster.geotransformations import _translate
+from geoutils.raster.referencing import _cast_pixel_interpretation, _coords
+from geoutils.raster.transformation import _translate
 
 import xdem
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -597,12 +597,14 @@ def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArra
         # Build a low memory masked array with invalid values masked to pass to subsampling
         ma_valid = np.ma.masked_array(data=np.ones(np.shape(valid_mask), dtype=bool), mask=~valid_mask)
         # Take a subsample within the valid values
-        indices = gu.stats.sampling.subsample_array(
-            ma_valid,
-            subsample=params_random["subsample"],
-            return_indices=True,
-            random_state=params_random["random_state"],
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            indices = gu.stats.sampling._subsample_numpy(
+                ma_valid,
+                subsample=params_random["subsample"],
+                return_indices=True,
+                random_state=params_random["random_state"],
+            )
 
         # We return a boolean mask of the subsample within valid values
         subsample_mask = np.zeros(np.shape(valid_mask), dtype=bool)
@@ -697,7 +699,7 @@ def _get_subsample_mask_pts_rst(
         valid_mask = valid_mask.astype(np.float32)
         valid_mask[valid_mask == 0] = np.nan
         valid_mask = np.isfinite(
-            _interp_points(array=valid_mask, transform=transform, points=pts, area_or_point=area_or_point)
+            _interp_points_base(array=valid_mask, transform=transform, points=pts, area_or_point=area_or_point)
         )
 
         # If there is a subsample, it needs to be done now on the point dataset to reduce later calculations
@@ -760,7 +762,7 @@ def _subsample_on_mask(
 
         # Interpolate raster array to the subsample point coordinates
         # Convert ref or tba depending on which is the point dataset
-        sub_rst = _interp_points(array=rst_elev, transform=transform, points=pts, area_or_point=area_or_point)
+        sub_rst = _interp_points_base(array=rst_elev, transform=transform, points=pts, area_or_point=area_or_point)
         sub_pts = pts_elev[z_name].values[sub_mask]
 
         # Assign arrays depending on which one is the reference
@@ -775,7 +777,7 @@ def _subsample_on_mask(
         if aux_vars is not None:
             sub_bias_vars = {}
             for var in aux_vars.keys():
-                sub_bias_vars[var] = _interp_points(
+                sub_bias_vars[var] = _interp_points_base(
                     array=aux_vars[var], transform=transform, points=pts, area_or_point=area_or_point
                 )
         else:
@@ -1639,7 +1641,7 @@ def _reproject_horizontal_shift_samecrs(
     else:
         coords_dst = None
 
-    output = _interp_points(
+    output = _interp_points_base(
         array=raster_arr,
         area_or_point="Area",
         transform=src_transform,

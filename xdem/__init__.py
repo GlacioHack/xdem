@@ -18,7 +18,8 @@
 
 from xdem import coreg, dem, examples, fit, spatialstats, terrain, volume  # noqa
 from xdem.ddem import dDEM  # noqa
-from xdem.dem import DEM  # noqa
+from xdem.dem import DEM, xr_accessor  # noqa
+from xdem.dem.xr_accessor import open_dem  # noqa
 from xdem.demcollection import DEMCollection  # noqa
 from xdem.epc import EPC  # noqa
 

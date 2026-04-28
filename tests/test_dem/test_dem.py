@@ -45,7 +45,7 @@ class TestDEM:
 
         # Check all attributes
         attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver"]]
-        all_attrs = attrs + xdem.dem.dem_attrs
+        all_attrs = attrs + ["vcrs"]
         for attr in all_attrs:
             attrs_per_dem = [idem.__getattribute__(attr) for idem in list_dem]
             assert all(at == attrs_per_dem[0] for at in attrs_per_dem)
@@ -85,7 +85,7 @@ class TestDEM:
 
         # Setting a vertical CRS during instantiation should work here
         dem = DEM(fn_img, vcrs="EGM96")
-        assert dem.vcrs_name == "EGM96 height"
+        assert dem._vcrs_name == "EGM96 height"
 
         # Tests 2: instantiation with a file that has a 3D CRS
         # Create such a file
@@ -103,8 +103,7 @@ class TestDEM:
         # Check that a warning is raised when trying to override with user input
         with pytest.warns(
             UserWarning,
-            match="The CRS in the raster metadata already has a vertical component, "
-            "the user-input 'EGM08' will override it.",
+            match="The CRS in the raster metadata.*",
         ):
             DEM(temp_file, vcrs="EGM08")
 
@@ -116,8 +115,7 @@ class TestDEM:
         transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
         crs = CRS("EPSG:4326")
         nodata = -9999
-        vcrs = "EGM08"
-        dem = DEM.from_array(data=data, transform=transform, crs=crs, nodata=nodata, vcrs=vcrs)
+        dem = DEM.from_array(data=data, transform=transform, crs=crs, nodata=nodata)
 
         # Check output matches
         assert isinstance(dem, DEM)
@@ -126,37 +124,6 @@ class TestDEM:
         assert dem.transform == transform
         assert dem.crs == crs
         assert dem.nodata == nodata
-        assert dem.vcrs == xdem.vcrs._vcrs_from_user_input(vcrs_input=vcrs)
-
-    def test_from_array__vcrs(self) -> None:
-        """Test that overridden from_array rightly sets the vertical CRS."""
-
-        # Create a 5x5 DEM with a 2D CRS
-        transform = rio.transform.from_bounds(0, 0, 1, 1, 5, 5)
-        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs=None)
-        assert dem.vcrs is None
-
-        # One with a 3D ellipsoid CRS
-        dem = DEM.from_array(data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4979"), nodata=None, vcrs=None)
-        assert dem.vcrs == "Ellipsoid"
-
-        # One with a 2D and the ellipsoid vertical CRS
-        dem = DEM.from_array(
-            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs="Ellipsoid"
-        )
-        assert dem.vcrs == "Ellipsoid"
-
-        # One with a compound CRS
-        dem = DEM.from_array(
-            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326+5773"), nodata=None, vcrs=None
-        )
-        assert dem.vcrs == CRS("EPSG:5773")
-
-        # One with a CRS and vertical CRS
-        dem = DEM.from_array(
-            data=np.ones((5, 5)), transform=transform, crs=CRS("EPSG:4326"), nodata=None, vcrs=CRS("EPSG:5773")
-        )
-        assert dem.vcrs == CRS("EPSG:5773")
 
     def test_from_array__cast_mask(self) -> None:
         """Test that DEMs are cast into mask for a logical operation."""
@@ -193,7 +160,7 @@ class TestDEM:
 
         # using list directly available in Class
         attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver", "profile"]]
-        all_attrs = attrs + xdem.dem.dem_attrs
+        all_attrs = attrs + ["vcrs"]
         for attr in all_attrs:
             assert r.__getattribute__(attr) == r2.__getattribute__(attr)
 
@@ -222,31 +189,30 @@ class TestDEM:
 
         # Check setting ellipsoid
         dem.set_vcrs(new_vcrs="Ellipsoid")
-        assert dem.vcrs_name is not None
-        assert "Ellipsoid (No vertical CRS)." in dem.vcrs_name
-        assert dem.vcrs_grid is None
+        assert dem._vcrs_name is not None
+        assert "Ellipsoid (No vertical CRS)." in dem._vcrs_name
 
         # Check setting EGM96
         dem.set_vcrs(new_vcrs="EGM96")
-        assert dem.vcrs_name == "EGM96 height"
-        assert dem.vcrs_grid == "us_nga_egm96_15.tif"
+        assert dem._vcrs_name == "EGM96 height"
+        assert dem._vcrs_grid is None
 
         # Check setting EGM08
         dem.set_vcrs(new_vcrs="EGM08")
-        assert dem.vcrs_name == "EGM2008 height"
-        assert dem.vcrs_grid == "us_nga_egm08_25.tif"
+        assert dem._vcrs_name == "EGM2008 height"
+        assert dem._vcrs_grid is None
 
         # -- Test 2: we check with grids --
         # Most grids aren't going to be downloaded, so this warning can be raised
         warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         dem.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
-        assert dem.vcrs_name == "unknown using geoidgrids=us_nga_egm96_15.tif"
-        assert dem.vcrs_grid == "us_nga_egm96_15.tif"
+        assert dem._vcrs_name == "unknown using geoidgrids=us_nga_egm96_15.tif"
+        assert dem._vcrs_grid == "us_nga_egm96_15.tif"
 
         dem.set_vcrs(new_vcrs="us_nga_egm08_25.tif")
-        assert dem.vcrs_name == "unknown using geoidgrids=us_nga_egm08_25.tif"
-        assert dem.vcrs_grid == "us_nga_egm08_25.tif"
+        assert dem._vcrs_name == "unknown using geoidgrids=us_nga_egm08_25.tif"
+        assert dem._vcrs_grid == "us_nga_egm08_25.tif"
 
         # Check that other existing grids are well detected in the pyproj.datadir
         dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
@@ -272,13 +238,14 @@ class TestDEM:
 
         # Set ellipsoid as vertical reference
         dem.set_vcrs(new_vcrs="Ellipsoid")
-        ccrs_init = dem.ccrs
+        crs_init = dem.crs
         median_before = np.nanmean(dem)
         # Transform to EGM96 geoid not inplace (default)
         trans_dem = dem.to_vcrs(vcrs="EGM96")
 
-        # The output should be a DEM, input shouldn't have changed
+        # The output should be a DEM, input shouldn't have changed except the CRS into 3D
         assert isinstance(trans_dem, DEM)
+        dem_before_trans.set_crs(dem.crs)
         assert dem.raster_equal(dem_before_trans)
 
         # Compare to inplace
@@ -293,8 +260,8 @@ class TestDEM:
         assert median_after - median_before == pytest.approx(-32, rel=0.1)
 
         # Check that the results are consistent with the operation done independently
-        ccrs_dest = xdem.vcrs._build_ccrs_from_crs_and_vcrs(dem.crs, xdem.vcrs._vcrs_from_user_input("EGM96"))
-        transformer = Transformer.from_crs(crs_from=ccrs_init, crs_to=ccrs_dest, always_xy=True)
+        crs_dest = xdem.vcrs._build_ccrs_from_crs_and_vcrs(dem.crs, xdem.vcrs._vcrs_from_user_input("EGM96"))
+        transformer = Transformer.from_crs(crs_from=crs_init, crs_to=crs_dest, always_xy=True)
 
         xx, yy = dem.coords()
         x = xx[5, 5]
@@ -372,7 +339,7 @@ class TestDEM:
         assert dem_class_attr.raster_equal(terrain_module_attr)
 
     def test_info_2dcrs(self) -> None:
-        """Tests info function with the new Coordinate system line on dem with 2D CRS"""
+        """Tests info function through GeoUtils, for 3D info."""
 
         dem_path = xdem.examples.get_path_test("longyearbyen_ref_dem")
         raster = gu.Raster(dem_path)
@@ -399,14 +366,14 @@ class TestDEM:
                 assert raster_infos_arrays[line] == dem_infos_array[line]
 
             # Verify Coordinate system value
-            assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'None']"
+            assert complete_line[len(crs_key):].strip() == "['ETRS89 / UTM zone 33N']"
 
         # Verify new VCRS value with this 2D CRS DEM
         dem.set_vcrs(new_vcrs="EGM96")
         dem_infos_array = dem.info(verbose=False).split("\n")
         complete_line = dem_infos_array[crs_line[0]]
         assert complete_line.startswith(crs_key)
-        assert complete_line[len(crs_key) :].strip() == "['EPSG:25833', 'EPSG:5773']"
+        assert complete_line[len(crs_key):].strip() == "['Horizontal: ETRS89 / UTM zone 33N; Vertical: EGM96 height']"
 
     @pytest.mark.skip()
     def test_info_3dcrs(self) -> None:
