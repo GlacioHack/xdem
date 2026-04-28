@@ -56,7 +56,8 @@ plt.show()
 mp_config = MultiprocConfig(chunk_size=500, outfile="aligned_dem.tif", cluster=ClusterGenerator("multi", nb_workers=2))
 # Currently, with mp_config, block_size_fit must be equal to chunk_size
 blockwise = xdem.coreg.BlockwiseCoreg(
-  xdem.coreg.NuthKaab(), mp_config=mp_config, block_size_fit=500, block_size_apply=1000)
+    xdem.coreg.NuthKaab(), mp_config=mp_config, block_size_fit=500, block_size_apply=1000
+)
 
 # %%
 # Coregistration is performed with the ``.fit()`` method.
