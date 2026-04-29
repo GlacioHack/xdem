@@ -48,17 +48,30 @@ import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
 from geoutils import profiler
+from geoutils._misc import import_optional
 from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolation import _interp_points_base
+from geoutils.multiproc.chunked import (
+    ChunkedGeoGrid,
+    GeoGrid,
+    _chunks2d_from_chunksizes_shape,
+)
+from geoutils.multiproc.mparray import MultiprocConfig, _write_multiproc_result
 from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
 from geoutils.raster import Raster, RasterType, raster
-from geoutils.raster.transformation import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.referencing import _cast_pixel_interpretation, _coords
-from geoutils.raster.transformation import _translate
+from geoutils.raster.transformation import (
+    _combined_blocks_shape_transform,
+    _resampling_method_from_str,
+    _translate,
+)
+from rasterio.crs import CRS
+from shapely.geometry import Polygon, box
+from shapely.strtree import STRtree
 
 import xdem
-from xdem._typing import MArrayf, NDArrayb, NDArrayf
+from xdem._typing import DTypeLike, MArrayf, NDArrayb, NDArrayf
 from xdem.fit import (
     polynomial_1d,
     robust_nfreq_sumsin_fit,
@@ -1523,12 +1536,14 @@ def _iterate_affine_regrid_small_rotations(
 
 def _apply_matrix_rst(
     dem: NDArrayf,
-    transform: rio.transform.Affine,
+    src_transform: rio.transform.Affine,
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     force_regrid_method: Literal["iterative", "griddata"] | None = None,
+    resample: bool = True,
+    out_transform: rio.transform.Affine = None,
 ) -> tuple[NDArrayf, rio.transform.Affine]:
     """
     Apply a 3D affine transformation matrix to a 2.5D DEM.
@@ -1562,34 +1577,63 @@ def _apply_matrix_rst(
     shift_only_matrix = np.diag(np.ones(4, float))
     shift_only_matrix[:3, 3] = matrix[:3, 3]
 
-    # 1/ Check if the matrix only contains a Z correction, in that case only shift the DEM values by the vertical shift
-    if np.array_equal(shift_z_only_matrix, matrix) and force_regrid_method is None:
-        return dem + matrix[2, 3], transform
+    if (np.array_equal(shift_z_only_matrix, matrix) and force_regrid_method is None) or (
+        np.array_equal(shift_only_matrix, matrix) and force_regrid_method is None
+    ):
+        # 1/ Check if the matrix only contains a Z correction, in that case only shift the DEM values by the
+        # vertical shift
+        if np.array_equal(shift_z_only_matrix, matrix) and force_regrid_method is None:
+            dem, transform = dem + matrix[2, 3], src_transform
 
-    # 2/ Check if the matrix contains only translations, in that case only shift the DEM only by translation
-    if np.array_equal(shift_only_matrix, matrix) and force_regrid_method is None:
-        new_transform = _translate(transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
-        return dem + matrix[2, 3], new_transform
+        # 2/ Check if the matrix contains only translations, in that case only shift the DEM only by translation
+        elif np.array_equal(shift_only_matrix, matrix) and force_regrid_method is None:
+            new_transform = _translate(src_transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
+            dem, transform = dem + matrix[2, 3], new_transform
+        return dem, transform
 
     # 3/ If matrix contains only small rotations (less than 20 degrees), use the fast iterative reprojection
     rotations = translations_rotations_from_matrix(matrix)[3:]
     if all(np.abs(rot) < 20 for rot in rotations) and force_regrid_method is None or force_regrid_method == "iterative":
         new_dem, transform = _iterate_affine_regrid_small_rotations(
-            dem=dem, transform=transform, matrix=matrix, centroid=centroid, resampling=resampling
+            dem=dem, transform=src_transform, matrix=matrix, centroid=centroid, resampling=resampling
         )
         return new_dem, transform
 
     # 4/ Otherwise, use a delauney triangulation interpolation of the transformed point cloud
     # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
-    dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
+    dem_rst = gu.Raster.from_array(dem, transform=src_transform, crs=None, nodata=99999)
     epc = dem_rst.to_pointcloud(data_column_name="z").ds
     trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
 
     new_dem = _grid_pointcloud(
         trans_epc, grid_coords=dem_rst.coords(grid=False), data_column_name="z", resampling=resampling
     )[0]
+    transform = src_transform
 
     return new_dem, transform
+
+
+def _apply_matrix_rst_wrapper_resample(
+    dem: NDArrayf,
+    src_transform: rio.transform.Affine,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    force_regrid_method: Literal["iterative", "griddata"] | None = None,
+    resample: bool = True,
+    out_transform: rio.transform.Affine = None,
+) -> tuple[NDArrayf, rio.transform.Affine]:
+    dem, transform = _apply_matrix_rst(
+        dem, src_transform, matrix, invert, centroid, resampling, force_regrid_method, resample, out_transform
+    )
+    # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
+    if resample or out_transform:
+        dem = _reproject_horizontal_shift_samecrs(
+            dem, src_transform=transform, dst_transform=out_transform, resampling=resampling
+        )
+        transform = out_transform
+    return dem, transform
 
 
 @overload
@@ -1657,6 +1701,246 @@ def _reproject_horizontal_shift_samecrs(
     return output
 
 
+# Dask as optional dependency
+try:
+    import dask.array as da
+    from dask import delayed
+except ImportError:
+
+    da = None
+
+    def delayed(*args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """
+        Fake delayed decorator if dask is not installed
+        """
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            return func
+
+        return decorator
+
+
+def _wrapper_multiproc_zmin_zmax_per_block(rst: Raster, tile_idx: dict[str, int]) -> tuple[float, float]:
+    """Extract altitude min and max in a block."""
+    rst_block = rst.icrop((tile_idx["xs"], tile_idx["ys"], tile_idx["xe"], tile_idx["ye"]))
+    arr = rst_block.data
+    return arr.min(), arr.max()
+
+
+@delayed
+def _delayed_zmin_zmax(arr_chunk: NDArrayf | NDArrayb) -> NDArrayf:
+    """Count number of valid values per block."""
+    if arr_chunk.dtype == np.bool_:
+        return np.array([np.count_nonzero(arr_chunk)]).reshape((1, 1))
+    return np.array(
+        [arr_chunk.min(), arr_chunk.max()]
+    )  # np.array([np.count_nonzero(np.isfinite(arr_chunk))]).reshape((1, 1))
+
+
+def _build_geotiling_and_meta_apply_matrix(
+    src_count: int,
+    src_shape: tuple[int, int],
+    src_transform: rio.transform.Affine,
+    src_crs: CRS,
+    dst_shape: tuple[int, int],
+    dst_transform: rio.transform.Affine,
+    dst_crs: CRS,
+    src_chunks: tuple[tuple[int, ...], tuple[int, ...]],
+    dst_chunksizes: tuple[int, int],
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    invert: bool = False,
+    dem: NDArrayf = None,
+    mp_config: MultiprocConfig = None,
+) -> tuple[
+    ChunkedGeoGrid,
+    ChunkedGeoGrid,
+    tuple[tuple[int, ...], tuple[int, ...]],
+    list[list[int]],
+    list[dict[str, int]],
+    list[tuple[dict[str, Any], list[dict[str, int]]]],
+    list[GeoGrid],
+]:
+    """
+    Constructs georeferenced tiling information and reprojection metadata for both source and destination grids,
+    used to support block-wise reprojection operations (e.g. with multiprocessing or dask).
+
+    This function performs the following:
+
+    1. Constructs `GeoGrid` and `ChunkedGeoGrid` objects for source and destination rasters,
+       based on provided shape, transform, CRS, and chunk sizes.
+    2. Computes spatial footprints for each chunk in both grids, and determines which
+       source chunks intersect each destination chunk (with a buffer to ensure overlap).
+    3. For each destination chunk, calculates metadata required for reprojection, including:
+       - The combined shape and transform of all intersecting source chunks.
+       - The specific shape and transform of the destination block.
+
+    :return: A tuple containing:
+        - Source `ChunkedGeoGrid`
+        - Destination `ChunkedGeoGrid`
+        - Destination chunks
+        - Mapping from destination to intersecting source block indices
+        - Array of source block locations
+        - List of metadata dictionaries per destination block
+        - List of destination `GeoGrid` blocks
+    """
+    # 1/ Define source and destination chunked georeferenced grid through simple classes storing CRS/transform/shape,
+    # which allow to consistently derive shape/transform for each block and their CRS-projected footprints
+
+    # Define GeoGrids for source/destination array
+    src_geogrid = GeoGrid(transform=src_transform, shape=src_shape, crs=src_crs)
+    dst_geogrid = GeoGrid(transform=dst_transform, shape=dst_shape, crs=dst_crs)
+
+    # Create tilings
+    src_geotiling = ChunkedGeoGrid(grid=src_geogrid, chunks=src_chunks)
+    dst_chunks = _chunks2d_from_chunksizes_shape(chunksizes=dst_chunksizes, shape=dst_shape)
+    dst_geotiling = ChunkedGeoGrid(grid=dst_geogrid, chunks=dst_chunks)
+
+    # 2/ Get bounds of tiles in CRS of destination array, with a buffer of 2 pixels for destination ones to ensure
+    # overlap, then map indexes of source blocks that intersect a given destination block
+
+    src_boxes = [box(*gg.bounds_projected(crs=dst_crs)) for gg in src_geotiling.get_blocks_as_geogrids()]
+
+    import dask
+
+    dst_boxes = []
+    for k, gg in enumerate(src_geotiling.get_blocks_as_geogrids()):
+        poly = box(*gg.bounds_projected(crs=dst_crs)).buffer(10 * max(dst_geogrid.res))
+        xx, yy = poly.exterior.coords.xy
+
+        if mp_config or isinstance(dem, dask.array.core.Array):
+            if mp_config:
+                zz_min, zz_max = mp_config.cluster.launch_task(
+                    fun=_wrapper_multiproc_zmin_zmax_per_block,
+                    args=[dem, src_geotiling.get_block_locations()[k]],
+                    kwargs={},
+                )
+
+            elif isinstance(dem, dask.array.core.Array):
+                blocks = dem.to_delayed().ravel()
+                delayed_altitude_min_max = [
+                    da.from_delayed(_delayed_zmin_zmax(blocks[k]), shape=(1, 1), dtype=np.dtype("int32"))
+                ]
+                zz_min, zz_max = dask.compute(*delayed_altitude_min_max)[0]
+
+            z_min, z_max = np.ones(len(xx)) * zz_min, np.ones(len(xx)) * zz_max
+            dem_z_min = _apply_matrix_pts_arr(x=xx, y=yy, z=z_min, invert=not invert, matrix=matrix, centroid=centroid)
+            dem_z_max = _apply_matrix_pts_arr(x=xx, y=yy, z=z_max, invert=not invert, matrix=matrix, centroid=centroid)
+            poly_zz_min = Polygon(zip(dem_z_min[0], dem_z_min[1]))
+            poly_zz_max = Polygon(zip(dem_z_max[0], dem_z_max[1]))
+            poly_zz = poly_zz_min.union(poly_zz_max)
+        else:
+            dem_zz = _apply_matrix_pts_arr(
+                x=xx, y=yy, z=np.zeros(len(xx)), invert=not invert, matrix=matrix, centroid=centroid
+            )
+            poly_zz = Polygon(zip(dem_zz[0], dem_zz[1]))
+
+        dst_boxes.append(poly_zz)
+
+    # Faster to use spatial index over source boxes
+    tree = STRtree(src_boxes)
+
+    # For Shapely 2.0: STRtree.query(..., predicate="intersects") is fastest, for earlier versions we filter manually
+
+    # Quick feature check
+    try:
+        _ = tree.query(dst_boxes[0], predicate="intersects") if dst_boxes else []
+        has_predicate = True
+    except TypeError:
+        has_predicate = False
+
+    # Build mapping: for each destination box, list intersecting source indices
+    dest2source: list[list[int]] = []
+    if has_predicate:
+        # Shapely 2: Query returns indices directly (int array)
+        for dst in dst_boxes:
+            idx = tree.query(dst, predicate="intersects")
+            dest2source.append([int(i) for i in np.asarray(idx).ravel()])
+    else:
+        # Shapely 1.8: Query returns geometries, so we convert to indices via id() map + filter intersects
+        id_to_idx = {id(g): i for i, g in enumerate(src_boxes)}
+        for dst in dst_boxes:
+            cand_geoms = tree.query(dst)
+            matches = [id_to_idx[id(g)] for g in cand_geoms if dst.intersects(g)]
+            dest2source.append(matches)
+
+    # 3/ To reconstruct a square source array during chunked reprojection, we need to derive the combined shape and
+    # transform of each tuples of source blocks
+    src_block_ids = src_geotiling.get_block_locations()
+    meta_params = [
+        (
+            _combined_blocks_shape_transform(sub_block_ids=[src_block_ids[i] for i in sbid], src_geogrid=src_geogrid)
+            if len(sbid) > 0
+            else ({}, [])
+        )
+        for sbid in dest2source
+    ]
+
+    # Append dst shape/transform to metadata
+    dst_block_geogrids = dst_geotiling.get_blocks_as_geogrids()
+    for i, (c, _) in enumerate(meta_params):
+        c.update(
+            {
+                "dst_shape": dst_block_geogrids[i].shape,
+                "dst_transform": tuple(dst_block_geogrids[i].transform),
+                "dst_count": src_count,
+            }
+        )
+
+    return src_geotiling, dst_geotiling, dst_chunks, dest2source, src_block_ids, meta_params, dst_block_geogrids
+
+
+def _check_nodata_dtype(
+    source_raster: RasterType,
+    nodata: int | float | None,
+    dtype: DTypeLike | None,
+    force_source_nodata: int | float | None,
+) -> tuple[DTypeLike, int | float | None, int | float | None]:
+    """Check user inputs of reproject regarding nodata and data type."""
+
+    # Set output dtype
+    if dtype is None:
+        # Warning: this will not work for multiple bands with different dtypes
+        dtype = source_raster.dtype
+
+    # --- Set source nodata if provided -- #
+    if force_source_nodata is None:
+        src_nodata = source_raster.nodata
+    else:
+        src_nodata = force_source_nodata
+        # Raise warning if a different nodata value exists for this raster than the forced one (not None)
+        if source_raster.nodata is not None:
+            warnings.warn(
+                "Forcing source nodata value of {} despite an existing nodata value of {} in the raster. "
+                "To silence this warning, use self.set_nodata() before reprojection instead of forcing.".format(
+                    force_source_nodata, source_raster.nodata
+                )
+            )
+
+    # --- Set destination nodata if provided -- #
+    # This is needed in areas not covered by the input data.
+    # If None, will use GeoUtils' default, as rasterio's default is unknown, hence cannot be handled properly.
+    if nodata is None:
+        nodata = source_raster.nodata
+        if nodata is None:
+            nodata = source_raster._default_nodata(dtype)
+            # If nodata is already being used, raise a warning.
+            if not source_raster.is_loaded:
+                warnings.warn(
+                    f"For reprojection, nodata must be set. Setting default nodata to {nodata}. You may "
+                    f"set a different nodata with `nodata`."
+                )
+
+            elif nodata in source_raster.data:
+                warnings.warn(
+                    f"For reprojection, nodata must be set. Default chosen value {nodata} exists in "
+                    f"self.data. This may have unexpected consequences. Consider setting a different nodata with "
+                    f"self.set_nodata()."
+                )
+
+    return dtype, src_nodata, nodata
+
+
 @overload
 def apply_matrix(
     elev: NDArrayf,
@@ -1665,8 +1949,10 @@ def apply_matrix(
     centroid: tuple[float, float, float] | None = None,
     resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
-    transform: rio.transform.Affine = None,
+    src_transform: rio.transform.Affine = None,
+    dst_transform: rio.transform.Affine = None,
     z_name: str = "z",
+    multiproc_config: gu.raster.MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> tuple[NDArrayf, affine.Affine]: ...
 
@@ -1679,8 +1965,10 @@ def apply_matrix(
     centroid: tuple[float, float, float] | None = None,
     resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
-    transform: rio.transform.Affine = None,
+    src_transform: rio.transform.Affine = None,
+    dst_transform: rio.transform.Affine = None,
     z_name: str = "z",
+    multiproc_config: gu.raster.MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> gu.Raster | gpd.GeoDataFrame: ...
 
@@ -1692,8 +1980,10 @@ def apply_matrix(
     centroid: tuple[float, float, float] | None = None,
     resample: bool = True,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
-    transform: rio.transform.Affine = None,
+    src_transform: rio.transform.Affine = None,
+    dst_transform: rio.transform.Affine = None,
     z_name: str = "z",
+    multiproc_config: gu.raster.MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> tuple[NDArrayf, affine.Affine] | gu.Raster | gpd.GeoDataFrame:
     """
@@ -1725,12 +2015,24 @@ def apply_matrix(
         transform. Otherwise, only the transform will be updated and no resampling is done.
     :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more
         information, see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
-    :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
+    :param src_transform: Geotransform of the DEM, only for DEM passed as 2D array.
+    :param dst_transform:
     :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+    :param multiproc_config:
     :param kwargs: Keywords passed to _apply_matrix_rst for testing.
 
     :return: Affine transformed elevation point cloud or DEM.
     """
+    mp_backend = multiproc_config is not None
+    # The check below can only run on Xarray
+    dask_backend = (
+        da is not None and isinstance(elev, gu.raster.xr_accessor.RasterAccessor) and elev._chunks is not None
+    )
+    if multiproc_config and dask_backend:
+        raise ValueError(
+            "Cannot use Multiprocessing and Dask simultaneously. To use Dask, remove mp_config parameter "
+            "from reproject(). To use Multiprocessing, open the file without chunks."
+        )
 
     # Apply matrix to elevation point cloud
     if isinstance(elev, gpd.GeoDataFrame):
@@ -1738,34 +2040,345 @@ def apply_matrix(
     # Or apply matrix to raster (often requires re-gridding)
     else:
 
-        # First, we apply the affine matrix for the array/transform
         if isinstance(elev, gu.Raster):
-            transform = elev.transform
+            src_transform = elev.transform
             dem = elev.data.filled(np.nan)
+            nodata = elev.nodata
+        elif isinstance(elev, gu.raster.xr_accessor.RasterAccessor):
+            src_transform = elev.transform
+            dem = elev.data
         else:
             dem = elev
-        applied_dem, out_transform = _apply_matrix_rst(
-            dem=dem,
-            transform=transform,
-            matrix=matrix,
-            invert=invert,
-            centroid=centroid,
-            resampling=resampling,
-            **kwargs,
+            dem[dem == -9999.0] = np.nan
+
+        # If using Multiprocessing backend, process and return None (files written on disk)
+        if mp_backend or dask_backend:
+
+            # 2/ Check user input for nodata and dtype
+
+            dtype, src_nodata, nodata = _check_nodata_dtype(
+                source_raster=elev,
+                nodata=elev.nodata,
+                dtype=elev.dtype,
+                force_source_nodata=None,
+            )
+
+            # 3/ Store georeferencing parameters for apply_matrix
+            apply_matrix_kwargs = {
+                "matrix": matrix,
+                "invert": invert,
+                "centroid": centroid,
+                "resample": resample,
+                "resampling": resampling,
+                "src_transform": src_transform,
+                "src_nodata": src_nodata,
+                "src_crs": elev.crs,
+                "dst_transform": src_transform,
+            }
+
+            if resample:
+                apply_matrix_kwargs["dst_transform"] = src_transform
+            else:
+                shift_only_matrix = np.diag(np.ones(4, float))
+                shift_only_matrix[:3, 3] = matrix[:3, 3]
+
+                if np.array_equal(shift_only_matrix, matrix):
+                    if invert:
+                        matrix_ = invert_matrix(matrix)
+                    else:
+                        matrix_ = matrix
+                    apply_matrix_kwargs["dst_transform"] = _translate(
+                        src_transform, xoff=matrix_[0, 3], yoff=matrix_[1, 3]
+                    )
+
+                else:
+                    apply_matrix_kwargs["dst_transform"] = src_transform
+
+            if multiproc_config:
+                _multiproc_apply_matrix(elev, mp_config=multiproc_config, **apply_matrix_kwargs)
+                new_raster = gu.Raster(multiproc_config.outfile)
+                new_raster.set_mask(new_raster == src_nodata)
+                return new_raster
+
+            elif da is not None and isinstance(elev.data, da.Array):
+                dst_arr = _dask_apply_matrix(darr=elev.data, **apply_matrix_kwargs)
+
+                return gu.raster.xr_accessor.RasterAccessor.from_array(
+                    data=dst_arr,
+                    transform=apply_matrix_kwargs["dst_transform"],
+                    crs=elev.crs,
+                    nodata=src_nodata,
+                    area_or_point=elev.area_or_point,
+                    tags=elev.tags,
+                )
+        else:
+
+            # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
+            if dst_transform is None:
+                if resample:
+                    dst_transform = src_transform
+
+            applied_dem, out_transform = _apply_matrix_rst_wrapper_resample(
+                dem=dem,
+                src_transform=src_transform,
+                matrix=matrix,
+                invert=invert,
+                centroid=centroid,
+                resampling=resampling,
+                resample=resample,
+                out_transform=dst_transform,
+                **kwargs,
+            )
+
+            # We return a raster if input was a raster
+            if isinstance(elev, gu.Raster):
+                applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
+                return applied_dem
+
+            return applied_dem, out_transform
+
+
+def _apply_matrix_per_block(
+    *src_arrs: tuple[NDArrayf],
+    block_ids: list[dict[str, int]],
+    combined_meta: dict[str, Any],
+    src_nodata: int | float | None,
+    **kwargs: Any,
+) -> NDArrayf:
+    """
+    Reprojection per destination block (also rebuilds a square array combined from intersecting source blocks).
+    """
+
+    is_multiband = combined_meta["dst_count"] >= 2
+
+    # If no source chunk intersects, we return a chunk of destination nodata values
+    if len(src_arrs) == 0:
+        # We can use float32 to return NaN, will be cast to other floating type later if that's not source array dtype
+        dst_shape = (
+            (combined_meta["dst_count"], *combined_meta["dst_shape"]) if is_multiband else combined_meta["dst_shape"]
+        )
+        dst_arr = np.zeros(dst_shape, dtype=np.dtype("float32"))
+        dst_arr[:] = np.nan
+        return dst_arr
+
+    # First, we build an empty array with the combined shape, only with nodata values
+    shape = (src_arrs[0].shape[0], *combined_meta["src_shape"]) if is_multiband else combined_meta["src_shape"]
+
+    comb_src_arr = np.full(shape, src_nodata, dtype=src_arrs[0].dtype)
+    if np.ma.isMaskedArray(src_arrs[0]):
+        comb_src_arr = np.ma.masked_array(data=comb_src_arr)
+
+    # Then fill it with the source chunks values
+    for arr, bid in zip(src_arrs, block_ids):
+        comb_src_arr[..., bid["rys"] : bid["rye"], bid["rxs"] : bid["rxe"]] = arr
+
+    # Now, we can simply call Rasterio!
+    # We build the combined transform from tuple
+    src_transform = rio.transform.Affine(*combined_meta["src_transform"])
+    dst_transform = rio.transform.Affine(*combined_meta["dst_transform"])
+    kwargs["src_transform"] = src_transform
+    kwargs["dst_transform"] = dst_transform
+
+    # Apply matrix wrapper
+    dst_arr, out_transform = apply_matrix(elev=comb_src_arr, **kwargs)  # type: ignore
+    dst_arr = dst_arr[: combined_meta["dst_shape"][0], : combined_meta["dst_shape"][1]]
+    return dst_arr
+
+
+def _wrapper_multiproc_apply_matrix_per_block(
+    rst: Raster,
+    src_block_ids: list[dict[str, int]],
+    dst_block_id: dict[str, int],
+    idx_d2s: list[int],
+    block_ids: list[dict[str, int]],
+    combined_meta: dict[str, Any],
+    **kwargs: Any,
+) -> tuple[NDArrayf, tuple[int, int, int, int]]:
+    """Wrapper to use Delayed apply matrix per destination block
+    (also rebuilds an array combined from intersecting source blocks)."""
+
+    # Get source array block for each destination block
+    s = src_block_ids
+    src_arrs = (rst.icrop(bbox=(s[idx]["xs"], s[idx]["ys"], s[idx]["xe"], s[idx]["ye"])).data for idx in idx_d2s)
+
+    # Call apply matrix per block
+    dst_block_arr = _apply_matrix_per_block(*src_arrs, block_ids=block_ids, combined_meta=combined_meta, **kwargs)
+    return dst_block_arr, (dst_block_id["ys"], dst_block_id["ye"], dst_block_id["xs"], dst_block_id["xe"])
+
+
+def _multiproc_apply_matrix(
+    rst: RasterType,
+    mp_config: MultiprocConfig,
+    src_crs: CRS,
+    **kwargs: Any,
+) -> None:
+
+    # Prepare geotiling and reprojection metadata for source and destination grids
+    src_chunks = _chunks2d_from_chunksizes_shape(
+        chunksizes=(mp_config.chunk_size, mp_config.chunk_size), shape=rst.shape
+    )
+
+    src_geotiling, dst_geotiling, dst_chunks, dest2source, src_block_ids, meta_params, dst_block_geogrids = (
+        _build_geotiling_and_meta_apply_matrix(
+            src_count=rst.count,
+            src_shape=rst.shape,
+            src_transform=kwargs["src_transform"],
+            src_crs=src_crs,
+            dst_shape=rst.shape,
+            dst_transform=kwargs["dst_transform"],
+            dst_crs=src_crs,
+            src_chunks=src_chunks,
+            dst_chunksizes=(mp_config.chunk_size, mp_config.chunk_size),
+            matrix=kwargs["matrix"],
+            centroid=kwargs["centroid"],
+            dem=rst,
+            mp_config=mp_config,
+        )
+    )
+
+    # Get location of destination blocks to write file
+    dst_block_ids = np.array(dst_geotiling.get_block_locations())
+
+    # Create tasks for multiprocessing
+    tasks = []
+
+    for i in range(len(dest2source)):
+        tasks.append(
+            mp_config.cluster.launch_task(
+                fun=_wrapper_multiproc_apply_matrix_per_block,
+                args=[
+                    rst,
+                    src_block_ids,
+                    dst_block_ids[i],
+                    dest2source[i],
+                    meta_params[i][1],
+                    meta_params[i][0],
+                ],
+                kwargs=kwargs,
+            )
         )
 
-        # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
-        if resample:
-            applied_dem = _reproject_horizontal_shift_samecrs(
-                applied_dem, src_transform=out_transform, dst_transform=transform, resampling=resampling
-            )
-            out_transform = transform
+    # Retrieve metadata for saving file
+    file_metadata = {
+        "width": rst.shape[1],
+        "height": rst.shape[0],
+        "count": rst.count,
+        "crs": rst.crs,
+        "transform": kwargs["dst_transform"],
+        "dtype": rst.dtype,
+        "nodata": rst.nodata,
+    }
 
-        # We return a raster if input was a raster
-        if isinstance(elev, gu.Raster):
-            applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
-            return applied_dem
-        return applied_dem, out_transform
+    # Create a new raster file to save the processed results
+    _write_multiproc_result(tasks, mp_config, file_metadata)
+
+
+@delayed
+def _delayed_apply_matrix_per_block(
+    *src_arrs: tuple[NDArrayf], block_ids: list[dict[str, int]], combined_meta: dict[str, Any], **kwargs: Any
+) -> NDArrayf:
+    """
+    Delayed apply matrix per destination block (also rebuilds a square array combined from intersecting source blocks).
+    """
+    return _apply_matrix_per_block(*src_arrs, block_ids=block_ids, combined_meta=combined_meta, **kwargs)
+
+
+def _dask_apply_matrix(
+    darr: da.Array,
+    src_crs: CRS,
+    **kwargs: Any,
+) -> da.Array:
+
+    # To raise appropriate error on missing optional dependency
+    import_optional("dask")
+
+    # Define the chunking
+    # For source, we can use the .chunks attribute
+    src_chunks = darr.chunks[-2:]  # In case input is multi-band
+
+    dst_chunksizes = (darr.chunksize[-2], darr.chunksize[-1])  # In case input is multi-band
+
+    src_geotiling, dst_geotiling, dst_chunks, dest2source, src_block_ids, meta_params, dst_block_geogrids = (
+        _build_geotiling_and_meta_apply_matrix(
+            src_count=darr.shape[0] if darr.ndim == 3 else 1,
+            src_shape=darr.shape[-2:],  # In case input is multi-band
+            src_transform=kwargs["src_transform"],
+            src_crs=src_crs,
+            dst_shape=darr.shape[-2:],  # In case input is multi-band
+            dst_transform=kwargs["dst_transform"],
+            dst_crs=src_crs,
+            src_chunks=src_chunks,
+            dst_chunksizes=dst_chunksizes,
+            matrix=kwargs["matrix"],
+            centroid=kwargs["centroid"],
+            invert=kwargs["invert"],
+            dem=darr,
+        )
+    )
+
+    # Create a delayed object for each block, and flatten the blocks into a 1d shape
+    blocks_delayed = darr.to_delayed()
+
+    # Spatial block grid shape (from spatial chunks)
+    is_multiband = darr.ndim == 3
+    ny_src = len(src_chunks[0])
+    nx_src = len(src_chunks[1])
+    src_yi, src_xi = np.unravel_index(np.arange(ny_src * nx_src), shape=(ny_src, nx_src))
+    # Normalize band groups:
+    # - 2D: one pseudo group (bb=None, nb=0)
+    # - 3D: real band blocks with their sizes
+    band_groups: list[tuple[int | None, int]] = (
+        [(None, 0)] if not is_multiband else [(bb, int(sz)) for bb, sz in enumerate(darr.chunks[0])]
+    )
+    # Output data type
+    out_dtype = np.dtype(kwargs.get("dtype", darr.dtype))
+
+    # Helper function to support both 2D and 3D cases
+    def _dst_block_as_da(i: int) -> da.Array:
+        """Build destination block as a Dask array (2D or 3D)."""
+        shp2 = dst_block_geogrids[i].shape  # (ydst, xdst)
+
+        # Spatial source coords for this destination tile
+        coords = [(src_yi[j], src_xi[j]) for j in dest2source[i]]
+
+        def _src_chunks_for_group(bb: int | None) -> list[Any]:
+            # Accounting for the fact that blocks_delayed is either (ny,nx) or (nb,ny,nx)
+            if bb is None:
+                return [blocks_delayed[y, x] for (y, x) in coords]
+            return [blocks_delayed[bb, y, x] for (y, x) in coords]
+
+        def _one_group(bb: int | None, nb: int) -> da.Array:
+            r = _delayed_apply_matrix_per_block(
+                *_src_chunks_for_group(bb),
+                block_ids=meta_params[i][1],
+                combined_meta=meta_params[i][0],
+                **kwargs,
+            )
+            shape = shp2 if bb is None else (nb, *shp2)
+
+            # We define the expected output shape and dtype to simplify things for Dask
+            return da.from_delayed(r, shape=shape, dtype=out_dtype)
+
+        # Build per-group outputs then concatenate along band axis if needed
+        groups = [_one_group(bb, nb) for (bb, nb) in band_groups]
+        return groups[0] if len(groups) == 1 else da.concatenate(groups, axis=0)
+
+    # Run the delayed apply matrix, looping for each destination block-band (2D block and 1D band-chunk)
+    list_reproj_da = [_dst_block_as_da(i) for i in range(len(dest2source))]
+
+    # Array comes out as flat blocks x chunksize0 (varying) x chunksize1 (varying), so we can't reshape directly
+    # We need to unravel the flattened blocks indices to align X/Y, then concatenate all columns, then rows
+    ny_dst, nx_dst = len(dst_chunks[0]), len(dst_chunks[1])
+    iy, ix = np.unravel_index(np.arange(len(dest2source)), shape=(ny_dst, nx_dst))
+    ax_x = 1 if darr.ndim == 2 else 2  # Adjust axes depending on if raster is single-band or multi-band
+    ax_y = 0 if darr.ndim == 2 else 1
+    rows = [
+        da.concatenate([list_reproj_da[k] for k in range(len(list_reproj_da)) if iy[k] == r], axis=ax_x)
+        for r in range(ny_dst)
+    ]
+    concat_all = da.concatenate(rows, axis=ax_y)
+
+    return concat_all
 
 
 ###########################################
@@ -2717,7 +3330,7 @@ class Coreg:
                     transform = kwargs.pop("transform")
                     applied_elev, out_transform = _apply_matrix_rst(
                         dem=kwargs.pop("elev"),
-                        transform=transform,
+                        src_transform=transform,
                         matrix=self.to_matrix(),
                         centroid=self._meta["outputs"]["affine"].get("centroid"),
                     )

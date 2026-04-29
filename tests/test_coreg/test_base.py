@@ -14,14 +14,20 @@ import numpy as np
 import pandas as pd
 import pytest
 import rasterio as rio
-from geoutils import Raster, Vector
+from geoutils import Raster, Vector, open_raster
 from geoutils.raster import RasterType
 from scipy.ndimage import binary_dilation
 
 import xdem
 from xdem import coreg, examples
 from xdem._typing import NDArrayf
-from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
+from xdem.coreg.base import (
+    Coreg,
+    _delayed_zmin_zmax,
+    _wrapper_multiproc_zmin_zmax_per_block,
+    apply_matrix,
+    dict_key_to_str,
+)
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -351,8 +357,11 @@ class TestCoregClass:
                 coreg_method.apply(tba_dem, resample=False)
             return
         else:
+            print(coreg_method, tba_dem)
             dem_coreg_resample = coreg_method.apply(tba_dem)
             dem_coreg_noresample = coreg_method.apply(tba_dem, resample=False)
+
+        print("hici", is_implemented, comp)
 
         if comp == "strict":
             # Both methods should yield the exact same output
@@ -393,9 +402,7 @@ class TestCoregClass:
         aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
 
         # Perform fit and apply
-        aligned_and = coreg_fit_and_apply.fit_and_apply(
-            **self.fit_params, fit_kwargs=fit_kwargs
-        )
+        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, fit_kwargs=fit_kwargs)
 
         # Check outputs are the same: aligned raster, and metadata keys and values
 
@@ -1070,3 +1077,235 @@ class TestAffineManipulation:
         diff_it_gd = z_points_gd[valids] - z_points_it[valids]
         assert np.percentile(np.abs(diff_it_gd), 99) < 1.2  # 99% of values are within a 1.20 meter (instead of 90%)
         assert np.percentile(np.abs(diff_it_gd), 50) < 0.03  # 10 times more precise than above
+
+    @pytest.fixture(scope="module")
+    def lazy_test_files_tiny(self) -> list[str]:
+        """
+        Same as lazy_test_files, for tests that need really tiny files (like polygonize).
+        """
+        import os
+
+        list_name = ["everest_landsat_b4", "everest_landsat_rgb", "exploradores_aster_dem"]
+        list_fn_out = []
+        for name in list_name:
+            # Get filepath
+            fn = gu.examples.get_path_test(name)
+
+            # Else open, convert
+            rast = Raster(fn)
+            rast = rast.icrop((0, 0, 12, 10))  # 26, 24))
+            rast = rast.astype(dtype=np.float32, convert_nodata=False)
+            rast.set_nodata(-9999, update_array=False, update_mask=False)
+
+            # Save to file in temporary directory
+            print("ap_inputs", os.path.splitext(os.path.basename(fn))[0] + "_tiny_float32.tif")
+            fn_out = os.path.join("ap_inputs", os.path.splitext(os.path.basename(fn))[0] + "_tiny_float32.tif")
+            rast.to_file(fn_out)
+
+            list_fn_out.append(fn_out)
+
+        return list_fn_out
+
+    list_matrices = [
+        (0, matrix_identity),
+        (1, matrix_vertical),
+        (2, matrix_translations),
+        (3, matrix_rotations),
+        (4, matrix_all),
+    ]
+
+    @pytest.mark.parametrize("path_index", [0])  # todo ?
+    @pytest.mark.parametrize("matrix", list_matrices)
+    @pytest.mark.parametrize("chunk_size", [5, 8, 12])
+    @pytest.mark.parametrize("invert", [False, True])
+    @pytest.mark.parametrize("resampling", [None, "nearest", "linear", "cubic", "quintic"])
+    def test_apply_matrix_dask_multi(
+        self,
+        matrix,
+        path_index,
+        chunk_size: int,
+        invert: bool,
+        resampling: str,
+        lazy_test_files_tiny: list[str],
+    ) -> None:
+        import dask.array as da
+
+        # Base raster input (in-memory)
+        """dem_arr = np.linspace(0, 99, 100).reshape(10, 10)
+        transform = rio.transform.from_origin(0, 5, 1, 1)
+        raster_base = gu.Raster.from_array(dem_arr, transform=transform, crs=4326, nodata=200)
+        assert raster_base.is_loaded
+        raster_base.to_file(tmp_path / "raster_base.tif")"""
+        diff = 10e-5
+        # 1/ Prepare backend inputs
+        # Get filepath of on-disk (for laziness) test file
+        path_raster = lazy_test_files_tiny[path_index]
+        print("path_raster", path_raster)
+
+        # Base raster input (in-memory)
+        raster_base = gu.Raster(path_raster)
+        raster_base.load()
+        assert raster_base.is_loaded
+
+        # Base data array input (in-memory)
+        ds_base = open_raster(path_raster)
+        ds_base.load()
+        assert ds_base._in_memory
+
+        # Multiprocessing input (lazy)
+        raster_mp = gu.Raster(path_raster)
+        assert not raster_mp.is_loaded
+
+        # Dask input (lazy)
+        ds_dask = open_raster(path_raster, chunks={"x": chunk_size, "y": chunk_size})
+        assert not ds_dask._in_memory
+        assert isinstance(ds_dask.data, da.Array)
+        assert ds_dask.data.chunks is not None
+
+        # Get centroid and resample info
+        epc = raster_base.to_pointcloud(data_column_name="z").ds
+        centroid = (np.mean(epc.geometry.x.values), np.mean(epc.geometry.y.values), 0.0)
+        resample = resampling is not None
+        if resample is False:
+            resampling = "nearest"
+
+        # Run apply_matrix for each backend
+        print("# run base")
+        print(matrix)
+        base_am = apply_matrix(
+            raster_base, matrix[1], invert=invert, centroid=centroid, resample=resample, resampling=resampling
+        )
+        # Valid classique apply_matrix
+        if resample is False:
+            path = str(matrix[0]) + "_" + str(invert) + "_" + str(resample) + "_None.tif"
+        else:
+            path = str(matrix[0]) + "_" + str(invert) + "_" + resampling + ".tif"
+
+        path = "/home/mbouchet/Documents/xDem_project/new_xdem/xdem/tmp/" + path
+        dem_ref_xdem = gu.Raster(path)
+        dem_ref_xdem.load()
+        assert isinstance(base_am, gu.Raster)
+        assert base_am.nodata == dem_ref_xdem.nodata
+        assert base_am.crs == dem_ref_xdem.crs
+        assert base_am.transform == dem_ref_xdem.transform
+        assert np.all(base_am.get_mask() == dem_ref_xdem.get_mask())
+        assert np.all(np.array(base_am.data - dem_ref_xdem.data)[base_am.get_mask() is False] < diff)
+
+        print("# run multi")
+
+        # Multiprocessing config
+        from geoutils.multiproc.mparray import MultiprocConfig
+
+        multiproc_config = MultiprocConfig(chunk_size=chunk_size, outfile="ap_outputs/multi.tif")
+
+        mp_am = apply_matrix(
+            raster_base,
+            matrix[1],
+            invert=invert,
+            centroid=centroid,
+            resample=resample,
+            resampling=resampling,
+            multiproc_config=multiproc_config,
+        )
+
+        # 4/ Laziness checks
+        assert not ds_dask._in_memory
+        assert isinstance(ds_dask.data, da.Array)
+        assert not raster_mp.is_loaded
+
+        # 5/ Output checks: all backends must match base
+
+        # Multi
+        assert isinstance(mp_am, gu.Raster)
+        assert mp_am.nodata == base_am.nodata
+        # assert mp_am.dtype == type(matrix[0,0])
+        assert mp_am.crs == base_am.crs
+        assert mp_am.transform == base_am.transform
+        assert np.all(mp_am.get_mask() == base_am.get_mask())
+
+        assert np.all(np.array(base_am.data - mp_am.data)[base_am.get_mask() is False] < diff)
+
+        # Dask
+        print("# run dask")
+
+        dask_am = apply_matrix(
+            ds_dask.rst, matrix[1], invert=invert, centroid=centroid, resample=resample, resampling=resampling
+        )
+
+        assert not dask_am._in_memory
+        dask_am = dask_am.compute()
+        assert dask_am._in_memory
+        assert dask_am.rst.nodata == base_am.nodata
+        assert dask_am.rst.dtype == base_am.dtype
+        assert dask_am.rst.crs == base_am.crs
+        assert dask_am.rst.transform == base_am.transform
+
+        assert np.all(np.isnan(dask_am.rst.data[base_am.get_mask()]))
+        assert np.all(np.array(base_am.data - dask_am.rst.data)[base_am.get_mask() is False] < diff)
+
+    @pytest.mark.parametrize("path_index", [0])  # todo ?
+    @pytest.mark.parametrize("chunk_size", [5, 8, 12])
+    def test_min_max_alt(self, lazy_test_files_tiny, path_index, chunk_size):
+
+        diff = 10e-5
+        # 1/ Prepare backend inputs
+        # Get filepath of on-disk (for laziness) test file
+        path_raster = lazy_test_files_tiny[path_index]
+        print("path_raster", path_raster)
+
+        # Base raster input (in-memory)
+        raster_base = gu.Raster(path_raster)
+        raster_base.load()
+        assert raster_base.is_loaded
+
+        # Base data array input (in-memory)
+        ds_base = open_raster(path_raster)
+        ds_base.load()
+        assert ds_base._in_memory
+
+        # Multiprocessing input (lazy)
+        raster_mp = gu.Raster(path_raster)
+        assert not raster_mp.is_loaded
+
+        # Dask input (lazy)
+        ds_dask = open_raster(path_raster, chunks={"x": chunk_size, "y": chunk_size})
+
+        # Multiprocessing config
+        from geoutils.multiproc.mparray import MultiprocConfig
+
+        multiproc_config = MultiprocConfig(chunk_size=chunk_size, outfile="ap_outputs/multi.tif")
+
+        from geoutils.multiproc.chunked import (
+            ChunkedGeoGrid,
+            GeoGrid,
+            _chunks2d_from_chunksizes_shape,
+        )
+
+        src_geogrid = GeoGrid(transform=raster_mp.transform, shape=raster_mp.shape, crs=raster_mp.crs)
+        src_chunks = _chunks2d_from_chunksizes_shape(
+            chunksizes=(multiproc_config.chunk_size, multiproc_config.chunk_size), shape=raster_mp.shape
+        )
+        # Create tilings
+        src_geotiling = ChunkedGeoGrid(grid=src_geogrid, chunks=src_chunks)
+
+        zz = []
+        for k, _ in enumerate(src_geotiling.get_blocks_as_geogrids()):
+            s = src_geotiling.get_block_locations()[k]
+            block_arrs = raster_base.icrop(bbox=(s["xs"], s["ys"], s["xe"], s["ye"])).data
+            zz.append([block_arrs.min(), block_arrs.max()])
+
+        for k, _ in enumerate(src_geotiling.get_blocks_as_geogrids()):
+            print(src_geotiling.get_block_locations()[k])
+            zz_min, zz_max = multiproc_config.cluster.launch_task(
+                fun=_wrapper_multiproc_zmin_zmax_per_block,
+                args=[raster_mp, src_geotiling.get_block_locations()[k]],
+                kwargs={},
+            )  # zz = np.ones(len(xx)) * (zz_max - zz_min)
+            assert [zz_min, zz_max] == zz[k]
+
+            """blocks = ds_base.rst.data.to_delayed().ravel()
+            delayed_altitude_min_max = [
+                dask.from_delayed(_delayed_zmin_zmax(blocks[k]), shape=(1, 1), dtype=np.dtype("int32"))
+            ]
+            zz_min, zz_max = dask.compute(*delayed_altitude_min_max)[0]
+            assert[zz_min, zz_max] == zz[k]"""
