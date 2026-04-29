@@ -29,6 +29,8 @@ import os
 from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError, URLError
 
+from pyproj import CRS
+
 from xdem._misc import import_optional
 from xdem.examples import _FILEPATHS_ALL
 from xdem.vcrs import _vcrs_from_user_input
@@ -65,7 +67,7 @@ class CustomValidator(Validator):  # type: ignore
                 self._error(field, f"Path does not exist: {value}")
         return True
 
-    def _validate_crs(self, crs: bool, field: str, value: str | int) -> bool:
+    def _validate_vcrs(self, vcrs: bool, field: str, value: str | int) -> bool:
         """
         {'type': 'boolean'}
         """
@@ -80,13 +82,28 @@ class CustomValidator(Validator):  # type: ignore
                 return False
         return True
 
+    def _validate_crs(self, crs: bool, field: str, value: str | int) -> bool:
+        """
+        {'type': 'boolean'}
+        """
+        if value is not None and not isinstance(value, bool):
+            try:
+
+                CRS.from_user_input(value)
+                return True
+            except (ValueError, TypeError, ConnectionResetError, HTTPError, URLError) as e:
+                logging.error(
+                    f"'{field}' field is not valid. {e} See: https://xdem.readthedocs.io/en/stable/vertical_ref.html"
+                )
+                return False
+        return True
+
 
 INPUTS_DEM = {
     "path_to_elev": {"type": "string", "required": True, "path_exists": True},
     "force_source_nodata": {"type": ["integer", "float"], "required": False, "nullable": True},
     "path_to_mask": {"type": "string", "required": False, "path_exists": True, "nullable": True},
-    "from_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
-    "to_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "crs": True, "default": None},
+    "force_vcrs": {"type": ["integer", "string"], "required": False, "nullable": True, "vcrs": True, "default": None},
     "downsample": {"type": ["integer", "float"], "required": False, "default": 1, "min": 1},
 }
 
@@ -218,6 +235,7 @@ ACCURACY_SCHEMA = {
                 "default": "reference_elev",
                 "required": False,
             },
+            "generate_pdf": {"type": "boolean", "default": True, "required": False},
         },
     },
     "coregistration": {
@@ -236,10 +254,23 @@ ACCURACY_SCHEMA = {
 
 TOPO_SCHEMA = {
     "inputs": {
+        "anyof": [
+            {"type": "list", "required": True, "schema": {"type": "dict", "schema": INPUTS_DEM}},
+            {"type": "dict", "schema": INPUTS_DEM},
+        ]
+    },
+    "reproject": {
         "type": "dict",
-        "required": True,
+        "required": False,
+        "nullable": True,
         "schema": {
-            "reference_elev": {"type": "dict", "schema": INPUTS_DEM, "required": False},
+            "to_crs": {
+                "type": ["boolean", "integer", "string"],
+                "required": False,
+                "nullable": True,
+                # "crs": True,
+                "default": None,
+            }
         },
     },
     "statistics": {"type": "list", "required": False, "allowed": STATS_METHODS, "nullable": True},
@@ -258,12 +289,7 @@ TOPO_SCHEMA = {
             {
                 "type": "dict",
                 "keysrules": {"type": "string", "allowed": TERRAIN_ATTRIBUTES},
-                "valuesrules": {
-                    "type": "dict",
-                    "schema": {
-                        "extra_information": {"type": "dict", "required": False},
-                    },
-                },
+                "valuesrules": {"type": "dict", "required": False, "nullable": True},
             },
         ],
     },
@@ -273,6 +299,7 @@ TOPO_SCHEMA = {
         "schema": {
             "path": {"type": "string", "default": "outputs"},
             "level": {"type": "integer", "default": 1, "required": False, "allowed": [1, 2]},
+            "generate_pdf": {"type": "boolean", "default": True, "required": False},
         },
     },
 }
@@ -282,25 +309,19 @@ COMPLETE_CONFIG_ACCURACY = {
         "reference_elev": {
             "path_to_elev": "",
             "force_source_nodata": None,
-            "from_vcrs": None,
-            "to_vcrs": None,
+            "force_vcrs": None,
             "downsample": 1,
         },
         "to_be_aligned_elev": {
             "path_to_elev": "",
             "force_source_nodata": None,
-            "from_vcrs": None,
-            "to_vcrs": None,
+            "force_vcrs": None,
             "path_to_mask": None,
             "downsample": 1,
         },
         "sampling_grid": "reference_elev",
     },
-    "outputs": {
-        "level": 1,
-        "path": "outputs",
-        "output_grid": "reference_elev",
-    },
+    "outputs": {"level": 1, "path": "outputs", "output_grid": "reference_elev", "generate_pdf": True},
     "coregistration": {
         "step_one": {
             "method": "LZD",
@@ -324,13 +345,13 @@ COMPLETE_CONFIG_TOPO = {
         "reference_elev": {
             "path_to_elev": "",
             "force_source_nodata": None,
-            "from_vcrs": None,
-            "to_vcrs": None,
+            "force_vcrs": None,
             "path_to_mask": None,
             "downsample": 1,
         },
     },
-    "outputs": {"level": 1, "path": "outputs"},
+    "reprojection": {"to_crs": None},
+    "outputs": {"level": 1, "path": "outputs", "generate_pdf": True},
     "statistics": MIN_STATS,
     "terrain_attributes": ["slope", "aspect", "max_curvature"],
 }

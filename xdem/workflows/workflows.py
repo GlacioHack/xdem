@@ -20,6 +20,7 @@ Workflow class
 """
 
 import csv
+import ctypes.util
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -66,6 +67,20 @@ _ALIAS = {
 }
 
 
+try:
+    lib_gobject_name = ctypes.util.find_library("gobject-2.0")
+    lib_pango_name = ctypes.util.find_library("pango-1.0")
+    if lib_gobject_name and lib_pango_name:
+        from weasyprint import HTML
+
+        _has_libgobject = True
+    else:
+        _has_libgobject = False
+    _has_weasyprint = _has_libgobject
+except ImportError:
+    _has_weasyprint = False
+
+
 class Workflows(ABC):
     """
     Abstract Class for workflows
@@ -110,14 +125,21 @@ class Workflows(ABC):
 
         logging.info(f"Outputs folder: {self.outputs_folder.absolute()}")
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
+
+    def create_output_dir(self, sub_dir: Path | None = None) -> None:
+        """
+        Create sub directories table/rasters/tables
+
+        :param sub_dir: path to replace outputs_folder
+        :return: None
+        """
+        if sub_dir:
+            self.outputs_folder = sub_dir
+            self.outputs_folder.mkdir(parents=True, exist_ok=True)
         logging.info(f"Outputs will be saved at {self.outputs_folder}")
 
         for folder in ["plots", "rasters", "tables"]:
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
-
-        self.dico_to_show = [
-            ("Information about inputs", self.config["inputs"]),
-        ]
 
     class NoAliasDumper(SafeDumper):  # type: ignore
         """
@@ -145,7 +167,12 @@ class Workflows(ABC):
 
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"File not found : {self.config_path}")
+
+        if not Path(self.config_path).suffix in [".yaml", ".yml"]:
+            raise ValueError("Unsupported configuration file format. " "Please use .yaml, or .yml file.")
+
         with open(self.config_path) as f:
+            config_dict = yaml.safe_load(f)
 
             def replace_none_str_with_none_type(some_dict: Dict[str, Any]) -> Dict[str, Any]:
                 """Replace all "None" (None after serialization) values to None"""
@@ -158,7 +185,7 @@ class Workflows(ABC):
                         some_dict[k] = v
                 return some_dict
 
-            return replace_none_str_with_none_type(yaml.safe_load(f))
+            return replace_none_str_with_none_type(config_dict)
 
     def generate_plot(
         self,
@@ -194,7 +221,6 @@ class Workflows(ABC):
 
         # Apply default cmap if not given in inputs
         if "cmap" in kwargs:
-            print(kwargs["cmap"])
             cmap = plt.get_cmap(name=kwargs["cmap"])
         else:
             cmap = plt.get_cmap(name="terrain")
@@ -247,6 +273,7 @@ class Workflows(ABC):
         :return: DEM.
         """
         mask_path = None
+
         if config_dem is not None:
 
             path_to_elev = config_dem["path_to_elev"]
@@ -254,22 +281,19 @@ class Workflows(ABC):
             if path_to_elev in list(_FILEPATHS_ALL.keys()):
                 path_to_elev = xdem.examples.get_path(path_to_elev)
 
-            dem = xdem.DEM(path_to_elev, downsample=config_dem.get("downsample", 1))
+            # Get default value
+            config_dem["downsample"] = config_dem.get("downsample", 1)
+
+            dem = xdem.DEM(path_to_elev, downsample=config_dem["downsample"])
             inlier_mask = None
-            from_vcrs = config_dem.get("from_vcrs", None)
-            to_vcrs = config_dem.get("to_vcrs", None)
-            if from_vcrs:
-                dem.set_vcrs(from_vcrs)
-            if to_vcrs:
-                if dem.vcrs is None and from_vcrs is None:
-                    raise ValueError(
-                        "You provided a 'to_vcrs' value, but the corresponding DEM does not have a current VCRS "
-                        "(either in the metadata or entered via the 'from_vcrs' value)."
-                    )
-                if from_vcrs != to_vcrs:
-                    dem.to_vcrs(to_vcrs, inplace=True)
+
+            force_vcrs = config_dem.get("force_vcrs", None)
+            if force_vcrs:
+                dem.set_vcrs(force_vcrs)
+
             if config_dem.get("force_source_nodata") is not None:
                 dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
+
             if config_dem.get("path_to_mask") is not None:
                 mask_path = config_dem["path_to_mask"]
                 # If alias, get its path
@@ -321,6 +345,22 @@ class Workflows(ABC):
         :param list_dict: List containing tuples of title and various dictionaries.
         :return: None
         """
+
+    def generate_pdf(self) -> None:
+        """
+        Create PDF report page from HTML page.
+
+        :return: None
+        """
+        if self.config["outputs"]["generate_pdf"]:
+            if not _has_weasyprint:
+                msg = (
+                    "Optional dependency 'weasyprint' required. "
+                    "Install it directly or through: pip install xdem[opt]."
+                )
+                raise ImportError(msg)
+
+            HTML(self.outputs_folder / "report.html").write_pdf(self.outputs_folder / "report.pdf")
 
     def save_stat_as_csv(self, data: dict[str, float], file_name: str) -> None:
         """

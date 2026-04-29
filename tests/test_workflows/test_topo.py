@@ -19,178 +19,358 @@
 Test Topo class
 """
 
+from collections import OrderedDict
+
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
 
+import geoutils as gu
 import pytest
 from rasterio import Affine
 from rasterio.coords import BoundingBox
 
 import xdem
 from xdem.workflows import Topo
-from xdem.workflows.schemas import MIN_STATS
-from xdem.workflows.workflows import _ALIAS, Workflows
+from xdem.workflows.schemas import (
+    MIN_STATS,
+    TERRAIN_ATTRIBUTES,
+    TERRAIN_ATTRIBUTES_DEFAULT,
+)
+from xdem.workflows.workflows import _ALIAS
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
 pytest.importorskip("cerberus")
 
 
-def test_init_topo_summary(get_topo_inputs_config, tmp_path, list_default_terrain_attributes):
+def files_load_data(input, tmp_path):
     """
-    Test Topo class initialization
+    Check outputs of load_data function
     """
-    user_config = get_topo_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = Topo(user_config)
-    workflows._load_data()
-
-    assert isinstance(workflows, Workflows)
-    assert isinstance(workflows, Topo)
     assert Path(tmp_path / "plots").joinpath("elev_map.png").exists()
-    assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
-    assert workflows.config_attributes == list_default_terrain_attributes
-
-    user_config = get_topo_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
-    user_config["terrain_attributes"] = []
-    workflows = Topo(user_config)
-    assert workflows.config_attributes == []
-
-    user_config = get_topo_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
-    user_config["terrain_attributes"] = {
-        "hillshade": {"extra_information": {"method": "ZevenbergThorne", "azimuth": 90}}
-    }
-    workflows = Topo(user_config)
-    assert workflows.config_attributes == {
-        "hillshade": {"extra_information": {"method": "ZevenbergThorne", "azimuth": 90}}
-    }
-    assert workflows.list_attributes == ["hillshade"]
+    if "path_to_mask" in input:
+        assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
 
 
-def test_generate_terrain_attributes(tmp_path, get_topo_inputs_config, list_default_terrain_attributes):
+def files_attributes(workflows, level, attributes, tmp_path):
     """
-    Test generate_terrain_attributes function
+    Check outputs of generatate attributes function
     """
-    user_config = get_topo_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = Topo(user_config)
-    workflows._load_data()
-    workflows.generate_terrain_attributes_tiff()
+    if isinstance(attributes, list):
+        for attr in attributes:
+            if attributes:
+                assert Path(tmp_path / "plots").joinpath("terrain_attributes_map.png").exists()
+                if level == 1:
+                    assert not Path(tmp_path / "rasters").joinpath(f"{attr}.tif").exists()
+                else:
+                    assert Path(tmp_path / "rasters").joinpath(f"{attr}.tif").exists()
+    else:
+        assert workflows.list_attributes == list(attributes.keys())
+        attribute = list(attributes.keys())[0]
 
-    for attr in list_default_terrain_attributes:
-        assert Path(tmp_path / "rasters").joinpath(f"{attr}.tif").exists()
+        assert Path(tmp_path / "plots").joinpath("terrain_attributes_map.png").exists()
+        if level == 1:
+            assert not Path(tmp_path / "rasters").joinpath(f"{attribute}.tif").exists()
+        else:
+            assert Path(tmp_path / "rasters").joinpath(f"{attribute}.tif").exists()
 
 
-def test_generate_terrain_attributes_level_2(tmp_path, get_topo_inputs_config, list_default_terrain_attributes):
+def files_report(generate_pdf, tmp_path):
     """
-    Test generate_terrain_attributes function
+    Check report outputs
     """
-    user_config = get_topo_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path), "level": 2}
-    workflows = Topo(user_config)
-    workflows._load_data()
-    workflows.run()
-
-    for attr in list_default_terrain_attributes:
-        assert Path(tmp_path / "rasters").joinpath(f"{attr}.tif").exists()
-
-
-def test_generate_no_terrain_attributes(tmp_path, get_topo_inputs_config, list_default_terrain_attributes):
-    """
-    Test generate_terrain_attributes function
-    """
-    user_config = get_topo_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path), "level": 2}
-    user_config["terrain_attributes"] = None
-    workflows = Topo(user_config)
-    workflows.run()
-
-    for attr in list_default_terrain_attributes:
-        assert not Path(tmp_path / "rasters").joinpath(f"{attr}.tif").exists()
-
-
-def test_generate_terrain_attributes_png(tmp_path, get_topo_inputs_config):
-    """
-    Test generate_terrain_attributes_png function
-    """
-    user_config = get_topo_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = Topo(user_config)
-    workflows.run()
-
-    workflows.generate_terrain_attributes_png()
-    assert Path(tmp_path / "plots").joinpath("terrain_attributes_map.png").exists()
-
-
-def test_run(get_topo_inputs_config, tmp_path):
-    """
-    Test run function
-    """
-
-    user_config = get_topo_inputs_config
-    user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = Topo(user_config)
-    workflows.run()
-    assert Path(tmp_path / "tables").joinpath("stats_elev_stats.csv").exists()
     assert Path(tmp_path).joinpath("report.html").exists()
+    if generate_pdf:
+        assert Path(tmp_path).joinpath("report.pdf").exists()
+    else:
+        assert not Path(tmp_path).joinpath("report.pdf").exists()
+
+
+@pytest.mark.parametrize("level", [1, 2])
+@pytest.mark.parametrize("nb_inputs", [-1, 1, 2])
+@pytest.mark.parametrize("generate_pdf", [True, False])
+@pytest.mark.parametrize(
+    "attributes",
+    [None, ["slope", "aspect"], {"hillshade": {"method": "ZevenbergThorne", "azimuth": 90}}],
+)
+def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list, generate_pdf):
+    """
+    Test run function with all the outputs generation
+
+    NB: nb_inputs = -1 is when "input" is a dict
+    """
+    user_config = dict()
+    if nb_inputs == -1:
+        user_config["inputs"] = get_topo_inputs_config_list[0]
+    else:
+        user_config["inputs"] = get_topo_inputs_config_list[:nb_inputs]
+    user_config["outputs"] = {"path": str(tmp_path), "level": level, "generate_pdf": generate_pdf}
+    user_config["terrain_attributes"] = attributes
+
+    workflows = Topo(user_config)
+    workflows.run()
+
+    user_config_list = user_config.copy()
+    if nb_inputs == -1:
+        user_config_list["inputs"] = [user_config["inputs"]]
+
+    # 1/ Test inputs
+    if nb_inputs <= 1:
+        files_load_data(user_config_list["inputs"][0], tmp_path)
+    else:
+        for k in range(len(user_config_list["inputs"])):
+            dem_dir = "dem_" + str(k)
+            files_load_data(user_config_list["inputs"], Path(tmp_path / dem_dir))
+
+    # 2/ Test attributes
+    if attributes is not None:
+        if len(attributes) == 0:
+            attributes = TERRAIN_ATTRIBUTES_DEFAULT
+        assert workflows.config_attributes == attributes
+        if nb_inputs <= 1:
+            files_attributes(workflows, level, attributes, tmp_path)
+        else:
+            for k in range(len(user_config_list["inputs"])):
+                dem_dir = "dem_" + str(k)
+                files_attributes(workflows, level, attributes, Path(tmp_path / dem_dir))
+    else:
+        assert workflows.config_attributes is None
+        assert not Path(tmp_path / "plots").joinpath("terrain_attributes_map.png").exists()
+
+    # 3/ Test stats
+    if nb_inputs <= 1:
+        assert Path(tmp_path / "tables").joinpath("stats_elev_stats.csv").exists()
+    else:
+        for k in range(len(user_config_list["inputs"])):
+            dem_dir = "dem_" + str(k)
+            assert Path(tmp_path / dem_dir / "tables").joinpath("stats_elev_stats.csv").exists()
+
+    # 4/ Test reports
+    if nb_inputs <= 1:
+        assert Path(tmp_path).joinpath("report.html").exists()
+        files_report(generate_pdf, tmp_path)
+    else:
+        for k in range(len(user_config_list["inputs"])):
+            dem_dir = "dem_" + str(k)
+            files_report(generate_pdf, Path(tmp_path / dem_dir))
+
+
+@pytest.mark.parametrize("nb_inputs", [-1, 1, 2])
+def test_run_dico_to_show(get_topo_inputs_config_list, nb_inputs, tmp_path):
+    """
+    Test run function and dico_to_show values
+
+    NB: nb_inputs = -1 is when "input" is a dict
+    """
+
+    user_config = dict()
+    if nb_inputs == -1:
+        user_config["inputs"] = get_topo_inputs_config_list[0]
+    else:
+        user_config["inputs"] = get_topo_inputs_config_list[:nb_inputs]
+    user_config["outputs"] = {"path": str(tmp_path)}
+
+    workflows = Topo(user_config)
+    workflows.run()
+
+    user_config_list = user_config.copy()
+    if nb_inputs == -1:
+        user_config_list["inputs"] = [user_config["inputs"]]
+
     # Check subdictionaries content, except exact stats values in case test data/algorithms slightly changes,
     # and as those are already tested separately
-    # 1/ Input information
-    assert workflows.dico_to_show[0] == (
-        "Information about inputs",
-        {
-            "reference_elev": {
-                "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
-                "from_vcrs": None,
-                "path_to_mask": xdem.examples.get_path_test("longyearbyen_glacier_outlines"),
-                "to_vcrs": None,
-                "downsample": 1,
-            }
-        },
-    )
-    # 2/ Elevation information
-    assert workflows.dico_to_show[1] == (
-        "Elevation information",
-        {
-            "Data types": "float32",
-            "Driver": "GTiff",
-            "Filename": xdem.examples.get_path_test("longyearbyen_tba_dem"),
-            "Grid size": None,
-            "Height": 54,
-            "Nodata Value": -9999.0,
-            "Number of band": (1,),
-            "Pixel interpretation": "Area",
-            "Pixel size": (20.0, 20.0),
-            "Transform": Affine(20.0, 0.0, 512310.0, 0.0, -20.0, 8662030.0),
-            "Width": 70,
-            "Bounds": BoundingBox(left=512310.0, bottom=8660950.0, right=513710.0, top=8662030.0),
-        },
-    )
+    for k, _ in enumerate(user_config_list["inputs"]):
 
-    # 3/ Statistics names
-    assert workflows.dico_to_show[2][0] == "Statistics"
+        # 1/ Input information
+        get_topo_inputs_config_list[k]["downsample"] = 1
+        assert workflows.dico_to_show[k][0] == (
+            "Information about inputs",
+            get_topo_inputs_config_list[k],
+        )
 
-    assert list(workflows.dico_to_show[2][1].keys()) == [_ALIAS.get(k) for k in MIN_STATS]
+        # 2/ Elevation information
+        assert workflows.dico_to_show[k][1] == (
+            "Elevation information",
+            {
+                "Data types": "float32",
+                "Driver": "GTiff",
+                "Filename": get_topo_inputs_config_list[k]["path_to_elev"],
+                "Grid size": None,
+                "Height": 54,
+                "Nodata Value": -9999.0,
+                "Number of band": (1,),
+                "Pixel interpretation": "Area",
+                "Pixel size": (20.0, 20.0),
+                "Transform": Affine(20.0, 0.0, 512310.0, 0.0, -20.0, 8662030.0),
+                "Width": 70,
+                "Bounds": BoundingBox(left=512310.0, bottom=8660950.0, right=513710.0, top=8662030.0),
+            },
+        )
+
+        # 3/ Statistics names
+        assert workflows.dico_to_show[k][2][0] == "Statistics"
+        assert list(workflows.dico_to_show[k][2][1].keys()) == [_ALIAS.get(k) for k in MIN_STATS]
+
+        dem = xdem.DEM(user_config_list["inputs"][k]["path_to_elev"])
+        if "path_to_mask" in user_config_list["inputs"][k]:
+            ref_mask = gu.Vector(user_config_list["inputs"][k]["path_to_mask"])
+            dem.load()
+            inlier_mask = ~ref_mask.create_mask(dem)
+            dem.set_mask(~inlier_mask)
+        res = workflows.floats_process(dem.get_stats(MIN_STATS))
+        assert workflows.dico_to_show[k][2][1] == {_ALIAS.get(key): res[key] for key in res.keys()}
 
 
+@pytest.mark.parametrize("nb_inputs", [-1, 1, 2])
 @pytest.mark.parametrize(
     "stats_name, res",
     [
         [MIN_STATS, [_ALIAS.get(k) for k in MIN_STATS]],
-        [list(_ALIAS.keys()), [_ALIAS.get(k) for k in _ALIAS.keys()]],
+        [list(_ALIAS.keys()), list(OrderedDict((x, True) for x in [_ALIAS.get(k) for k in _ALIAS.keys()]).keys())],
         [["std"], ["Standard deviation"]],
         [["standarddeviation"], ["Standard deviation"]],
         [["std", "standarddeviation"], ["Standard deviation"]],
     ],
 )
-def test_stats(get_topo_inputs_config, tmp_path, stats_name, res):
+def test_stats_list(get_topo_inputs_config_list, nb_inputs, tmp_path, stats_name, res):
+    """
+    Test to check the output stats from several input stats list
 
-    user_config = get_topo_inputs_config
+    NB: nb_inputs = -1 is when "input" is a dict
+    """
+
+    user_config = dict()
+    if nb_inputs == -1:
+        user_config["inputs"] = get_topo_inputs_config_list[0]
+    else:
+        user_config["inputs"] = get_topo_inputs_config_list[:nb_inputs]
     user_config["outputs"] = {"path": str(tmp_path)}
     user_config["statistics"] = stats_name
-
     workflows = Topo(user_config)
     workflows.run()
-    assert list(set(workflows.dico_to_show[2][1].keys())) == list(set(res))
+
+    user_config_list = user_config.copy()
+    if nb_inputs == -1:
+        user_config_list["inputs"] = [user_config["inputs"]]
+
+    for k, _ in enumerate(user_config_list["inputs"]):
+        assert list(workflows.dico_to_show[k][2][1].keys()) == res
+
+
+def test_attributes(get_topo_inputs_config_list, tmp_path):
+    """
+    Test terrain attributes values
+    """
+
+    # Test all TERRAIN_ATTRIBUTES (list and dict)
+
+    user_config = dict()
+    user_config["inputs"] = get_topo_inputs_config_list[1]
+    user_config["terrain_attributes"] = TERRAIN_ATTRIBUTES
+    tmp_path_list = Path(tmp_path / "list")
+    user_config["outputs"] = {"path": str(tmp_path_list), "level": 2}
+    workflows = Topo(user_config)
+    workflows.run()
+
+    att = dict()
+    for name in TERRAIN_ATTRIBUTES:
+        att[name] = None
+
+    user_config["terrain_attributes"] = att
+    tmp_path_indi = Path(tmp_path / "individual")
+    user_config["outputs"] = {"path": str(tmp_path_indi), "level": 2}
+    workflows = Topo(user_config)
+    workflows.run()
+
+    for attr in TERRAIN_ATTRIBUTES:
+        assert Path(tmp_path_list / "rasters").joinpath(f"{attr}.tif").exists()
+        assert Path(tmp_path_indi / "rasters").joinpath(f"{attr}.tif").exists()
+        terrain_list = xdem.DEM(Path(tmp_path_list / "rasters").joinpath(f"{attr}.tif"))
+        terrain_indi = xdem.DEM(Path(tmp_path_indi / "rasters").joinpath(f"{attr}.tif"))
+        assert terrain_indi.georeferenced_grid_equal(terrain_list)
+
+    # Test with an empty terrain attributes list
+
+    user_config["terrain_attributes"] = None
+    tmp_path_ = Path(tmp_path / "None")
+    user_config["outputs"] = {"path": str(tmp_path_), "level": 2}
+    assert not Path(tmp_path_ / "rasters").exists()
+
+    # Test adding information in terrain attributes
+
+    user_config = dict()
+    user_config["inputs"] = get_topo_inputs_config_list[1]
+    user_config["terrain_attributes"] = {
+        "aspect": {"surface_fit": "ZevenbergThorne", "degrees": False},
+        "slope": {"surface_fit": "ZevenbergThorne"},
+    }
+    tmp_path_ = Path(tmp_path / "info")
+    user_config["outputs"] = {"path": str(tmp_path_), "level": 2}
+    workflows = Topo(user_config)
+    workflows.run()
+
+    input_dem = xdem.DEM(user_config["inputs"]["path_to_elev"])
+
+    res_aspect = xdem.DEM(Path(tmp_path_ / "rasters").joinpath("aspect.tif"))
+    ref_aspect = input_dem.aspect(surface_fit="ZevenbergThorne", degrees=False)
+    """import numpy as np
+    print ([
+                np.array_equal(res_aspect.data.data, ref_aspect.data.data, equal_nan=True),
+                np.array_equal(np.ma.getmaskarray(res_aspect.data), np.ma.getmaskarray(ref_aspect.data)),
+                res_aspect.data.fill_value == ref_aspect.data.fill_value,
+                res_aspect.data.dtype == ref_aspect.data.dtype,
+                res_aspect.transform == ref_aspect.transform,
+                res_aspect.crs == ref_aspect.crs,
+                res_aspect.nodata == ref_aspect.nodata,
+            ])
+    print (np.nanmax(res_aspect.data.data - ref_aspect.data.data))
+    print (np.ma.allequal(res_aspect.data, ref_aspect.data))"""
+    assert res_aspect.raster_equal(ref_aspect)
+
+    res_slope = xdem.DEM(Path(tmp_path_ / "rasters").joinpath("slope.tif"))
+    ref_slope = input_dem.slope(surface_fit="ZevenbergThorne")
+    assert res_slope.raster_equal(ref_slope)
+
+
+@pytest.mark.parametrize("input_utm", [True, False])
+@pytest.mark.parametrize(
+    "reproject_warnings_newraster",
+    [
+        (None, None, True),
+        ({"reproject": None}, None, True),
+        ({"reproject": {"to_crs": True}}, None, True),
+        ({"reproject": {"to_crs": None}}, None, True),
+        ({"reproject": {"to_crs": False}}, "Please use a projected CRS", False),
+        ({"reproject": {"to_crs": 25833}}, None, True),
+        ({"reproject": {"to_crs": "EPSG:25833"}}, None, True),
+        ({"reproject": {"to_crs": 4326}}, '"reproject/to_crs" either', True),
+    ],
+)
+@pytest.mark.parametrize("level", [1, 2])
+def test_reprojection(input_utm, reproject_warnings_newraster, get_topo_inputs_config_list, tmp_path, level):
+    reproject_dict, warning_if_not_utm, reprojection = reproject_warnings_newraster
+
+    user_config = dict()
+    user_config["inputs"] = get_topo_inputs_config_list[1]
+    input_dem_path = get_topo_inputs_config_list[1]["path_to_elev"]
+    if not input_utm:
+        dem = xdem.DEM(input_dem_path).reproject(crs=4326)
+        dem.to_file(Path(tmp_path / "dem.tif"))
+        user_config["inputs"]["path_to_elev"] = str(Path(tmp_path / "dem.tif"))
+
+    user_config["terrain_attributes"] = ["slope"]
+    if reproject_dict is not None:
+        user_config.update(reproject_dict)
+    user_config["outputs"] = {"path": str(tmp_path), "level": level}
+    workflows = Topo(user_config)
+
+    if input_utm or warning_if_not_utm is None:
+        workflows.run()
+    else:
+        with pytest.warns(UserWarning, match=warning_if_not_utm):
+            workflows.run()
+
+    if not input_utm and reprojection and level > 1:
+        assert Path(tmp_path / "rasters").joinpath("elev_reprojected.tif").exists()
+    else:
+        assert not Path(tmp_path / "rasters").joinpath("elev_reprojected.tif").exists()

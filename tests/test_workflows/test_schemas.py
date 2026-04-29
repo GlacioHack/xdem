@@ -29,27 +29,34 @@ import pytest
 
 import xdem
 from xdem.workflows import schemas
+from xdem.workflows.schemas import (
+    COMPLETE_CONFIG_ACCURACY,
+    COMPLETE_CONFIG_TOPO,
+    MIN_STATS,
+    TERRAIN_ATTRIBUTES_DEFAULT,
+)
 
+pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 pytest.importorskip("cerberus")
 
 
-def test_validate_base_configuration(get_topo_inputs_config, get_accuracy_inputs_config):
+def test_validate_base_configuration(get_topo_config_test, get_accuracy_config_test):
     """
     Test validate_base_configuration function
     """
-    schemas.validate_configuration(get_topo_inputs_config, schemas.TOPO_SCHEMA)
-    schemas.validate_configuration(get_accuracy_inputs_config, schemas.ACCURACY_SCHEMA)
+    schemas.validate_configuration(get_topo_config_test, schemas.TOPO_SCHEMA)
+    schemas.validate_configuration(get_accuracy_config_test, schemas.ACCURACY_SCHEMA)
 
 
-def test_wrong_path(get_topo_inputs_config):
+def test_wrong_path(get_topo_config_test):
     """
     Test wrong_path function
     """
-    topo_conf = get_topo_inputs_config
-    topo_conf["inputs"]["reference_elev"]["path_to_elev"] = "doesn_t_exist.tif"
+    topo_config = get_topo_config_test
+    topo_config["inputs"][0]["path_to_elev"] = "doesn_t_exist.tif"
 
     with pytest.raises(ValueError, match="Path does not exist: doesn_t_exist.tif"):
-        _ = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
+        _ = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
 
 
 @pytest.mark.parametrize(
@@ -74,45 +81,45 @@ def test_wrong_path(get_topo_inputs_config):
             id="terrain_attributes_wrong_attr",
         ),
         pytest.param(
-            {"terrain_attributes": {"slope": {"extra_information": 2}}},
+            {"terrain_attributes": {"slope": 2}},
             "must be of dict type",
             id="terrain_attributes_dict_attr",
         ),
         pytest.param(
             {
-                "inputs": {
-                    "reference_elev": {
+                "inputs": [
+                    {
                         "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
                         "downsample": "10",
                     }
-                }
+                ]
             },
             r"must be of \['integer', 'float'\] type",
             id="downsample as string",
         ),
         pytest.param(
             {
-                "inputs": {
-                    "reference_elev": {
+                "inputs": [
+                    {
                         "path_to_elev": xdem.examples.get_path_test("longyearbyen_tba_dem"),
                         "downsample": 0,
                     }
-                }
+                ]
             },
             "min value is 1",
             id="downsample error <1",
         ),
     ],
 )
-def test_validate_topo_configuration_with_errors(get_topo_inputs_config, new_param_config, expected):
+def test_validate_topo_configuration_with_errors(get_topo_config_test, new_param_config, expected):
     """
     Test validation of configuration with errors
     """
-    topo_conf = get_topo_inputs_config
-    topo_conf.update(new_param_config)
+    topo_config = get_topo_config_test
+    topo_config.update(new_param_config)
 
     with pytest.raises(ValueError, match=expected):
-        _ = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
+        _ = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
 
 
 @pytest.mark.parametrize(
@@ -130,15 +137,15 @@ def test_validate_topo_configuration_with_errors(get_topo_inputs_config, new_par
         ),
     ],
 )
-def test_validate_topo_coreg_configuration_with_errors(get_accuracy_inputs_config, new_param_config, expected):
+def test_validate_topo_coreg_configuration_with_errors(get_accuracy_config_test, new_param_config, expected):
     """
     Test validation of coregistration configuration with errors
     """
-    topo_conf = get_accuracy_inputs_config
-    topo_conf.update(new_param_config)
+    topo_config = get_accuracy_config_test
+    topo_config.update(new_param_config)
 
     with pytest.raises(ValueError, match=expected):
-        _ = schemas.validate_configuration(topo_conf, schemas.ACCURACY_SCHEMA)
+        _ = schemas.validate_configuration(topo_config, schemas.ACCURACY_SCHEMA)
 
 
 @pytest.mark.parametrize(
@@ -191,103 +198,116 @@ def test_extra_information_is_optional():
     assert not schema["schema"]["extra_information"]["required"]
 
 
-@pytest.mark.parametrize(
-    "prefix, vcrs",
-    [
-        ("from_vcrs", "EGM96"),
-        ("from_vcrs", "EGM08"),
-        ("from_vcrs", "Ellipsoid"),
-        # ("from_vcrs", "no_kv_arcgp-2006-sk.tif"),
-        ("from_vcrs", 4326),
-    ],
-)
-def test_valid_from_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
+def test_pipeline_topo_default_values(get_topo_inputs_config_list):
     """
     Test valid VCRS function for 'from' and 'to'
     """
-    topo_conf = get_topo_inputs_config
-    topo_conf["inputs"]["reference_elev"].update({prefix: vcrs})
 
-    pipeline_test = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
-    pipeline_topo["inputs"]["reference_elev"].update({prefix: vcrs})
-    pipeline_topo["inputs"]["reference_elev"]["to_vcrs"] = None
-    pipeline_topo["inputs"]["reference_elev"]["downsample"] = 1
-    assert pipeline_topo == pipeline_test
+    topo_config = dict()
+    topo_config["inputs"] = get_topo_inputs_config_list
+    pipeline_topo_test = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
+
+    assert len(pipeline_topo_test["inputs"]) == len(topo_config["inputs"])
+    for k, input_elev in enumerate(pipeline_topo_test["inputs"]):
+        assert input_elev["path_to_elev"] == topo_config["inputs"][k]["path_to_elev"]
+        if "path_to_mask" in topo_config["inputs"][k]:
+            assert input_elev["path_to_mask"] == topo_config["inputs"][k]["path_to_mask"]
+        assert "from_vcrs" not in input_elev  # default value not taken in "anyof" schema
+        assert "to_vcrs" not in input_elev  # default value not taken in "anyof" schema
+        assert "downsample" not in input_elev  # default value not taken in "anyof" schema
+
+    assert pipeline_topo_test["statistics"] == MIN_STATS
+    assert pipeline_topo_test["terrain_attributes"] == TERRAIN_ATTRIBUTES_DEFAULT
+    assert pipeline_topo_test["outputs"] == COMPLETE_CONFIG_TOPO["outputs"]
+
+    topo_config = dict()
+    topo_config["inputs"] = get_topo_inputs_config_list[:1]
+    pipeline_topo_test_1_via_list = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
+    topo_config = dict()
+    topo_config["inputs"] = get_topo_inputs_config_list[0]
+    pipeline_topo_test_1_via_dict = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
+
+    for key in pipeline_topo_test_1_via_list.keys():
+        if key == "inputs":
+            assert pipeline_topo_test_1_via_dict["inputs"] == pipeline_topo_test_1_via_list["inputs"][0]
+        else:
+            assert pipeline_topo_test_1_via_dict[key] == pipeline_topo_test_1_via_list[key]
 
 
-@pytest.mark.parametrize(
-    "prefix, vcrs",
-    [
-        ("to_vcrs", "EGM96"),
-        ("to_vcrs", "EGM08"),
-        ("to_vcrs", "Ellipsoid"),
-        # ("to_vcrs", "no_kv_arcgp-2006-sk.tif"),
-        ("to_vcrs", 4326),
-    ],
-)
-def test_valid_to_vcrs(get_topo_inputs_config, pipeline_topo, prefix, vcrs):
+def test_pipeline_accuracy_default_values(get_accuracy_inputs_test):
     """
     Test valid VCRS function for 'from' and 'to'
     """
-    topo_conf = get_topo_inputs_config
-    topo_conf["inputs"]["reference_elev"].update({prefix: vcrs})
+    accuracy_config = get_accuracy_inputs_test
+    pipeline_accuracy_test = schemas.validate_configuration(accuracy_config, schemas.ACCURACY_SCHEMA)
 
-    pipeline_test = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
-    pipeline_topo["inputs"]["reference_elev"].update({prefix: vcrs})
-    pipeline_topo["inputs"]["reference_elev"]["from_vcrs"] = None
-    assert pipeline_topo == pipeline_test
+    for elev in ["reference_elev", "to_be_aligned_elev"]:
+        input_elev = pipeline_accuracy_test["inputs"][elev]
+        input_elev_input = accuracy_config["inputs"][elev]
+        assert input_elev["path_to_elev"] == input_elev_input["path_to_elev"]
+        if "path_to_mask" in input_elev_input:
+            assert input_elev["path_to_mask"] == input_elev_input["path_to_mask"]
+        assert input_elev["force_vcrs"] is None
+        assert input_elev["downsample"] == 1
+    assert pipeline_accuracy_test["inputs"]["sampling_grid"] == "reference_elev"
+
+    coreg = pipeline_accuracy_test["coregistration"]
+    assert list(coreg.keys()) == ["step_one", "process"]
+    assert list(coreg["step_one"].keys()) == ["method", "extra_information"]
+    assert coreg["step_one"]["method"] == "LZD"
+    assert coreg["step_one"]["extra_information"] == {"subsample": 10000}
+
+    assert pipeline_accuracy_test["coregistration"]["process"]
+    assert pipeline_accuracy_test["statistics"] == COMPLETE_CONFIG_ACCURACY["statistics"]
+    assert pipeline_accuracy_test["outputs"] == COMPLETE_CONFIG_ACCURACY["outputs"]
 
 
 @pytest.mark.parametrize(
-    "wrong_vcrs, error",
+    "vcrs, error",
     [
-        pytest.param(
-            "wrong",
-            "LoggingError",
-            id="wrong_common",
-        ),
-        pytest.param(
-            "wrong.txt",
-            "LoggingError",
-            id="wrong_proj_grid",
-        ),
-        pytest.param(
-            0000,
-            pyproj.exceptions.CRSError,
-            id="wrong_epsg_code",
-        ),
+        ("EGM96", None),
+        ("EGM08", None),
+        ("Ellipsoid", None),
+        ("no_kv_arcgp-2006-sk.tif", None),
+        (4326, None),
+        ("wrong", "LoggingError"),
+        ("wrong.txt", "LoggingError"),
+        (0000, pyproj.exceptions.CRSError),
     ],
 )
-def test_invalid_vcrs(get_topo_inputs_config, pipeline_topo, wrong_vcrs, error, caplog, assert_and_allow_log):
+def test_valid_vcrs(get_topo_config_test, vcrs, error, caplog, assert_and_allow_log):
     """
-    Test invalid crs
+    Test valid VCRS function for 'from' and 'to'
     """
-    topo_conf = get_topo_inputs_config
-    topo_conf["inputs"]["reference_elev"].update({"from_vcrs": wrong_vcrs})
+    topo_config = get_topo_config_test
+    topo_config["inputs"][0]["force_vcrs"] = vcrs
+    if error is None:
+        pipeline_test = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
+        assert pipeline_test["inputs"][0]["force_vcrs"] == vcrs
 
-    if error == "LoggingError":
+    elif error == "LoggingError":
         with caplog.at_level(logging.ERROR):
-            _ = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
-        assert_and_allow_log(caplog, level=logging.ERROR, match="'from_vcrs' field is not valid.*")
+            _ = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
+        assert_and_allow_log(caplog, level=logging.ERROR, match="'force_vcrs' field is not valid.*")
     else:
         with pytest.raises(error):
-            _ = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
+            _ = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
 
 
-def test_topo_without_terrain_attributes_in_config(get_topo_inputs_config):
+def test_topo_without_terrain_attributes_in_config(get_topo_config_test):
     """
     Test different value for terrain attributes in config
     """
-    topo_conf = get_topo_inputs_config
-    doc = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
+    topo_config = get_topo_config_test
+    doc = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
     assert doc["terrain_attributes"] == schemas.TERRAIN_ATTRIBUTES_DEFAULT
 
-    topo_conf = get_topo_inputs_config
-    topo_conf["terrain_attributes"] = []
-    doc = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
+    topo_config = get_topo_config_test
+    topo_config["terrain_attributes"] = []
+    doc = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
     assert doc["terrain_attributes"] == []
 
-    topo_conf = get_topo_inputs_config
-    topo_conf["terrain_attributes"] = ["hillshade", "slope", "max_curvature"]
-    doc = schemas.validate_configuration(topo_conf, schemas.TOPO_SCHEMA)
+    topo_config = get_topo_config_test
+    topo_config["terrain_attributes"] = ["hillshade", "slope", "max_curvature"]
+    doc = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
     assert doc["terrain_attributes"] == ["hillshade", "slope", "max_curvature"]

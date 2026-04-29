@@ -314,24 +314,24 @@ def _roughness_func_scipy(
 # Ref link: https://doi.org/10.4000/geomorphologie.622
 
 
-def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLike = np.float32) -> float:
+def _fractal_roughness_func(arr: NDArrayf, window_size_fractal: int, out_dtype: DTypeLike = np.float32) -> float:
     """Non-vectorized fractal roughness according to the box-counting method of Taud and Parrot."""
 
     # First, we compute the number of voxels for each pixel of Equation 4
     mid_ind = int(np.floor(arr.shape[0] / 2))
-    hw = int(np.floor(window_size / 2))
+    hw = int(np.floor(window_size_fractal / 2))
     mid_val = arr[mid_ind]
 
     count = 0
-    V = np.empty((window_size, window_size), dtype=out_dtype)
-    for j in range(window_size):
-        for k in range(window_size):
-            T = arr[window_size * j + k] - mid_val
+    V = np.empty((window_size_fractal, window_size_fractal), dtype=out_dtype)
+    for j in range(window_size_fractal):
+        for k in range(window_size_fractal):
+            T = arr[window_size_fractal * j + k] - mid_val
             # The following is the equivalent of np.clip, written like this for numba
             if T < 0:
                 V[j, k] = 0
-            elif T > window_size:
-                V[j, k] = window_size
+            elif T > window_size_fractal:
+                V[j, k] = window_size_fractal
             else:
                 V[j, k] = T
             count += 1
@@ -353,8 +353,8 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
         # We loop over boxes of size q x q in the cube
         q = sub_list_box_sizes[l0]
         sumNs = 0
-        for j in range(0, int((window_size - 1) / q)):
-            for k in range(0, int((window_size - 1) / q)):
+        for j in range(0, int((window_size_fractal - 1) / q)):
+            for k in range(0, int((window_size_fractal - 1) / q)):
                 sumNs += np.max(V[slice(j * q, (j + 1) * q), slice(k * q, (k + 1) * q)].flatten())
         Ns[l0] = sumNs / q
 
@@ -385,10 +385,10 @@ def _fractal_roughness_func(arr: NDArrayf, window_size: int, out_dtype: DTypeLik
 _fractal_roughness_func_numba = njit(inline="always", cache=True)(_fractal_roughness_func)
 
 
-def _fractal_precompute(window_size: int) -> tuple[NDArrayf, NDArrayf, float, float]:
+def _fractal_precompute(window_size_fractal: int) -> tuple[NDArrayf, NDArrayf, float, float]:
     """Pre-compute scale-dependent constants for vectorized fractal roughness."""
 
-    hw = window_size // 2
+    hw = window_size_fractal // 2
     qs = np.array([q for q in range(1, hw + 1) if hw % q == 0], dtype=np.int32)
 
     log_q = np.log(qs)
@@ -401,7 +401,7 @@ def _fractal_precompute(window_size: int) -> tuple[NDArrayf, NDArrayf, float, fl
 
 def _fractal_roughness_func_vectorized(
     input_block: NDArrayf,
-    window_size: int,
+    window_size_fractal: int,
     qs: NDArrayf,
     log_q: NDArrayf,
     mx: float,
@@ -414,7 +414,7 @@ def _fractal_roughness_func_vectorized(
     Argument "axis" is required by scipy.ndimage.vectorized_filter.
     """
 
-    w = window_size
+    w = window_size_fractal
     mid = w // 2
     # Get center value
     Zc = input_block[..., mid, mid]
@@ -448,12 +448,11 @@ def _fractal_roughness_func_vectorized(
 
 def _fractal_roughness_func_scipy(
     dem: NDArrayf,
-    window_size: int,
+    window_size_fractal: int,
     out_dtype: DTypeLike = np.float32,
     force_backend: Literal["generic", "vectorized"] | None = None,
 ) -> NDArrayf:
     """SciPy wrapper for fractal roughness implementation, with option of forcing backend for tests."""
-
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice.")
         warnings.filterwarnings(
@@ -471,15 +470,20 @@ def _fractal_roughness_func_scipy(
         if _HAS_VECTORIZED_FILTER or force_backend == "vectorized":
 
             # Pre-compute scale-dependent constants
-            qs, log_q, mx, SS_xx = _fractal_precompute(window_size)
+            qs, log_q, mx, SS_xx = _fractal_precompute(window_size_fractal)
 
             _part_func = partial(
-                _fractal_roughness_func_vectorized, window_size=window_size, qs=qs, log_q=log_q, mx=mx, SS_xx=SS_xx
+                _fractal_roughness_func_vectorized,
+                window_size_fractal=window_size_fractal,
+                qs=qs,
+                log_q=log_q,
+                mx=mx,
+                SS_xx=SS_xx,
             )
             return scipy.ndimage.vectorized_filter(
                 dem,
                 _part_func,
-                size=window_size,
+                size=window_size_fractal,
                 mode="constant",
                 cval=np.nan,
             )
@@ -489,10 +493,10 @@ def _fractal_roughness_func_scipy(
             return scipy.ndimage.generic_filter(
                 dem,
                 _fractal_roughness_func,
-                size=window_size,
+                size=window_size_fractal,
                 mode="constant",
                 cval=np.nan,
-                extra_arguments=(window_size, out_dtype),
+                extra_arguments=(window_size_fractal, out_dtype),
             )
 
 
@@ -768,6 +772,7 @@ def _preprocess_windowed_indexes(
 def _make_windowed_indexes(
     dem_window: NDArrayf,
     window_size: int,
+    window_size_fractal: int,
     resolution: float,
     make_attrs: list[bool],
     tpi_idx: int,
@@ -808,7 +813,7 @@ def _make_windowed_indexes(
     if make_fractal_roughness:
 
         attrs[frac_roughness_idx] = _fractal_roughness_func_numba(
-            dem_window, window_size=window_size, out_dtype=out_dtype
+            dem_window, window_size_fractal=window_size_fractal, out_dtype=out_dtype
         )
 
     return attrs
@@ -818,6 +823,7 @@ def _make_windowed_indexes(
 def _get_windowed_indexes_numba(
     dem: NDArrayf,
     window_size: int,
+    window_size_fractal: int,
     resolution: float,
     out_dtype: DTypeLike,
     attrs_size: int,
@@ -853,6 +859,7 @@ def _get_windowed_indexes_numba(
             attrs = _make_windowed_indexes(
                 dem_window,
                 window_size=window_size,
+                window_size_fractal=window_size_fractal,
                 resolution=resolution,
                 make_attrs=make_attrs,
                 tpi_idx=tpi_idx,
@@ -873,6 +880,7 @@ def _get_windowed_indexes_numba(
 def _get_windowed_indexes_scipy(
     dem: NDArrayf,
     window_size: int,
+    window_size_fractal: int,
     resolution: float,
     make_attrs: list[bool],
     idx_attrs: list[int],
@@ -916,7 +924,7 @@ def _get_windowed_indexes_scipy(
     if make_fractal_roughness:
         frac_roughness_idx = idx_attrs[4]
         frac_roughness = _fractal_roughness_func_scipy(
-            dem=dem, window_size=window_size, out_dtype=out_dtype, force_backend=force_backend
+            dem=dem, window_size_fractal=window_size_fractal, out_dtype=out_dtype, force_backend=force_backend
         )
         outputs[frac_roughness_idx] = frac_roughness
 
@@ -926,6 +934,7 @@ def _get_windowed_indexes_scipy(
 def _get_windowed_indexes(
     dem: NDArrayf,
     window_size: int,
+    window_size_fractal: int,
     windowed_indexes: list[str],
     resolution: float,
     out_dtype: DTypeLike = np.float32,
@@ -969,6 +978,7 @@ def _get_windowed_indexes(
         output = _get_windowed_indexes_scipy(
             dem=dem,
             window_size=window_size,
+            window_size_fractal=window_size_fractal,
             resolution=resolution,
             idx_attrs=idx_attrs,
             make_attrs=make_attrs,
@@ -991,6 +1001,7 @@ def _get_windowed_indexes(
         output = _get_windowed_indexes_numba(
             dem=dem,
             window_size=window_size,
+            window_size_fractal=window_size_fractal,
             resolution=resolution,
             make_attrs=typed_make_attrs,
             idx_attrs=typed_idx_attrs,

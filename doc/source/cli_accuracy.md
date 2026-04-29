@@ -41,7 +41,7 @@ Below is an example of basic usage for the `accuracy` workflow, including how to
 The configuration file of the `accuracy` workflow contains four categories: `inputs`, `outputs`, `coregistration` and `statistics`.
 Only the **paths to the two elevation datasets** in the `inputs` section are **required** parameters. All others can be left out, in which case they default to pre-defined parameters.
 
-By default, the `accuracy` workflow **reprojects on the reference elevation dataset**, performs a **{ref}`nuthkaab` coregistration (horizontal and vertical translations) on all terrain**, computes **15 different statistics**, and saves **level-1 (intermediate) outputs in `./outputs`** .
+By default, the `accuracy` workflow **reprojects on the reference elevation dataset**, performs a **{ref}`nuthkaab` coregistration (horizontal and vertical translations) on all terrain**, computes **9 different statistics**, and saves **level-1 (intermediate) outputs in `./outputs`** .
 
 In the example of configuration file below, we define:
 - The **paths to the two elevation datasets** which are **required**,
@@ -80,7 +80,7 @@ Now that we have this configuration file, we run the workflow.
 
 The logging output is printed in the terminal, showing the different steps. For instance, we can see that the coregistration converged in three iterations.
 
-Finally, a report is created (both in HTML and PDF formats) in the output directory.
+Finally, a report is created (both in HTML and PDF (if activated in the config file) formats) in the output directory.
 
 We can visualize the report of our workflow above:
 
@@ -129,13 +129,12 @@ Inputs information, split between reference and to-be-aligned elevation data.
 | `path_to_elev`        | Path to reference elevation              | str        |         | Yes      |
 | `force_source_nodata` | No data elevation                        | int        |         | No       |
 | `path_to_mask`        | Path to mask associated to the elevation | str        |         | No       |
-| `from_vcrs`           | Original vcrs                            | int, str   | `null`  | No       |
-| `to_vcrs`             | Destination vcrs                         | int, str   | `null`  | No       |
+| `force_vcrs`          | Vertical CRS of the elevation            | int, str   |         | No       |
 | `downsample`          | Downsampling elevation factor >= 1       | int, float | 1       | No       |
 :::
 
 :::{note}
-For transforming between vertical CRS with ``from_vcrs``/``to_vcrs`` please refer to {ref}`vertical-ref`.
+To set the vertical CRS with ``force_vcrs``, please refer to {ref}`vertical-ref`.
 The ``downsample`` parameter allows the user to resample the elevation by a round factor.
 The default value of 1 means no downsampling.
 
@@ -178,11 +177,11 @@ inputs:
     reference_elev:
         path_to_elev: "path_to/reference_elev.tif"
         force_source_nodata: -32768
-        from_vcrs: null
-        to_vcrs: null
+        force_vcrs: null
     to_be_aligned_elev:
         path_to_elev: "path_to/to_be_aligned_elev.tif"
         path_to_mask: "path_to/mask.tif"
+        force_vcrs: "EGM96"
     sampling_grid: "reference_elev"
 :::::
 
@@ -251,10 +250,8 @@ coregistration:
 
 Statistics step information. This section relates to the computed statistics:
 
-1. If no block is specified, all available statistics are calculated by default:
-
-   [mean, median, max, min, sum, sum of squares, 90th percentile, LE90, nmad, rmse, std,
-   valid count, total count, percentage valid points, inter quartile range]
+1. If no block is specified, a list of statistics are calculated by default:
+   [mean, median, max, min, nmad, standard deviation, valid count, total count, percentage valid points]
 
 2. If a block is specified but no statistics are provided, then no statistics will be computed.
 
@@ -277,17 +274,19 @@ If a mask is provided, the statistics are also computed inside the mask.
 
 Outputs information. Operates by levels:
 
-1. **Level 1** → aligned elevation only
-2. **Level 2** → more detailed output
+1. **Level 1** → saves aligned elevation raster (TIFF), report(s) (HTML and PDF if activated), stats (CSV) and plots (PNG)
+2. **Level 2** → saves temporary rasters (TIFF format)
+
 
 :::{table} Outputs parameters
 :widths: 20, 40, 10, 10, 10, 10
 
-| Name           | Description                   | Type | Default  | Available                          | Required |
-|----------------|-------------------------------|------|---------------|----------------------------------------|---------|
-| `path`         | Path for outputs               | str  | outputs/      |                                        | No      |
-| `level`        | Level for detailed outputs     | int  | 1             | 1 or 2                                 | No      |
-| `output_grid`  | Grid for outputs resampling    | str  | reference_elev | reference_elev or to_be_aligned_elev   | No      |
+| Name           | Description                 | Type    | Default        | Available                            | Required |
+|----------------|-----------------------------|---------|----------------|--------------------------------------|---------|
+| `path`         | Path for outputs            | str     | outputs        |                                      | No      |
+| `level`        | Level for detailed outputs  | int     | 1              | 1 or 2                               | No      |
+| `output_grid`  | Grid for outputs resampling | str     | reference_elev | reference_elev or to_be_aligned_elev | No      |
+| `generate_pdf` | Generate PDF report         | boolean | True           |                                      | No      |
 :::
 
 :::{code-block} yaml
@@ -297,50 +296,60 @@ outputs:
     output_grid: "reference_elev"
 :::
 
-Tree of outputs for level 1 (including coregistration step):
-
-:::{code-block} text
-- root
-  ├─ tables
-  │   └─ aligned_elev_stats.csv
-  ├─ plots
-  │   ├─ diff_elev_after_coreg_map.png
-  │   ├─ diff_elev_before_coreg_map.png
-  │   ├─ diff_elev_before_after_hist.png
-  │   ├─ reference_elev_map.png
-  │   ├─ masked_elev_map.png (if mask_elev is given in input)
-  │   └─ to_be_aligned_elev_map.png
-  ├─ rasters
-  │   └─ aligned_elev.tif
-  ├─ report.html
-  ├─ report.pdf
-  └─ used_config.yaml
-:::
-
-Tree of outputs for level 2 (including coregistration step):
+Tree of outputs for level 1:
 
 :::{code-block} text
 - root
   ├─ tables
   │   ├─ aligned_elev_stats.csv
-  │   ├─ diff_elev_after_coreg_stats.csv
-  │   ├─ diff_elev_before_coreg_stats.csv
+  │   ├─ [diff_elev_before_coreg_stats.csv] (if compute_coreg)
+  │   ├─ [diff_elev_after_coreg_stats.csv] (if compute_coreg)
+  │   ├─ reference_elev_stats.csv
+  │   └─ to_be_aligned_elev_stats.csv
+- ├─ plots
+  │   ├─ inputs.png
+  │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
+  │   ├─ [preprocessed_to_be_aligned_elev_map.png or preprocessed_reference_elev_map.png] (if sampling_grid)
+  │   ├─ [diff_elev_before_coreg_map.png] (if compute_coreg)
+  │   ├─ [diff_elev_after_coreg_map.png] (if compute_coreg)
+  │   ├─ [diff_elev_before_after_hist.png] (if compute_coreg)
+  │   ├─ [diff_elev_without_coreg_map.png] (if no compute_coreg)
+  │   └─ [elev_diff_histo.png] (if compute_coreg))
+  ├─ rasters
+  │   └─ aligned_elev.tif
+  ├─ report.html
+  ├─ [report.pdf] (if `generate_pdf` if `True`)
+  └─ used_config.yaml
+:::
+
+Tree of outputs for level 2:
+
+:::{code-block} text
+- root
+  ├─ tables
+  │   ├─ aligned_elev_stats.csv
+  │   ├─ [diff_elev_before_coreg_stats.csv] (if compute_coreg)
+  │   ├─ [diff_elev_after_coreg_stats.csv] (if compute_coreg)
   │   ├─ reference_elev_stats.csv
   │   └─ to_be_aligned_elev_stats.csv
   ├─ plots
-  │   ├─ diff_elev_after_coreg_map.png
-  │   ├─ diff_elev_before_coreg_map.png
-  │   ├─ diff_elev_before_after_hist.png
-  │   ├─ reference_elev_map.png
-  │   ├─ masked_elev_map.png (if mask_elev is given in input)
-  │   └─ to_be_aligned_elev_map.png
+  │   ├─ inputs.png
+  │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
+  │   ├─ [preprocessed_to_be_aligned_elev_map.png or preprocessed_reference_elev_map.png] (if sampling_grid)
+  │   ├─ [diff_elev_before_coreg_map.png] (if compute_coreg)
+  │   ├─ [diff_elev_after_coreg_map.png] (if compute_coreg)
+  │   ├─ [diff_elev_before_after_hist.png] (if compute_coreg)
+  │   ├─ [diff_elev_without_coreg_map.png] (if no compute_coreg)
+  │   └─ [elev_diff_histo.png] (if compute_coreg))
   ├─ rasters
-  │   ├─ aligned_elev.tif
-  │   ├─ diff_elev_after_coreg.tif
-  │   ├─ diff_elev_before_coreg.tif
-  │   └─ to_be_aligned_elev_reprojected.tif
+  │   ├─ reference_elev_reprojected.tif
+  │   ├─ to_be_aligned_elev_reprojected.tif
+  │   ├─ [aligned_elev.tif] (if compute_coreg)
+  │   ├─ [diff_elev_before_coreg_map.tif] (if compute_coreg)
+  │   ├─ [diff_elev_after_coreg_map.tif] (if compute_coreg)
+  │   └─ [diff_elev_without_coreg_map.tif] (if no compute_coreg)
   ├─ report.html
-  ├─ report.pdf
+  ├─ [report.pdf] (if `generate_pdf` if `True`)
   └─ used_config.yaml
 :::
 

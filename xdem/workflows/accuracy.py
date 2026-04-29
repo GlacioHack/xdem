@@ -57,6 +57,7 @@ class Accuracy(Workflows):
         self.df_stats: pd.DataFrame | None = None
 
         super().__init__(config_dem, output)
+        self.create_output_dir()
 
         self.compute_coreg = self.config["coregistration"]["process"]
 
@@ -117,6 +118,10 @@ class Accuracy(Workflows):
                 cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
+        self.dico_to_show = [
+            ("Information about inputs", self.config["inputs"]),
+        ]
+
         return vmin, vmax
 
     def _get_reference_elevation(self) -> float:
@@ -147,7 +152,6 @@ class Accuracy(Workflows):
             config_coreg = self.config["coregistration"].get(step)
             if config_coreg:
                 method_name = config_coreg.get("method")
-                print(method_name)
                 coreg_extra = config_coreg.get("extra_information", {})
                 coreg_fun = partial(method_map[method_name], **coreg_extra)
                 coreg_functions.append(coreg_fun())
@@ -237,7 +241,6 @@ class Accuracy(Workflows):
         # Compute user statistics
         dict_stats_aliased = {}
         list_to_compute = self.config["statistics"]
-        print("list_to_compute", list_to_compute)
 
         if list_to_compute is not None:
             logging.info(f"Computing statistics on {name_of_data}: {list_to_compute}")
@@ -422,6 +425,7 @@ class Accuracy(Workflows):
         self.elapsed = t1 - t0
 
         self.create_html(self.dico_to_show)
+        self.generate_pdf()
 
         # Remove empty folder
         for folder in self.outputs_folder.rglob("*"):
