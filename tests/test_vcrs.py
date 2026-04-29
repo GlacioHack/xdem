@@ -7,16 +7,17 @@ import re
 import warnings
 from typing import Any
 
-import numpy as np
-import xarray as xr
-import pytest
-from pyproj import CRS
 import geoutils as gu
+import numpy as np
+import pytest
+import xarray as xr
 from geoutils.multiproc import MultiprocConfig
+from pyproj import CRS
 
 import xdem
 import xdem.vcrs
 from xdem import examples
+
 
 class TestVCRS:
     def test_parse_vcrs_name_from_product(self) -> None:

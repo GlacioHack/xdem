@@ -9,20 +9,18 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
-from pandas.testing import assert_frame_equal
-
 from geoutils import Raster, Vector
 from geoutils.raster import MultiprocConfig
+from pandas.testing import assert_frame_equal
 from pyproj import CRS
 
-from xdem import DEM, examples, open_dem, coreg
+from xdem import DEM, coreg, examples, open_dem
 from xdem.dem.base import DEMBase
 from xdem.dem.xr_accessor import DEMAccessor
 
 
 def assert_output_equal(output1: Any, output2: Any, use_allclose: bool = False, strict_masked: bool = True) -> None:
     """Return equality of different output types."""
-
 
     # For two vectors
     if isinstance(output1, Vector) and isinstance(output2, Vector):
@@ -175,8 +173,7 @@ class TestClassVsAccessorConsistencyInherited:
     ]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])
-    @pytest.mark.parametrize("method, kwargs",
-                             [(f, k) for f, k in inherited_methods_loading_and_kwargs])
+    @pytest.mark.parametrize("method, kwargs", [(f, k) for f, k in inherited_methods_loading_and_kwargs])
     def test_methods__loading(self, path_dem: str, method: str, kwargs: dict[str, Any]) -> None:
         """
         Test that a minimal subset of inherited RasterBase methods preserve the expected loading behaviour
@@ -214,8 +211,7 @@ class TestClassVsAccessorConsistencyInherited:
     ]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
-    @pytest.mark.parametrize("method, kwargs",
-                             [(f, k) for f, k in inherited_chunked_methods_and_args])  # type: ignore
+    @pytest.mark.parametrize("method, kwargs", [(f, k) for f, k in inherited_chunked_methods_and_args])  # type: ignore
     def test_chunked_methods__loading_laziness(self, path_dem: str, method: str, kwargs: dict[str, Any]) -> None:
         """
         Test that a minimal subset of inherited chunked methods preserve loading and laziness.
@@ -380,7 +376,7 @@ class TestClassVsAccessorConsistencyDEMBase:
         ("coregister_3d", {"custom"}),  # Define inside function
         ("estimate_uncertainty", {"custom"}),  # Define inside function
         # 2. Inplace, will not load
-        ("set_vcrs", {"new_vcrs": "EGM96"})
+        ("set_vcrs", {"new_vcrs": "EGM96"}),
     ]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore

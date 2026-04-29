@@ -366,14 +366,14 @@ class TestDEM:
                 assert raster_infos_arrays[line] == dem_infos_array[line]
 
             # Verify Coordinate system value
-            assert complete_line[len(crs_key):].strip() == "['ETRS89 / UTM zone 33N']"
+            assert complete_line[len(crs_key) :].strip() == "['ETRS89 / UTM zone 33N']"
 
         # Verify new VCRS value with this 2D CRS DEM
         dem.set_vcrs(new_vcrs="EGM96")
         dem_infos_array = dem.info(verbose=False).split("\n")
         complete_line = dem_infos_array[crs_line[0]]
         assert complete_line.startswith(crs_key)
-        assert complete_line[len(crs_key):].strip() == "['Horizontal: ETRS89 / UTM zone 33N; Vertical: EGM96 height']"
+        assert complete_line[len(crs_key) :].strip() == "['Horizontal: ETRS89 / UTM zone 33N; Vertical: EGM96 height']"
 
     @pytest.mark.skip()
     def test_info_3dcrs(self) -> None:

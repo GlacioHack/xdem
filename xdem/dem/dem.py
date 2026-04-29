@@ -16,6 +16,7 @@
 # limitations under the License.
 
 """DEM class and functions."""
+
 from __future__ import annotations
 
 import pathlib
@@ -24,16 +25,14 @@ from typing import Any, Literal
 
 import rasterio as rio
 from affine import Affine
-from geoutils.raster import RasterType, Raster
+from geoutils.raster import Raster, RasterType
 from pyproj import CRS
 from pyproj.crs import VerticalCRS
 
 from xdem._typing import NDArrayf
-from xdem.vcrs import (
-    _parse_vcrs_name_from_product,
-    _check_vcrs_input
-)
 from xdem.dem.base import DEMBase
+from xdem.vcrs import _check_vcrs_input, _parse_vcrs_name_from_product
+
 
 class DEM(Raster, DEMBase):  # type: ignore
     """

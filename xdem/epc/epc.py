@@ -36,11 +36,11 @@ from xdem import coreg
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.vcrs import (
     _build_ccrs_from_crs_and_vcrs,
+    _build_vertical_transformer,
     _grid_from_user_input,
     _transform_zz,
     _vcrs_from_crs,
     _vcrs_from_user_input,
-    _build_vertical_transformer
 )
 
 epc_attrs = ["_vcrs", "_vcrs_name", "_vcrs_grid"]

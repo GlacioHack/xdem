@@ -28,8 +28,8 @@ from pathlib import Path
 from typing import Any, Dict
 
 import xdem
-from xdem.vcrs import vertical_unit_symbol
 from xdem._misc import import_optional
+from xdem.vcrs import vertical_unit_symbol
 from xdem.workflows.schemas import TOPO_SCHEMA
 from xdem.workflows.workflows import _ALIAS, Workflows
 

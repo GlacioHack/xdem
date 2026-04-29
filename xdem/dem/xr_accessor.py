@@ -1,20 +1,20 @@
 """Xarray accessor 'dem' for digital elevation models."""
+
 from __future__ import annotations
 
 from typing import Literal
 
-from pyproj.crs import VerticalCRS
 import xarray as xr
-
 from geoutils.raster.xr_accessor import RasterAccessor, open_raster
+from pyproj.crs import VerticalCRS
 
 from xdem.dem.base import DEMBase
 from xdem.vcrs import _check_vcrs_input
 
 
-def open_dem(filename: str,
-             vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | VerticalCRS | str | int | None = None,
-             **kwargs):
+def open_dem(
+    filename: str, vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | VerticalCRS | str | int | None = None, **kwargs
+):
     """Wrapper around open_raster with vertical CRS input support."""
 
     # Use open raster
@@ -26,6 +26,7 @@ def open_dem(filename: str,
 
     return ds
 
+
 @xr.register_dataarray_accessor("dem")
 class DEMAccessor(RasterAccessor, DEMBase):
     """
@@ -36,6 +37,7 @@ class DEMAccessor(RasterAccessor, DEMBase):
     Only methods specific to the functioning of the 'dem' Xarray accessor live in this class: mostly initialization,
     I/O or copying.
     """
+
     def __init__(self, xarray_obj: xr.DataArray):
 
         super().__init__(xarray_obj=xarray_obj)

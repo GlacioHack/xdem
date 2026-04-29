@@ -22,23 +22,21 @@ from __future__ import annotations
 
 import pathlib
 import warnings
-import re
-from typing import Any, Callable, Literal, overload, TypeVar, Union
+from typing import Callable, Literal, TypeVar, Union
 
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
-from affine import Affine
+import xarray as xr
 from geoutils import profiler
+from geoutils._dispatch import get_geo_attr, has_geo_attr
 from geoutils._typing import NDArrayNum
-from geoutils._dispatch import has_geo_attr, get_geo_attr
+from geoutils.multiproc import MultiprocConfig
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.base import RasterBase
-from geoutils.multiproc import MultiprocConfig
 from geoutils.stats import nmad
 from pyproj import CRS
-import xarray as xr
-from pyproj.crs import CompoundCRS, VerticalCRS
+from pyproj.crs import VerticalCRS
 
 import xdem
 from xdem import coreg, terrain
@@ -60,6 +58,7 @@ from xdem.vcrs import (
 DEMType = TypeVar("DEMType", bound="DEMBase")
 # For inputs, we also accept a xr.DataArray
 DEMLike = Union["DEMBase", xr.DataArray]
+
 
 class DEMBase(RasterBase):
     """
@@ -156,9 +155,11 @@ class DEMBase(RasterBase):
 
         # Raise deprecation warning for old in-place behaviour
         if "inplace" in kwargs and kwargs["inplace"]:
-            warnings.warn("Argument 'inplace' is deprecated and will be removed in future versions. "
-                          "Use dem = dem.to_vcrs() instead.",
-                          category=DeprecationWarning)
+            warnings.warn(
+                "Argument 'inplace' is deprecated and will be removed in future versions. "
+                "Use dem = dem.to_vcrs() instead.",
+                category=DeprecationWarning,
+            )
             inplace = True
         else:
             inplace = False

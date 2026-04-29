@@ -23,17 +23,16 @@ from __future__ import annotations
 import os
 import pathlib
 import warnings
-from typing import Literal, TypedDict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 from urllib.error import HTTPError
 
-from geoutils.raster.referencing import _coords
+import affine
+import numpy as np
+import pyproj
+from geoutils._dispatch import get_geo_attr
 from geoutils.multiproc import MultiprocConfig
 from geoutils.multiproc.mparray import map_overlap_multiproc_save
-from geoutils._dispatch import get_geo_attr
-
-import numpy as np
-import affine
-import pyproj
+from geoutils.raster.referencing import _coords
 from pyproj import CRS
 from pyproj.crs import BoundCRS, CompoundCRS, GeographicCRS, VerticalCRS
 from pyproj.crs.coordinate_system import Ellipsoidal3DCS
@@ -76,6 +75,7 @@ vcrs_dem_products = {
     "COPDEM": "EGM08",
 }
 
+
 def _check_vcrs_input(vcrs: Any, crs: Any) -> Any:
     """
     Process user-input vertical CRS and CRS, and return normalized CRS output.
@@ -116,6 +116,7 @@ def _check_vcrs_input(vcrs: Any, crs: Any) -> Any:
 
     return out_crs
 
+
 # EPSG codes for units
 _UNIT_SYMBOLS = {
     "9001": "m",  # metre
@@ -124,6 +125,7 @@ _UNIT_SYMBOLS = {
     "9036": "km",
     "9102": "°",
 }
+
 
 def vertical_unit_symbol(crs) -> str | None:
     """
@@ -166,6 +168,7 @@ def vertical_unit_symbol(crs) -> str | None:
             return axis.unit_name
 
     return None
+
 
 def _parse_vcrs_name_from_product(product: str) -> str | None:
     """
@@ -315,6 +318,7 @@ _vcrs_meta: dict[str, VCRSMetaDict] = {
     "EGM96": {"grid": "us_nga_egm96_15.tif", "epsg": 5773},  # EGM1996 at 15 minute resolution
 }
 
+
 def _vcrs_from_crs(crs: CRS | None) -> CRS | Literal["Ellipsoid"] | None:
     """Get the vertical CRS from a CRS."""
 
@@ -433,6 +437,7 @@ def _grid_from_user_input(vcrs_input: str | pathlib.Path | int | CRS) -> str | N
 
     return grid
 
+
 def _build_vertical_transformer(crs_from: CRS, crs_to: CRS) -> pyproj.Transformer:
     """
     Build the best available transformer for a vertical CRS transformation.
@@ -459,6 +464,7 @@ def _build_vertical_transformer(crs_from: CRS, crs_to: CRS) -> pyproj.Transforme
 
     return trans_group.transformers[0]
 
+
 def _transform_zz(
     transformer: pyproj.Transformer,
     xx: NDArrayf,
@@ -474,8 +480,10 @@ def _transform_zz(
 
     return zz_trans
 
+
 # Vertical CRS transformation for DEMs
 ######################################
+
 
 def _to_vcrs_2d_pyproj(
     data: NDArrayf,
@@ -493,6 +501,7 @@ def _to_vcrs_2d_pyproj(
         zz=data,
     )
     return zz_trans.astype(data.dtype, copy=False)
+
 
 def _to_vcrs_2d_block_dask(
     data: NDArrayf,
@@ -526,6 +535,8 @@ def _to_vcrs_2d_block_dask(
         transform=block_transform,
         transformer=transformer,
     )
+
+
 def _dask_to_vcrs_2d(
     darr: da.Array,
     transform: affine.Affine,
@@ -544,6 +555,7 @@ def _dask_to_vcrs_2d(
         dtype=darr.dtype,
         meta=np.array((), dtype=darr.dtype),
     )
+
 
 def _to_vcrs_2d_block_mp(
     dem: DEM,
@@ -574,6 +586,7 @@ def _to_vcrs_2d_block_mp(
         tags=dem.tags,
     )
 
+
 def _multiproc_to_vcrs_2d(
     dem: DEM,
     *,
@@ -596,7 +609,9 @@ def _multiproc_to_vcrs_2d(
     out_dem.set_crs(dst_ccrs)
 
     from xdem.dem.dem import DEM
+
     return DEM(out_dem)
+
 
 def _get_vertical_transform_crss(
     crs: Any,
@@ -623,7 +638,7 @@ def _get_vertical_transform_crss(
             warnings.warn(
                 category=UserWarning,
                 message=f"Overriding the vertical CRS of the DEM "
-                        f"with the one provided in `force_source_vcrs`: {force_source_vcrs}.",
+                f"with the one provided in `force_source_vcrs`: {force_source_vcrs}.",
             )
         force_src_vcrs = _vcrs_from_user_input(force_source_vcrs)
         src_ccrs = _build_ccrs_from_crs_and_vcrs(crs, vcrs=force_src_vcrs)
@@ -637,6 +652,7 @@ def _get_vertical_transform_crss(
     )
 
     return src_ccrs, dst_ccrs
+
 
 def _to_vcrs_2d(
     dem: DEMBase,

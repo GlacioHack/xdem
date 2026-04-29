@@ -1247,7 +1247,6 @@ class TestAffineManipulation:
     @pytest.mark.parametrize("chunk_size", [5, 8, 12])
     def test_min_max_alt(self, lazy_test_files_tiny, path_index, chunk_size):
 
-        diff = 10e-5
         # 1/ Prepare backend inputs
         # Get filepath of on-disk (for laziness) test file
         path_raster = lazy_test_files_tiny[path_index]
@@ -1303,9 +1302,9 @@ class TestAffineManipulation:
             )  # zz = np.ones(len(xx)) * (zz_max - zz_min)
             assert [zz_min, zz_max] == zz[k]
 
-            """blocks = ds_base.rst.data.to_delayed().ravel()
+            blocks = ds_base.rst.data.to_delayed().ravel()
             delayed_altitude_min_max = [
                 dask.from_delayed(_delayed_zmin_zmax(blocks[k]), shape=(1, 1), dtype=np.dtype("int32"))
             ]
             zz_min, zz_max = dask.compute(*delayed_altitude_min_max)[0]
-            assert[zz_min, zz_max] == zz[k]"""
+            assert[zz_min, zz_max] == zz[k]

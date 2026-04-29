@@ -21,30 +21,31 @@
 from __future__ import annotations
 
 import warnings
-from typing import Literal, Sized, overload, TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, Sized, overload, Any
 
 import geoutils as gu
 import numpy as np
 from geoutils import profiler
-from geoutils.raster import Raster, RasterType
-from geoutils.raster.referencing import _res
+from geoutils._dispatch import get_geo_attr, has_geo_attr
 from geoutils.multiproc import (
     MultiprocConfig,
     map_overlap_multiproc_save,
 )
-from geoutils._dispatch import has_geo_attr, get_geo_attr
+from geoutils.raster import Raster, RasterType
+from geoutils.raster.referencing import _res
 
-from xdem._typing import DTypeLike, NDArrayf
 from xdem._misc import import_optional
+from xdem._typing import DTypeLike, NDArrayf
 from xdem.terrain.freq import _texture_shading_fft
 from xdem.terrain.surfit import _get_surface_attributes
 from xdem.terrain.window import _get_windowed_indexes
 
 if TYPE_CHECKING:
-    from xdem.dem.base import DEMLike
-    from xdem import DEM
-    from geoutils.raster.base import RasterLike
     import dask.array as da
+    from geoutils.raster.base import RasterLike
+
+    from xdem import DEM
+    from xdem.dem.base import DEMLike
 
 # List available attributes
 available_attributes = [
@@ -92,13 +93,14 @@ list_requiring_frequency_domain = ["texture_shading"]
 # Helpers for chunked execution
 ###############################
 
+
 def _multiproc_get_terrain_attribute(
     dem: DEM,
     attr: str,
     resolution: float,
     degrees: bool,
     hillshade_altitude: float,
-    hillshade_azimuth: float ,
+    hillshade_azimuth: float,
     hillshade_z_factor: float,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"],
     curv_method: Literal["geometric", "directional"],
@@ -138,6 +140,7 @@ def _multiproc_get_terrain_attribute(
         mp_config,
         depth=depth,
     )
+
 
 def _dask_get_terrain_attribute(
     array: da.Array,
@@ -189,6 +192,7 @@ def _dask_get_terrain_attribute(
         trim=True,
         dtype=dtype,
     )
+
 
 @overload
 def get_terrain_attribute(
@@ -520,11 +524,7 @@ def get_terrain_attribute(
     depth = max(window_depth, surface_fit_depth)
 
     # Detect backend
-    dask_backend = (
-            getattr(dem, "_is_xr", False)
-            and hasattr(dem.data, "chunks")
-            and dem.data.chunks is not None
-    )
+    dask_backend = getattr(dem, "_is_xr", False) and hasattr(dem.data, "chunks") and dem.data.chunks is not None
     mp_backend = mp_config is not None
 
     # If multiprocessing
@@ -607,6 +607,7 @@ def get_terrain_attribute(
     if len(list_raster) == 1:
         return list_raster[0]
     return list_raster
+
 
 def _get_terrain_attribute_base(
     dem: NDArrayf,

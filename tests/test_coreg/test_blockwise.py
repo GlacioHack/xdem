@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from geoutils import Raster, Vector
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.multiproc import MultiprocConfig, ClusterGenerator
+from geoutils.multiproc import ClusterGenerator, MultiprocConfig
 
 import xdem
 from xdem.coreg import BlockwiseCoreg, Coreg

@@ -3,6 +3,7 @@ Test module for 'dem' Xarray accessor mirroring DEM API.
 Most function tests are actually located in "test_base", to check consistently for equality, loading and lazy behaviour
 across the entire API.
 """
+
 import numpy as np
 import pytest
 
