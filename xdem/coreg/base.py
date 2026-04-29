@@ -1416,12 +1416,15 @@ def _iterate_affine_regrid_small_rotations(
 
     # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
     dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
-    epc = dem_rst.to_pointcloud(data_column_name="z", skip_nodata=False).ds
+    epc = dem_rst.to_pointcloud(data_column_name="z", skip_nodata=True).ds
+    print(epc, centroid)
 
     # Exact affine transform of elevation point cloud (which yields irregular coordinates in 2D)
     tz0 = _apply_matrix_pts_arr(
         x=epc.geometry.x.values, y=epc.geometry.y.values, z=epc.z.values, matrix=matrix, centroid=centroid
     )[2]
+
+    print(tz0)
 
     # We need to find the elevation Z of a transformed DEM at the exact grid coordinates X,Y
     # Which means we need to find coordinates X',Y',Z' of the original DEM that, after the exact affine transform,
@@ -1430,9 +1433,13 @@ def _iterate_affine_regrid_small_rotations(
     # 1/ The elevation of the original DEM, Z', is simply a 2D interpolator function of X',Y' (bilinear, typically)
     # (We create the interpolator only once here for computational speed, instead of using Raster.interp_points)
     xycoords = dem_rst.coords(grid=False)
+    print(xycoords)
+    print(dem)
+    print("/")
     z_interp = scipy.interpolate.RegularGridInterpolator(
         points=(np.flip(xycoords[1], axis=0), xycoords[0]), values=dem, method=resampling, bounds_error=False
     )
+    print("z_interp", z_interp)
 
     # 2/ As a first guess of a transformed DEM elevation Z near the grid coordinates, we initialize with the elevations
     # of the nearest point from the transformed elevation point cloud
@@ -1471,12 +1478,12 @@ def _iterate_affine_regrid_small_rotations(
     niter = 1  # Starting iteration
 
     while niter < max_niter:
-
+        print(niter)
         # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
         tx, ty = _apply_matrix_pts_arr(x=x, y=y, z=new_z, matrix=matrix, invert=True, centroid=centroid)[:2]
-
         # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
         tz = z_interp((ty, tx))
+        print(tx, ty, tz)
 
         # Transform to see if we fall back on our feet (on the regular grid), or if we need to iterate more
         x0, y0, z0 = _apply_matrix_pts_arr(x=tx, y=ty, z=tz, matrix=matrix, centroid=centroid)
@@ -1542,8 +1549,6 @@ def _apply_matrix_rst(
     centroid: tuple[float, float, float] | None = None,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
     force_regrid_method: Literal["iterative", "griddata"] | None = None,
-    resample: bool = True,
-    out_transform: rio.transform.Affine = None,
 ) -> tuple[NDArrayf, rio.transform.Affine]:
     """
     Apply a 3D affine transformation matrix to a 2.5D DEM.
@@ -1624,9 +1629,7 @@ def _apply_matrix_rst_wrapper_resample(
     resample: bool = True,
     out_transform: rio.transform.Affine = None,
 ) -> tuple[NDArrayf, rio.transform.Affine]:
-    dem, transform = _apply_matrix_rst(
-        dem, src_transform, matrix, invert, centroid, resampling, force_regrid_method, resample, out_transform
-    )
+    dem, transform = _apply_matrix_rst(dem, src_transform, matrix, invert, centroid, resampling, force_regrid_method)
     # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
     if resample or out_transform:
         dem = _reproject_horizontal_shift_samecrs(
@@ -1724,6 +1727,7 @@ def _wrapper_multiproc_zmin_zmax_per_block(rst: Raster, tile_idx: dict[str, int]
     """Extract altitude min and max in a block."""
     rst_block = rst.icrop((tile_idx["xs"], tile_idx["ys"], tile_idx["xe"], tile_idx["ye"]))
     arr = rst_block.data
+    print(type(arr))
     return arr.min(), arr.max()
 
 
@@ -1732,8 +1736,9 @@ def _delayed_zmin_zmax(arr_chunk: NDArrayf | NDArrayb) -> NDArrayf:
     """Count number of valid values per block."""
     if arr_chunk.dtype == np.bool_:
         return np.array([np.count_nonzero(arr_chunk)]).reshape((1, 1))
+    print(type(arr_chunk))
     return np.array(
-        [arr_chunk.min(), arr_chunk.max()]
+        [np.nanmin(arr_chunk), np.nanmax(arr_chunk)]
     )  # np.array([np.count_nonzero(np.isfinite(arr_chunk))]).reshape((1, 1))
 
 
@@ -1823,6 +1828,7 @@ def _build_geotiling_and_meta_apply_matrix(
                 ]
                 zz_min, zz_max = dask.compute(*delayed_altitude_min_max)[0]
 
+            print(zz_min, zz_max)
             z_min, z_max = np.ones(len(xx)) * zz_min, np.ones(len(xx)) * zz_max
             dem_z_min = _apply_matrix_pts_arr(x=xx, y=yy, z=z_min, invert=not invert, matrix=matrix, centroid=centroid)
             dem_z_max = _apply_matrix_pts_arr(x=xx, y=yy, z=z_max, invert=not invert, matrix=matrix, centroid=centroid)
@@ -2039,14 +2045,13 @@ def apply_matrix(
         return _apply_matrix_pts(epc=elev, matrix=matrix, invert=invert, centroid=centroid, z_name=z_name)
     # Or apply matrix to raster (often requires re-gridding)
     else:
-
         if isinstance(elev, gu.Raster):
             src_transform = elev.transform
             dem = elev.data.filled(np.nan)
-            nodata = elev.nodata
         elif isinstance(elev, gu.raster.xr_accessor.RasterAccessor):
             src_transform = elev.transform
             dem = elev.data
+            print(type(dem))
         else:
             dem = elev
             dem[dem == -9999.0] = np.nan
@@ -2095,12 +2100,15 @@ def apply_matrix(
                     apply_matrix_kwargs["dst_transform"] = src_transform
 
             if multiproc_config:
+                print("multiproc config")
+
                 _multiproc_apply_matrix(elev, mp_config=multiproc_config, **apply_matrix_kwargs)
                 new_raster = gu.Raster(multiproc_config.outfile)
                 new_raster.set_mask(new_raster == src_nodata)
                 return new_raster
 
             elif da is not None and isinstance(elev.data, da.Array):
+                print("dask config")
                 dst_arr = _dask_apply_matrix(darr=elev.data, **apply_matrix_kwargs)
 
                 return gu.raster.xr_accessor.RasterAccessor.from_array(
@@ -2112,7 +2120,7 @@ def apply_matrix(
                     tags=elev.tags,
                 )
         else:
-
+            print("Normal")
             # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
             if dst_transform is None:
                 if resample:
@@ -2132,6 +2140,7 @@ def apply_matrix(
 
             # We return a raster if input was a raster
             if isinstance(elev, gu.Raster):
+                print("from_array", elev.nodata)
                 applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
                 return applied_dem
 
@@ -2194,7 +2203,7 @@ def _wrapper_multiproc_apply_matrix_per_block(
     combined_meta: dict[str, Any],
     **kwargs: Any,
 ) -> tuple[NDArrayf, tuple[int, int, int, int]]:
-    """Wrapper to use Delayed apply matrix per destination block
+    """Wrapper to use apply matrix per destination block
     (also rebuilds an array combined from intersecting source blocks)."""
 
     # Get source array block for each destination block
