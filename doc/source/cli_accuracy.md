@@ -129,12 +129,13 @@ Inputs information, split between reference and to-be-aligned elevation data.
 | `path_to_elev`        | Path to reference elevation              | str        |         | Yes      |
 | `force_source_nodata` | No data elevation                        | int        |         | No       |
 | `path_to_mask`        | Path to mask associated to the elevation | str        |         | No       |
-| `force_vcrs`          | Vertical CRS of the elevation            | int, str   |         | No       |
+| `force_vcrs`          | Vertical CRS                             | int, str   |         | No       |
 | `downsample`          | Downsampling elevation factor >= 1       | int, float | 1       | No       |
 :::
 
 :::{note}
-To set the vertical CRS with ``force_vcrs``, please refer to {ref}`vertical-ref`.
+To set the vertical CRS or to override one that might exist in the metadata with ``force_vcrs``,
+please refer to {ref}`vertical-ref`.
 The ``downsample`` parameter allows the user to resample the elevation by a round factor.
 The default value of 1 means no downsampling.
 
@@ -301,22 +302,22 @@ Tree of outputs for level 1:
 :::{code-block} text
 - root
   ├─ tables
-  │   ├─ aligned_elev_stats.csv
-  │   ├─ [diff_elev_before_coreg_stats.csv] (if compute_coreg)
-  │   ├─ [diff_elev_after_coreg_stats.csv] (if compute_coreg)
+  │   ├─ [aligned_elev_stats.csv] (if coregistration)
+  │   ├─ [diff_elev_before_coreg_stats.csv] (if coregistration)
+  │   ├─ [diff_elev_after_coreg_stats.csv] (if coregistration)
   │   ├─ reference_elev_stats.csv
   │   └─ to_be_aligned_elev_stats.csv
 - ├─ plots
   │   ├─ inputs.png
   │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
   │   ├─ [preprocessed_to_be_aligned_elev_map.png or preprocessed_reference_elev_map.png] (if sampling_grid)
-  │   ├─ [diff_elev_before_coreg_map.png] (if compute_coreg)
-  │   ├─ [diff_elev_after_coreg_map.png] (if compute_coreg)
-  │   ├─ [diff_elev_before_after_hist.png] (if compute_coreg)
-  │   ├─ [diff_elev_without_coreg_map.png] (if no compute_coreg)
-  │   └─ [elev_diff_histo.png] (if compute_coreg))
-  ├─ rasters
-  │   └─ aligned_elev.tif
+  │   ├─ [diff_elev_before_coreg_map.png] (if coregistration)
+  │   ├─ [diff_elev_after_coreg_map.png] (if coregistration)
+  │   ├─ [diff_elev_before_after_hist.png] (if coregistration)
+  │   ├─ [diff_elev_without_coreg_map.png] (if no coregistration)
+  │   └─ [elev_diff_histo.png] (if coregistration))
+  ├─ [rasters
+  │   └─ aligned_elev.tif] (if coregistration)
   ├─ report.html
   ├─ [report.pdf] (if `generate_pdf` if `True`)
   └─ used_config.yaml
@@ -327,27 +328,27 @@ Tree of outputs for level 2:
 :::{code-block} text
 - root
   ├─ tables
-  │   ├─ aligned_elev_stats.csv
-  │   ├─ [diff_elev_before_coreg_stats.csv] (if compute_coreg)
-  │   ├─ [diff_elev_after_coreg_stats.csv] (if compute_coreg)
+  │   ├─ [aligned_elev_stats.csv] (if coregistration)
+  │   ├─ [diff_elev_before_coreg_stats.csv] (if coregistration)
+  │   ├─ [diff_elev_after_coreg_stats.csv] (if coregistration)
   │   ├─ reference_elev_stats.csv
   │   └─ to_be_aligned_elev_stats.csv
   ├─ plots
   │   ├─ inputs.png
   │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
   │   ├─ [preprocessed_to_be_aligned_elev_map.png or preprocessed_reference_elev_map.png] (if sampling_grid)
-  │   ├─ [diff_elev_before_coreg_map.png] (if compute_coreg)
-  │   ├─ [diff_elev_after_coreg_map.png] (if compute_coreg)
-  │   ├─ [diff_elev_before_after_hist.png] (if compute_coreg)
-  │   ├─ [diff_elev_without_coreg_map.png] (if no compute_coreg)
-  │   └─ [elev_diff_histo.png] (if compute_coreg))
+  │   ├─ [diff_elev_before_coreg_map.png] (if coregistration)
+  │   ├─ [diff_elev_after_coreg_map.png] (if coregistration)
+  │   ├─ [diff_elev_before_after_hist.png] (if coregistration)
+  │   ├─ [diff_elev_without_coreg_map.png] (if no coregistration)
+  │   └─ [elev_diff_histo.png] (if coregistration))
   ├─ rasters
-  │   ├─ reference_elev_reprojected.tif
-  │   ├─ to_be_aligned_elev_reprojected.tif
-  │   ├─ [aligned_elev.tif] (if compute_coreg)
-  │   ├─ [diff_elev_before_coreg_map.tif] (if compute_coreg)
-  │   ├─ [diff_elev_after_coreg_map.tif] (if compute_coreg)
-  │   └─ [diff_elev_without_coreg_map.tif] (if no compute_coreg)
+  │   ├─ [reference_elev_reprojected.tif] (if grid resampling)
+  │   ├─ [to_be_aligned_elev_reprojected.tif] (if grid resampling)
+  │   ├─ [aligned_elev.tif] (if coregistration)
+  │   ├─ [diff_elev_before_coreg_map.tif] (if coregistration)
+  │   ├─ [diff_elev_after_coreg_map.tif] (if coregistration)
+  │   └─ [diff_elev_without_coreg_map.tif] (if no coregistration)
   ├─ report.html
   ├─ [report.pdf] (if `generate_pdf` if `True`)
   └─ used_config.yaml

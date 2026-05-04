@@ -119,12 +119,13 @@ List of elevation inputs information.
 | `path_to_elev`        | Path to elevation                        | str        |         | Yes      |
 | `force_source_nodata` | No data elevation                        | int        |         | No       |
 | `path_to_mask`        | Path to mask associated to the elevation | str        |         | No       |
-| `force_vcrs`          | Vertical CRS of the elevation            | int, str   |         | No       |
+| `force_vcrs`          | Vertical CRS                             | int, str   |         | No       |
 | `downsample`          | Downsampling elevation factor >= 1       | int, float | 1       | No       |
 :::
 
 :::{note}
-To set the vertical CRS with ``force_vcrs``, please refer to {ref}`vertical-ref`.
+To set the vertical CRS or to override one that might exist in the metadata with ``force_vcrs``,
+please refer to {ref}`vertical-ref`.
 The ``downsample`` parameter allows the user to resample the elevation by a round factor.
 The default value of 1 means no downsampling.
 
@@ -156,7 +157,6 @@ The `null` and `None` values are both accepted in YAML files, which correspond t
 **Required:** No
 
 TODO TODO TODO TODO
-
 
 ::::
 
@@ -254,7 +254,7 @@ path_to/outputs
   │   ├─ plots
   │   │   ├─ elev_map.png
   │   │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
-  │   │   └─ terrain_attributes_map.png
+  │   │   └─ [terrain_attributes_map.png] (if terrain attributes to compute)
   │   ├─ report.html
   │   └─ [report.pdf] (if `generate_pdf` if `True`)
   └─ used_config.yaml
@@ -271,12 +271,12 @@ path_to/outputs
   │   ├─ plots
   │   │   ├─ elev_map.png
   │   │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
-  │   │   └─ terrain_attributes_map.png
+  │   │   └─ [terrain_attributes_map.png] (if terrain attributes to compute)
   │   ├─ rasters
   │   │   ├─ [elev_reprojected.tif] (if reprojection needed)
-  │   │   ├─ aspect.tif
-  │   │   ├─ slope.tif
-  │   │   └─ [...]
+  │   │   ├─ [aspect.tif] (if aspect attribute to compute)
+  │   │   ├─ [slope.tif] (if slope attribute to compute)
+  │   │   └─ [...] (if other attributes to compute)
   │   ├─ report.html
   │   └─ [report.pdf] (if `generate_pdf` if `True`)
   └─ used_config.yaml

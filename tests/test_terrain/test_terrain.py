@@ -21,6 +21,30 @@ class TestTerrainAttribute:
     filepath = xdem.examples.get_path_test("longyearbyen_ref_dem")
     dem = xdem.DEM(filepath)
 
+    @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)
+    def test_attributes_default_call(self, attribute: str) -> None:
+        from_str_to_fun = {
+            "slope": lambda: self.dem.slope(),
+            "aspect": lambda: self.dem.aspect(),
+            "hillshade": lambda: self.dem.hillshade(),
+            "profile_curvature": lambda: self.dem.profile_curvature(),
+            "tangential_curvature": lambda: self.dem.tangential_curvature(),
+            "planform_curvature": lambda: self.dem.planform_curvature(),
+            "flowline_curvature": lambda: self.dem.flowline_curvature(),
+            "max_curvature": lambda: self.dem.max_curvature(),
+            "min_curvature": lambda: self.dem.min_curvature(),
+            "topographic_position_index": lambda: self.dem.topographic_position_index(),
+            "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(),
+            "roughness": lambda: self.dem.roughness(),
+            "rugosity": lambda: self.dem.rugosity(),
+            "texture_shading": lambda: self.dem.texture_shading(),
+            "fractal_roughness": lambda: self.dem.fractal_roughness(),
+        }
+
+        res_gta = xdem.terrain.get_terrain_attribute(self.dem, attribute=attribute)
+        res_fun = from_str_to_fun[attribute]()
+        assert res_gta == res_fun
+
     @pytest.mark.parametrize(
         "attribute",
         [

@@ -183,10 +183,10 @@ class Accuracy(Workflows):
         :param vmin: to plot elevation data with the same scale
         :param vmax: to plot elevation data with the same scale
         """
-        sampling_source = self.config["inputs"]["sampling_grid"]
+        sampling_grid = self.config["inputs"]["sampling_grid"]
 
         # Reprojection
-        if sampling_source == "reference_elev":
+        if sampling_grid == "reference_elev":
             crs_utm = self.reference_elev.get_metric_crs()
         else:
             crs_utm = self.to_be_aligned_elev.get_metric_crs()
@@ -197,16 +197,16 @@ class Accuracy(Workflows):
             self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(crs=crs_utm)
             self.reference_elev = self.reference_elev.reproject(crs=crs_utm)
 
-        if sampling_source == "reference_elev":
+        if sampling_grid == "reference_elev":
             self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(self.reference_elev, silent=True)
-        elif sampling_source == "to_be_aligned_elev":
+        elif sampling_grid == "to_be_aligned_elev":
             self.reference_elev = self.reference_elev.reproject(self.to_be_aligned_elev, silent=True)
 
         # Intersection
         logging.info("Computing intersection")
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
 
-        if sampling_source == "reference_elev":
+        if sampling_grid == "reference_elev":
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
             self.generate_plot(
                 self.to_be_aligned_elev,
