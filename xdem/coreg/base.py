@@ -1423,7 +1423,6 @@ def _iterate_affine_regrid_small_rotations(
         x=epc.geometry.x.values, y=epc.geometry.y.values, z=epc.z.values, matrix=matrix, centroid=centroid
     )[2]
 
-
     # We need to find the elevation Z of a transformed DEM at the exact grid coordinates X,Y
     # Which means we need to find coordinates X',Y',Z' of the original DEM that, after the exact affine transform,
     # fall exactly on regular X,Y coordinates
@@ -1431,13 +1430,11 @@ def _iterate_affine_regrid_small_rotations(
     # 1/ The elevation of the original DEM, Z', is simply a 2D interpolator function of X',Y' (bilinear, typically)
     # (We create the interpolator only once here for computational speed, instead of using Raster.interp_points)
     xycoords = dem_rst.coords(grid=False)
-    #z =  dem_rst.interp_points(points=(np.flip(xycoords[1], axis=0), xycoords[0]), method=resampling)
-    #print (z)
+    # z =  dem_rst.interp_points(points=(np.flip(xycoords[1], axis=0), xycoords[0]), method=resampling)
+    # print (z)
     """z_interp = scipy.interpolate.RegularGridInterpolator(
         points=(np.flip(xycoords[1], axis=0), xycoords[0]), values=dem, method=resampling, bounds_error=False
     )"""
-
-
 
     # 2/ As a first guess of a transformed DEM elevation Z near the grid coordinates, we initialize with the elevations
     # of the nearest point from the transformed elevation point cloud
@@ -1479,10 +1476,10 @@ def _iterate_affine_regrid_small_rotations(
         # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
         tx, ty = _apply_matrix_pts_arr(x=x, y=y, z=new_z, matrix=matrix, invert=True, centroid=centroid)[:2]
         # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
-        print (tx)
-        tx = [txx.astype(int) for txx in tx] # if  txx == txx]
-        print (tx)
-        ty = [tyy.astype(int) for tyy in ty] # if tyy == tyy ]
+        print(tx)
+        tx = [txx.astype(int) for txx in tx]  # if  txx == txx]
+        print(tx)
+        ty = [tyy.astype(int) for tyy in ty]  # if tyy == tyy ]
 
         tz = dem_rst.interp_points(points=(tx, ty), method=resampling)["z"]
         # Transform to see if we fall back on our feet (on the regular grid), or if we need to iterate more
@@ -1568,7 +1565,7 @@ def _apply_matrix_rst(
     :returns: Transformed DEM, Transform.
     """
 
-    print (invert, force_regrid_method)
+    print(invert, force_regrid_method)
 
     # Invert matrix if required
     if invert:
@@ -1892,7 +1889,7 @@ def _build_geotiling_and_meta_apply_matrix(
                 "dst_count": src_count,
             }
         )
-    print ("dest2source", dest2source)
+    print("dest2source", dest2source)
     return src_geotiling, dst_geotiling, dst_chunks, dest2source, src_block_ids, meta_params, dst_block_geogrids
 
 
@@ -2051,15 +2048,15 @@ def apply_matrix(
         elif isinstance(elev, gu.raster.xr_accessor.RasterAccessor):
             src_transform = elev.transform
             dem = elev.data
-        else: # todo
-            dem = elev # todo
-            dem[dem == -9999.0] = np.nan # todo
+        else:  # todo
+            dem = elev  # todo
+            dem[dem == -9999.0] = np.nan  # todo
 
         # If using Multiprocessing backend, process and return None (files written on disk)
         if mp_backend or dask_backend:
 
             # 2/ Check user input for nodata and dtype
-            print ("force_regrid_method", kwargs["force_regrid_method"])
+            print("force_regrid_method", kwargs["force_regrid_method"])
             dtype, src_nodata, nodata = _check_nodata_dtype(
                 source_raster=elev,
                 nodata=elev.nodata,
@@ -2080,7 +2077,7 @@ def apply_matrix(
                 "dst_transform": src_transform,
                 "force_regrid_method": kwargs["force_regrid_method"],
             }
-            print (kwargs["force_regrid_method"])
+            print(kwargs["force_regrid_method"])
             if resample:
                 apply_matrix_kwargs["dst_transform"] = src_transform
             else:
@@ -2183,7 +2180,6 @@ def _apply_matrix_per_block(
     dst_transform = rio.transform.Affine(*combined_meta["dst_transform"])
     kwargs["src_transform"] = src_transform
     kwargs["dst_transform"] = dst_transform
-
 
     # Apply matrix wrapper
     dst_arr, out_transform = apply_matrix(elev=comb_src_arr, **kwargs)  # type: ignore
@@ -2328,7 +2324,7 @@ def _dask_apply_matrix(
     # Normalize band groups:
     # - 2D: one pseudo group (bb=None, nb=0)
     # - 3D: real band blocks with their sizes
-    band_groups = ([(None, 0)])
+    band_groups = [(None, 0)]
     # Output data type
     out_dtype = np.dtype(kwargs.get("dtype", darr.dtype))
 

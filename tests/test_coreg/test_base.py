@@ -360,7 +360,6 @@ class TestCoregClass:
             dem_coreg_resample = coreg_method.apply(tba_dem)
             dem_coreg_noresample = coreg_method.apply(tba_dem, resample=False)
 
-
         if comp == "strict":
             # Both methods should yield the exact same output
             assert dem_coreg_resample == dem_coreg_noresample
@@ -1144,7 +1143,7 @@ class TestAffineManipulation:
         diff = 10e-5
         # 1/ Prepare backend inputs
         # Get filepath of on-disk (for laziness) test file
-        #path_raster = lazy_test_files_tiny[path_index]
+        # path_raster = lazy_test_files_tiny[path_index]
         path_raster = "ap_inputs/raster_base.tif"
 
         # Base raster input (in-memory)
@@ -1161,7 +1160,7 @@ class TestAffineManipulation:
         else:
             raster_base = self.ref
             chunk_size = [25, 40, 70][chunk_size]
-            print (chunk_size)
+            print(chunk_size)
 
         raster_base.to_file(path_raster)
 
@@ -1246,8 +1245,8 @@ class TestAffineManipulation:
         # assert mp_am.dtype == type(matrix[0,0])
         assert mp_am.crs == base_am.crs
         assert mp_am.transform == base_am.transform
-        print (base_am.get_mask())
-        print (mp_am.get_mask())
+        print(base_am.get_mask())
+        print(mp_am.get_mask())
         assert np.all(mp_am.get_mask() == base_am.get_mask())
 
         assert np.all(np.array(base_am.data - mp_am.data)[base_am.get_mask() is False] < diff)
@@ -1283,7 +1282,7 @@ class TestAffineManipulation:
 
         # 1/ Prepare backend inputs
         # Get filepath of on-disk (for laziness) test file
-        #path_raster = lazy_test_files_tiny[path_index]
+        # path_raster = lazy_test_files_tiny[path_index]
         path_raster = "ap_inputs/raster_base.tif"
 
         # Base raster input (in-memory)
@@ -1301,7 +1300,7 @@ class TestAffineManipulation:
         raster_base.to_file(path_raster)
 
         # Base raster input (in-memory)
-        #raster_base = gu.Raster(path_raster)
+        # raster_base = gu.Raster(path_raster)
         assert raster_base.is_loaded
 
         # Base data array input (in-memory)
