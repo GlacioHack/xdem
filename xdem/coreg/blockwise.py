@@ -100,6 +100,9 @@ class BlockwiseCoreg:
         else:
             self.apply_z_correction = True
 
+        print ("self.block_size_fit ", self.block_size_fit)
+        print ("self.block_size_apply", self.block_size_apply)
+        #print ("mp_config", mp_config.outfile)
         if mp_config is not None:
             self.mp_config = mp_config
             self.parent_path = Path(mp_config.outfile).parent
@@ -171,6 +174,7 @@ class BlockwiseCoreg:
 
         self.meta["inputs"] = self.procstep.meta["inputs"]  # type: ignore
 
+        print ("map_multiproc_collect with chunk_size =", self.mp_config.chunk_size)
         outputs_coreg = map_multiproc_collect(
             self._coreg_wrapper,
             reference_elev,
@@ -180,12 +184,18 @@ class BlockwiseCoreg:
             inlier_mask,
             return_tile=True,
         )
-
+        print ("outputs_coreg = ", outputs_coreg)
+        print ("compute_tiling with block_size_fit =", self.block_size_fit)
         self.shape_tiling_grid = compute_tiling(
             self.block_size_fit, reference_elev.shape, to_be_aligned_elev.shape
         ).shape
 
+        print ("shape_tiling_grid", compute_tiling(
+            self.block_size_fit, reference_elev.shape, to_be_aligned_elev.shape
+        ))
+        print ("shape_tiling_grid", self.shape_tiling_grid)
         rows_cols = list(itertools.product(range(self.shape_tiling_grid[0]), range(self.shape_tiling_grid[1])))
+        print ("rows_cols", rows_cols)
 
         self.x_coords = []  # type: ignore
         self.y_coords = []  # type: ignore
@@ -193,11 +203,14 @@ class BlockwiseCoreg:
         self.shifts_y = []  # type: ignore
         self.shifts_z = []  # type: ignore
 
-        for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
 
+        print ("for")
+        for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
+            print (idx, "//",  tile_coords)
             shift_x = coreg.meta["outputs"]["affine"].get("shift_x", np.nan)
             shift_y = coreg.meta["outputs"]["affine"].get("shift_y", np.nan)
             shift_z = coreg.meta["outputs"]["affine"].get("shift_z", np.nan)
+            # print ("=>", (shift_x, shift_y, shift_z))
 
             x, y = (
                 tile_coords[2] + self.block_size_fit / 2,
@@ -207,16 +220,20 @@ class BlockwiseCoreg:
             self.x_coords.append(x)
             self.y_coords.append(y)
 
+            print(" - coords = ", (tile_coords[2], tile_coords[0]), "+/-", self.block_size_fit/2)
             self.shifts_x.append(shift_x)
             self.shifts_y.append(shift_y)
             self.shifts_z.append(shift_z)
-
+            print ("shift_x", shift_x)
             tile_str = f"{rows_cols[idx][0]}_{rows_cols[idx][1]}"
             self.meta["outputs"][tile_str] = {  # type: ignore
                 "shift_x": shift_x,
                 "shift_y": shift_y,
                 "shift_z": shift_z,
             }
+            print ("=>", (shift_x, shift_y, shift_z))
+
+        print ("i", self.x_coords)
 
         self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z = map(  # type: ignore
             np.array, (self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z)
@@ -387,6 +404,7 @@ class BlockwiseCoreg:
         else:
             coeff_z = (0, 0, 0)
 
+        print ("self.mp_config.chunk_size = self.block_size_apply", self.block_size_apply)
         self.mp_config.chunk_size = self.block_size_apply
         # be careful with depth value if Out of Memory
         depth = max(np.abs(self.shifts_x).max(), np.abs(self.shifts_y).max())

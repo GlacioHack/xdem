@@ -1417,14 +1417,12 @@ def _iterate_affine_regrid_small_rotations(
     # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
     dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
     epc = dem_rst.to_pointcloud(data_column_name="z", skip_nodata=True).ds
-    print(epc, centroid)
 
     # Exact affine transform of elevation point cloud (which yields irregular coordinates in 2D)
     tz0 = _apply_matrix_pts_arr(
         x=epc.geometry.x.values, y=epc.geometry.y.values, z=epc.z.values, matrix=matrix, centroid=centroid
     )[2]
 
-    print(tz0)
 
     # We need to find the elevation Z of a transformed DEM at the exact grid coordinates X,Y
     # Which means we need to find coordinates X',Y',Z' of the original DEM that, after the exact affine transform,
@@ -1433,13 +1431,13 @@ def _iterate_affine_regrid_small_rotations(
     # 1/ The elevation of the original DEM, Z', is simply a 2D interpolator function of X',Y' (bilinear, typically)
     # (We create the interpolator only once here for computational speed, instead of using Raster.interp_points)
     xycoords = dem_rst.coords(grid=False)
-    print(xycoords)
-    print(dem)
-    print("/")
-    z_interp = scipy.interpolate.RegularGridInterpolator(
+    #z =  dem_rst.interp_points(points=(np.flip(xycoords[1], axis=0), xycoords[0]), method=resampling)
+    #print (z)
+    """z_interp = scipy.interpolate.RegularGridInterpolator(
         points=(np.flip(xycoords[1], axis=0), xycoords[0]), values=dem, method=resampling, bounds_error=False
-    )
-    print("z_interp", z_interp)
+    )"""
+
+
 
     # 2/ As a first guess of a transformed DEM elevation Z near the grid coordinates, we initialize with the elevations
     # of the nearest point from the transformed elevation point cloud
@@ -1478,13 +1476,15 @@ def _iterate_affine_regrid_small_rotations(
     niter = 1  # Starting iteration
 
     while niter < max_niter:
-        print(niter)
         # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
         tx, ty = _apply_matrix_pts_arr(x=x, y=y, z=new_z, matrix=matrix, invert=True, centroid=centroid)[:2]
         # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
-        tz = z_interp((ty, tx))
-        print(tx, ty, tz)
+        print (tx)
+        tx = [txx.astype(int) for txx in tx] # if  txx == txx]
+        print (tx)
+        ty = [tyy.astype(int) for tyy in ty] # if tyy == tyy ]
 
+        tz = dem_rst.interp_points(points=(tx, ty), method=resampling)["z"]
         # Transform to see if we fall back on our feet (on the regular grid), or if we need to iterate more
         x0, y0, z0 = _apply_matrix_pts_arr(x=tx, y=ty, z=tz, matrix=matrix, centroid=centroid)
 
@@ -1568,6 +1568,8 @@ def _apply_matrix_rst(
     :returns: Transformed DEM, Transform.
     """
 
+    print (invert, force_regrid_method)
+
     # Invert matrix if required
     if invert:
         matrix = invert_matrix(matrix)
@@ -1631,6 +1633,7 @@ def _apply_matrix_rst_wrapper_resample(
 ) -> tuple[NDArrayf, rio.transform.Affine]:
     dem, transform = _apply_matrix_rst(dem, src_transform, matrix, invert, centroid, resampling, force_regrid_method)
     # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
+
     if resample or out_transform:
         dem = _reproject_horizontal_shift_samecrs(
             dem, src_transform=transform, dst_transform=out_transform, resampling=resampling
@@ -1727,7 +1730,6 @@ def _wrapper_multiproc_zmin_zmax_per_block(rst: Raster, tile_idx: dict[str, int]
     """Extract altitude min and max in a block."""
     rst_block = rst.icrop((tile_idx["xs"], tile_idx["ys"], tile_idx["xe"], tile_idx["ye"]))
     arr = rst_block.data
-    print(type(arr))
     return arr.min(), arr.max()
 
 
@@ -1736,7 +1738,6 @@ def _delayed_zmin_zmax(arr_chunk: NDArrayf | NDArrayb) -> NDArrayf:
     """Count number of valid values per block."""
     if arr_chunk.dtype == np.bool_:
         return np.array([np.count_nonzero(arr_chunk)]).reshape((1, 1))
-    print(type(arr_chunk))
     return np.array(
         [np.nanmin(arr_chunk), np.nanmax(arr_chunk)]
     )  # np.array([np.count_nonzero(np.isfinite(arr_chunk))]).reshape((1, 1))
@@ -1810,7 +1811,7 @@ def _build_geotiling_and_meta_apply_matrix(
 
     dst_boxes = []
     for k, gg in enumerate(src_geotiling.get_blocks_as_geogrids()):
-        poly = box(*gg.bounds_projected(crs=dst_crs)).buffer(10 * max(dst_geogrid.res))
+        poly = box(*gg.bounds_projected(crs=dst_crs)).buffer(40 * max(dst_geogrid.res))
         xx, yy = poly.exterior.coords.xy
 
         if mp_config or isinstance(dem, dask.array.core.Array):
@@ -1828,7 +1829,6 @@ def _build_geotiling_and_meta_apply_matrix(
                 ]
                 zz_min, zz_max = dask.compute(*delayed_altitude_min_max)[0]
 
-            print(zz_min, zz_max)
             z_min, z_max = np.ones(len(xx)) * zz_min, np.ones(len(xx)) * zz_max
             dem_z_min = _apply_matrix_pts_arr(x=xx, y=yy, z=z_min, invert=not invert, matrix=matrix, centroid=centroid)
             dem_z_max = _apply_matrix_pts_arr(x=xx, y=yy, z=z_max, invert=not invert, matrix=matrix, centroid=centroid)
@@ -1892,7 +1892,7 @@ def _build_geotiling_and_meta_apply_matrix(
                 "dst_count": src_count,
             }
         )
-
+    print ("dest2source", dest2source)
     return src_geotiling, dst_geotiling, dst_chunks, dest2source, src_block_ids, meta_params, dst_block_geogrids
 
 
@@ -2051,16 +2051,15 @@ def apply_matrix(
         elif isinstance(elev, gu.raster.xr_accessor.RasterAccessor):
             src_transform = elev.transform
             dem = elev.data
-            print(type(dem))
-        else:
-            dem = elev
-            dem[dem == -9999.0] = np.nan
+        else: # todo
+            dem = elev # todo
+            dem[dem == -9999.0] = np.nan # todo
 
         # If using Multiprocessing backend, process and return None (files written on disk)
         if mp_backend or dask_backend:
 
             # 2/ Check user input for nodata and dtype
-
+            print ("force_regrid_method", kwargs["force_regrid_method"])
             dtype, src_nodata, nodata = _check_nodata_dtype(
                 source_raster=elev,
                 nodata=elev.nodata,
@@ -2079,8 +2078,9 @@ def apply_matrix(
                 "src_nodata": src_nodata,
                 "src_crs": elev.crs,
                 "dst_transform": src_transform,
+                "force_regrid_method": kwargs["force_regrid_method"],
             }
-
+            print (kwargs["force_regrid_method"])
             if resample:
                 apply_matrix_kwargs["dst_transform"] = src_transform
             else:
@@ -2140,7 +2140,7 @@ def apply_matrix(
 
             # We return a raster if input was a raster
             if isinstance(elev, gu.Raster):
-                print("from_array", elev.nodata)
+
                 applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
                 return applied_dem
 
@@ -2158,20 +2158,16 @@ def _apply_matrix_per_block(
     Reprojection per destination block (also rebuilds a square array combined from intersecting source blocks).
     """
 
-    is_multiband = combined_meta["dst_count"] >= 2
-
     # If no source chunk intersects, we return a chunk of destination nodata values
     if len(src_arrs) == 0:
         # We can use float32 to return NaN, will be cast to other floating type later if that's not source array dtype
-        dst_shape = (
-            (combined_meta["dst_count"], *combined_meta["dst_shape"]) if is_multiband else combined_meta["dst_shape"]
-        )
+        dst_shape = combined_meta["dst_shape"]
         dst_arr = np.zeros(dst_shape, dtype=np.dtype("float32"))
         dst_arr[:] = np.nan
         return dst_arr
 
     # First, we build an empty array with the combined shape, only with nodata values
-    shape = (src_arrs[0].shape[0], *combined_meta["src_shape"]) if is_multiband else combined_meta["src_shape"]
+    shape = combined_meta["src_shape"]
 
     comb_src_arr = np.full(shape, src_nodata, dtype=src_arrs[0].dtype)
     if np.ma.isMaskedArray(src_arrs[0]):
@@ -2187,6 +2183,7 @@ def _apply_matrix_per_block(
     dst_transform = rio.transform.Affine(*combined_meta["dst_transform"])
     kwargs["src_transform"] = src_transform
     kwargs["dst_transform"] = dst_transform
+
 
     # Apply matrix wrapper
     dst_arr, out_transform = apply_matrix(elev=comb_src_arr, **kwargs)  # type: ignore
@@ -2226,6 +2223,8 @@ def _multiproc_apply_matrix(
     src_chunks = _chunks2d_from_chunksizes_shape(
         chunksizes=(mp_config.chunk_size, mp_config.chunk_size), shape=rst.shape
     )
+
+    print("force_regrid_method", kwargs)
 
     src_geotiling, dst_geotiling, dst_chunks, dest2source, src_block_ids, meta_params, dst_block_geogrids = (
         _build_geotiling_and_meta_apply_matrix(
@@ -2301,23 +2300,17 @@ def _dask_apply_matrix(
     # To raise appropriate error on missing optional dependency
     import_optional("dask")
 
-    # Define the chunking
-    # For source, we can use the .chunks attribute
-    src_chunks = darr.chunks[-2:]  # In case input is multi-band
-
-    dst_chunksizes = (darr.chunksize[-2], darr.chunksize[-1])  # In case input is multi-band
-
     src_geotiling, dst_geotiling, dst_chunks, dest2source, src_block_ids, meta_params, dst_block_geogrids = (
         _build_geotiling_and_meta_apply_matrix(
-            src_count=darr.shape[0] if darr.ndim == 3 else 1,
-            src_shape=darr.shape[-2:],  # In case input is multi-band
+            src_count=1,
+            src_shape=darr.shape,
             src_transform=kwargs["src_transform"],
             src_crs=src_crs,
-            dst_shape=darr.shape[-2:],  # In case input is multi-band
+            dst_shape=darr.shape,
             dst_transform=kwargs["dst_transform"],
             dst_crs=src_crs,
-            src_chunks=src_chunks,
-            dst_chunksizes=dst_chunksizes,
+            src_chunks=darr.chunks,
+            dst_chunksizes=darr.chunksize,
             matrix=kwargs["matrix"],
             centroid=kwargs["centroid"],
             invert=kwargs["invert"],
@@ -2329,16 +2322,13 @@ def _dask_apply_matrix(
     blocks_delayed = darr.to_delayed()
 
     # Spatial block grid shape (from spatial chunks)
-    is_multiband = darr.ndim == 3
-    ny_src = len(src_chunks[0])
-    nx_src = len(src_chunks[1])
+    ny_src = len(darr.chunks[0])
+    nx_src = len(darr.chunks[1])
     src_yi, src_xi = np.unravel_index(np.arange(ny_src * nx_src), shape=(ny_src, nx_src))
     # Normalize band groups:
     # - 2D: one pseudo group (bb=None, nb=0)
     # - 3D: real band blocks with their sizes
-    band_groups: list[tuple[int | None, int]] = (
-        [(None, 0)] if not is_multiband else [(bb, int(sz)) for bb, sz in enumerate(darr.chunks[0])]
-    )
+    band_groups = ([(None, 0)])
     # Output data type
     out_dtype = np.dtype(kwargs.get("dtype", darr.dtype))
 
@@ -2379,8 +2369,9 @@ def _dask_apply_matrix(
     # We need to unravel the flattened blocks indices to align X/Y, then concatenate all columns, then rows
     ny_dst, nx_dst = len(dst_chunks[0]), len(dst_chunks[1])
     iy, ix = np.unravel_index(np.arange(len(dest2source)), shape=(ny_dst, nx_dst))
-    ax_x = 1 if darr.ndim == 2 else 2  # Adjust axes depending on if raster is single-band or multi-band
-    ax_y = 0 if darr.ndim == 2 else 1
+
+    ax_x = 1
+    ax_y = 0
     rows = [
         da.concatenate([list_reproj_da[k] for k in range(len(list_reproj_da)) if iy[k] == r], axis=ax_x)
         for r in range(ny_dst)

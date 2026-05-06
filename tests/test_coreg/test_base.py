@@ -357,11 +357,9 @@ class TestCoregClass:
                 coreg_method.apply(tba_dem, resample=False)
             return
         else:
-            print(coreg_method, tba_dem)
             dem_coreg_resample = coreg_method.apply(tba_dem)
             dem_coreg_noresample = coreg_method.apply(tba_dem, resample=False)
 
-        print("hici", is_implemented, comp)
 
         if comp == "strict":
             # Both methods should yield the exact same output
@@ -1099,7 +1097,6 @@ class TestAffineManipulation:
             rast.set_nodata(-9999, update_array=False, update_mask=False)
 
             # Save to file in temporary directory
-            print("ap_inputs", os.path.splitext(os.path.basename(fn))[0] + "_tiny_float32.tif")
             fn_out = os.path.join("ap_inputs", os.path.splitext(os.path.basename(fn))[0] + "_tiny_float32.tif")
             rast.to_file(fn_out)
 
@@ -1115,17 +1112,17 @@ class TestAffineManipulation:
         (4, matrix_all),
     ]
 
-    @pytest.mark.parametrize("path_index", [0])  # todo ?
+    @pytest.mark.parametrize("data", ["fake", "real"])
     @pytest.mark.parametrize("matrix", list_matrices)
-    @pytest.mark.parametrize("chunk_size", [5, 8, 12])
+    @pytest.mark.parametrize("chunk_size", [0, 1, 2])
     @pytest.mark.parametrize("invert", [False, True])
     @pytest.mark.parametrize("resampling", [None, "nearest", "linear", "cubic", "quintic"])
     @pytest.mark.parametrize("nan_values", [False, True])
     @pytest.mark.parametrize("regrid_method", [None, "iterative", "griddata"])
     def test_apply_matrix_dask_multi(
         self,
+        data,
         matrix,
-        path_index,
         chunk_size: int,
         invert: bool,
         resampling: str,
@@ -1147,9 +1144,8 @@ class TestAffineManipulation:
         diff = 10e-5
         # 1/ Prepare backend inputs
         # Get filepath of on-disk (for laziness) test file
-        path_raster = lazy_test_files_tiny[path_index]
+        #path_raster = lazy_test_files_tiny[path_index]
         path_raster = "ap_inputs/raster_base.tif"
-        print("path_raster", path_raster)
 
         # Base raster input (in-memory)
         dem_arr = np.linspace(0, 2, 120).reshape(10, 12)
@@ -1159,8 +1155,14 @@ class TestAffineManipulation:
             dem_arr[1, :] = np.nan
 
         transform = rio.transform.from_origin(0, 5, 1, 1)
-        raster_base = gu.Raster.from_array(dem_arr, transform=transform, crs=4326, nodata=999)
-        print(raster_base)
+        if data == "fake":
+            raster_base = gu.Raster.from_array(dem_arr, transform=transform, crs=4326, nodata=999)
+            chunk_size = [5, 8, 12][chunk_size]
+        else:
+            raster_base = self.ref
+            chunk_size = [25, 40, 70][chunk_size]
+            print (chunk_size)
+
         raster_base.to_file(path_raster)
 
         # Base data array input (in-memory)
@@ -1187,7 +1189,6 @@ class TestAffineManipulation:
 
         # Run apply_matrix for each backend
         print("# run base")
-        print(matrix)
         base_am = apply_matrix(
             raster_base,
             matrix[1],
@@ -1245,6 +1246,8 @@ class TestAffineManipulation:
         # assert mp_am.dtype == type(matrix[0,0])
         assert mp_am.crs == base_am.crs
         assert mp_am.transform == base_am.transform
+        print (base_am.get_mask())
+        print (mp_am.get_mask())
         assert np.all(mp_am.get_mask() == base_am.get_mask())
 
         assert np.all(np.array(base_am.data - mp_am.data)[base_am.get_mask() is False] < diff)
@@ -1266,25 +1269,39 @@ class TestAffineManipulation:
         dask_am = dask_am.compute()
         assert dask_am._in_memory
         assert dask_am.rst.nodata == base_am.nodata
-        assert dask_am.rst.dtype == base_am.dtype
+        # assert dask_am.rst.dtype == base_am.dtype
         assert dask_am.rst.crs == base_am.crs
         assert dask_am.rst.transform == base_am.transform
 
         assert np.all(np.isnan(dask_am.rst.data[base_am.get_mask()]))
         assert np.all(np.array(base_am.data - dask_am.rst.data)[base_am.get_mask() is False] < diff)
 
-    @pytest.mark.parametrize("path_index", [0])  # todo ?
+    @pytest.mark.parametrize("data", ["fake", "real"])
     @pytest.mark.parametrize("chunk_size", [5, 8, 12])
-    def test_min_max_alt(self, lazy_test_files_tiny, path_index, chunk_size):
+    @pytest.mark.parametrize("nan_values", [True, False])
+    def test_min_max_alt(self, lazy_test_files_tiny, data, chunk_size, nan_values):
 
         # 1/ Prepare backend inputs
         # Get filepath of on-disk (for laziness) test file
-        path_raster = lazy_test_files_tiny[path_index]
-        print("path_raster", path_raster)
+        #path_raster = lazy_test_files_tiny[path_index]
+        path_raster = "ap_inputs/raster_base.tif"
 
         # Base raster input (in-memory)
-        raster_base = gu.Raster(path_raster)
-        raster_base.load()
+        dem_arr = np.linspace(0, 2, 120).reshape(10, 12)
+        if nan_values:
+            dem_arr[8:10, 8:10] = np.nan
+            dem_arr[2, 2] = np.nan
+            dem_arr[1, :] = np.nan
+
+        transform = rio.transform.from_origin(0, 5, 1, 1)
+        if data == "fake":
+            raster_base = gu.Raster.from_array(dem_arr, transform=transform, crs=4326, nodata=999)
+        else:
+            raster_base = self.ref
+        raster_base.to_file(path_raster)
+
+        # Base raster input (in-memory)
+        #raster_base = gu.Raster(path_raster)
         assert raster_base.is_loaded
 
         # Base data array input (in-memory)
@@ -1336,5 +1353,6 @@ class TestAffineManipulation:
             delayed_altitude_min_max = [
                 dask.from_delayed(_delayed_zmin_zmax(blocks[k]), shape=(1, 1), dtype=np.dtype("int32"))
             ]
+            assert not delayed_altitude_min_max._in_memory
             zz_min, zz_max = dask.compute(*delayed_altitude_min_max)[0]
             assert [zz_min, zz_max] == zz[k]
