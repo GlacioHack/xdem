@@ -156,7 +156,23 @@ The `null` and `None` values are both accepted in YAML files, which correspond t
 
 **Required:** No
 
-TODO TODO TODO TODO
+List of parameters to complete input reprojection if needed.
+
+
+:::{table} Inputs parameters for elevation
+:widths: 20, 35, 17, 18, 10
+
+| Name                 | Description                                     | Type            | Default | Required |
+|----------------------|-------------------------------------------------|-----------------|---------|--------|
+| `crs`                | CRS projection used when the attribute need one | int/str/boolean |         | No     |
+:::
+
+
+:::{note}
+If the CRS of the input elevation is geographic, most attributes fail (unsupported), or give erroneous units.
+So it will be reproject by default to the local UTM (̀`crs: None` or `crs: True`) but it is possible to refuse
+(̀`crs: False`) or personalize this step  (̀`crs: [CRS]`).
+:::
 
 ::::
 

@@ -165,6 +165,7 @@ class Topo(Workflows):
         """
 
         proj_crs = None
+        print("ici")
         if self.dem.crs.is_geographic:
             if (
                 self.config.get("reproject", None) is None
@@ -172,6 +173,8 @@ class Topo(Workflows):
                 or self.config["reproject"]["crs"] is True
             ):
                 proj_crs = self.dem.get_metric_crs()
+                print("A")
+
                 logging.info(f"Reprojection in default projected CRS ({proj_crs})")
 
             elif not self.config["reproject"]["crs"]:
@@ -180,6 +183,7 @@ class Topo(Workflows):
                     "Please use a projected CRS or let it empty to reproject in default projected CRS.",
                     UserWarning,
                 )
+
             else:
                 proj_crs = self.config["reproject"]["crs"]
                 logging.info(f"Reprojection with crs = {proj_crs}")
