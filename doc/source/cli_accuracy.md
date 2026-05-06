@@ -286,7 +286,6 @@ Outputs information. Operates by levels:
 |----------------|-----------------------------|---------|----------------|--------------------------------------|---------|
 | `path`         | Path for outputs            | str     | outputs        |                                      | No      |
 | `level`        | Level for detailed outputs  | int     | 1              | 1 or 2                               | No      |
-| `output_grid`  | Grid for outputs resampling | str     | reference_elev | reference_elev or to_be_aligned_elev | No      |
 | `generate_pdf` | Generate PDF report         | boolean | True           |                                      | No      |
 :::
 
@@ -294,7 +293,6 @@ Outputs information. Operates by levels:
 outputs:
     level: 1
     path: "path_to/outputs"
-    output_grid: "reference_elev"
 :::
 
 Tree of outputs for level 1:
@@ -317,7 +315,7 @@ Tree of outputs for level 1:
   │   ├─ [diff_elev_without_coreg_map.png] (if no coregistration)
   │   └─ [elev_diff_histo.png] (if coregistration))
   ├─ [rasters
-  │   └─ aligned_elev.tif] (if coregistration)
+  │   └─ [aligned_elev.tif] (if coregistration)
   ├─ report.html
   ├─ [report.pdf] (if `generate_pdf` if `True`)
   └─ used_config.yaml
@@ -339,6 +337,7 @@ Tree of outputs for level 2:
   │   ├─ [preprocessed_to_be_aligned_elev_map.png or preprocessed_reference_elev_map.png] (if sampling_grid)
   │   ├─ [diff_elev_before_coreg_map.png] (if coregistration)
   │   ├─ [diff_elev_after_coreg_map.png] (if coregistration)
+  │   ├─ [diff_elev_coreg_tba_map.png]  (if coregistration)
   │   ├─ [diff_elev_before_after_hist.png] (if coregistration)
   │   ├─ [diff_elev_without_coreg_map.png] (if no coregistration)
   │   └─ [elev_diff_histo.png] (if coregistration))
@@ -348,6 +347,7 @@ Tree of outputs for level 2:
   │   ├─ [aligned_elev.tif] (if coregistration)
   │   ├─ [diff_elev_before_coreg_map.tif] (if coregistration)
   │   ├─ [diff_elev_after_coreg_map.tif] (if coregistration)
+  │   ├─ [diff_elev_coreg_tba_map.tif] (if coregistration)
   │   └─ [diff_elev_without_coreg_map.tif] (if no coregistration)
   ├─ report.html
   ├─ [report.pdf] (if `generate_pdf` if `True`)

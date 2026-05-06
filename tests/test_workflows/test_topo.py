@@ -338,12 +338,12 @@ def test_attributes(get_topo_inputs_config_list, tmp_path):
     [
         (None, None, True),
         ({"reproject": None}, None, True),
-        ({"reproject": {"to_crs": True}}, None, True),
-        ({"reproject": {"to_crs": None}}, None, True),
-        ({"reproject": {"to_crs": False}}, "Please use a projected CRS", False),
-        ({"reproject": {"to_crs": 25833}}, None, True),
-        ({"reproject": {"to_crs": "EPSG:25833"}}, None, True),
-        ({"reproject": {"to_crs": 4326}}, '"reproject/to_crs" either', True),
+        ({"reproject": {"crs": True}}, None, True),
+        ({"reproject": {"crs": None}}, None, True),
+        ({"reproject": {"crs": False}}, "Please use a projected CRS", False),
+        ({"reproject": {"crs": 25833}}, None, True),
+        ({"reproject": {"crs": "EPSG:25833"}}, None, True),
+        ({"reproject": {"crs": 4326}}, '"reproject/crs" either', True),
     ],
 )
 @pytest.mark.parametrize("level", [1, 2])

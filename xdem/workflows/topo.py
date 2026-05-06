@@ -168,25 +168,25 @@ class Topo(Workflows):
         if self.dem.crs.is_geographic:
             if (
                 self.config.get("reproject", None) is None
-                or self.config["reproject"].get("to_crs", None) is None
-                or self.config["reproject"]["to_crs"] is True
+                or self.config["reproject"].get("crs", None) is None
+                or self.config["reproject"]["crs"] is True
             ):
                 proj_crs = self.dem.get_metric_crs()
                 logging.info(f"Reprojection in default projected CRS ({proj_crs})")
 
-            elif not self.config["reproject"]["to_crs"]:
+            elif not self.config["reproject"]["crs"]:
                 warnings.warn(
                     "As the input dem is not in a projected CRS, the following surface fit attributes might be wrong."
                     "Please use a projected CRS or let it empty to reproject in default projected CRS.",
                     UserWarning,
                 )
             else:
-                proj_crs = self.config["reproject"]["to_crs"]
+                proj_crs = self.config["reproject"]["crs"]
                 logging.info(f"Reprojection with crs = {proj_crs}")
 
-                if CRS.from_user_input(self.config["reproject"]["to_crs"]).is_geographic:
+                if CRS.from_user_input(self.config["reproject"]["crs"]).is_geographic:
                     warnings.warn(
-                        'As the input dem is not in a projected CRS and the "reproject/to_crs" either,'
+                        'As the input dem is not in a projected CRS and the "reproject/crs" either,'
                         "the following surface fit attributes might be wrong.",
                         UserWarning,
                     )
