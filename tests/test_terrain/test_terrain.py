@@ -317,6 +317,41 @@ class TestTerrainAttribute:
         # Clean up outfile
         os.remove(outfile)
 
+    def test_attributes__multiproc_both_window_sizes(self) -> None:
+        """
+        Test that terrain attributes are exactly equal in multiprocessing or in normal processing when we need
+        window_size and window_size_fractal, to verify that the depth (overlap) of the map_overlap is properly defined.
+        """
+
+        # Fractal roughness with tested window sizes of less than 13 will expectedly raise a warning
+        warnings.filterwarnings("ignore", category=UserWarning, message="Fractal roughness results.*")
+
+        # Define multiproc config
+        outfile = "tmp_mp_output.tif"
+        mp_config = MultiprocConfig(
+            chunk_size=50,
+            outfile=outfile,
+        )
+
+        attributes = ["rugosity", "fractal_roughness"]
+
+        # Get terrain attributes with and without multiproc
+        attr_mp = xdem.terrain.get_terrain_attribute(
+            self.dem, attribute=attributes, mp_config=mp_config, window_size=3, window_size_fractal=7
+        )
+        attr_nomp = xdem.terrain.get_terrain_attribute(
+            self.dem, attribute=attributes, window_size=3, window_size_fractal=7
+        )
+
+        # Check equality
+        assert attr_mp[0].georeferenced_grid_equal(attr_nomp[0])
+        assert np.allclose(attr_mp[0].data.filled(), attr_nomp[0].data.filled())
+        assert np.array_equal(attr_mp[0].data.mask, attr_nomp[0].data.mask)
+
+        # Clean up outfile
+        os.remove("tmp_mp_output_rugosity.tif")
+        os.remove("tmp_mp_output_fractal_roughness.tif")
+
     def test_get_terrain_attribute__multiproc_inputs(self) -> None:
         """Test the get_terrain attribute function in multiprocessing returns the right input number/type."""
         outfile = "mp_output.tif"

@@ -453,6 +453,7 @@ def _fractal_roughness_func_scipy(
     force_backend: Literal["generic", "vectorized"] | None = None,
 ) -> NDArrayf:
     """SciPy wrapper for fractal roughness implementation, with option of forcing backend for tests."""
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice.")
         warnings.filterwarnings(

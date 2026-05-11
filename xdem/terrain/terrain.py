@@ -399,8 +399,15 @@ def get_terrain_attribute(
 
         # Derive depth argument from method or window size,
         # This is the overlap between tiles (1 for 3x3, 2 for 5x5, etc).
-        if any((attr in list_requiring_windowed_index) for attr in attribute):
-            window_depth = window_size // 2
+        attr_requiring_windowed_index = list(set(attribute).intersection(list_requiring_windowed_index))
+        if any(attr_requiring_windowed_index):
+            if len(attr_requiring_windowed_index) == 1:
+                if attr_requiring_windowed_index[0] == "fractal_roughness":
+                    window_depth = window_size_fractal // 2
+                else:
+                    window_depth = window_size // 2
+            else:
+                window_depth = max(window_size, window_size_fractal) // 2
         else:
             window_depth = 0
         if any((attr in list_requiring_surface_fit) for attr in attribute):
