@@ -97,7 +97,7 @@ The `topo` workflow, including its **inputs**, **outputs**, **processing steps**
 
 The parameters to pass to the `topo` workflow are divided into five categories:
 - The `inputs` defines file opening and pre-processing, including **one required path to elevation data**, but also optional masking, CRS, nodata over-riding, and downsampling factor,
-- The `reproject` defines the reprojection behaviour information if input(s) are geographic(s) and terrain_attributes needed reprojected CRS.
+- The `reprojection` defines the reprojection behaviour information if input(s) are geographic(s) and terrain_attributes needed reprojected CRS.
 - The `outputs` defines file writing and report generation, with various **levels** of detail for the produced outputs,
 - The `terrain_attributes` defines steps for coregistration, directly **interfacing with the {ref}`terrain-attributes` module** of xDEM,
 - The `statistics` defines steps for computing statistics before/after coregistration, directly **interfacing with the [Statistics](https://geoutils.readthedocs.io/en/stable/stats.html) module** of GeoUtils.
@@ -159,12 +159,12 @@ The `null` and `None` values are both accepted in YAML files, which correspond t
 List of parameters to complete input reprojection if needed.
 
 
-:::{table} Inputs parameters for elevation
+:::{table} Inputs parameters for reprojection
 :widths: 20, 35, 17, 18, 10
 
-| Name                 | Description                                     | Type            | Default | Required |
-|----------------------|-------------------------------------------------|-----------------|---------|--------|
-| `crs`                | CRS projection used when the attribute need one | int/str/boolean |         | No     |
+| Name                 | Description                                                | Type            | Default | Required |
+|----------------------|------------------------------------------------------------|-----------------|---------|--------|
+| `crs`                | CRS projection used when the terrain attributes require it | int/str/boolean |         | No     |
 :::
 
 

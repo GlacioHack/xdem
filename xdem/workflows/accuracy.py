@@ -344,10 +344,10 @@ class Accuracy(Workflows):
 
             self.generate_plot(
                 dem=self.diff_before,
-                title="Elevation difference before coregistration",
+                title="Difference between To-be-align and Reference elevation\n(before coregistration)",
                 filename="diff_elev_diff_coreg_map",
                 dem_right=self.diff_after,
-                title_dem_right="Elevation difference after coregistration",
+                title_dem_right="Difference between Aligned and Reference elevation\n(after coregistration)",
                 vmin=vmin_diff,
                 vmax=vmax_diff,
                 cmap="RdBu",
@@ -359,7 +359,7 @@ class Accuracy(Workflows):
 
                 self.generate_plot(
                     dem=self.diff_coreg_tba,
-                    title="To-be-aligned elevation difference before and after coregistration.",
+                    title="Difference between Aligned and To-be-align elevation\n(no coregistration)",
                     filename="diff_elev_coreg_tba_map",
                     cmap="RdBu",
                     cbar_title=f"Elevation differences ({self.diff_after.crs.linear_units})",
@@ -370,7 +370,7 @@ class Accuracy(Workflows):
             vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
             self.generate_plot(
                 self.diff,
-                title="Elevation difference without coregistration",
+                title="Difference between To-be-align and Reference elevation",
                 filename="diff_elev_without_coreg_map",
                 vmin=vmin,
                 vmax=vmax,
@@ -512,6 +512,9 @@ class Accuracy(Workflows):
         for title, dictionary in list_dict[1:]:  # type: ignore
             html += print_dict(title, dictionary)
 
+        if self.level > 1:
+            html += "<img src='plots/diff_elev_coreg_tba_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
+
         # Statistics table:
         if self.df_stats is not None:
             html += "<h2>Statistics</h2>\n"
@@ -528,10 +531,6 @@ class Accuracy(Workflows):
         if self.compute_coreg:
             html += "<h2>Elevation differences</h2>\n"
             html += "<img src='plots/diff_elev_diff_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
-            if self.level > 1:
-                html += (
-                    "<img src='plots/diff_elev_coreg_tba_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
-                )
 
             html += "<h2>Differences histogram</h2>\n"
             html += "<img src='plots/elev_diff_histo.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
