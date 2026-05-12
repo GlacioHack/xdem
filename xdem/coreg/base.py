@@ -1430,11 +1430,9 @@ def _iterate_affine_regrid_small_rotations(
     # 1/ The elevation of the original DEM, Z', is simply a 2D interpolator function of X',Y' (bilinear, typically)
     # (We create the interpolator only once here for computational speed, instead of using Raster.interp_points)
     xycoords = dem_rst.coords(grid=False)
-    # z =  dem_rst.interp_points(points=(np.flip(xycoords[1], axis=0), xycoords[0]), method=resampling)
-    # print (z)
-    """z_interp = scipy.interpolate.RegularGridInterpolator(
+    z_interp = scipy.interpolate.RegularGridInterpolator(
         points=(np.flip(xycoords[1], axis=0), xycoords[0]), values=dem, method=resampling, bounds_error=False
-    )"""
+    )
 
     # 2/ As a first guess of a transformed DEM elevation Z near the grid coordinates, we initialize with the elevations
     # of the nearest point from the transformed elevation point cloud
@@ -1476,12 +1474,16 @@ def _iterate_affine_regrid_small_rotations(
         # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
         tx, ty = _apply_matrix_pts_arr(x=x, y=y, z=new_z, matrix=matrix, invert=True, centroid=centroid)[:2]
         # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
-        print(tx)
-        tx = [txx.astype(int) for txx in tx]  # if  txx == txx]
-        print(tx)
-        ty = [tyy.astype(int) for tyy in ty]  # if tyy == tyy ]
+
+        # tx_ = [txx.astype(int) for txx in tx]  # if  txx == txx]
+        # ty_ = [tyy.astype(int) for tyy in ty]  # if tyy == tyy ]
 
         tz = dem_rst.interp_points(points=(tx, ty), method=resampling)["z"]
+        # tz = z_interp((ty, tx))
+
+        # if (np.max(tz - tz_) > 0.1):
+        #    print (np.max(tz - tz_))
+
         # Transform to see if we fall back on our feet (on the regular grid), or if we need to iterate more
         x0, y0, z0 = _apply_matrix_pts_arr(x=tx, y=ty, z=tz, matrix=matrix, centroid=centroid)
 
@@ -1565,8 +1567,6 @@ def _apply_matrix_rst(
     :returns: Transformed DEM, Transform.
     """
 
-    print(invert, force_regrid_method)
-
     # Invert matrix if required
     if invert:
         matrix = invert_matrix(matrix)
@@ -1587,10 +1587,12 @@ def _apply_matrix_rst(
         # 1/ Check if the matrix only contains a Z correction, in that case only shift the DEM values by the
         # vertical shift
         if np.array_equal(shift_z_only_matrix, matrix) and force_regrid_method is None:
+            print("_apply_matrix_rst 1/")
             dem, transform = dem + matrix[2, 3], src_transform
 
         # 2/ Check if the matrix contains only translations, in that case only shift the DEM only by translation
         elif np.array_equal(shift_only_matrix, matrix) and force_regrid_method is None:
+            print("_apply_matrix_rst 2/")
             new_transform = _translate(src_transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
             dem, transform = dem + matrix[2, 3], new_transform
         return dem, transform
@@ -1598,6 +1600,7 @@ def _apply_matrix_rst(
     # 3/ If matrix contains only small rotations (less than 20 degrees), use the fast iterative reprojection
     rotations = translations_rotations_from_matrix(matrix)[3:]
     if all(np.abs(rot) < 20 for rot in rotations) and force_regrid_method is None or force_regrid_method == "iterative":
+        print("_apply_matrix_rst 3/")
         new_dem, transform = _iterate_affine_regrid_small_rotations(
             dem=dem, transform=src_transform, matrix=matrix, centroid=centroid, resampling=resampling
         )
@@ -1605,6 +1608,7 @@ def _apply_matrix_rst(
 
     # 4/ Otherwise, use a delauney triangulation interpolation of the transformed point cloud
     # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
+    print("_apply_matrix_rst 4/")
     dem_rst = gu.Raster.from_array(dem, transform=src_transform, crs=None, nodata=99999)
     epc = dem_rst.to_pointcloud(data_column_name="z").ds
     trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
@@ -1808,7 +1812,9 @@ def _build_geotiling_and_meta_apply_matrix(
 
     dst_boxes = []
     for k, gg in enumerate(src_geotiling.get_blocks_as_geogrids()):
-        poly = box(*gg.bounds_projected(crs=dst_crs)).buffer(40 * max(dst_geogrid.res))
+        # °10 dest2source [[2, 0, 1], [2, 3, 0, 1], [2, 0], [2, 3, 0, 1]]
+        # 4° dest2source  [[2, 3, 0, 1], [2, 3, 0, 1], [2, 0], [2, 3, 0, 1]]
+        poly = box(*gg.bounds_projected(crs=dst_crs)).buffer(3 * max(dst_geogrid.res))
         xx, yy = poly.exterior.coords.xy
 
         if mp_config or isinstance(dem, dask.array.core.Array):
@@ -2049,6 +2055,7 @@ def apply_matrix(
             src_transform = elev.transform
             dem = elev.data
         else:  # todo
+
             dem = elev  # todo
             dem[dem == -9999.0] = np.nan  # todo
 
@@ -2056,7 +2063,6 @@ def apply_matrix(
         if mp_backend or dask_backend:
 
             # 2/ Check user input for nodata and dtype
-            print("force_regrid_method", kwargs["force_regrid_method"])
             dtype, src_nodata, nodata = _check_nodata_dtype(
                 source_raster=elev,
                 nodata=elev.nodata,
@@ -2137,7 +2143,6 @@ def apply_matrix(
 
             # We return a raster if input was a raster
             if isinstance(elev, gu.Raster):
-
                 applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
                 return applied_dem
 
@@ -2183,6 +2188,7 @@ def _apply_matrix_per_block(
 
     # Apply matrix wrapper
     dst_arr, out_transform = apply_matrix(elev=comb_src_arr, **kwargs)  # type: ignore
+
     dst_arr = dst_arr[: combined_meta["dst_shape"][0], : combined_meta["dst_shape"][1]]
     return dst_arr
 
@@ -2220,8 +2226,6 @@ def _multiproc_apply_matrix(
         chunksizes=(mp_config.chunk_size, mp_config.chunk_size), shape=rst.shape
     )
 
-    print("force_regrid_method", kwargs)
-
     src_geotiling, dst_geotiling, dst_chunks, dest2source, src_block_ids, meta_params, dst_block_geogrids = (
         _build_geotiling_and_meta_apply_matrix(
             src_count=rst.count,
@@ -2247,6 +2251,7 @@ def _multiproc_apply_matrix(
     tasks = []
 
     for i in range(len(dest2source)):
+        print("\n", i)
         tasks.append(
             mp_config.cluster.launch_task(
                 fun=_wrapper_multiproc_apply_matrix_per_block,

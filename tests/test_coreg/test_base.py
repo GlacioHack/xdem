@@ -1157,10 +1157,11 @@ class TestAffineManipulation:
         if data == "fake":
             raster_base = gu.Raster.from_array(dem_arr, transform=transform, crs=4326, nodata=999)
             chunk_size = [5, 8, 12][chunk_size]
+            print("chunk_size", chunk_size)
         else:
             raster_base = self.ref
-            chunk_size = [25, 40, 70][chunk_size]
-            print(chunk_size)
+            chunk_size = [40, 54, 70][chunk_size]
+            print("chunk_size", chunk_size)
 
         raster_base.to_file(path_raster)
 
@@ -1245,8 +1246,12 @@ class TestAffineManipulation:
         # assert mp_am.dtype == type(matrix[0,0])
         assert mp_am.crs == base_am.crs
         assert mp_am.transform == base_am.transform
-        print(base_am.get_mask())
-        print(mp_am.get_mask())
+        # print (base_am.get_mask()[:chunk_size,:chunk_size].shape)
+        # print(np.min(base_am.get_mask()[:chunk_size,:chunk_size] == mp_am.get_mask()[:chunk_size,:chunk_size]))
+        # print(np.min(base_am.get_mask()[chunk_size:,:chunk_size] == mp_am.get_mask()[chunk_size:,:chunk_size]))
+        # print(np.min(base_am.get_mask()[:chunk_size,chunk_size:] == mp_am.get_mask()[:chunk_size,chunk_size:]))
+        # print(np.min(base_am.get_mask()[chunk_size:,chunk_size:] == mp_am.get_mask()[chunk_size:,chunk_size:]))
+
         assert np.all(mp_am.get_mask() == base_am.get_mask())
 
         assert np.all(np.array(base_am.data - mp_am.data)[base_am.get_mask() is False] < diff)
