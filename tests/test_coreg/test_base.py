@@ -6,8 +6,8 @@ import inspect
 import re
 import sys
 import warnings
-from typing import Any, Callable, Iterable, Mapping
 from pathlib import Path
+from typing import Any, Callable, Iterable, Mapping
 
 import geopandas as gpd
 import geoutils as gu
@@ -22,9 +22,8 @@ from scipy.ndimage import binary_dilation
 import xdem
 from xdem import coreg, examples
 from xdem._typing import NDArrayf
-from xdem.coreg.base import (
+from xdem.coreg.base import (  # _delayed_zmin_zmax,
     Coreg,
-    _delayed_zmin_zmax,
     _wrapper_multiproc_zmin_zmax_per_block,
     apply_matrix,
     dict_key_to_str,
@@ -1129,7 +1128,7 @@ class TestAffineManipulation:
         lazy_test_files_tiny: list[str],
         nan_values,
         regrid_method,
-        tmp_path
+        tmp_path,
     ) -> None:
         import dask.array as da
 
@@ -1320,7 +1319,7 @@ class TestAffineManipulation:
         assert not raster_mp.is_loaded
 
         # Dask input (lazy)
-        ds_dask = open_raster(path_raster, chunks={"x": chunk_size, "y": chunk_size})
+        # ds_dask = open_raster(path_raster, chunks={"x": chunk_size, "y": chunk_size})
 
         # Multiprocessing config
         from geoutils.multiproc.mparray import MultiprocConfig
