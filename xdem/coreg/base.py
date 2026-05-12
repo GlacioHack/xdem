@@ -1621,7 +1621,7 @@ def _apply_matrix_rst(
     return new_dem, transform
 
 
-def _apply_matrix_rst_wrapper_resample(
+def _apply_matrix_rst_wrapper_reproject(
     dem: NDArrayf,
     src_transform: rio.transform.Affine,
     matrix: NDArrayf,
@@ -2129,7 +2129,7 @@ def apply_matrix(
                 if resample:
                     dst_transform = src_transform
 
-            applied_dem, out_transform = _apply_matrix_rst_wrapper_resample(
+            applied_dem, out_transform = _apply_matrix_rst_wrapper_reproject(
                 dem=dem,
                 src_transform=src_transform,
                 matrix=matrix,
