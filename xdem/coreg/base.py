@@ -2251,7 +2251,7 @@ def _multiproc_apply_matrix(
     tasks = []
 
     for i in range(len(dest2source)):
-        print("\n", i)
+        print("#", i)
         tasks.append(
             mp_config.cluster.launch_task(
                 fun=_wrapper_multiproc_apply_matrix_per_block,
