@@ -35,7 +35,7 @@ elevation data, described in the **feature page {ref}`uncertainty`**.
 In spatial statistics, the covariance of a variable of interest is generally simplified into a spatial variogram, which
 **describes the covariance only as function of the spatial lag** (spatial distance between two variable values).
 However, to utilize this simplification of the covariance in subsequent analysis, the variable of interest must
-respect [the assumption of second-order stationarity](https://www.aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/).
+respect [the assumption of second-order stationarity](https://aspexit.com/en/fundamental-assumptions-of-the-variogram-second-order-stationarity-intrinsic-stationarity-what-is-this-all-about/).
 That is, verify the three following assumptions:
 
 > 1. The mean of the variable of interest is stationary in space, i.e. constant over sufficiently large areas,
