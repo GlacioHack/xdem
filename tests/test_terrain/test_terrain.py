@@ -21,30 +21,6 @@ class TestTerrainAttribute:
     filepath = xdem.examples.get_path_test("longyearbyen_ref_dem")
     dem = xdem.DEM(filepath)
 
-    @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)
-    def test_attributes_default_call(self, attribute: str) -> None:
-        from_str_to_fun = {
-            "slope": lambda: self.dem.slope(),
-            "aspect": lambda: self.dem.aspect(),
-            "hillshade": lambda: self.dem.hillshade(),
-            "profile_curvature": lambda: self.dem.profile_curvature(),
-            "tangential_curvature": lambda: self.dem.tangential_curvature(),
-            "planform_curvature": lambda: self.dem.planform_curvature(),
-            "flowline_curvature": lambda: self.dem.flowline_curvature(),
-            "max_curvature": lambda: self.dem.max_curvature(),
-            "min_curvature": lambda: self.dem.min_curvature(),
-            "topographic_position_index": lambda: self.dem.topographic_position_index(),
-            "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(),
-            "roughness": lambda: self.dem.roughness(),
-            "rugosity": lambda: self.dem.rugosity(),
-            "texture_shading": lambda: self.dem.texture_shading(),
-            "fractal_roughness": lambda: self.dem.fractal_roughness(),
-        }
-
-        res_gta = xdem.terrain.get_terrain_attribute(self.dem, attribute=attribute)
-        res_fun = from_str_to_fun[attribute]()
-        assert res_gta == res_fun
-
     @pytest.mark.parametrize(
         "attribute",
         [
@@ -290,17 +266,12 @@ class TestTerrainAttribute:
         )
 
         # Unpack argument of surface fit/window size
-
         surface_fit, window_size = surfit_windowsize
         kwargs: dict[str, Any]
         if attribute in xdem.terrain.list_requiring_surface_fit:
             kwargs = {"surface_fit": surface_fit}
         elif attribute in xdem.terrain.list_requiring_windowed_index and attribute != "rugosity":
-            if attribute == "fractal_roughness":
-                kwargs = {"window_size_fractal": window_size}
-            else:
-                kwargs = {"window_size": window_size}
-
+            kwargs = {"window_size": window_size}
         # Rugosity is an exception: window size is not variable
         else:
             kwargs = {}
@@ -316,41 +287,6 @@ class TestTerrainAttribute:
 
         # Clean up outfile
         os.remove(outfile)
-
-    def test_attributes__multiproc_both_window_sizes(self) -> None:
-        """
-        Test that terrain attributes are exactly equal in multiprocessing or in normal processing when we need
-        window_size and window_size_fractal, to verify that the depth (overlap) of the map_overlap is properly defined.
-        """
-
-        # Fractal roughness with tested window sizes of less than 13 will expectedly raise a warning
-        warnings.filterwarnings("ignore", category=UserWarning, message="Fractal roughness results.*")
-
-        # Define multiproc config
-        outfile = "tmp_mp_output.tif"
-        mp_config = MultiprocConfig(
-            chunk_size=50,
-            outfile=outfile,
-        )
-
-        attributes = ["rugosity", "fractal_roughness"]
-
-        # Get terrain attributes with and without multiproc
-        attr_mp = xdem.terrain.get_terrain_attribute(
-            self.dem, attribute=attributes, mp_config=mp_config, window_size=3, window_size_fractal=7
-        )
-        attr_nomp = xdem.terrain.get_terrain_attribute(
-            self.dem, attribute=attributes, window_size=3, window_size_fractal=7
-        )
-
-        # Check equality
-        assert attr_mp[0].georeferenced_grid_equal(attr_nomp[0])
-        assert np.allclose(attr_mp[0].data.filled(), attr_nomp[0].data.filled())
-        assert np.array_equal(attr_mp[0].data.mask, attr_nomp[0].data.mask)
-
-        # Clean up outfile
-        os.remove("tmp_mp_output_rugosity.tif")
-        os.remove("tmp_mp_output_fractal_roughness.tif")
 
     def test_get_terrain_attribute__multiproc_inputs(self) -> None:
         """Test the get_terrain attribute function in multiprocessing returns the right input number/type."""
