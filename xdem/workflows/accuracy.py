@@ -512,7 +512,7 @@ class Accuracy(Workflows):
         for title, dictionary in list_dict[1:]:  # type: ignore
             html += print_dict(title, dictionary)
 
-        if self.level > 1:
+        if self.compute_coreg and self.level > 1:
             html += "<img src='plots/diff_elev_coreg_tba_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
 
         # Statistics table:
