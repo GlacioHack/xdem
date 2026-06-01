@@ -66,6 +66,10 @@ _ALIAS = {
     "percentagevalidpoints": "Percentage valid points",
 }
 
+lib_gobject_name = ctypes.util.find_library("gobject-2.0")
+lib_pango_name = ctypes.util.find_library("pango-1.0")
+logging.warning(lib_gobject_name)
+logging.warning(lib_pango_name)
 
 try:
     lib_gobject_name = ctypes.util.find_library("gobject-2.0")
@@ -352,6 +356,16 @@ class Workflows(ABC):
 
         :return: None
         """
+
+        lib_gobject_name = ctypes.util.find_library("gobject-2.0")
+        lib_pango_name = ctypes.util.find_library("pango-1.0")
+        logging.warning(lib_gobject_name)
+        logging.warning(lib_pango_name)
+        if lib_gobject_name and lib_pango_name:
+            from weasyprint import HTML
+
+            logging.warning("HTML ok")
+
         if self.config["outputs"]["generate_pdf"]:
             if not _has_weasyprint:
                 msg = (

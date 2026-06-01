@@ -165,7 +165,6 @@ class Topo(Workflows):
         """
 
         proj_crs = None
-        print("ici")
         if self.dem.crs.is_geographic:
             if (
                 self.config.get("reproject", None) is None
