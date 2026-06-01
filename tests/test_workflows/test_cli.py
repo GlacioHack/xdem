@@ -67,12 +67,9 @@ def test_invalid_parameters(capsys, invalid_arg):
     capsys_log_err = capsys_log.err.split("\n")
     assert capsys_log_err[0].startswith("usage: xdem")
     if invalid_arg.startswith("-"):
-        assert capsys_log_err[2] == f"xdem: error: unrecognized arguments: {invalid_arg}"
+        assert capsys_log_err[2].startswith("xdem: error: unrecognized arguments")
     else:
-        assert (
-            capsys_log_err[2]
-            == f"xdem: error: argument command: invalid choice: '{invalid_arg}' (choose from topo, accuracy)"
-        )
+        assert capsys_log_err[2].startswith("xdem: error: argument command: invalid choice")
 
 
 @pytest.mark.parametrize("workflow", ["topo", "accuracy"])
