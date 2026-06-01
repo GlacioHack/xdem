@@ -359,12 +359,15 @@ class Workflows(ABC):
 
         lib_gobject_name = ctypes.util.find_library("gobject-2.0")
         lib_pango_name = ctypes.util.find_library("pango-1.0")
-        logging.warning(lib_gobject_name)
-        logging.warning(lib_pango_name)
+        logging.info(f"lib_gobject_name = {lib_gobject_name}")
+        logging.info(f"lib_pango_name = {lib_pango_name}")
         if lib_gobject_name and lib_pango_name:
             from weasyprint import HTML
+            logging.info("HTML ok")
 
-            logging.warning("HTML ok")
+        generate_pdf = self.config["outputs"]["generate_pdf"]
+        logging.info(f"generate_pdf = {generate_pdf}")
+        logging.info(f"_has_weasyprint = {_has_weasyprint}")
 
         if self.config["outputs"]["generate_pdf"]:
             if not _has_weasyprint:
