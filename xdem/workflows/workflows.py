@@ -81,7 +81,7 @@ class Workflows(ABC):
         """
 
         mpl = import_optional("matplotlib")
-
+        print("little print")
         # Default parameters for plots
         mpl.rcParams["font.size"] = "10"
 
