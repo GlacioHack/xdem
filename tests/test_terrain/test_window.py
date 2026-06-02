@@ -117,20 +117,18 @@ class TestTerrainAttribute:
         else:
             tri_method = "Wilson"
 
-        window_size = 3
-        window_size_fractal = 13
         attrs_scipy = xdem.terrain.window._get_windowed_indexes(
             dem=dem,
-            window_size=window_size,
-            window_size_fractal=window_size_fractal,
+            window_size=3,
+            window_size_fractal=13,
             resolution=1,
             windowed_indexes=[attribute],
             tri_method=tri_method,
         )
         attrs_numba = xdem.terrain.window._get_windowed_indexes(
             dem=dem,
-            window_size=window_size,
-            window_size_fractal=window_size_fractal,
+            window_size=3,
+            window_size_fractal=13,
             resolution=1,
             windowed_indexes=[attribute],
             tri_method=tri_method,
