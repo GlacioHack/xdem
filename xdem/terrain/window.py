@@ -453,7 +453,7 @@ def _fractal_roughness_func_scipy(
     force_backend: Literal["generic", "vectorized"] | None = None,
 ) -> NDArrayf:
     """SciPy wrapper for fractal roughness implementation, with option of forcing backend for tests."""
-
+    print("_fractal_roughness_func_scipy")
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice.")
         warnings.filterwarnings(
@@ -469,6 +469,7 @@ def _fractal_roughness_func_scipy(
 
         # If vectorized is available, use it
         if _HAS_VECTORIZED_FILTER or force_backend == "vectorized":
+            print("vectorized) scipy.ndimage.vectorized_filter with _fractal_roughness_func_vectorized")
 
             # Pre-compute scale-dependent constants
             qs, log_q, mx, SS_xx = _fractal_precompute(window_size_fractal)
@@ -491,6 +492,8 @@ def _fractal_roughness_func_scipy(
 
         # Otherwise fallback on generic function
         else:
+            print("non vectorized) scipy.ndimage.generic_filter")
+
             return scipy.ndimage.generic_filter(
                 dem,
                 _fractal_roughness_func,
@@ -812,7 +815,6 @@ def _make_windowed_indexes(
         attrs[rugosity_idx] = _rugosity_func_numba(dem_window, resolution=resolution, out_dtype=out_dtype)
 
     if make_fractal_roughness:
-
         attrs[frac_roughness_idx] = _fractal_roughness_func_numba(
             dem_window, window_size_fractal=window_size_fractal, out_dtype=out_dtype
         )
@@ -852,6 +854,8 @@ def _get_windowed_indexes_numba(
     outputs = np.full((attrs_size, row_range, col_range), fill_value=np.nan, dtype=out_dtype)
 
     # Loop over every pixel concurrently by using prange
+    print("for each row/col : _fractal_roughness_func_numba) njit(inline=always, cache=True)(_fractal_roughness_func)")
+
     for row in prange(row_range):
         for col in prange(col_range):
 
@@ -976,6 +980,8 @@ def _get_windowed_indexes(
     # Run convolution to compute all coefficients, then reduce those to attributes through either SciPy or Numba
     # (For Numba: Reduction is done within loop to reduce memory usage of computing dozens of full-array coefficients)
     if engine == "scipy":
+        print("# scipy")
+        print("window_size_fractal =", window_size_fractal)
         output = _get_windowed_indexes_scipy(
             dem=dem,
             window_size=window_size,
@@ -989,7 +995,8 @@ def _get_windowed_indexes(
             force_backend=force_scipy_backend,
         )
     elif engine == "numba":
-
+        print("# numba")
+        print("window_size_fractal =", window_size_fractal)
         # Fail and raise error if optional dependency is not installed
         numba = import_optional("numba")
 
