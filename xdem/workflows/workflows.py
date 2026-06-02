@@ -79,7 +79,7 @@ class Workflows(ABC):
 
         :return: None
         """
-
+        print("modif")
         mpl = import_optional("matplotlib")
 
         # Default parameters for plots
