@@ -221,32 +221,77 @@ class TestTerrainAttribute:
         # output = functions_richdem[attribute](dem)
         # assert np.all(dem.data.mask == output.data.mask)
 
-    def test_get_terrain_attribute__multiple_inputs(self) -> None:
+    @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)
+    def test_attributes_default_call(self, attribute: str) -> None:
+        from_str_to_fun = {
+            "slope": lambda: self.dem.slope(),
+            "aspect": lambda: self.dem.aspect(),
+            "hillshade": lambda: self.dem.hillshade(),
+            "profile_curvature": lambda: self.dem.profile_curvature(),
+            "tangential_curvature": lambda: self.dem.tangential_curvature(),
+            "planform_curvature": lambda: self.dem.planform_curvature(),
+            "flowline_curvature": lambda: self.dem.flowline_curvature(),
+            "max_curvature": lambda: self.dem.max_curvature(),
+            "min_curvature": lambda: self.dem.min_curvature(),
+            "topographic_position_index": lambda: self.dem.topographic_position_index(),
+            "terrain_ruggedness_index": lambda: self.dem.terrain_ruggedness_index(),
+            "roughness": lambda: self.dem.roughness(),
+            "rugosity": lambda: self.dem.rugosity(),
+            "texture_shading": lambda: self.dem.texture_shading(),
+            "fractal_roughness": lambda: self.dem.fractal_roughness(),
+        }
+
+        res_gta = xdem.terrain.get_terrain_attribute(self.dem, attribute=attribute)
+        res_fun = from_str_to_fun[attribute]()
+        assert res_gta == res_fun
+
+    @pytest.mark.parametrize("surfit_windowsizes", [("Florinsky", 3, 5), ("ZevenbergThorne", 7, 13)])
+    def test_get_terrain_attribute__multiple_inputs(self, surfit_windowsizes: tuple[str, int, int]) -> None:
         """Test the get_terrain_attribute function by itself."""
 
+        # Unpack argument of surface fit/window size
+        surface_fit, window_size, window_size_fractal = surfit_windowsizes
+
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
-        slope = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res)
-        assert isinstance(slope, np.ndarray)
+        slope_u = xdem.terrain.get_terrain_attribute(
+            self.dem.data, "slope", resolution=self.dem.res, window_size=window_size, surface_fit=surface_fit
+        )  # type: ignore
+        assert isinstance(slope_u, np.ndarray)
 
-        # Create three products at the same time
-        slope2, _, hillshade = xdem.terrain.get_terrain_attribute(
-            self.dem.data, ["slope", "aspect", "hillshade"], resolution=self.dem.res
-        )
+        # Create four products at the same time
+        # slope/hillshade in list_requiring_surface_fit, roughness in list_requiring_windowed_index
+        # and fractal_roughness in list_requiring_windowed_fractal_index
+        slope_m, roughness_m, hillshade_m, fractal_roughness_m = xdem.terrain.get_terrain_attribute(
+            self.dem.data,
+            ["slope", "roughness", "hillshade", "fractal_roughness"],
+            resolution=self.dem.res,
+            window_size=window_size,
+            window_size_fractal=window_size_fractal,
+            surface_fit=surface_fit,
+        )  # type: ignore
 
-        # Create a hillshade using its own function
-        hillshade2 = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res)
+        # Create attributes using its own function
+        hillshade_u = xdem.terrain.hillshade(
+            self.dem.data, resolution=self.dem.res, surface_fit=surface_fit
+        )  # type: ignore
+        fractal_roughness_u = xdem.terrain.fractal_roughness(self.dem.data, window_size_fractal=window_size_fractal)
+        roughness_u = xdem.terrain.roughness(self.dem.data, window_size=window_size)
 
-        # Validate that the "batch-created" hillshades and slopes are the same as the "single-created"
-        assert np.array_equal(hillshade, hillshade2, equal_nan=True)
-        assert np.array_equal(slope, slope2, equal_nan=True)
+        # Validate that the "batch-created" attributes are the same as the "single-created"
+        assert np.array_equal(hillshade_u, hillshade_m, equal_nan=True)
+        assert np.array_equal(slope_u, slope_m, equal_nan=True)
+        assert np.array_equal(fractal_roughness_u, fractal_roughness_m, equal_nan=True)
+        assert np.array_equal(roughness_u, roughness_m, equal_nan=True)
 
         # A slope map with a lower resolution (higher value) should have gentler slopes.
-        slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
-        assert np.nanmean(slope) > np.nanmean(slope_lowres)
+        slope_lowres = xdem.terrain.get_terrain_attribute(
+            self.dem.data, "slope", resolution=self.dem.res[0] * 2, window_size=window_size
+        )
+        assert np.nanmean(slope_u) > np.nanmean(slope_lowres)
 
-    @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3, 5), ("ZevenbergThorne", 7, 13)])
+    @pytest.mark.parametrize("surfit_windowsizes", [("Florinsky", 3, 5), ("ZevenbergThorne", 7, 13)])
     @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)
-    def test_attributes__multiproc(self, attribute: str, surfit_windowsize: tuple[str, int, int]) -> None:
+    def test_attributes__multiproc(self, attribute: str, surfit_windowsizes: tuple[str, int, int]) -> None:
         """
         Test that terrain attributes are exactly equal in multiprocessing or in normal processing, and for varying
         window sizes/surface fit methods, to verify that the depth (overlap) of the map_overlap is properly defined."""
@@ -266,7 +311,7 @@ class TestTerrainAttribute:
         )
 
         # Unpack argument of surface fit/window size
-        surface_fit, window_size, window_size_fractal = surfit_windowsize
+        surface_fit, window_size, window_size_fractal = surfit_windowsizes
         kwargs: dict[str, Any]
 
         if attribute in xdem.terrain.list_requiring_surface_fit:
@@ -292,49 +337,86 @@ class TestTerrainAttribute:
         # Clean up outfile
         os.remove(outfile)
 
-    def test_get_terrain_attribute__multiproc_inputs(self) -> None:
+    @pytest.mark.parametrize("surfit_windowsizes", [("Florinsky", 3, 5), ("Horn", 7, 13)])
+    def test_get_terrain_attribute__multiproc_inputs(self, surfit_windowsizes: tuple[str, int, int]) -> None:
         """Test the get_terrain attribute function in multiprocessing returns the right input number/type."""
         outfile = "mp_output.tif"
-        outfile_multi = ["mp_output_slope.tif", "mp_output_aspect.tif", "mp_output_hillshade.tif"]
+        outfile_multi = [
+            "mp_output_slope.tif",
+            "mp_output_roughness.tif",
+            "mp_output_hillshade.tif",
+            "mp_output_fractal_roughness.tif",
+        ]
 
         mp_config = MultiprocConfig(
             chunk_size=200,
             outfile=outfile,
         )
 
+        # Unpack argument of surface fit/window size
+        surface_fit, window_size, window_size_fractal = surfit_windowsizes
+
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
-        xdem.terrain.get_terrain_attribute(self.dem, "slope", mp_config=mp_config, resolution=self.dem.res)
+        xdem.terrain.get_terrain_attribute(
+            self.dem, "slope", mp_config=mp_config, resolution=self.dem.res, surface_fit=surface_fit
+        )  # type: ignore
         assert os.path.exists(outfile)
-        slope = gu.Raster(outfile, load_data=True)
-        assert isinstance(slope, gu.Raster)
+        slope_u = gu.Raster(outfile, load_data=True)
+        assert isinstance(slope_u, gu.Raster)
         os.remove(outfile)
 
-        # Create three products at the same time
+        # Create four products at the same time
         xdem.terrain.get_terrain_attribute(
-            self.dem, ["slope", "aspect", "hillshade"], mp_config=mp_config, resolution=self.dem.res
-        )
+            self.dem,
+            ["slope", "roughness", "hillshade", "fractal_roughness"],
+            mp_config=mp_config,
+            resolution=self.dem.res,
+            window_size=window_size,
+            window_size_fractal=window_size_fractal,
+            surface_fit=surface_fit,
+        )  # type: ignore
         for file in outfile_multi:
             assert os.path.exists(file)
-        slope2 = gu.Raster(outfile_multi[0], load_data=True)
-        hillshade = gu.Raster(outfile_multi[2], load_data=True)
+        slope_m = gu.Raster(outfile_multi[0], load_data=True)
+        roughness_m = gu.Raster(outfile_multi[1], load_data=True)
+        hillshade_m = gu.Raster(outfile_multi[2], load_data=True)
+        fractal_roughness_m = gu.Raster(outfile_multi[3], load_data=True)
         for file in outfile_multi:
             os.remove(file)
 
         # Create a hillshade using its own function
-        xdem.terrain.hillshade(self.dem, mp_config=mp_config, resolution=self.dem.res)
+        xdem.terrain.hillshade(self.dem, mp_config=mp_config, surface_fit=surface_fit)  # type: ignore
         assert os.path.exists(outfile)
-        hillshade2 = gu.Raster(outfile, load_data=True)
+        hillshade_u = gu.Raster(outfile, load_data=True)
         os.remove(outfile)
 
-        # Validate that the "batch-created" hillshades and slopes are the same as the "single-created"
-        assert hillshade.raster_equal(hillshade2)
-        assert slope.raster_equal(slope2)
+        # Create a roughness using its own function
+        xdem.terrain.roughness(self.dem, mp_config=mp_config, window_size=window_size)
+        assert os.path.exists(outfile)
+        roughness_u = gu.Raster(outfile, load_data=True)
+        os.remove(outfile)
+
+        # Create a fractal roughness using its own function
+        xdem.terrain.fractal_roughness(self.dem, mp_config=mp_config, window_size_fractal=window_size_fractal)
+        assert os.path.exists(outfile)
+        fractal_roughness_u = gu.Raster(outfile, load_data=True)
+        os.remove(outfile)
+
+        # Validate that the "batch-created" attributes are the same as the "single-created"
+        assert hillshade_u.raster_equal(hillshade_m)
+        assert slope_u.raster_equal(slope_m)
+        assert roughness_u.raster_equal(roughness_m)
+        assert fractal_roughness_u.raster_equal(fractal_roughness_m)
 
         # Compare with classic terrain attribute calculation
-        slope_classic = self.dem.slope()
-        hillshade_classic = self.dem.hillshade()
-        assert np.allclose(slope.data, slope_classic.data, rtol=1e-7)
-        assert np.allclose(hillshade.data, hillshade_classic.data, rtol=1e-7)
+        slope_classic = self.dem.slope(surface_fit=surface_fit)
+        hillshade_classic = self.dem.hillshade(surface_fit=surface_fit)
+        roughness_classic = self.dem.roughness(window_size=window_size)
+        fractal_roughness_classic = self.dem.fractal_roughness(window_size_fractal=window_size_fractal)
+        assert np.allclose(slope_u.data, slope_classic.data, rtol=1e-7)
+        assert np.allclose(hillshade_u.data, hillshade_classic.data, rtol=1e-7)
+        assert np.allclose(roughness_u.data, roughness_classic.data, rtol=1e-7)
+        assert np.allclose(fractal_roughness_u.data, fractal_roughness_classic.data, rtol=1e-7)
 
     def test_get_terrain_attribute__errors(self) -> None:
         """Test the get_terrain_attribute function raises appropriate errors."""
