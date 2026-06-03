@@ -256,6 +256,7 @@ def get_terrain_attribute(
     :param curv_method: Method to calculate the curvatures: "geometric" or "directional".
     :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
     :param window_size: Window size for windowed attributes (TPI, TRI, roughnesses, rugosity).
+    :param window_size_fractal: Window size for windowed fractal attributes (fractal roughnesses).
     :param engine: Engine to use for computing the attributes, windowed and surface fit attributes all support
         "scipy" or "numba".
     :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
