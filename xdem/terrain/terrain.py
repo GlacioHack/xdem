@@ -1732,7 +1732,7 @@ def fractal_roughness(
     Based on: Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
 
     :param dem: The DEM to calculate the roughness from.
-    :param window_size: The size of the window for deriving the metric.
+    :param window_size_fractal: The size of the window for deriving the metric.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
     :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
