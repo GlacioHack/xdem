@@ -402,9 +402,6 @@ def get_terrain_attribute(
             f"Use DEM.reproject(crs=DEM.get_metric_crs()) to reproject in a projected CRS.",
         )
 
-    print("attribute", attribute)
-    print("sufir", surface_fit)
-    print("win", window_size, window_size_fractal)
     # 2/ Processing: chunked or normal depending on input
     if mp_config is not None:
 
@@ -548,11 +545,13 @@ def _get_terrain_attribute(
     """
     See description of get_terrain_attribute().
     """
-    print("dans _", window_size, window_size_fractal)
+
     # Create list of required for each type
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
     attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
-    attributes_requiring_windowed_fractal_index = [attr for attr in attribute if attr == "fractal_roughness"]
+    attributes_requiring_windowed_fractal_index = [
+        attr for attr in attribute if attr in list_requiring_windowed_fractal_index
+    ]
     attributes_requiring_frequency_domain = [attr for attr in attribute if attr in list_requiring_frequency_domain]
 
     # Get array of DEM
@@ -603,7 +602,7 @@ def _get_terrain_attribute(
 
     # Process windowed attributes
     if len(attributes_requiring_windowed_index) > 0:
-        print(attributes_requiring_windowed_index, window_size, resolution, engine, tri_method)
+
         windowed_indexes = _get_windowed_indexes(
             dem=dem_arr,
             windowed_indexes=attributes_requiring_windowed_index,
