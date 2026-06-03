@@ -244,9 +244,9 @@ class TestTerrainAttribute:
         slope_lowres = xdem.terrain.get_terrain_attribute(self.dem.data, "slope", resolution=self.dem.res[0] * 2)
         assert np.nanmean(slope) > np.nanmean(slope_lowres)
 
-    @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3), ("ZevenbergThorne", 7)])
+    @pytest.mark.parametrize("surfit_windowsize", [("Florinsky", 3, 5), ("ZevenbergThorne", 7, 13)])
     @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)
-    def test_attributes__multiproc(self, attribute: str, surfit_windowsize: tuple[str, int]) -> None:
+    def test_attributes__multiproc(self, attribute: str, surfit_windowsize: tuple[str, int, int]) -> None:
         """
         Test that terrain attributes are exactly equal in multiprocessing or in normal processing, and for varying
         window sizes/surface fit methods, to verify that the depth (overlap) of the map_overlap is properly defined."""
@@ -266,12 +266,16 @@ class TestTerrainAttribute:
         )
 
         # Unpack argument of surface fit/window size
-        surface_fit, window_size = surfit_windowsize
+        surface_fit, window_size, window_size_fractal = surfit_windowsize
         kwargs: dict[str, Any]
+
         if attribute in xdem.terrain.list_requiring_surface_fit:
             kwargs = {"surface_fit": surface_fit}
         elif attribute in xdem.terrain.list_requiring_windowed_index and attribute != "rugosity":
             kwargs = {"window_size": window_size}
+        elif attribute in xdem.terrain.list_requiring_windowed_fractal_index:
+            kwargs = {"window_size_fractal": window_size_fractal}
+
         # Rugosity is an exception: window size is not variable
         else:
             kwargs = {}
