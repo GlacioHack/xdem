@@ -406,9 +406,9 @@ def get_terrain_attribute(
     # 2/ Processing: chunked or normal depending on input
     if mp_config is not None:
 
-        # Derive depth argument from method or window size,
+        # Derive depth argument from method or window size/window sizefractal
         # This is the overlap between tiles (1 for 3x3, 2 for 5x5, etc).
-        # Take the biggest window_depth corresponding to the needed window_size/window_size_fractal
+        # Take the biggest window_depth need to the largest window_size/window_size_fractal
         window_depth = 0
         if list(set(attribute) & set(list_requiring_windowed_index)):  # window_size used
             window_depth = window_size // 2
