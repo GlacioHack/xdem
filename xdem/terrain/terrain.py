@@ -408,18 +408,12 @@ def get_terrain_attribute(
 
         # Derive depth argument from method or window size,
         # This is the overlap between tiles (1 for 3x3, 2 for 5x5, etc).
-        list_requiring_windowed = list(
-            set(attribute) & set(list_requiring_windowed_index + list_requiring_windowed_fractal_index)
-        )
-        if list_requiring_windowed:
-            if list_requiring_windowed == list_requiring_windowed_fractal_index:
-                window_depth = window_size_fractal // 2
-            elif list_requiring_windowed_fractal_index[0] in list_requiring_windowed:
-                window_depth = max(window_size_fractal, window_size) // 2
-            else:
-                window_depth = window_size // 2
-        else:
-            window_depth = 0
+        # Take the biggest window_depth corresponding to the needed window_size/window_size_fractal
+        window_depth = 0
+        if list(set(attribute) & set(list_requiring_windowed_index)):  # window_size used
+            window_depth = window_size // 2
+        if list(set(attribute) & set(list_requiring_windowed_fractal_index)):  # window_size_fractal used
+            window_depth = max(window_depth, window_size_fractal // 2)
 
         if any((attr in list_requiring_surface_fit) for attr in attribute):
             if surface_fit.lower() == "florinsky":
