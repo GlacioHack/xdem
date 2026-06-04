@@ -126,6 +126,14 @@ def main(arg_list: list[str] | None = None) -> None:
     logging.getLogger("fontTools").setLevel(logging.WARNING)
     logging.getLogger("fontTools").propagate = False
 
+    import ctypes
+
+    lib_gobject_name = ctypes.util.find_library("gobject-2.0")
+    lib_pango_name = ctypes.util.find_library("pango-1.0")
+    logger.info(lib_gobject_name)
+    logger.info(lib_pango_name)
+    print(n)
+
     if args.output and not args.config:
         parser.error("Argument --output requires --config.")
 
