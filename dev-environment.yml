@@ -28,7 +28,7 @@ dependencies:
   - lazrs-python  # For LAZ file support
   - cerberus  # For CLI
   - pyyaml  # For CLI
-  - weasyprint=69.0  # For CLI
+  - weasyprint  # For CLI
   - tqdm  # For progress bars
 
   # Test dependencies
