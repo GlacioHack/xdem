@@ -340,7 +340,17 @@ class Accuracy(Workflows):
         zscore_mask_rows = np.abs(profile_rows - np.mean(profile_rows)) >= (np.std(profile_rows) * 2)
         profile_rows[zscore_mask_rows] = np.nan
 
-        fig = plt.figure(figsize=(12, 8), constrained_layout=True)
+        # Force figsize with the same size as generate_plot function
+        fig = plt.figure()
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
+
         gs = GridSpec(2, 3, width_ratios=[1.2, 4, 0.3], height_ratios=[1.2, 4])  # 1 pour colonne colorbar
 
         ax_top = fig.add_subplot(gs[0, 1])
@@ -384,7 +394,7 @@ class Accuracy(Workflows):
             f"Mean along lines [m] - Min {np.round(profile_rows_stats[0], 2)}/Max {np.round(profile_rows_stats[1], 2)}"
         )
 
-        # plt.savefig(path, dpi=300, bbox_inches="tight")
+        plt.savefig(self.outputs_folder / "plots" / "elev_diff_plot.png", dpi=300, bbox_inches="tight")
         plt.show()
 
     def run(self) -> None:
@@ -606,6 +616,7 @@ class Accuracy(Workflows):
         if self.compute_coreg:
             html += "<h2>Elevation differences</h2>\n"
             html += "<img src='plots/diff_elev_diff_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
+            html += "<img src='plots/elev_diff_plot.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
 
             html += "<h2>Differences histogram</h2>\n"
             html += "<img src='plots/elev_diff_histo.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
