@@ -249,6 +249,9 @@ class TestTerrainAttribute:
     def test_get_terrain_attribute__multiple_inputs(self, surfit_windowsizes: tuple[str, int, int]) -> None:
         """Test the get_terrain_attribute function by itself."""
 
+        # Fractal roughness with tested window sizes of less than 13 will expectedly raise a warning
+        warnings.filterwarnings("ignore", category=UserWarning, message="Fractal roughness results.*")
+
         # Unpack argument of surface fit/window size
         surface_fit, window_size, window_size_fractal = surfit_windowsizes
 
@@ -337,9 +340,13 @@ class TestTerrainAttribute:
         # Clean up outfile
         os.remove(outfile)
 
-    @pytest.mark.parametrize("surfit_windowsizes", [("Florinsky", 3, 5), ("Horn", 7, 13)])
+    @pytest.mark.parametrize("surfit_windowsizes", [("Florinsky", 3, 5), ("ZevenbergThorne", 7, 13)])
     def test_get_terrain_attribute__multiproc_inputs(self, surfit_windowsizes: tuple[str, int, int]) -> None:
         """Test the get_terrain attribute function in multiprocessing returns the right input number/type."""
+
+        # Fractal roughness with tested window sizes of less than 13 will expectedly raise a warning
+        warnings.filterwarnings("ignore", category=UserWarning, message="Fractal roughness results.*")
+
         outfile = "mp_output.tif"
         outfile_multi = [
             "mp_output_slope.tif",
@@ -468,6 +475,19 @@ class TestTerrainAttribute:
         dem = xdem.DEM.from_array(data, transform=transform, crs=crs, nodata=nodata)
         with pytest.warns(match="DEM is not in a projected CRS.*"):
             xdem.terrain.get_terrain_attribute(dem, "slope")
+
+        # Check warnings if window_size_fractal < 13
+        with pytest.raises(
+            UserWarning,
+            match=re.escape("Fractal roughness can only be computed on window sizes larger or equal to 5."),
+        ):
+            xdem.terrain.fractal_roughness(self.dem, window_size_fractal=3)  # type: ignore
+
+        with pytest.raises(
+            UserWarning,
+            match=re.escape("Fractal roughness results with window size of less than 13 can be inaccurate."),
+        ):
+            xdem.terrain.fractal_roughness(self.dem, window_size_fractal=10)  # type: ignore
 
     def test_get_terrain_attribute__raster_input(self) -> None:
         """Test the get_terrain_attribute function supports raster input/output."""

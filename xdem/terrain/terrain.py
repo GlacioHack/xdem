@@ -255,8 +255,8 @@ def get_terrain_attribute(
         "ZevenbergThorne" or "Florinsky".
     :param curv_method: Method to calculate the curvatures: "geometric" or "directional".
     :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
-    :param window_size: Window size for windowed attributes (TPI, TRI, roughnesses, rugosity).
-    :param window_size_fractal: Window size for windowed fractal attributes (fractal roughnesses).
+    :param window_size: Window size for windowed attributes (TPI, TRI, roughness, rugosity).
+    :param window_size_fractal: Window size for windowed fractal attributes (fractal roughness).
     :param engine: Engine to use for computing the attributes, windowed and surface fit attributes all support
         "scipy" or "numba".
     :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
@@ -335,14 +335,19 @@ def get_terrain_attribute(
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
 
     # Warn if default window size for fractal roughness
-    if "fractal_roughness" in attribute and window_size_fractal == 3:
-        warnings.warn(
-            category=UserWarning,
-            stacklevel=2,
-            message="Fractal roughness results with window size of less than 13 can be inaccurate."
-            "Consider deriving it separately from other attributes that use a default window size of "
-            "3.",
-        )
+    if "fractal_roughness" in attribute:
+        if window_size_fractal < 5:
+            warnings.warn(
+                category=UserWarning,
+                stacklevel=2,
+                message="Fractal roughness can only be computed on window sizes larger or equal to 5.",
+            )
+        elif window_size_fractal < 13:
+            warnings.warn(
+                category=UserWarning,
+                stacklevel=2,
+                message="Fractal roughness results with window size of less than 13 can be inaccurate.",
+            )
 
     attributes_requiring_resolution = attributes_requiring_surface_fit + (
         ["rugosity"] if "rugosity" in attribute else []
@@ -406,7 +411,7 @@ def get_terrain_attribute(
     # 2/ Processing: chunked or normal depending on input
     if mp_config is not None:
 
-        # Derive depth argument from method or window size/window sizefractal
+        # Derive depth argument from method or window size/window size_fractal
         # This is the overlap between tiles (1 for 3x3, 2 for 5x5, etc).
         # Take the biggest window_depth need to the largest window_size/window_size_fractal
         window_depth = 0
