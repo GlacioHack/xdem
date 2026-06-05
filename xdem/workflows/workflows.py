@@ -74,13 +74,9 @@ logging.warning(lib_pango_name)
 try:
     lib_gobject_name = ctypes.util.find_library("gobject-2.0")
     lib_pango_name = ctypes.util.find_library("pango-1.0")
-    if lib_gobject_name and lib_pango_name:
-        from weasyprint import HTML
+    from weasyprint import HTML
 
-        _has_libgobject = True
-    else:
-        _has_libgobject = False
-    _has_weasyprint = _has_libgobject
+    _has_weasyprint = True
 except ImportError:
     _has_weasyprint = False
 
@@ -356,14 +352,6 @@ class Workflows(ABC):
 
         :return: None
         """
-
-        lib_gobject_name = ctypes.util.find_library("gobject-2.0")
-        lib_pango_name = ctypes.util.find_library("pango-1.0")
-        logging.info(f"lib_gobject_name = {lib_gobject_name}")
-        logging.info(f"lib_pango_name = {lib_pango_name}")
-        if lib_gobject_name and lib_pango_name:
-            from weasyprint import HTML
-            logging.info("HTML ok")
 
         generate_pdf = self.config["outputs"]["generate_pdf"]
         logging.info(f"generate_pdf = {generate_pdf}")
