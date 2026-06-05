@@ -75,9 +75,12 @@ list_requiring_windowed_index = [
     "topographic_position_index",
     "roughness",
     "rugosity",
-    "fractal_roughness",
 ]
-# 3/ Requiring fractal domain
+
+# 3/ Requiring windowed fractal index
+list_requiring_windowed_fractal_index = ["fractal_roughness"]
+
+# 4/ Requiring fractal domain
 list_requiring_frequency_domain = ["texture_shading"]
 
 
@@ -95,6 +98,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -116,6 +120,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -137,6 +142,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -158,6 +164,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -179,6 +186,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -247,7 +255,8 @@ def get_terrain_attribute(
         "ZevenbergThorne" or "Florinsky".
     :param curv_method: Method to calculate the curvatures: "geometric" or "directional".
     :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
-    :param window_size: Window size for windowed attributes (TPI, TRI, roughnesses, rugosity).
+    :param window_size: Window size for windowed attributes (TPI, TRI, roughness, rugosity).
+    :param window_size_fractal: Window size for windowed fractal attributes (fractal roughness).
     :param engine: Engine to use for computing the attributes, windowed and surface fit attributes all support
         "scipy" or "numba".
     :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
@@ -326,14 +335,19 @@ def get_terrain_attribute(
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
 
     # Warn if default window size for fractal roughness
-    if "fractal_roughness" in attribute and window_size == 3:
-        warnings.warn(
-            category=UserWarning,
-            stacklevel=2,
-            message="Fractal roughness results with window size of less than 13 can be inaccurate."
-            "Consider deriving it separately from other attributes that use a default window size of "
-            "3.",
-        )
+    if "fractal_roughness" in attribute:
+        if window_size_fractal < 5:
+            warnings.warn(
+                category=UserWarning,
+                stacklevel=2,
+                message="Fractal roughness can only be computed on window sizes larger or equal to 5.",
+            )
+        elif window_size_fractal < 13:
+            warnings.warn(
+                category=UserWarning,
+                stacklevel=2,
+                message="Fractal roughness results with window size of less than 13 can be inaccurate.",
+            )
 
     attributes_requiring_resolution = attributes_requiring_surface_fit + (
         ["rugosity"] if "rugosity" in attribute else []
@@ -358,7 +372,12 @@ def get_terrain_attribute(
     elif isinstance(resolution, Sized):
         resolution = resolution[0]
 
-    choices = list_requiring_surface_fit + list_requiring_windowed_index + list_requiring_frequency_domain
+    choices = (
+        list_requiring_surface_fit
+        + list_requiring_windowed_index
+        + list_requiring_windowed_fractal_index
+        + list_requiring_frequency_domain
+    )
     for attr in attribute:
         if attr not in choices:
             raise ValueError(f"Attribute '{attr}' is not supported. Choices: {choices}")
@@ -392,12 +411,15 @@ def get_terrain_attribute(
     # 2/ Processing: chunked or normal depending on input
     if mp_config is not None:
 
-        # Derive depth argument from method or window size,
+        # Derive depth argument from method or window size/window size_fractal
         # This is the overlap between tiles (1 for 3x3, 2 for 5x5, etc).
-        if any((attr in list_requiring_windowed_index) for attr in attribute):
+        # Take the biggest window_depth need to the largest window_size/window_size_fractal
+        window_depth = 0
+        if list(set(attribute) & set(list_requiring_windowed_index)):  # window_size used
             window_depth = window_size // 2
-        else:
-            window_depth = 0
+        if list(set(attribute) & set(list_requiring_windowed_fractal_index)):  # window_size_fractal used
+            window_depth = max(window_depth, window_size_fractal // 2)
+
         if any((attr in list_requiring_surface_fit) for attr in attribute):
             if surface_fit.lower() == "florinsky":
                 surface_fit_depth = 2
@@ -432,6 +454,7 @@ def get_terrain_attribute(
                     curv_method,
                     tri_method,
                     window_size,
+                    window_size_fractal,
                     engine,
                     texture_alpha,
                     out_dtype,
@@ -442,6 +465,7 @@ def get_terrain_attribute(
             return list_raster[0]
         return list_raster
     else:
+
         return _get_terrain_attribute(  # type: ignore
             dem,
             attribute,  # type: ignore
@@ -454,6 +478,7 @@ def get_terrain_attribute(
             curv_method,
             tri_method,
             window_size,
+            window_size_fractal,
             engine,
             texture_alpha,
             out_dtype,
@@ -473,6 +498,7 @@ def _get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -492,6 +518,7 @@ def _get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -510,6 +537,7 @@ def _get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -521,6 +549,9 @@ def _get_terrain_attribute(
     # Create list of required for each type
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
     attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
+    attributes_requiring_windowed_fractal_index = [
+        attr for attr in attribute if attr in list_requiring_windowed_fractal_index
+    ]
     attributes_requiring_frequency_domain = [attr for attr in attribute if attr in list_requiring_frequency_domain]
 
     # Get array of DEM
@@ -585,6 +616,24 @@ def _get_terrain_attribute(
     else:
         windowed_indexes = []  # type: ignore
 
+    # Process windowed fractal attributes
+    if len(attributes_requiring_windowed_fractal_index) > 0:
+
+        windowed_fractal_indexes = _get_windowed_indexes(
+            dem=dem_arr,
+            windowed_indexes=attributes_requiring_windowed_fractal_index,
+            window_size=window_size_fractal,
+            resolution=resolution,
+            out_dtype=out_dtype,
+            tri_method=tri_method,
+            engine=engine,
+        )
+        windowed_fractal_indexes = [
+            windowed_fractal_indexes[i] for i in range(windowed_fractal_indexes.shape[0])
+        ]  # type: ignore
+    else:
+        windowed_fractal_indexes = []  # type: ignore
+
     # Process frequency domain attributes
     if len(attributes_requiring_frequency_domain) > 0:
         frequency_attributes = []
@@ -597,11 +646,13 @@ def _get_terrain_attribute(
         frequency_attributes = []  # type: ignore
 
     # Convert 3D array output to list of 2D arrays
-    output_attributes = surface_attributes + windowed_indexes + frequency_attributes
+    output_attributes = surface_attributes + windowed_indexes + windowed_fractal_indexes + frequency_attributes
+
     order_indices = [
         attribute.index(a)
         for a in attributes_requiring_surface_fit
         + attributes_requiring_windowed_index
+        + attributes_requiring_windowed_fractal_index
         + attributes_requiring_frequency_domain
     ]
     output_attributes[:] = [output_attributes[idx] for idx in order_indices]
@@ -1652,7 +1703,7 @@ def rugosity(
 @overload
 def fractal_roughness(
     dem: NDArrayf | MArrayf,
-    window_size: int = 13,
+    window_size_fractal: int = 13,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
@@ -1661,7 +1712,7 @@ def fractal_roughness(
 @overload
 def fractal_roughness(
     dem: RasterType,
-    window_size: int = 13,
+    window_size_fractal: int = 13,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterType: ...
@@ -1670,7 +1721,7 @@ def fractal_roughness(
 @profiler.profile("xdem.terrain.fractal_roughness", memprof=True)
 def fractal_roughness(
     dem: NDArrayf | MArrayf | RasterType,
-    window_size: int = 13,
+    window_size_fractal: int = 13,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterType:
@@ -1681,7 +1732,7 @@ def fractal_roughness(
     Based on: Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
 
     :param dem: The DEM to calculate the roughness from.
-    :param window_size: The size of the window for deriving the metric.
+    :param window_size_fractal: The size of the window for deriving the metric.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
     :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
@@ -1706,7 +1757,7 @@ def fractal_roughness(
     return get_terrain_attribute(
         dem=dem,
         attribute="fractal_roughness",
-        window_size=window_size,
+        window_size_fractal=window_size_fractal,
         mp_config=mp_config,
         engine=engine,
     )
