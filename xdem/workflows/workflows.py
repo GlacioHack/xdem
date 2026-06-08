@@ -274,7 +274,6 @@ class Workflows(ABC):
         profile_cols = np.ma.masked_where(nb_valid_cols < min_valid_cols, data.mean(axis=0))
 
         # Force figsize with the same size as generate_plot function
-        fig = plt.figure()
         size_font = 6
         plt.rc("font", size=size_font)
         plt.rc("axes", titlesize=size_font)
@@ -284,12 +283,13 @@ class Workflows(ABC):
         plt.rc("legend", fontsize=size_font)
         plt.rc("figure", titlesize=size_font)
 
-        gs = GridSpec(2, 3, width_ratios=[1.2, 4, 0.3], height_ratios=[1.2, 4])  # 1 pour colonne colorbar
+        gs = GridSpec(2, 3, width_ratios=[1.2, 4, 0.3], height_ratios=[4, 1.2])  # 1 for the colobar
 
-        ax_top = fig.add_subplot(gs[0, 1])
-        ax_left = fig.add_subplot(gs[1, 0])
-        ax_map = fig.add_subplot(gs[1, 1])
-        cax = fig.add_subplot(gs[1, 2])
+        fig = plt.figure()
+        ax_left = fig.add_subplot(gs[0, 0])
+        ax_map = fig.add_subplot(gs[0, 1])
+        cax = fig.add_subplot(gs[0, 2])
+        ax_bottom = fig.add_subplot(gs[1, 1])
 
         # Apply default cmap if not given in inputs
         if "cmap" in kwargs:
@@ -301,16 +301,8 @@ class Workflows(ABC):
 
         # Plot DEM with colorbar
         im = ax_map.imshow(data, **kwargs)
-        ax_map.text(0.5, -0.12, title, transform=ax_map.transAxes, ha="center", va="top")
+        ax_map.text(0.5, 1.12, title, transform=ax_map.transAxes, ha="center", va="top")
         fig.colorbar(im, cax=cax).set_label(f"Elevation differences ({dem.crs.linear_units})")
-
-        # Columns profiles
-        x = np.arange(nx)
-        ax_top.plot(x, profile_cols, color="black")
-        ax_top.set_xlim(ax_map.get_xlim())
-        ax_top.yaxis.tick_left()
-        ax_top.xaxis.set_label_position("top")
-        ax_top.set_xlabel(f"Mean along columns ({dem.crs.linear_units})")
 
         # Lines profiles
         y = np.arange(ny)
@@ -321,8 +313,16 @@ class Workflows(ABC):
         ax_left.yaxis.set_label_position("left")
         ax_left.set_xlabel(f"Mean along lines ({dem.crs.linear_units})")
 
+        # Columns profiles
+        x = np.arange(nx)
+        ax_bottom.plot(x, profile_cols, color="black")
+        ax_bottom.set_xlim(ax_map.get_xlim())
+        ax_bottom.yaxis.tick_left()
+        ax_bottom.xaxis.set_label_position("bottom")
+        ax_bottom.set_xlabel(f"Mean along columns ({dem.crs.linear_units})")
+
         plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
-        plt.close()
+        plt.show()
 
     def floats_process(
         self, dict_with_floats: Dict[str, Any] | InputCoregDict | OutputCoregDict | Any
