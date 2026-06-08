@@ -97,7 +97,6 @@ class Accuracy(Workflows):
             title_dem_right="To-be-aligned elevation",
             vmin=vmin,
             vmax=vmax,
-            cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
         )
         if ref_mask is not None or tba_mask is not None:
             if ref_mask is not None:
@@ -115,7 +114,6 @@ class Accuracy(Workflows):
                 title_dem_right="Masked terrain for to-be-aligned elevation",
                 vmin=vmin,
                 vmax=vmax,
-                cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
         self.dico_to_show = [
@@ -214,7 +212,6 @@ class Accuracy(Workflows):
                 filename="preprocessed_to_be_aligned_elev_map",
                 vmin=vmin,
                 vmax=vmax,
-                cbar_title=f"Elevation ({self.to_be_aligned_elev.crs.linear_units})",
             )
         else:
             self.reference_elev = self.reference_elev.crop(coord_intersection)
@@ -224,7 +221,6 @@ class Accuracy(Workflows):
                 filename="preprocessed_reference_elev_map",
                 vmin=vmin,
                 vmax=vmax,
-                cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
         if self.level > 1:
@@ -301,105 +297,6 @@ class Accuracy(Workflows):
         plt.savefig(self.outputs_folder / "plots" / "elev_diff_histo.png", dpi=300, bbox_inches="tight")
         plt.close()
 
-    def _get_plot_differences_with_profiles(self, dem_diff: RasterType) -> None:
-        """
-        Show a plot of an alimetric difference and save it if
-        specified into the config file
-
-        :param dem_diff: Altimetric difference (as DEM object)
-        """
-
-        import_optional("matplotlib")
-        import matplotlib.pyplot as plt
-        from matplotlib.colors import LinearSegmentedColormap
-        from matplotlib.gridspec import GridSpec
-
-        le90 = dem_diff.get_stats("LE90")
-        median = dem_diff.get_stats("Median")
-
-        # données raster (2D)
-        data = dem_diff.data
-        ny, nx = data.shape
-
-        # Initial min/max for mean profiles
-        profile_cols = data.mean(axis=0)
-        profile_cols_stats = [profile_cols.min(), profile_cols.max()]
-        profile_rows = data.mean(axis=1)
-        profile_rows_stats = [profile_rows.min(), profile_rows.max()]
-
-        # Keep profiles with at least more than 50% of valid values
-        nb_valid_rows = data.count(axis=1)
-        nb_valid_cols = data.count(axis=0)
-        min_valid_rows = data.shape[1] / 2.0
-        min_valid_cols = data.shape[0] / 2.0
-        # Update profiles values according to valid values
-        profile_rows = np.ma.masked_where(nb_valid_rows < min_valid_rows, data.mean(axis=1))
-        profile_cols = np.ma.masked_where(nb_valid_cols < min_valid_cols, data.mean(axis=0))
-
-        # Z-score application
-        zscore_mask_cols = np.abs(profile_cols - np.mean(profile_cols)) >= (np.std(profile_cols) * 2)
-        profile_cols[zscore_mask_cols] = np.nan
-
-        zscore_mask_rows = np.abs(profile_rows - np.mean(profile_rows)) >= (np.std(profile_rows) * 2)
-        profile_rows[zscore_mask_rows] = np.nan
-
-        # Force figsize with the same size as generate_plot function
-        fig = plt.figure()
-        size_font = 6
-        plt.rc("font", size=size_font)
-        plt.rc("axes", titlesize=size_font)
-        plt.rc("axes", labelsize=size_font)
-        plt.rc("xtick", labelsize=size_font)
-        plt.rc("ytick", labelsize=size_font)
-        plt.rc("legend", fontsize=size_font)
-        plt.rc("figure", titlesize=size_font)
-
-        gs = GridSpec(2, 3, width_ratios=[1.2, 4, 0.3], height_ratios=[1.2, 4])  # 1 pour colonne colorbar
-
-        ax_top = fig.add_subplot(gs[0, 1])
-        ax_left = fig.add_subplot(gs[1, 0])
-        ax_map = fig.add_subplot(gs[1, 1])
-        cax = fig.add_subplot(gs[1, 2])
-
-        # alti diff initial
-        cmap = LinearSegmentedColormap.from_list("blue_yellow_red", ["#2166ac", "#ffffbf", "#b2182b"])
-        im = ax_map.imshow(
-            data, cmap=cmap, vmin=median - le90 / 2, vmax=median + le90 / 2, interpolation="none", aspect="equal"
-        )
-        ax_map.set_adjustable("datalim")
-        ax_map.set_xlabel("Column index")
-
-        fig.colorbar(im, cax=cax).set_label("Δh [m]")
-
-        ax_map.text(0.5, -0.12, "Altimetric difference [m]", transform=ax_map.transAxes, ha="center", va="top")
-
-        # ---- Profil colonnes ----
-        x = np.arange(nx)
-        ax_top.plot(x, profile_cols, color="black")
-        ax_top.set_xlim(ax_map.get_xlim())
-        ax_top.yaxis.tick_left()
-        ax_top.yaxis.set_label_position("left")
-        ax_top.set_xlabel(
-            f"Mean along columns [m] - "
-            f"Min {np.round(profile_cols_stats[0], 2)}/Max {np.round(profile_cols_stats[1], 2)}"
-        )
-        ax_top.xaxis.set_label_position("top")
-
-        # ---- Profil lignes ----
-        y = np.arange(ny)
-        ax_left.plot(profile_rows, y, color="black")
-        ax_left.set_ylim(ax_map.get_ylim())
-        ax_left.invert_xaxis()
-        ax_left.yaxis.tick_left()
-        ax_left.yaxis.set_label_position("left")
-        ax_left.set_ylabel("Line index")
-        ax_left.set_xlabel(
-            f"Mean along lines [m] - Min {np.round(profile_rows_stats[0], 2)}/Max {np.round(profile_rows_stats[1], 2)}"
-        )
-
-        plt.savefig(self.outputs_folder / "plots" / "elev_diff_plot.png", dpi=300, bbox_inches="tight")
-        plt.show()
-
     def run(self) -> None:
         """
         Run function for the coregistration workflow.
@@ -432,8 +329,6 @@ class Accuracy(Workflows):
             self.diff_after = aligned_elev.reproject(self.reference_elev) - self.reference_elev
             self.stats_after = self.diff_after.get_stats(stats_keys)
 
-            self._get_plot_differences_with_profiles(self.diff_after)
-
             vmin_diff = min(
                 -(self.stats_before["median"] + 3 * self.stats_before["nmad"]),
                 -(self.stats_after["median"] + 3 * self.stats_after["nmad"]),
@@ -443,41 +338,66 @@ class Accuracy(Workflows):
                 self.stats_after["median"] + 3 * self.stats_after["nmad"],
             )
 
-            self.generate_plot(
-                dem=self.diff_before,
-                title="Difference between To-be-align and Reference elevation\n(before coregistration)",
-                filename="diff_elev_diff_coreg_map",
-                dem_right=self.diff_after,
-                title_dem_right="Difference between Aligned and Reference elevation\n(after coregistration)",
-                vmin=vmin_diff,
-                vmax=vmax_diff,
-                cmap="RdBu",
-                cbar_title=f"Elevation differences ({self.diff_before.crs.linear_units})",
-            )
+            if self.level == 1:
+                self.generate_plot(
+                    dem=self.diff_before,
+                    title="Difference between To-be-align and Reference elevation\n(before coregistration)",
+                    filename="diff_elev_diff_coreg_map",
+                    dem_right=self.diff_after,
+                    title_dem_right="Difference between Aligned and Reference elevation\n(after coregistration)",
+                    vmin=vmin_diff,
+                    vmax=vmax_diff,
+                    cmap="RdBu",
+                )
+            else:
+                self.generate_plot_with_profiles(
+                    dem=self.diff_before,
+                    title="Difference between To-be-align and Reference elevation\n(before coregistration)",
+                    filename="diff_elev_before_coreg_map_1",
+                    vmin=vmin_diff,
+                    vmax=vmax_diff,
+                    cmap="RdBu",
+                )
 
-            if self.level > 1:
+                self.generate_plot_with_profiles(
+                    dem=self.diff_after,
+                    title="Difference between Aligned and Reference elevation\n(after coregistration)",
+                    filename="diff_elev_after_coreg_map_2",
+                    vmin=vmin_diff,
+                    vmax=vmax_diff,
+                    cmap="RdBu",
+                )
+
                 self.diff_coreg_tba = aligned_elev.reproject(self.to_be_aligned_elev) - self.to_be_aligned_elev
 
-                self.generate_plot(
+                self.generate_plot_with_profiles(
                     dem=self.diff_coreg_tba,
                     title="Difference between Aligned and To-be-align elevation\n(no coregistration)",
                     filename="diff_elev_coreg_tba_map",
                     cmap="RdBu",
-                    cbar_title=f"Elevation differences ({self.diff_after.crs.linear_units})",
                 )
         else:
             self.diff = self.to_be_aligned_elev - self.reference_elev
             self.stats = self.diff.get_stats(stats_keys)
             vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
-            self.generate_plot(
-                self.diff,
-                title="Difference between To-be-align and Reference elevation",
-                filename="diff_elev_without_coreg_map",
-                vmin=vmin,
-                vmax=vmax,
-                cmap="RdBu",
-                cbar_title=f"Elevation differences ({self.diff.crs.linear_units})",
-            )
+            if self.level == 1:
+                self.generate_plot(
+                    self.diff,
+                    title="Difference between To-be-align and Reference elevation",
+                    filename="diff_elev_without_coreg_map",
+                    vmin=vmin,
+                    vmax=vmax,
+                    cmap="RdBu",
+                )
+            else:
+                self.generate_plot_with_profiles(
+                    dem=self.diff_coreg_tba,
+                    title="Difference between To-be-align and Reference elevation",
+                    filename="diff_elev_without_coreg_map",
+                    vmin=vmin,
+                    vmax=vmax,
+                    cmap="RdBu",
+                )
         if self.compute_coreg:
             stat_items = [
                 (self.reference_elev, "reference_elev", "Reference elevation", 2),
@@ -595,6 +515,12 @@ class Accuracy(Workflows):
             div_html += "</div>\n"
             return div_html
 
+        def print_png(title: str, width: int = 100) -> str:
+            return (
+                f"<img src='plots/{title}.png' alt='Image PNG' style='width: {width}%; "
+                f"height: auto; justify-content: center'>\n"
+            )
+
         # Metadata: Inputs
         inputs_information = list_dict[0]
         html += print_dict(inputs_information[0], inputs_information[1])
@@ -602,19 +528,19 @@ class Accuracy(Workflows):
         # Plot preprocessed data if did
         if "sampling_grid" in self.config["inputs"] and self.config["inputs"]["sampling_grid"] is not None:
             if self.config["inputs"]["sampling_grid"] == "reference_elev":
-                preprocessed_data = "plots/preprocessed_to_be_aligned_elev_map.png"
+                preprocessed_data = "preprocessed_to_be_aligned_elev_map"
             else:
-                preprocessed_data = "plots/preprocessed_reference_elev_map.png"
+                preprocessed_data = "preprocessed_reference_elev_map"
 
             html += "<h2>Preprocessed elevation data</h2>\n"
-            html += "<img src='" + preprocessed_data + "' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+            html += print_png(preprocessed_data)
 
         # Metadata: Inputs
         for title, dictionary in list_dict[1:]:  # type: ignore
             html += print_dict(title, dictionary)
 
         if self.compute_coreg and self.level > 1:
-            html += "<img src='plots/diff_elev_coreg_tba_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
+            html += print_png("diff_elev_coreg_tba_map")
 
         # Statistics table:
         if self.df_stats is not None:
@@ -631,17 +557,19 @@ class Accuracy(Workflows):
         # Coregistration: Add elevation difference plot and histograms before/after
         if self.compute_coreg:
             html += "<h2>Elevation differences</h2>\n"
-            html += "<img src='plots/diff_elev_diff_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
-            html += "<img src='plots/elev_diff_plot.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
+            if self.level == 1:
+                html += print_png("diff_elev_diff_coreg_map")
+            else:
+                html += print_png("diff_elev_before_coreg_map_1")
+                html += print_png("diff_elev_after_coreg_map_2")
 
             html += "<h2>Differences histogram</h2>\n"
-            html += "<img src='plots/elev_diff_histo.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
+            html += print_png("elev_diff_histo")
 
         else:
             html += "<h2>Elevation differences</h2>\n"
-            html += (
-                "<img src='plots/diff_elev_without_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
-            )
+            html += print_png("diff_elev_without_coreg_map")
+
         html += """
          </body>
          </html>

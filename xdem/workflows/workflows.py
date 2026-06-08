@@ -66,11 +66,6 @@ _ALIAS = {
     "percentagevalidpoints": "Percentage valid points",
 }
 
-lib_gobject_name = ctypes.util.find_library("gobject-2.0")
-lib_pango_name = ctypes.util.find_library("pango-1.0")
-logging.warning(lib_gobject_name)
-logging.warning(lib_pango_name)
-
 try:
     lib_gobject_name = ctypes.util.find_library("gobject-2.0")
     lib_pango_name = ctypes.util.find_library("pango-1.0")
@@ -227,6 +222,9 @@ class Workflows(ABC):
         cmap.set_bad(color="k", alpha=None)
         kwargs["cmap"] = cmap
 
+        # Add colormap
+        kwargs["cbar_title"] = f"Elevation differences ({dem.crs.linear_units})"
+
         # Force figsize with the good ratio to prevent larger right axe if not filled
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
 
@@ -240,6 +238,88 @@ class Workflows(ABC):
             plt.title(title_dem_right)
         else:
             ax2.set_axis_off()
+
+        plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
+        plt.close()
+
+    def generate_plot_with_profiles(
+        self,
+        dem: RasterType,
+        title: str,
+        filename: str,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Generate plot from a DEM with profiles.
+
+        :param dem: Input digital elevation model
+        :param title: Title of dem plot
+        :param filename: Filename of figure
+        """
+
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
+        from matplotlib.gridspec import GridSpec
+
+        # Raster data
+        data = dem.data
+        ny, nx = data.shape
+
+        # Keep profiles with at least more than 50% of valid values
+        nb_valid_rows, nb_valid_cols = data.count(axis=1), data.count(axis=0)
+        min_valid_rows, min_valid_cols = data.shape[1] / 2.0, data.shape[0] / 2.0
+
+        # Update profiles values according to valid values
+        profile_rows = np.ma.masked_where(nb_valid_rows < min_valid_rows, data.mean(axis=1))
+        profile_cols = np.ma.masked_where(nb_valid_cols < min_valid_cols, data.mean(axis=0))
+
+        # Force figsize with the same size as generate_plot function
+        fig = plt.figure()
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
+
+        gs = GridSpec(2, 3, width_ratios=[1.2, 4, 0.3], height_ratios=[1.2, 4])  # 1 pour colonne colorbar
+
+        ax_top = fig.add_subplot(gs[0, 1])
+        ax_left = fig.add_subplot(gs[1, 0])
+        ax_map = fig.add_subplot(gs[1, 1])
+        cax = fig.add_subplot(gs[1, 2])
+
+        # Apply default cmap if not given in inputs
+        if "cmap" in kwargs:
+            cmap = plt.get_cmap(name=kwargs["cmap"])
+        else:
+            cmap = plt.get_cmap(name="terrain")
+        cmap.set_bad(color="k", alpha=None)
+        kwargs["cmap"] = cmap
+
+        # Plot DEM with colorbar
+        im = ax_map.imshow(data, **kwargs)
+        ax_map.text(0.5, -0.12, title, transform=ax_map.transAxes, ha="center", va="top")
+        fig.colorbar(im, cax=cax).set_label(f"Elevation differences ({dem.crs.linear_units})")
+
+        # Columns profiles
+        x = np.arange(nx)
+        ax_top.plot(x, profile_cols, color="black")
+        ax_top.set_xlim(ax_map.get_xlim())
+        ax_top.yaxis.tick_left()
+        ax_top.xaxis.set_label_position("top")
+        ax_top.set_xlabel(f"Mean along columns ({dem.crs.linear_units})")
+
+        # Lines profiles
+        y = np.arange(ny)
+        ax_left.plot(profile_rows, y, color="black")
+        ax_left.set_ylim(ax_map.get_ylim())
+        ax_left.invert_xaxis()
+        ax_left.yaxis.tick_left()
+        ax_left.yaxis.set_label_position("left")
+        ax_left.set_xlabel(f"Mean along lines ({dem.crs.linear_units})")
 
         plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
         plt.close()
@@ -352,10 +432,6 @@ class Workflows(ABC):
 
         :return: None
         """
-
-        generate_pdf = self.config["outputs"]["generate_pdf"]
-        logging.info(f"generate_pdf = {generate_pdf}")
-        logging.info(f"_has_weasyprint = {_has_weasyprint}")
 
         if self.config["outputs"]["generate_pdf"]:
             if not _has_weasyprint:
