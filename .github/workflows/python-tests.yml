@@ -81,8 +81,7 @@ jobs:
 
     - name: Print conda environment (for debugging)
       run: |
-        conda info
-        conda list
+        conda info ; conda list ; dpkg -l | grep pango ; dpkg -l | grep gob
 
     - name: Test with pytest
       run: pytest -ra --cov=xdem/ --cov-report=lcov --durations=0
