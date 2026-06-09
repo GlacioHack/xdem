@@ -265,6 +265,12 @@ class Workflows(ABC):
         data = dem.data
         ny, nx = data.shape
 
+        # Initial min/max for mean profiles
+        profile_cols = data.mean(axis=0)
+        profile_cols_stats = [profile_cols.min(), profile_cols.max()]
+        profile_rows = data.mean(axis=1)
+        profile_rows_stats = [profile_rows.min(), profile_rows.max()]
+
         # Keep profiles with at least more than 50% of valid values
         nb_valid_rows, nb_valid_cols = data.count(axis=1), data.count(axis=0)
         min_valid_rows, min_valid_cols = data.shape[1] / 2.0, data.shape[0] / 2.0
@@ -311,7 +317,10 @@ class Workflows(ABC):
         ax_left.invert_xaxis()
         ax_left.yaxis.tick_left()
         ax_left.yaxis.set_label_position("left")
-        ax_left.set_xlabel(f"Mean along lines ({dem.crs.linear_units})")
+        ax_left.set_xlabel(
+            f"Mean along lines ({dem.crs.linear_units})\n"
+            f"Min {np.round(profile_rows_stats[0], 2)} / Max {np.round(profile_rows_stats[1], 2)}"
+        )
 
         # Columns profiles
         x = np.arange(nx)
@@ -319,10 +328,13 @@ class Workflows(ABC):
         ax_bottom.set_xlim(ax_map.get_xlim())
         ax_bottom.yaxis.tick_left()
         ax_bottom.xaxis.set_label_position("bottom")
-        ax_bottom.set_xlabel(f"Mean along columns ({dem.crs.linear_units})")
+        ax_bottom.set_xlabel(
+            f"Mean along columns ({dem.crs.linear_units})\n"
+            f"Min {np.round(profile_cols_stats[0], 2)} / Max {np.round(profile_cols_stats[1], 2)}"
+        )
 
         plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
-        plt.show()
+        plt.close()
 
     def floats_process(
         self, dict_with_floats: Dict[str, Any] | InputCoregDict | OutputCoregDict | Any

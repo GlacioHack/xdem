@@ -372,7 +372,7 @@ class Accuracy(Workflows):
 
                 self.generate_plot_with_profiles(
                     dem=self.diff_coreg_tba,
-                    title="Difference between Aligned and To-be-align elevation\n(no coregistration)",
+                    title="Difference between Aligned and To-be-align elevation\n(after coregistration)",
                     filename="diff_elev_coreg_tba_map",
                     cmap="RdBu",
                 )
