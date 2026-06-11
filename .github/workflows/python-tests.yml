@@ -81,7 +81,7 @@ jobs:
 
     - name: Print conda environment (for debugging)
       run: |
-        conda info ; conda list ; sudo apt-get install -y libpango-1.0-0 ; pkg-config --exists pango && echo "pango ok" || echo "pango pas ok"
+        conda info ; conda list ; pkg-config --exists pango && echo "pango ok" || echo "pango pas ok"
 
     - name: Test with pytest
       run: pytest -ra --cov=xdem/ --cov-report=lcov --durations=0
