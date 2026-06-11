@@ -38,6 +38,7 @@ jobs:
         mamba-version: "2.0.5"
         channel-priority: strict
         activate-environment: xdem-dev
+        package:
         python-version:
 
     - name: Get month for resetting cache
