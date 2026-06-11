@@ -77,7 +77,7 @@ jobs:
 
     - name: Install project mac environment (optional)
       if: ${{ matrix.dep-level != 'base' && matrix.os == 'macos-latest' }}
-      run: brew update ; brew libpango-1.0-0 ; pip install -e .[test,${{ matrix.dep-level }}]
+      run: brew update ; sudo port install libpango-1.0-0 ; pip install -e .[test,${{ matrix.dep-level }}]
 
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
