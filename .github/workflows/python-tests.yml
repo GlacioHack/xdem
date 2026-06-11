@@ -40,6 +40,7 @@ jobs:
         activate-environment: xdem-dev
         python-version:
 
+
     - name: Get month for resetting cache
       id: get-date
       run: echo "cache_date=$(/bin/date -u '+%Y%m')" >> $GITHUB_ENV
@@ -71,8 +72,10 @@ jobs:
       run: pip install -e .[test]
 
     - name: Install project environment (optional)
-      if: ${{ matrix.dep-level != 'base' }}
-      run: pip install -e .[test,${{ matrix.dep-level }}]
+      if: ${{ matrix.dep-level != 'base'}}
+      run: conda install -c conda-forge weasyprint ; pip install -e .[test,${{ matrix.dep-level }}]
+      #run: sudo apt-get update ; sudo apt-get install -y libpango-1.0-0 ; pip install -e .[test,${{ matrix.dep-level }}]
+
 
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
@@ -81,7 +84,7 @@ jobs:
 
     - name: Print conda environment (for debugging)
       run: |
-        conda info ; conda list ; dpkg -l | grep pango ; dpkg -l | grep gob
+        conda info ; conda list ; pkg-config --exists pango && echo "pango ok" || echo "pango pas ok"
 
     - name: Test with pytest
       run: pytest -ra --cov=xdem/ --cov-report=lcov --durations=0
