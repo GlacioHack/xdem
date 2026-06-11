@@ -16,7 +16,7 @@ jobs:
 
     strategy:
       matrix:
-        os: ["ubuntu-latest"]
+        os: ["ubuntu-latest",  "macos-latest"]
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         dep-level: ["base", "opt"]
 
@@ -71,9 +71,9 @@ jobs:
       if: ${{ matrix.dep-level == 'base' }}
       run: pip install -e .[test]
 
-    - name: Install project environment (optional)
+    - name: Install project linux environment (optional)
       if: ${{ matrix.dep-level != 'base' }}
-      run: sudo apt-get update ; sudo apt-get install -y libpango-1.0-0   ; pip install -e .[test,${{ matrix.dep-level }}]
+      run: sudo apt-get update ; sudo apt-get install -y libpango-1.0-0 ; pip install -e .[test,${{ matrix.dep-level }}]
 
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
