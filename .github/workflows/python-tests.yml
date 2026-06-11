@@ -30,7 +30,7 @@ jobs:
 
     # We initiate the environment empty, and check if a key for this environment doesn't already exist in the cache
     - name: Initiate empty environment
-      uses: conda-incubator/setup-miniconda@v4
+      uses: conda-incubator/setup-miniconda@v3
       with:
         miniforge-version: latest
         auto-update-conda: true
@@ -39,7 +39,6 @@ jobs:
         channel-priority: strict
         activate-environment: xdem-dev
         python-version:
-
 
     - name: Get month for resetting cache
       id: get-date
@@ -72,10 +71,8 @@ jobs:
       run: pip install -e .[test]
 
     - name: Install project environment (optional)
-      if: ${{ matrix.dep-level != 'base'}}
+      if: ${{ matrix.dep-level != 'base' }}
       run: conda install -c conda-forge weasyprint ; pip install -e .[test,${{ matrix.dep-level }}]
-      #run: sudo apt-get update ; sudo apt-get install -y libpango-1.0-0 ; pip install -e .[test,${{ matrix.dep-level }}]
-
 
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
@@ -84,7 +81,8 @@ jobs:
 
     - name: Print conda environment (for debugging)
       run: |
-        conda info ; conda list ; pkg-config --exists pango && echo "pango ok" || echo "pango pas ok"
+        conda info
+        conda list
 
     - name: Test with pytest
       run: pytest -ra --cov=xdem/ --cov-report=lcov --durations=0
