@@ -306,7 +306,7 @@ class Workflows(ABC):
         kwargs["cmap"] = cmap
 
         # Plot DEM with colorbar
-        im = ax_map.imshow(data, **kwargs)
+        im = ax_map.imshow(data, aspect="auto", **kwargs)
         ax_map.text(0.5, 1.12, title, transform=ax_map.transAxes, ha="center", va="top")
         fig.colorbar(im, cax=cax).set_label(f"Elevation differences ({dem.crs.linear_units})")
 
@@ -319,7 +319,7 @@ class Workflows(ABC):
         ax_left.yaxis.set_label_position("left")
         ax_left.set_xlabel(
             f"Mean along lines ({dem.crs.linear_units})\n"
-            f"Min {np.round(profile_rows_stats[0], 2)} / Max {np.round(profile_rows_stats[1], 2)}"
+            f"Min: {np.round(profile_rows_stats[0], 2)} / Max: {np.round(profile_rows_stats[1], 2)}"
         )
 
         # Columns profiles
@@ -330,11 +330,11 @@ class Workflows(ABC):
         ax_bottom.xaxis.set_label_position("bottom")
         ax_bottom.set_xlabel(
             f"Mean along columns ({dem.crs.linear_units})\n"
-            f"Min {np.round(profile_cols_stats[0], 2)} / Max {np.round(profile_cols_stats[1], 2)}"
+            f"Min: {np.round(profile_cols_stats[0], 2)} / Max: {np.round(profile_cols_stats[1], 2)}"
         )
 
         plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
-        plt.close()
+        plt.show()
 
     def floats_process(
         self, dict_with_floats: Dict[str, Any] | InputCoregDict | OutputCoregDict | Any

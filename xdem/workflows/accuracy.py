@@ -341,7 +341,7 @@ class Accuracy(Workflows):
             if self.level == 1:
                 self.generate_plot(
                     dem=self.diff_before,
-                    title="Difference between To-be-align and Reference elevation\n(before coregistration)",
+                    title="Difference between To-be-aligned and Reference elevation\n(before coregistration)",
                     filename="diff_elev_diff_coreg_map",
                     dem_right=self.diff_after,
                     title_dem_right="Difference between Aligned and Reference elevation\n(after coregistration)",
@@ -352,7 +352,7 @@ class Accuracy(Workflows):
             else:
                 self.generate_plot_with_profiles(
                     dem=self.diff_before,
-                    title="Difference between To-be-align and Reference elevation\n(before coregistration)",
+                    title="Difference between To-be-aligned and Reference elevation\n(before coregistration)",
                     filename="diff_elev_before_coreg_map_1",
                     vmin=vmin_diff,
                     vmax=vmax_diff,
@@ -372,7 +372,7 @@ class Accuracy(Workflows):
 
                 self.generate_plot_with_profiles(
                     dem=self.diff_coreg_tba,
-                    title="Difference between Aligned and To-be-align elevation\n(after coregistration)",
+                    title="Difference between Aligned and To-be-aligned elevation\n(after coregistration)",
                     filename="diff_elev_coreg_tba_map",
                     cmap="RdBu",
                 )
@@ -383,7 +383,7 @@ class Accuracy(Workflows):
             if self.level == 1:
                 self.generate_plot(
                     self.diff,
-                    title="Difference between To-be-align and Reference elevation",
+                    title="Difference between To-be-aligned and Reference elevation",
                     filename="diff_elev_without_coreg_map",
                     vmin=vmin,
                     vmax=vmax,
@@ -392,7 +392,7 @@ class Accuracy(Workflows):
             else:
                 self.generate_plot_with_profiles(
                     dem=self.diff_coreg_tba,
-                    title="Difference between To-be-align and Reference elevation",
+                    title="Difference between To-be-aligned and Reference elevation",
                     filename="diff_elev_without_coreg_map",
                     vmin=vmin,
                     vmax=vmax,
