@@ -398,6 +398,15 @@ class Accuracy(Workflows):
                     vmax=vmax,
                     cmap="RdBu",
                 )
+            self.generate_plot(
+                self.diff,
+                title="Difference between To-be-align and Reference elevation",
+                filename="diff_elev_without_coreg_map",
+                vmin=vmin,
+                vmax=vmax,
+                cmap="RdBu",
+                cbar_title=f"Elevation differences ({self.diff.crs.linear_units})",
+            )
         if self.compute_coreg:
             stat_items = [
                 (self.reference_elev, "reference_elev", "Reference elevation", 2),
