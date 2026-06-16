@@ -1070,6 +1070,9 @@ class TestAffineManipulation:
         assert np.percentile(np.abs(diff_it_gd), 50) < 0.03  # 10 times more precise than above
 
     def test_inputs_param_method(self) -> None:
+        from typing import Literal
+
+        from typing_extensions import Literal
 
         class Test_Dict:
             test_str: str
@@ -1077,7 +1080,7 @@ class TestAffineManipulation:
             test_int: int
             test_NDArrayf: NDArrayf
             test_Generator: np.random.Generator
-            # test_literal: Literal["point-to-point", "point-to-plane"]
+            test_literal: Literal["point-to-point", "point-to-plane"]
             test_list: list[str]
             test_dataframe: pd.DataFrame
             test_bool: bool
@@ -1104,7 +1107,9 @@ class TestAffineManipulation:
             "test_union_none": [[1, None], [1.5]],
         }
         for key, values in test_values.items():
+            print(key, values)
             for value in values[0]:
                 assert validate_typed_dict({key: value}, Test_Dict)
             for value in values[1]:
-                assert not validate_typed_dict({key: value}, Test_Dict)
+                with pytest.raises(ValueError, match="expected type input"):
+                    assert not validate_typed_dict({key: value}, Test_Dict)
