@@ -1953,9 +1953,6 @@ def validate_typed_dict(data: dict[Any, Any], typed_dict: type) -> bool:
     :return: if the dict correspond to the or not
     """
     print("validate_typed_dict")
-    from typing import Literal
-
-    from typing_extensions import Literal
 
     # Get all inputs in the dict and their type
     hints = get_type_hints(typed_dict)
