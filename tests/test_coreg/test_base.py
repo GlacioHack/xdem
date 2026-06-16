@@ -1072,8 +1072,6 @@ class TestAffineManipulation:
     def test_inputs_param_method(self) -> None:
         from typing import Literal
 
-        from typing_extensions import Literal
-
         class Test_Dict:
             test_str: str
             test_float: float
