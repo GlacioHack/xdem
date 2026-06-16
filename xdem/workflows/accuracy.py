@@ -353,7 +353,7 @@ class Accuracy(Workflows):
                 self.generate_plot_with_profiles(
                     dem=self.diff_before,
                     title="Difference between To-be-aligned and Reference elevation\n(before coregistration)",
-                    filename="diff_elev_before_coreg_map_1",
+                    filename="diff_elev_before_coreg_map",
                     vmin=vmin_diff,
                     vmax=vmax_diff,
                     cmap="RdBu",
@@ -362,7 +362,7 @@ class Accuracy(Workflows):
                 self.generate_plot_with_profiles(
                     dem=self.diff_after,
                     title="Difference between Aligned and Reference elevation\n(after coregistration)",
-                    filename="diff_elev_after_coreg_map_2",
+                    filename="diff_elev_after_coreg_map",
                     vmin=vmin_diff,
                     vmax=vmax_diff,
                     cmap="RdBu",
@@ -569,8 +569,8 @@ class Accuracy(Workflows):
             if self.level == 1:
                 html += print_png("diff_elev_diff_coreg_map")
             else:
-                html += print_png("diff_elev_before_coreg_map_1")
-                html += print_png("diff_elev_after_coreg_map_2")
+                html += print_png("diff_elev_before_coreg_map")
+                html += print_png("diff_elev_after_coreg_map")
 
             html += "<h2>Differences histogram</h2>\n"
             html += print_png("elev_diff_histo")
