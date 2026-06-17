@@ -301,19 +301,16 @@ Tree of outputs for level 1:
 - root
   ├─ tables
   │   ├─ [aligned_elev_stats.csv] (if coregistration)
-  │   ├─ [diff_elev_before_coreg_stats.csv] (if coregistration)
   │   ├─ [diff_elev_after_coreg_stats.csv] (if coregistration)
-  │   ├─ reference_elev_stats.csv
-  │   └─ to_be_aligned_elev_stats.csv
+  │   ├─ [diff_elev_before_coreg_stats.csv] (if coregistration)
+  │   ├─ [diff_elev_without_coreg_stats.csv] (if no coregistration)
 - ├─ plots
-  │   ├─ inputs.png
-  │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
-  │   ├─ [preprocessed_to_be_aligned_elev_map.png or preprocessed_reference_elev_map.png] (if sampling_grid)
-  │   ├─ [diff_elev_before_coreg_map.png] (if coregistration)
-  │   ├─ [diff_elev_after_coreg_map.png] (if coregistration)
-  │   ├─ [diff_elev_before_after_hist.png] (if coregistration)
+  │   ├─ [diff_elev_diff_coreg_map.png] (if coregistration)
   │   ├─ [diff_elev_without_coreg_map.png] (if no coregistration)
-  │   └─ [elev_diff_histo.png] (if coregistration))
+  │   ├─ [elev_diff_histo.png] (if coregistration))
+- │   ├─ inputs.png
+  │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
+  │   └─ [preprocessed_to_be_aligned_elev_map.png or preprocessed_reference_elev_map.png] (if sampling_grid)
   ├─ [rasters
   │   └─ [aligned_elev.tif] (if coregistration)
   ├─ report.html
@@ -327,28 +324,28 @@ Tree of outputs for level 2:
 - root
   ├─ tables
   │   ├─ [aligned_elev_stats.csv] (if coregistration)
-  │   ├─ [diff_elev_before_coreg_stats.csv] (if coregistration)
   │   ├─ [diff_elev_after_coreg_stats.csv] (if coregistration)
+  │   ├─ [diff_elev_before_coreg_stats.csv] (if coregistration)
+  │   ├─ [diff_elev_without_coreg_stats.csv] (if no coregistration)
   │   ├─ reference_elev_stats.csv
   │   └─ to_be_aligned_elev_stats.csv
   ├─ plots
-  │   ├─ inputs.png
-  │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
-  │   ├─ [preprocessed_to_be_aligned_elev_map.png or preprocessed_reference_elev_map.png] (if sampling_grid)
-  │   ├─ [diff_elev_before_coreg_map.png] (if coregistration)
   │   ├─ [diff_elev_after_coreg_map.png] (if coregistration)
+  │   ├─ [diff_elev_before_coreg_map.png] (if coregistration)
   │   ├─ [diff_elev_coreg_tba_map.png]  (if coregistration)
-  │   ├─ [diff_elev_before_after_hist.png] (if coregistration)
   │   ├─ [diff_elev_without_coreg_map.png] (if no coregistration)
-  │   └─ [elev_diff_histo.png] (if coregistration))
+  │   ├─ [elev_diff_histo.png] (if coregistration))
+- │   ├─ inputs.png
+  │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
+  │   └─ [preprocessed_to_be_aligned_elev_map.png or preprocessed_reference_elev_map.png] (if sampling_grid)
   ├─ rasters
-  │   ├─ [reference_elev_reprojected.tif] (if grid resampling)
-  │   ├─ [to_be_aligned_elev_reprojected.tif] (if grid resampling)
   │   ├─ [aligned_elev.tif] (if coregistration)
-  │   ├─ [diff_elev_before_coreg_map.tif] (if coregistration)
   │   ├─ [diff_elev_after_coreg_map.tif] (if coregistration)
+  │   ├─ [diff_elev_before_coreg_map.tif] (if coregistration)
   │   ├─ [diff_elev_coreg_tba_map.tif] (if coregistration)
-  │   └─ [diff_elev_without_coreg_map.tif] (if no coregistration)
+  │   ├─ [diff_elev_without_coreg_map.tif] (if no coregistration)
+  │   ├─ [reference_elev_reprojected.tif] (if grid resampling)
+  │   └─ [to_be_aligned_elev_reprojected.tif] (if grid resampling)
   ├─ report.html
   ├─ [report.pdf] (if `generate_pdf` if `True`)
   └─ used_config.yaml

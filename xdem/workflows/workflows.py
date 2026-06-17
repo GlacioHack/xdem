@@ -223,6 +223,9 @@ class Workflows(ABC):
         cmap.set_bad(color="k", alpha=None)
         kwargs["cmap"] = cmap
 
+        # Add colormap
+        kwargs["cbar_title"] = f"Elevation differences ({dem.crs.linear_units})"
+
         # Force figsize with the good ratio to prevent larger right axe if not filled
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
 
@@ -236,6 +239,100 @@ class Workflows(ABC):
             plt.title(title_dem_right)
         else:
             ax2.set_axis_off()
+
+        plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
+        plt.close()
+
+    def generate_plot_with_profiles(
+        self,
+        dem: RasterType,
+        title: str,
+        filename: str,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Generate plot from a DEM with profiles.
+
+        :param dem: Input digital elevation model
+        :param title: Title of dem plot
+        :param filename: Filename of figure
+        """
+
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
+        from matplotlib.gridspec import GridSpec
+
+        # Raster data
+        data = dem.data
+        ny, nx = data.shape
+
+        # Initial min/max for mean profiles
+        profile_cols = data.mean(axis=0)
+        profile_cols_stats = [profile_cols.min(), profile_cols.max()]
+        profile_rows = data.mean(axis=1)
+        profile_rows_stats = [profile_rows.min(), profile_rows.max()]
+
+        # Keep profiles with at least more than 50% of valid values
+        nb_valid_rows, nb_valid_cols = data.count(axis=1), data.count(axis=0)
+        min_valid_rows, min_valid_cols = data.shape[1] / 2.0, data.shape[0] / 2.0
+
+        # Update profiles values according to valid values
+        profile_rows = np.ma.masked_where(nb_valid_rows < min_valid_rows, data.mean(axis=1))
+        profile_cols = np.ma.masked_where(nb_valid_cols < min_valid_cols, data.mean(axis=0))
+
+        # Force figsize with the same size as generate_plot function
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
+
+        gs = GridSpec(2, 3, width_ratios=[1.2, 4, 0.3], height_ratios=[4, 1.2])  # 1 for the colobar
+
+        fig = plt.figure()
+        ax_left = fig.add_subplot(gs[0, 0])
+        ax_map = fig.add_subplot(gs[0, 1])
+        cax = fig.add_subplot(gs[0, 2])
+        ax_bottom = fig.add_subplot(gs[1, 1])
+
+        # Apply default cmap if not given in inputs
+        if "cmap" in kwargs:
+            cmap = plt.get_cmap(name=kwargs["cmap"])
+        else:
+            cmap = plt.get_cmap(name="terrain")
+        cmap.set_bad(color="k", alpha=None)
+        kwargs["cmap"] = cmap
+
+        # Plot DEM with colorbar
+        im = ax_map.imshow(data, aspect="auto", **kwargs)
+        ax_map.text(0.5, 1.12, title, transform=ax_map.transAxes, ha="center", va="top")
+        fig.colorbar(im, cax=cax).set_label(f"Elevation differences ({dem.crs.linear_units})")
+
+        # Lines profiles
+        y = np.arange(ny)
+        ax_left.plot(profile_rows, y, color="black")
+        ax_left.set_ylim(ax_map.get_ylim())
+        ax_left.invert_xaxis()
+        ax_left.yaxis.tick_left()
+        ax_left.yaxis.set_label_position("left")
+        ax_left.set_xlabel(
+            f"Mean along lines ({dem.crs.linear_units})\n"
+            f"Min: {np.round(profile_rows_stats[0], 2)} / Max: {np.round(profile_rows_stats[1], 2)}"
+        )
+
+        # Columns profiles
+        x = np.arange(nx)
+        ax_bottom.plot(x, profile_cols, color="black")
+        ax_bottom.set_xlim(ax_map.get_xlim())
+        ax_bottom.yaxis.tick_left()
+        ax_bottom.xaxis.set_label_position("bottom")
+        ax_bottom.set_xlabel(
+            f"Mean along columns ({dem.crs.linear_units})\n"
+            f"Min: {np.round(profile_cols_stats[0], 2)} / Max: {np.round(profile_cols_stats[1], 2)}"
+        )
 
         plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
         plt.close()

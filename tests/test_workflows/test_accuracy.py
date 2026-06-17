@@ -125,7 +125,12 @@ def test_run(get_accuracy_inputs_test, tmp_path, level, generated_pdf):
 
     assert Path(tmp_path / "tables").joinpath("aligned_elev_stats.csv").exists()
 
-    assert Path(tmp_path / "plots").joinpath("diff_elev_diff_coreg_map.png").exists()
+    if level == 1:
+        assert Path(tmp_path / "plots").joinpath("diff_elev_diff_coreg_map.png").exists()
+    else:
+        assert Path(tmp_path / "plots").joinpath("diff_elev_before_coreg_map.png").exists()
+        assert Path(tmp_path / "plots").joinpath("diff_elev_after_coreg_map.png").exists()
+
     assert Path(tmp_path / "plots").joinpath("elev_diff_histo.png").exists()
     assert Path(tmp_path / "plots").joinpath("masked_elev_map.png").exists()
     assert Path(tmp_path / "plots").joinpath("inputs.png").exists()
