@@ -97,7 +97,6 @@ class Accuracy(Workflows):
             title_dem_right="To-be-aligned elevation",
             vmin=vmin,
             vmax=vmax,
-            cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
         )
         if ref_mask is not None or tba_mask is not None:
             if ref_mask is not None:
@@ -115,7 +114,6 @@ class Accuracy(Workflows):
                 title_dem_right="Masked terrain for to-be-aligned elevation",
                 vmin=vmin,
                 vmax=vmax,
-                cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
         self.dico_to_show = [
@@ -214,7 +212,6 @@ class Accuracy(Workflows):
                 filename="preprocessed_to_be_aligned_elev_map",
                 vmin=vmin,
                 vmax=vmax,
-                cbar_title=f"Elevation ({self.to_be_aligned_elev.crs.linear_units})",
             )
         else:
             self.reference_elev = self.reference_elev.crop(coord_intersection)
@@ -224,7 +221,6 @@ class Accuracy(Workflows):
                 filename="preprocessed_reference_elev_map",
                 vmin=vmin,
                 vmax=vmax,
-                cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
         if self.level > 1:
@@ -342,32 +338,66 @@ class Accuracy(Workflows):
                 self.stats_after["median"] + 3 * self.stats_after["nmad"],
             )
 
-            self.generate_plot(
-                dem=self.diff_before,
-                title="Difference between To-be-align and Reference elevation\n(before coregistration)",
-                filename="diff_elev_diff_coreg_map",
-                dem_right=self.diff_after,
-                title_dem_right="Difference between Aligned and Reference elevation\n(after coregistration)",
-                vmin=vmin_diff,
-                vmax=vmax_diff,
-                cmap="RdBu",
-                cbar_title=f"Elevation differences ({self.diff_before.crs.linear_units})",
-            )
+            if self.level == 1:
+                self.generate_plot(
+                    dem=self.diff_before,
+                    title="Difference between To-be-aligned and Reference elevation\n(before coregistration)",
+                    filename="diff_elev_diff_coreg_map",
+                    dem_right=self.diff_after,
+                    title_dem_right="Difference between Aligned and Reference elevation\n(after coregistration)",
+                    vmin=vmin_diff,
+                    vmax=vmax_diff,
+                    cmap="RdBu",
+                )
+            else:
+                self.generate_plot_with_profiles(
+                    dem=self.diff_before,
+                    title="Difference between To-be-aligned and Reference elevation\n(before coregistration)",
+                    filename="diff_elev_before_coreg_map",
+                    vmin=vmin_diff,
+                    vmax=vmax_diff,
+                    cmap="RdBu",
+                )
 
-            if self.level > 1:
+                self.generate_plot_with_profiles(
+                    dem=self.diff_after,
+                    title="Difference between Aligned and Reference elevation\n(after coregistration)",
+                    filename="diff_elev_after_coreg_map",
+                    vmin=vmin_diff,
+                    vmax=vmax_diff,
+                    cmap="RdBu",
+                )
+
                 self.diff_coreg_tba = aligned_elev.reproject(self.to_be_aligned_elev) - self.to_be_aligned_elev
 
-                self.generate_plot(
+                self.generate_plot_with_profiles(
                     dem=self.diff_coreg_tba,
-                    title="Difference between Aligned and To-be-align elevation\n(no coregistration)",
+                    title="Difference between Aligned and To-be-aligned elevation\n(after coregistration)",
                     filename="diff_elev_coreg_tba_map",
                     cmap="RdBu",
-                    cbar_title=f"Elevation differences ({self.diff_after.crs.linear_units})",
                 )
         else:
             self.diff = self.to_be_aligned_elev - self.reference_elev
             self.stats = self.diff.get_stats(stats_keys)
             vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
+            if self.level == 1:
+                self.generate_plot(
+                    self.diff,
+                    title="Difference between To-be-aligned and Reference elevation",
+                    filename="diff_elev_without_coreg_map",
+                    vmin=vmin,
+                    vmax=vmax,
+                    cmap="RdBu",
+                )
+            else:
+                self.generate_plot_with_profiles(
+                    dem=self.diff,
+                    title="Difference between To-be-aligned and Reference elevation",
+                    filename="diff_elev_without_coreg_map",
+                    vmin=vmin,
+                    vmax=vmax,
+                    cmap="RdBu",
+                )
             self.generate_plot(
                 self.diff,
                 title="Difference between To-be-align and Reference elevation",
@@ -494,6 +524,12 @@ class Accuracy(Workflows):
             div_html += "</div>\n"
             return div_html
 
+        def print_png(title: str, width: int = 100) -> str:
+            return (
+                f"<img src='plots/{title}.png' alt='Image PNG' style='width: {width}%; "
+                f"height: auto; justify-content: center'>\n"
+            )
+
         # Metadata: Inputs
         inputs_information = list_dict[0]
         html += print_dict(inputs_information[0], inputs_information[1])
@@ -501,19 +537,19 @@ class Accuracy(Workflows):
         # Plot preprocessed data if did
         if "sampling_grid" in self.config["inputs"] and self.config["inputs"]["sampling_grid"] is not None:
             if self.config["inputs"]["sampling_grid"] == "reference_elev":
-                preprocessed_data = "plots/preprocessed_to_be_aligned_elev_map.png"
+                preprocessed_data = "preprocessed_to_be_aligned_elev_map"
             else:
-                preprocessed_data = "plots/preprocessed_reference_elev_map.png"
+                preprocessed_data = "preprocessed_reference_elev_map"
 
             html += "<h2>Preprocessed elevation data</h2>\n"
-            html += "<img src='" + preprocessed_data + "' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+            html += print_png(preprocessed_data)
 
         # Metadata: Inputs
         for title, dictionary in list_dict[1:]:  # type: ignore
             html += print_dict(title, dictionary)
 
         if self.compute_coreg and self.level > 1:
-            html += "<img src='plots/diff_elev_coreg_tba_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
+            html += print_png("diff_elev_coreg_tba_map")
 
         # Statistics table:
         if self.df_stats is not None:
@@ -530,16 +566,19 @@ class Accuracy(Workflows):
         # Coregistration: Add elevation difference plot and histograms before/after
         if self.compute_coreg:
             html += "<h2>Elevation differences</h2>\n"
-            html += "<img src='plots/diff_elev_diff_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
+            if self.level == 1:
+                html += print_png("diff_elev_diff_coreg_map")
+            else:
+                html += print_png("diff_elev_before_coreg_map")
+                html += print_png("diff_elev_after_coreg_map")
 
             html += "<h2>Differences histogram</h2>\n"
-            html += "<img src='plots/elev_diff_histo.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
+            html += print_png("elev_diff_histo")
 
         else:
             html += "<h2>Elevation differences</h2>\n"
-            html += (
-                "<img src='plots/diff_elev_without_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
-            )
+            html += print_png("diff_elev_without_coreg_map")
+
         html += """
          </body>
          </html>
