@@ -117,7 +117,6 @@ def test_validate_topo_configuration_with_errors(get_topo_config_test, new_param
     """
     topo_config = get_topo_config_test
     topo_config.update(new_param_config)
-    print(topo_config)
 
     with pytest.raises(ValueError, match=expected):
         _ = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
@@ -220,19 +219,6 @@ def test_pipeline_topo_default_values(get_topo_inputs_config_list):
     assert pipeline_topo_test["statistics"] == MIN_STATS
     assert pipeline_topo_test["terrain_attributes"] == TERRAIN_ATTRIBUTES_DEFAULT
     assert pipeline_topo_test["outputs"] == COMPLETE_CONFIG_TOPO["outputs"]
-
-    topo_config = dict()
-    topo_config["inputs"] = get_topo_inputs_config_list[:1]
-    pipeline_topo_test_1_via_list = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
-    topo_config = dict()
-    topo_config["inputs"] = get_topo_inputs_config_list[0]
-    pipeline_topo_test_1_via_dict = schemas.validate_configuration(topo_config, schemas.TOPO_SCHEMA)
-
-    for key in pipeline_topo_test_1_via_list.keys():
-        if key == "inputs":
-            assert pipeline_topo_test_1_via_dict["inputs"] == pipeline_topo_test_1_via_list["inputs"][0]
-        else:
-            assert pipeline_topo_test_1_via_dict[key] == pipeline_topo_test_1_via_list[key]
 
     topo_config = dict()
     topo_config["inputs"] = get_topo_inputs_config_list[:1]
