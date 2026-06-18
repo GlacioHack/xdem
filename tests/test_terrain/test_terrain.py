@@ -519,3 +519,4 @@ class TestTerrainAttribute:
         assert self.dem.dtype != out_dtype
         assert np.dtype(slope.dtype) == out_dtype
         assert np.dtype(tpi.dtype) == out_dtype
+
