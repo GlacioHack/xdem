@@ -1817,7 +1817,7 @@ class InFitOrBinDict(TypedDict, total=False):
     # TODO: Solve redundancy between optimizer and minimizer (curve_fit or minimize as default?)
     # For a minimization problem
     fit_minimizer: Callable[..., tuple[NDArrayf, Any]]
-    fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str
+    fit_loss_func: Callable[[NDArrayf], np.floating[Any]]
 
     # Bin parameters: bin sizes, statistic and apply method
     bin_sizes: int | dict[str, int | Iterable[float]]
@@ -1952,26 +1952,26 @@ def validate_typed_dict(data: dict[Any, Any], typed_dict: type) -> bool:
     :param typed_dict_cls: TypeDict to fit
     :return: if the dict correspond to the or not
     """
-    print("validate_typed_dict")
+    print("\n [validate_typed_dict:", typed_dict, "]")
 
     # Get all inputs in the dict and their type
     hints = get_type_hints(typed_dict)
-    print(hints)
+    print(" ->", hints)
 
     # Checks the type for each input if it exists in data
     for key, expected_type in hints.items():
         if key in data:
             # Stop the verification if type error
             if not _check_type(data[key], expected_type):
-                raise ValueError(f"{key} {data[key]} does not have the expected type input.")
-                return False
+                raise TypeError(
+                    f"Argument `{key}`must be a {expected_type}, got `{data[key]}` of type {type(data[key])})"
+                )
 
     return True
 
 
 def _check_type(value: Any, expected_type: tuple[Any, ...]) -> bool:
     # Get type of expected_type
-    print("_check_type")
 
     origin_type = get_origin(expected_type)
 
@@ -2014,11 +2014,7 @@ def _check_type(value: Any, expected_type: tuple[Any, ...]) -> bool:
         return validate_typed_dict(value, expected_type)
 
     # Expected type need to be a Literal
-    print("av Literal")
     if origin_type is Literal:
-        print("ap Literal")
-        print(get_args(expected_type))
-        print(value)
         return value in get_args(expected_type)
 
     # Expected type need to be a ndarray
