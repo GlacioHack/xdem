@@ -1871,7 +1871,7 @@ class InSpecificDict(TypedDict, total=False):
     icp_picky: bool
 
     # (Using CPD) Weight for outlier removal
-    cpd_weight: float
+    cpd_weight: float | int
 
 
 class OutSpecificDict(TypedDict, total=False):
@@ -1887,7 +1887,7 @@ class InAffineDict(TypedDict, total=False):
     """Keys and types of inputs associated with affine methods."""
 
     # Estimated initial shift (z currently always equal to zero)
-    initial_shift: tuple[float, float, float] | None
+    initial_shift: tuple[float | int, float | int, float | int] | None
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
     # Vertical shift activated
@@ -1963,8 +1963,9 @@ def validate_typed_dict(data: dict[Any, Any], typed_dict: type) -> bool:
         if key in data:
             # Stop the verification if type error
             if not _check_type(data[key], expected_type):
+                print(data[key])
                 raise TypeError(
-                    f"Argument `{key}`must be a {expected_type}, got `{data[key]}` of type {type(data[key])})"
+                    f"Argument `{key}` must be a {expected_type}, got `{data[key]}` of type {type(data[key])})"
                 )
 
     return True
