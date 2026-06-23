@@ -138,6 +138,7 @@ advanced_examples/index.rst
 
 api
 cli
+qgis_plugin
 config
 data
 release_notes
