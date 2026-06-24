@@ -146,7 +146,7 @@ The parameters related to fitting or binning are the same for every {func}`~xdem
 - `bin_apply_method` to pass the method to apply the binning for correction.
 
 For predefined methods, the default values of these parameters differ. For instance, a {class}`~xdem.coreg.Deramp` generally performs well
-with a **"fit"** estimation on a subsample, and thus has a fixed `fit_func` (2D polynomial) solved by the classic optimizer {func}`scipy.optimize.curve_fit`.
+with a **"fit"** estimation on a subsample, and thus has a fixed `fit_func` (2D polynomial) solved by direct ordinary least-squares (OLS) via {func}`numpy.linalg.lstsq`.
 In contrast, a {class}`~xdem.coreg.TerrainBias` is generally hard to model parametrically, and thus defaults to a **"bin"** estimation.
 
 Finally, each bias-correction approach has the following methods:

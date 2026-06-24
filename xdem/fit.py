@@ -149,6 +149,66 @@ def polynomial_2d(xx: tuple[NDArrayf, NDArrayf], *params: NDArrayf) -> NDArrayf:
     return polyval2d(x=xx[0], y=xx[1], c=c)
 
 
+class design_matrix_polynomial_2d:
+    """
+    Callable design-matrix builder for a 2D polynomial of given order, with internal coordinate
+    normalization for numerical stability at high polynomial orders.
+
+    Coordinates are scaled to [-1, 1] before computing monomials. After fitting with OLS, call
+    :meth:`unnormalize_coeffs` to convert the coefficients back to the original coordinate space so
+    they are compatible with :func:`polynomial_2d`.
+
+    Columns correspond to monomials x^i * y^j for i, j in [0, poly_order] in row-major order,
+    matching the parameter layout of :func:`polynomial_2d`.
+
+    :param poly_order: Polynomial order.
+    """
+
+    def __init__(self, poly_order: int) -> None:
+        self.poly_order = poly_order
+        self._x_scale: float = 1.0
+        self._y_scale: float = 1.0
+
+    def __call__(self, xdata: NDArrayf) -> NDArrayf:
+        """
+        Build the design matrix, normalizing x and y to [-1, 1].
+
+        :param xdata: Array of shape (2, N) with x-coordinates in row 0 and y-coordinates in row 1.
+
+        :returns: Design matrix of shape (N, (poly_order + 1)^2).
+        """
+        x, y = xdata
+        self._x_scale = float(max(float(np.max(np.abs(x))), 1.0))
+        self._y_scale = float(max(float(np.max(np.abs(y))), 1.0))
+        x_n = x / self._x_scale
+        y_n = y / self._y_scale
+        n = self.poly_order
+        cols = [x_n**i * y_n**j for i in range(n + 1) for j in range(n + 1)]
+        return np.column_stack(cols)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, design_matrix_polynomial_2d):
+            return NotImplemented
+        return (
+            self.poly_order == other.poly_order and self._x_scale == other._x_scale and self._y_scale == other._y_scale
+        )
+
+    def unnormalize_coeffs(self, coeffs_norm: NDArrayf) -> NDArrayf:
+        """
+        Convert OLS coefficients from normalized to original coordinate space.
+
+        A coefficient c_norm for monomial (x/x_scale)^i * (y/y_scale)^j corresponds to
+        c_orig = c_norm / (x_scale^i * y_scale^j) for the original monomial x^i * y^j.
+
+        :param coeffs_norm: Coefficients in the normalized coordinate space, shape (P,).
+
+        :returns: Coefficients in the original coordinate space, same shape.
+        """
+        n = self.poly_order
+        scale = np.array([self._x_scale**i * self._y_scale**j for i in range(n + 1) for j in range(n + 1)])
+        return coeffs_norm / scale
+
+
 #######################################################################
 # Convenience wrappers for robust N-order polynomial or sum of sin fits
 #######################################################################
@@ -413,17 +473,13 @@ def robust_norder_polynomial_fit(
         # If method is linear and package scipy
         if estimator_name == "Linear" and linear_pkg == "scipy":
 
-            # Define the initial guess
-            p0 = np.polyfit(x, y, deg)
-
-            # Run the linear method with scipy
-            try:
-                cost, coef = _wrapper_scipy_leastsquares(
-                    f=polynomial_1d, xdata=x, ydata=y, p0=p0, sigma=sigma, **kwargs
-                )
-            except RuntimeError:
-                cost = np.inf
-                coef = np.array([np.nan for i in range(len(p0))])
+            # Polynomial is linear in its coefficients; solve directly with OLS (no iteration needed).
+            # np.polyfit returns highest-degree-first; polynomial_1d (via numpy.polynomial.polyval) expects
+            # lowest-degree-first, so flip the output.
+            w = 1.0 / sigma if sigma is not None else None
+            coef = np.polyfit(x, y, deg, w=w)[::-1]
+            coef = np.array([np.round(c, 5) for c in coef])
+            cost = 0.5 * float(np.sum((polynomial_1d(x, *coef) - y) ** 2))
 
         else:
             # Otherwise, we use sklearn

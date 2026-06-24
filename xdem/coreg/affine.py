@@ -63,7 +63,7 @@ from xdem.coreg.base import (
 
 def _check_inputs_bin_before_fit(
     bin_before_fit: bool,
-    fit_optimizer: Callable[..., tuple[NDArrayf, Any]],
+    fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None,
     bin_sizes: int | dict[str, int | Iterable[float]],
     bin_statistic: Callable[[NDArrayf], np.floating[Any]],
 ) -> None:
@@ -76,9 +76,9 @@ def _check_inputs_bin_before_fit(
     :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
     """
 
-    if not callable(fit_optimizer):
+    if fit_optimizer is not None and not callable(fit_optimizer):
         raise TypeError(
-            "Argument `fit_optimizer` must be a function (callable), " "got {}.".format(type(fit_optimizer))
+            "Argument `fit_optimizer` must be a function (callable) or None, " "got {}.".format(type(fit_optimizer))
         )
 
     if bin_before_fit:
@@ -355,6 +355,21 @@ def _nuth_kaab_fit_func(xx: NDArrayf, *params: tuple[float, float, float]) -> ND
     return params[0] * np.cos(params[1] - xx) + params[2]
 
 
+def _design_matrix_nuth_kaab(xdata: NDArrayf) -> NDArrayf:
+    """
+    Build the OLS design matrix for the linearized Nuth and Kääb (2011) fit.
+
+    The original model a*cos(b-x)+c is rewritten as A*cos(x) + B*sin(x) + c via the cosine
+    subtraction identity, where A=a*cos(b) and B=a*sin(b). The design matrix columns are
+    [cos(aspect), sin(aspect), 1].
+
+    :param xdata: 1D array of aspect values in radians.
+
+    :returns: Design matrix of shape (N, 3).
+    """
+    return np.column_stack([np.cos(xdata), np.sin(xdata), np.ones(len(xdata))])
+
+
 def _nuth_kaab_bin_fit(
     dh: NDArrayf,
     slope_tan: NDArrayf,
@@ -365,7 +380,9 @@ def _nuth_kaab_bin_fit(
     Optimize the Nuth and Kääb (2011) function based on observed values of elevation differences, slope tangent and
     aspect at the same locations, using either fitting or binning + fitting.
 
-    Called at each iteration step.
+    Uses a linearized OLS formulation: a*cos(b-x)+c = A*cos(x) + B*sin(x) + c, where A=a*cos(b), B=a*sin(b).
+    The easting and northing offsets are recovered directly as B and A respectively, without needing to
+    back-convert through a and b.
 
     :param dh: 1D array of elevation differences (in georeferenced unit, typically meters).
     :param slope_tan: 1D array of slope tangent (unitless).
@@ -380,33 +397,27 @@ def _nuth_kaab_bin_fit(
     with np.errstate(divide="ignore", invalid="ignore"):
         y = dh / slope_tan
 
-    # Make an initial guess of the a, b, and c parameters
-    p0 = (3 * np.nanstd(y) / (2**0.5), 0.0, np.nanmean(y))
-
     # For this type of method, the procedure can only be fit, or bin + fit (binning alone does not estimate parameters)
     if params_fit_or_bin["fit_or_bin"] not in ["fit", "bin_and_fit"]:
         raise ValueError("Nuth and Kääb method only supports 'fit' or 'bin_and_fit'.")
 
-    # Define fit and bin parameters
-    params_fit_or_bin["fit_func"] = _nuth_kaab_fit_func
+    params_fit_or_bin["fit_func"] = _nuth_kaab_fit_func  # kept for logging in _bin_or_and_fit_nd
     params_fit_or_bin["nd"] = 1
     params_fit_or_bin["bias_var_names"] = ["aspect"]
+    params_fit_or_bin["design_matrix_func"] = _design_matrix_nuth_kaab
 
-    # Run bin and fit, returning dataframe of binning and parameters of fitting
+    # Run bin and/or fit; _ols_fit is used internally because design_matrix_func is set
     _, results = _bin_or_and_fit_nd(
         fit_or_bin=params_fit_or_bin["fit_or_bin"],
         params_fit_or_bin=params_fit_or_bin,
         values=y,
         bias_vars={"aspect": aspect},
-        p0=p0,
     )
-    # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert results is not None
-    easting_offset = results[0][0] * np.sin(results[0][1])
-    northing_offset = results[0][0] * np.cos(results[0][1])
-    vertical_offset = results[0][2]
+    # results[0] = [A, B, c]; easting = a*sin(b) = B, northing = a*cos(b) = A
+    northing_offset, easting_offset, vertical_offset = results[0]
 
-    return easting_offset, northing_offset, vertical_offset
+    return float(easting_offset), float(northing_offset), float(vertical_offset)
 
 
 def _nuth_kaab_aux_vars(
@@ -2372,7 +2383,7 @@ class NuthKaab(AffineCoreg):
         max_iterations: int = 10,
         offset_threshold: float = 0.001,
         bin_before_fit: bool = True,
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 72,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         subsample: int | float = 5e5,

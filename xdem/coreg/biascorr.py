@@ -27,12 +27,11 @@ import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import rasterio as rio
-import scipy
 
 import xdem.spatialstats
 from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import Coreg, fit_workflows
-from xdem.fit import polynomial_2d
+from xdem.fit import design_matrix_polynomial_2d, polynomial_2d
 
 BiasCorrType = TypeVar("BiasCorrType", bound="BiasCorr")
 
@@ -53,7 +52,7 @@ class BiasCorr(Coreg):
         fit_func: (
             Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
         ) = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -88,9 +87,10 @@ class BiasCorr(Coreg):
                     "Argument `fit_func` must be a function (callable) "
                     "or the string '{}', got {}.".format("', '".join(fit_workflows.keys()), type(fit_func))
                 )
-            if not callable(fit_optimizer):
+            if fit_optimizer is not None and not callable(fit_optimizer):
                 raise TypeError(
-                    "Argument `fit_optimizer` must be a function (callable), " "got {}.".format(type(fit_optimizer))
+                    "Argument `fit_optimizer` must be a function (callable) or None, "
+                    "got {}.".format(type(fit_optimizer))
                 )
 
             # If a workflow was called, override optimizer and pass proper function
@@ -323,7 +323,7 @@ class DirectionalBias(BiasCorr):
         angle: float = 0,
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin_and_fit",
         fit_func: Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"] = "nfreq_sumsin",
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -467,7 +467,7 @@ class TerrainBias(BiasCorr):
         fit_func: (
             Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
         ) = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -632,7 +632,7 @@ class Deramp(BiasCorr):
         poly_order: int = 2,
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
         fit_func: Callable[..., NDArrayf] = polynomial_2d,
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -664,6 +664,7 @@ class Deramp(BiasCorr):
             subsample,
         )
         self._meta["inputs"]["specific"]["poly_order"] = poly_order
+        self._meta["inputs"]["fitorbin"]["design_matrix_func"] = design_matrix_polynomial_2d(poly_order)
         self._needs_vars = False
 
     def _fit_rst_rst(  # type: ignore
