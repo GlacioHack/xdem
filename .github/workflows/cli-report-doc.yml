@@ -6,7 +6,7 @@ jobs:
   verify-report:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install package with optional dependencies
         run: pip install -e .[opt]
