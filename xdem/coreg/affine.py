@@ -2031,7 +2031,6 @@ class VerticalShift(AffineCoreg):
         super().__init__(
             meta={"vshift_reduc_func": vshift_reduc_func}, subsample=subsample, initial_shift=initial_shift
         )
-
     def _fit_rst_rst(
         self,
         ref_elev: NDArrayf,
@@ -2167,7 +2166,6 @@ class ICP(AffineCoreg):
         :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
             These shifts are applied before the fit() part.
         """
-
         meta = {
             "icp_method": method,
             "icp_picky": picky,
