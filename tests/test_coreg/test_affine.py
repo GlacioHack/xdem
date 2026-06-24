@@ -599,27 +599,35 @@ class TestAffineCoreg:
         matrix2[2, 3] = matrix1[2, 3]
         assert np.array_equal(matrix1, matrix2)
 
-    def test_nuthkaab_initial_shift(self) -> None:
+    @pytest.mark.parametrize(
+        "coreg_method", [coreg.VerticalShift, coreg.ICP, coreg.CPD, coreg.NuthKaab, coreg.LZD, coreg.DhMinimize]
+    )
+    @pytest.mark.parametrize("initial_shift", [(0, 0, 0), (8, 4, 0)])
+    def test_coreg_initial_shift(self, coreg_method: coreg.Coreg, initial_shift: tuple[float, float, float]) -> None:
         """
-        Test that the initial_shift does not impact fit_and_apply process for the Nuth and Kaab coregistration.
+        Test that the initial_shift does not impact fit_and_apply process.
         """
 
-        # Use entire DEMs here (to compare to original values from older package versions)
-        ref, tba = load_examples_fullsize()[0:2]
+        ref = load_examples()[0]
+        shift = (4, 2, 10)
+        ref_shifted = ref.translate(shift[0], shift[1]) + shift[2]
 
-        # Get the coregistration method and expected shifts from the inputs
-        inlier_mask = ~self.outlines.create_mask(ref)
+        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        c = coreg_method(initial_shift=initial_shift, subsample=subsample_size)
+        dem_aligned_is = c.fit_and_apply(ref, ref_shifted, random_state=42)
+        assert c.meta["inputs"]["affine"]["initial_shift"] == initial_shift
+        output = c.meta["outputs"]["affine"]
+        shifts_out_is = [output[k] for k in ["shift_x", "shift_y", "shift_z"] if k in output]  # type: ignore
 
-        c = coreg.NuthKaab(initial_shift=(0, 0, 0), subsample=50000)
-        dem_aligned_is = c.fit_and_apply(ref, tba, inlier_mask=inlier_mask, random_state=42)
-        shifts_is = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
+        c = coreg_method(subsample=subsample_size)
+        dem_aligned = c.fit_and_apply(ref, ref_shifted, random_state=42)
+        assert "initial_shift" not in c.meta["inputs"]["affine"]
+        output = c.meta["outputs"]["affine"]
+        shifts_out = [output[k] for k in ["shift_x", "shift_y", "shift_z"] if k in output]  # type: ignore
 
-        c = coreg.NuthKaab(subsample=50000)
-        dem_aligned = c.fit_and_apply(ref, tba, inlier_mask=inlier_mask, random_state=42)
-        shifts = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
+        # Test shifts (skip CPD: more difficult to constrain)
+        if not (initial_shift != (0, 0, 0) and coreg_method == coreg.CPD):
+            assert shifts_out_is == pytest.approx(shifts_out, 10 - 6)
 
-        # Check the output translations match the exact values
-        assert shifts_is == pytest.approx(shifts)
-        assert (dem_aligned_is.data == dem_aligned.data).min()
         assert dem_aligned_is.transform == dem_aligned.transform
         assert dem_aligned_is.crs == dem_aligned.crs

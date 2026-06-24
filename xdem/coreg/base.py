@@ -2307,6 +2307,7 @@ class Coreg:
         # Apply the shift to the source dem if given
         initial_shift_apply = False
         if self._meta["inputs"]["affine"].get("initial_shift") is not None:
+            print("1. initial_shift in fit", self._meta["inputs"]["affine"]["initial_shift"])
             shift_x = self._meta["inputs"]["affine"]["initial_shift"][0]  # type: ignore
             shift_y = self._meta["inputs"]["affine"]["initial_shift"][1]  # type: ignore
             # shift_z is currently always equal to zero
@@ -2355,6 +2356,7 @@ class Coreg:
 
         # Unapply the shift to the source dem if apply before
         if initial_shift_apply and "outputs" in self.meta and "affine" in self.meta["outputs"]:
+            print("2. initial_shift_apply")
             if "shift_x" in self.meta["outputs"]["affine"]:
                 self.meta["outputs"]["affine"]["shift_x"] += shift_x
                 logging.debug(f"Updated shift_x by {shift_x} in {self}")
