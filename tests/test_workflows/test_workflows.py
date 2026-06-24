@@ -369,12 +369,23 @@ def test_load_dem_mask(tmp_path):
     assert inlier_mask.raster_equal(mask)
     assert mask_path == config_dem["path_to_mask"]
 
-    # path_to_mask = raster path, not fitting dem
+    # path_to_mask = raster path, not fitting dem (with nan after reproj)
     mask_crop = mask.icrop((0, 0, 500, 600))
     mask_crop.to_file(tmp_path / "mask_crop.tif")
+    mask_crop.to_file("mask_crop.tif")
+
     config_dem["path_to_mask"] = tmp_path / "mask_crop.tif"
     _, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+
+    mask_crop.data = mask_crop.data.filled(False)
     assert inlier_mask.raster_equal(mask_crop.reproject(dem, silent=True))
     assert mask_path == config_dem["path_to_mask"]
 
-    # path_to_mask = error (type ?)
+    # path_to_mask = int raster path, not fitting dem (with nan after reproj)
+    mask_crop.data = np.random.choice(np.arange(100, dtype=np.int32), size=mask_crop.shape)
+    mask_crop.to_file(tmp_path / "mask_crop.tif")
+
+    _, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+    mask_crop = mask_crop.astype(bool)
+    mask_crop.data = mask_crop.data.filled(False)
+    assert inlier_mask.raster_equal(mask_crop.reproject(dem, silent=True))

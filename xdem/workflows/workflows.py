@@ -405,6 +405,8 @@ class Workflows(ABC):
                 except pyogrio.errors.DataSourceError:
                     try:
                         inlier_mask = gu.Raster(mask_path).astype(bool)
+                        inlier_mask.data = inlier_mask.data.filled(False)
+
                         inlier_mask = inlier_mask.reproject(dem, silent=True)
                     except rasterio.errors.RasterioIOError:
                         raise ValueError("You provided a 'path_to_mask' value that is not recognised as a mask.")
