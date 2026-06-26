@@ -2022,6 +2022,7 @@ class VerticalShift(AffineCoreg):
 
         :param vshift_reduc_func: Reductor function to estimate the central tendency of the vertical shift.
             Defaults to the median.
+        :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
             These shifts are applied before the fit() part.
         """
@@ -2166,6 +2167,7 @@ class ICP(AffineCoreg):
         :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
             These shifts are applied before the fit() part.
         """
+
         meta = {
             "icp_method": method,
             "icp_picky": picky,
