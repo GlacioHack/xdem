@@ -2166,6 +2166,7 @@ class ICP(AffineCoreg):
         :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
             These shifts are applied before the fit() part.
         """
+
         meta = {
             "icp_method": method,
             "icp_picky": picky,
