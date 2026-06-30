@@ -5,9 +5,9 @@
 Manipulating DEM is quite simple thanks to the use of several functions, depending on the needs. This can be useful for correcting certain shifts when they are known in advance.
 
 In this page, we will show you how to properly do :
- - a simple translation with translate
- - a simple rotation (with a translation)
- - a complexe rotation (with a translation)
+ - a simple translation with :func:`~geoutils.Raster.translate`
+ - a simple rotation (with a translation) with :func:`~xdem.coreg.apply_matrix`
+ - a complex rotation (with a translation) with :func:`~xdem.coreg.matrix_from_translations_rotations` in :func:`~xdem.coreg.apply_matrix`
 
 """
 
