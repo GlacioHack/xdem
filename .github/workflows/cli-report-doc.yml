@@ -60,13 +60,13 @@ jobs:
 
           check_report \
             "accuracy" \
-            "xdem accuracy --config accuracy_config.yaml --output test_accuracy" \
-            "test_accuracy/report.html"
+            "xdem accuracy --config accuracy_config.yaml --output outputs_accuracy" \
+            "outputs_accuracy/report.html"
 
           check_report \
             "topo" \
-            "xdem topo --config topo_config.yaml --output test_topo" \
-            "test_topo/report.html"
+            "xdem topo --config topo_config.yaml --output outputs_topo" \
+            "outputs_topo/report.html"
 
           if (( ${#failures[@]} > 0 )); then
             echo ""
