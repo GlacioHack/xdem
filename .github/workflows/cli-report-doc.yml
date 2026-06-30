@@ -66,7 +66,7 @@ jobs:
           check_report \
             "topo" \
             "xdem topo --config topo_config.yaml --output test_topo" \
-            "outputs_accuracy/report.html"
+            "outputs_topo/report.html"
 
           if (( ${#failures[@]} > 0 )); then
             echo ""
