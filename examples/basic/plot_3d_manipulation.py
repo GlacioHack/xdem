@@ -5,7 +5,7 @@
 Manipulating DEM is quite simple thanks to the use of several functions, depending on the needs. This can be useful for correcting certain shifts when they are known in advance.
 
 In this page, we will show you how to properly do :
- - a simple translation with :func:`~geoutils.Raster.translate`
+ - a simple translation with translate with :func:`~geoutils.Raster.translate`
  - a simple rotation (with a translation) with :func:`~xdem.coreg.apply_matrix`
  - a complex rotation (with a translation) with :func:`~xdem.coreg.matrix_from_translations_rotations` in :func:`~xdem.coreg.apply_matrix`
 
@@ -39,22 +39,24 @@ plt.show()
 # Here the new DEM and the footprint of the original DEM. Note that the translation only updates the geotransform (no resampling is performed).
 
 # %%
-# To perform a rotation, we need a transformation matrix. Here, a rotation of 0.6° in X (across-track) is attempted.
+# To perform a rotation, we need a transformation matrix. Here, a rotation of 0.6° in X (across-track) is attempted with the previous rotation.
 
-# Rotation matrix 3*3
+# Rotation and translation matrix 4*4
 rotation = np.deg2rad(0.6)
-rotation_matrix = np.array(
+matrix = np.array(
     [
-        [1, 0, 0],
-        [0, np.cos(rotation), -np.sin(rotation)],
-        [0, np.sin(rotation), np.cos(rotation)],
+        [1, 0, 0, shift_x],
+        [0, np.cos(rotation), -np.sin(rotation), shift_y],
+        [0, np.sin(rotation), np.cos(rotation), shift_z],
+        [0, 0, 0, 1],
     ]
 )
 
-# Rotation and translation matrix 4*4
-matrix = np.eye(4)
-matrix[:3, :3] = rotation_matrix
-matrix[:3, 3] = [0, 0, 0]  # no translation, change it if needed
+# Centroid of the rotation
+centroid = [dem.bounds.left + dem.width / 2, dem.bounds.bottom + dem.height / 2, np.nanmean(dem)]
+
+# Application
+rotated_dem = xdem.coreg.apply_matrix(dem, matrix=matrix, centroid=centroid)
 
 # Centroid of the rotation
 centroid = [dem.bounds.left + dem.width / 2, dem.bounds.bottom + dem.height / 2, np.nanmean(dem)]
@@ -63,7 +65,9 @@ centroid = [dem.bounds.left + dem.width / 2, dem.bounds.bottom + dem.height / 2,
 rotated_dem = xdem.coreg.apply_matrix(dem, matrix=matrix, centroid=centroid)
 
 # %%
-# We can plot the difference between the original and rotated DEM. Keep in mind that depending on the centroid and the value of the rotation, the shift in certain areas of the image can be very significant. Depending on the terrain configuration, some pixels may extend beyond the result "frame".
+# We can plot the difference between the original and rotated DEM. Even if a translation is applicated with a rotation, the transform and the footprint are the same before and after.
+#
+# Keep in mind that depending on the centroid and the value of the rotation, the shift in certain areas of the image can be very significant. Depending on the terrain configuration, some pixels may extend beyond the result "frame".
 
 diff_before = dem - rotated_dem
 diff_before.plot(cmap="RdYlBu", cbar_title="Elevation differences (m)")
@@ -73,8 +77,7 @@ plt.show()
 
 # %%
 # When several rotations are combined, the rotation matrix can be really hard to compute. To do this, you can use the function :func:`~xdem.coreg.matrix_from_translations_rotations`.
-
-# %%
+#
 # Here is an example of a rotation of 0.1 degree in X, 0.2 in Y and 0.3 in Z with the previous shifts `(shift_x, shift_z, shift_z)`.
 
 matrix = xdem.coreg.matrix_from_translations_rotations(
