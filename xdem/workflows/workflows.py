@@ -29,6 +29,8 @@ from typing import Any, Dict, List, Union
 
 import geoutils as gu
 import numpy as np
+import pyogrio.errors
+import rasterio.errors
 from geoutils import Raster
 from geoutils.raster import RasterType
 
@@ -388,13 +390,26 @@ class Workflows(ABC):
                 dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
 
             if config_dem.get("path_to_mask") is not None:
+
                 mask_path = config_dem["path_to_mask"]
+
                 # If alias, get its path
                 if mask_path in list(_FILEPATHS_ALL.keys()):
                     mask_path = xdem.examples.get_path(mask_path)
 
-                mask = gu.Vector(mask_path)
-                inlier_mask = ~mask.create_mask(dem)
+                # Treats the mask according to its type (Vector or Raster)
+                try:
+                    mask = gu.Vector(mask_path)
+                    inlier_mask = ~mask.create_mask(dem)
+
+                except pyogrio.errors.DataSourceError:
+                    try:
+                        inlier_mask = gu.Raster(mask_path).astype(bool)
+                        inlier_mask.data = inlier_mask.data.filled(False)
+
+                        inlier_mask = inlier_mask.reproject(dem, silent=True)
+                    except rasterio.errors.RasterioIOError:
+                        raise ValueError("You provided a 'path_to_mask' value that is not recognised as a mask.")
 
             return dem, inlier_mask, mask_path
         else:
