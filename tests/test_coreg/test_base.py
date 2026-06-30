@@ -21,7 +21,7 @@ from scipy.ndimage import binary_dilation
 import xdem
 from xdem import coreg, examples
 from xdem._typing import NDArrayf
-from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str
+from xdem.coreg.base import Coreg, apply_matrix, dict_key_to_str, validate_typed_dict
 
 
 def load_examples() -> tuple[RasterType, RasterType, Vector]:
@@ -1068,3 +1068,46 @@ class TestAffineManipulation:
         diff_it_gd = z_points_gd[valids] - z_points_it[valids]
         assert np.percentile(np.abs(diff_it_gd), 99) < 1.2  # 99% of values are within a 1.20 meter (instead of 90%)
         assert np.percentile(np.abs(diff_it_gd), 50) < 0.03  # 10 times more precise than above
+
+    def test_inputs_param_method(self) -> None:
+        from typing import Literal
+
+        class Test_Dict:
+            test_str: str
+            test_float: float
+            test_int: int
+            test_NDArrayf: NDArrayf
+            test_Generator: np.random.Generator
+            test_literal: Literal["point-to-point", "point-to-plane"]
+            test_list: list[str]
+            test_dataframe: pd.DataFrame
+            test_bool: bool
+            test_tuple: tuple[int, int]
+            test_fun: Callable[[NDArrayf], np.floating[Any]]
+            test_iterable: Iterable[int]
+            test_union: int | str
+            test_union_none: int | None
+
+        test_values: dict[str, Any] = {
+            "test_str": [["abc"], [2, None]],
+            "test_float": [[0.1], ["a", 1]],
+            "test_int": [[2], ["abc", 1.5]],
+            "test_NDArrayf": [[np.array([1.0, 1.0])], ["a", 1, 0.1]],
+            "test_Generator": [[np.random.default_rng(12345)], ["1"]],
+            "test_literal": [["point-to-point"], ["a", 2, None]],
+            "test_list": [[["abc", "abc"]], ["a", 1, [1, 2]]],
+            "test_dataframe": [[pd.DataFrame()], ["a"]],
+            "test_bool": [[True], [1, 0.1, "a"]],
+            "test_tuple": [[(1, 1)], [1, 0.1, "a", (1.1, 1.1)]],
+            "test_fun": [[np.mean], [1, 0.1, "a"]],
+            "test_iterable": [[iter([1, 2])], [1, (1.1, 1.1), iter([1.1, 2.1])]],
+            "test_union": [[1, "a"], [1.5]],
+            "test_union_none": [[1, None], [1.5]],
+        }
+        for key, values in test_values.items():
+            print(key, values)
+            for value in values[0]:
+                assert validate_typed_dict({key: value}, Test_Dict)
+            for value in values[1]:
+                with pytest.raises(ValueError, match="expected type input"):
+                    assert not validate_typed_dict({key: value}, Test_Dict)
