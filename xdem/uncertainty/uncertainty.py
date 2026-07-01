@@ -81,6 +81,7 @@ def _propag_uncertainty_coreg(
     coreg_method: coreg.Coreg,
     nsim: int = 30,
     error_applied_to: Literal["ref", "tba"] = "tba",
+    precoreg: bool = False,
     inlier_mask: Raster | NDArrayb = None,
     random_state: int | np.random.Generator | None = None,
     kwargs_coreg_fit: dict[str, Any] | None = None,
@@ -96,6 +97,10 @@ def _propag_uncertainty_coreg(
     :param to_be_aligned_elev: To-be-aligned elevation.
     :param coreg_method: Coregistration method.
     :param nsim: Number of simulations to perform.
+    :param error_applied_to: Which input the simulated error field is applied to ("ref" or "tba").
+    :param precoreg: If True, co-register once before inferring the error structure, so it is estimated
+        on the aligned residual rather than the raw (mis-aligned) inputs; the reported mean transform is
+        then the residual (~0). Requires an affine method. Defaults to False (previous behaviour).
     :param inlier_mask: Inlier mask (valid = True).
     :param random_state: Random state.
     :param kwargs_coreg_fit: Keyword arguments passed to `Coreg.fit`.
@@ -110,6 +115,20 @@ def _propag_uncertainty_coreg(
 
     # Define random state
     rng = np.random.default_rng(random_state)
+
+    # Optionally co-register once before inferring the error structure, so it is estimated on the aligned
+    # residual rather than the raw inputs (single pass; affine methods only).
+    if precoreg:
+        logging.info("Pre-coregistering inputs before inferring uncertainty...")
+        c_init = coreg_method.copy()
+        c_init.fit(
+            reference_elev=reference_elev,
+            to_be_aligned_elev=to_be_aligned_elev,
+            inlier_mask=inlier_mask,
+            random_state=rng,
+            **kwargs_coreg_fit,
+        )
+        to_be_aligned_elev = c_init.apply(to_be_aligned_elev)
 
     # First, infer uncertainty
     if error_applied_to == "ref":
@@ -146,15 +165,30 @@ def _propag_uncertainty_coreg(
             ref_elev = reference_elev
             tba_elev = to_be_aligned_elev + error_field
 
-        # Run coreg fit
+        # A simulation can occasionally fail to converge; skip it with a warning rather than aborting.
         logging.info(f"  Running coregistration fit...")
         c = coreg_method.copy()  # Avoid carrying over the state over multiple simulations
-        c.fit(reference_elev=ref_elev, to_be_aligned_elev=tba_elev, inlier_mask=inlier_mask, random_state=rng,
-              **kwargs_coreg_fit)
+        try:
+            c.fit(reference_elev=ref_elev, to_be_aligned_elev=tba_elev, inlier_mask=inlier_mask, random_state=rng,
+                  **kwargs_coreg_fit)
+        except Exception as err:
+            logging.warning(f"  Simulation {i+1} of {nsim} failed to converge and was skipped: {err}")
+            continue
         df_it = _postproc_coreg_metadata(c)
         df_it["nsim"] = i + 1
         list_df.append(df_it)
         list_coreg.append(c)
+
+    # Require at least two successful simulations to estimate a standard deviation
+    if len(list_df) < 2:
+        raise RuntimeError(
+            f"Only {len(list_df)} of {nsim} simulations succeeded; cannot estimate uncertainty "
+            "(coregistration repeatedly failed to converge). Try a larger subsample or extent, or a "
+            "more robust method."
+        )
+    if len(list_df) < nsim:
+        logging.warning(f"{nsim - len(list_df)} of {nsim} simulations were skipped after failing to "
+                        f"converge; uncertainty estimated from {len(list_df)} simulations.")
 
     # Finally, estimate errors for all the translations/rotations in the simulations
     df = pd.concat(list_df, ignore_index=True)
@@ -313,20 +347,19 @@ def _infer_uncertainty(
              Tuple of (Empirical variogram dataframe, Model parameters dataframe, Spatial error correlation function).
     """
 
+    # Validate the precision assumption: only 'finer' or 'same' are invertible from the difference alone.
+    if precision_of_other not in ("finer", "same"):
+        raise ValueError(
+            f"`precision_of_other` must be 'finer' or 'same', got {precision_of_other!r}. A coarser "
+            "dataset is not supported; pass the less precise dataset as `source_elev` instead."
+        )
+
     # Summarize approach steps
     approach_dict = {
         "H2022": {"heterosc": True, "multi_range": True},
         "R2009": {"heterosc": False, "multi_range": True},
         "Basic": {"heterosc": False, "multi_range": False},
     }
-
-    # # Difference the two datasets
-    # dh = _difference(source_elev, other_elev)
-
-    # # If the precision of the other Raster is the same, divide the dh values by sqrt(2)
-    # # See Equation 7 and 8 of Hugonnet et al. (2022)
-    # if precision_of_other == "same":
-    #     dh = dh / np.sqrt(2)
 
     logging.info(f"Starting heteroscedasticity inference.")
     # Heteroscedasticity
@@ -339,6 +372,7 @@ def _infer_uncertainty(
         z_name=z_name,
         subsample_hetesc=subsample_hetesc,
         spread_statistic=spread_estimator,
+        precision_of_other=precision_of_other,
     )
 
     logging.info(f"Starting spatial correlation inference.")
@@ -349,6 +383,7 @@ def _infer_uncertainty(
         inlier_mask=stable_terrain,
         errors=sig_dh,
         estimator=variogram_estimator,
+        precision_of_other=precision_of_other,
         random_state=random_state,
         list_models=vario_model,
         subsample=subsample_pairs_vario,
@@ -367,6 +402,8 @@ def _infer_heteroscedasticity(
     vector_mask_mode: Literal["inside", "outside"] = "inside",
     # Whether to infer a variable error (default) or constant
     heterosc: bool = True,
+    # Precision of the other dataset relative to the source (Hugonnet 2022, Eq. 7-8)
+    precision_of_other: Literal["finer", "same"] = "finer",
     # Heteroscedastic predictors
     hetesc_vars: (
         tuple[Raster | np.ndarray | str, ...]
@@ -451,6 +488,11 @@ def _infer_heteroscedasticity(
 
     # Elevation difference of the subsample
     dvalues_fit = rp1_fit - rp2_fit
+
+    # Same-precision inputs double-count error in the difference (var(dh) = 2*sigma^2); divide by sqrt(2)
+    # to recover the single-dataset error (Hugonnet 2022, Eq. 7-8), before binning so both paths get it.
+    if precision_of_other == "same":
+        dvalues_fit = dvalues_fit / np.sqrt(2)
 
     # 3) Perform binning and function fit on array inputs
 
@@ -583,6 +625,7 @@ def _infer_spatial_correlation(
     vector_mask_mode: Literal["inside", "outside"] = "inside",
     errors: NDArrayf | Raster | None = None,
     estimator: Literal["matheron", "cressie", "genton", "dowd"] = "dowd",
+    precision_of_other: Literal["finer", "same"] = "finer",
     sampling: Literal["loglag", "random_xy"] = "loglag",
     subsample: int | float = 1,
     random_state: int | np.random.Generator | None = None,
@@ -654,6 +697,10 @@ def _infer_spatial_correlation(
     # Difference and standardize
     logging.info(f"  Step 2: Standardizing elevation differences...")
     dh_vals = rp1 - rp2
+    # Same-precision correction (Hugonnet 2022, Eq. 7-8), matching the heteroscedasticity step; the
+    # correlation function is scale-invariant, so this only affects the reported variogram magnitude.
+    if precision_of_other == "same":
+        dh_vals = dh_vals / np.sqrt(2)
     if errors is not None:
         dh_vals = dh_vals / aux_e["err"]
 
