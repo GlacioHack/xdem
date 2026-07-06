@@ -1,6 +1,6 @@
 """
 3D DEM manipulation
-================
+===================
 
 Manipulating DEM is quite simple thanks to the use of several functions, depending on the needs. This can be useful for correcting certain shifts when they are known in advance.
 
@@ -31,8 +31,6 @@ dem_shifted = dem.translate(shift_x, shift_y) + shift_z
 
 dem_shifted.plot(cmap="terrain", cbar_title="Elevation (m)")
 dem.get_footprint_projected(dem.crs, densify_points=5000).plot(ec="k", alpha=0.4)
-plt.xlim(504700, 506900)
-plt.ylim(8669900, 8672200)
 plt.show()
 
 # %%
@@ -71,8 +69,6 @@ rotated_dem = xdem.coreg.apply_matrix(dem, matrix=matrix, centroid=centroid)
 
 diff_before = dem - rotated_dem
 diff_before.plot(cmap="RdYlBu", cbar_title="Elevation differences (m)")
-plt.xlim(504700, 506900)
-plt.ylim(8669900, 8672200)
 plt.show()
 
 # %%
@@ -91,8 +87,6 @@ rotated_dem = xdem.coreg.apply_matrix(dem, matrix=matrix, centroid=centroid)
 diff_before = dem - rotated_dem
 diff_before.plot(cmap="RdYlBu", cbar_title="Elevation differences (m)")
 rotated_dem.get_footprint_projected(dem.crs, densify_points=5000).plot(ec="k", alpha=0.1)
-plt.xlim(504700, 506900)
-plt.ylim(8669900, 8672200)
 plt.show()
 
 # %%
