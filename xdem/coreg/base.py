@@ -1817,7 +1817,7 @@ class InFitOrBinDict(TypedDict, total=False):
     # TODO: Solve redundancy between optimizer and minimizer (curve_fit or minimize as default?)
     # For a minimization problem
     fit_minimizer: Callable[..., tuple[NDArrayf, Any]]
-    fit_loss_func: Callable[[NDArrayf], np.floating[Any]]
+    fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str
 
     # Bin parameters: bin sizes, statistic and apply method
     bin_sizes: int | dict[str, int | Iterable[float]]
@@ -1887,7 +1887,7 @@ class InAffineDict(TypedDict, total=False):
     """Keys and types of inputs associated with affine methods."""
 
     # Estimated initial shift (z currently always equal to zero)
-    initial_shift: tuple[float | int, float | int, float | int] | None
+    initial_shift: tuple[float | int, float | int] | tuple[float | int, float | int, float | int] | None
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
     # Vertical shift activated
