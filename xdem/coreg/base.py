@@ -1945,35 +1945,41 @@ class CoregDict(TypedDict, total=False):
     pipeline: list[Any]
 
 
+CoregType = TypeVar("CoregType", bound="Coreg")
+
+
 def validate_typed_dict(data: dict[Any, Any], typed_dict: type) -> bool:
     """
     Validate a dict data in comparison to a TypeDict typed_dict
     :param data: dict to check
-    :param typed_dict_cls: TypeDict to fit
-    :return: if the dict correspond to the or not
+    :param typed_dict: TypeDict to fit
+    :return: if the dict correspond to the typed_dict or not
     """
-    print("\n [validate_typed_dict:", typed_dict, "]")
-
     # Get all inputs in the dict and their type
     hints = get_type_hints(typed_dict)
-    print(" ->", hints)
 
     # Checks the type for each input if it exists in data
     for key, expected_type in hints.items():
         if key in data:
             # Stop the verification if type error
             if not _check_type(data[key], expected_type):
-                print(data[key])
                 raise TypeError(
-                    f"Argument `{key}` must be a {expected_type}, got `{data[key]}` of type {type(data[key])})"
+                    f"Argument '{key}' invalid, must be a {string_format_type(expected_type)}, "
+                    f"got {data[key]!r} ({type(data[key]).__name__})"
                 )
 
     return True
 
 
 def _check_type(value: Any, expected_type: tuple[Any, ...]) -> bool:
-    # Get type of expected_type
+    """
+    Validate if a value correspond to an expected_type
+    :param value: value to check
+    :param expected_type: TypeDict to fit
+    :return: if the value correspond to the expected_type or not
+    """
 
+    # Get type of expected_type
     origin_type = get_origin(expected_type)
 
     # Expected type is a callable
@@ -2025,7 +2031,36 @@ def _check_type(value: Any, expected_type: tuple[Any, ...]) -> bool:
     return isinstance(value, expected_type)
 
 
-CoregType = TypeVar("CoregType", bound="Coreg")
+def string_format_type(expected_type: tuple[Any, ...]) -> str:
+    """
+    Return expected_type in a understable string format
+    :param expected_type: TypeDict to fit
+    :return: string
+    """
+    origin = get_origin(expected_type)
+
+    from types import UnionType
+
+    if origin in (Union, UnionType):
+        return " or ".join(string_format_type(t) for t in get_args(expected_type))
+
+    if origin is list:
+        return f"list of {string_format_type(get_args(expected_type)[0])}"
+
+    if origin is dict:
+        key_t, val_t = get_args(expected_type)
+        return f"dict[{string_format_type(key_t)}, {string_format_type(val_t)}]"
+
+    if origin is tuple:
+        return f"({', '.join(string_format_type(t) for t in get_args(expected_type))})"
+
+    if origin is Literal:
+        return f"one of these values {get_args(expected_type)}"
+
+    if hasattr(expected_type, "__name__"):
+        return expected_type.__name__
+
+    return str(expected_type)
 
 
 class Coreg:
