@@ -24,6 +24,7 @@ dem = dem.icrop((100, 100, 200, 200))
 
 
 # %%
+# ### Translation
 # To translate a DEM by a shift (x, y, z) in CRS unit, we can use the :func:`~geoutils.Raster.translate` function like this :
 
 shift_x, shift_y, shift_z = (3 * dem.res[0], 5 * dem.res[1], 20)
@@ -37,6 +38,10 @@ plt.show()
 # Here the new DEM and the footprint of the original DEM. Note that the translation only updates the geotransform (no resampling is performed).
 
 # %%
+# ### Rotation and translation
+
+# %%
+# #### With a manually constructed matrix
 # To perform a rotation, we need a transformation matrix. Here, a rotation of 0.6° in X (across-track) is attempted with the previous rotation.
 
 # Rotation and translation matrix 4*4
@@ -72,6 +77,7 @@ diff_before.plot(cmap="RdYlBu", cbar_title="Elevation differences (m)")
 plt.show()
 
 # %%
+# #### With an automatically constructed matrix
 # When several rotations are combined, the rotation matrix can be really hard to compute. To do this, you can use the function :func:`~xdem.coreg.matrix_from_translations_rotations`.
 #
 # Here is an example of a rotation of 0.1 degree in X, 0.2 in Y and 0.3 in Z with the previous shifts `(shift_x, shift_z, shift_z)`.
