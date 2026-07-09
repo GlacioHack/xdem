@@ -25,6 +25,7 @@ import copy
 import inspect
 import logging
 import warnings
+from types import UnionType
 from typing import (
     Any,
     Callable,
@@ -1816,15 +1817,15 @@ class InFitOrBinDict(TypedDict, total=False):
 
     # TODO: Solve redundancy between optimizer and minimizer (curve_fit or minimize as default?)
     # For a minimization problem
-    fit_minimizer: Callable[..., tuple[NDArrayf, Any]]
+    fit_minimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["lsq_approx"]
     fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str
 
     # Bin parameters: bin sizes, statistic and apply method
-    bin_sizes: int | dict[str, int | Iterable[float]]
+    bin_sizes: int | dict[str, int | Iterable[float] | NDArrayf | tuple[NDArrayf, Any]]
     bin_statistic: Callable[[NDArrayf], np.floating[Any]]
     bin_apply_method: Literal["linear", "per_bin"]
     # Name of variables, and number of dimensions
-    bias_var_names: list[str]
+    bias_var_names: list[str] | None
     nd: int | None
 
 
@@ -1987,8 +1988,6 @@ def _check_type(value: Any, expected_type: tuple[Any, ...]) -> bool:
         return callable(value)
 
     # Expected type is a union of different types, iterate over them
-    from types import UnionType
-
     if origin_type in (Union, UnionType):
         return any(_check_type(value, arg) for arg in get_args(expected_type))
 
@@ -2026,7 +2025,9 @@ def _check_type(value: Any, expected_type: tuple[Any, ...]) -> bool:
 
     # Expected type need to be a ndarray
     if origin_type is np.ndarray:
-        return isinstance(value, np.ndarray) and np.issubdtype(value.dtype, np.floating)
+        return isinstance(value, np.ndarray) and (
+            np.issubdtype(value.dtype, np.integer) or np.issubdtype(value.dtype, np.floating)
+        )
 
     return isinstance(value, expected_type)
 
@@ -2037,25 +2038,26 @@ def string_format_type(expected_type: tuple[Any, ...]) -> str:
     :param expected_type: TypeDict to fit
     :return: string
     """
-    origin = get_origin(expected_type)
+    origin_type = get_origin(expected_type)
 
-    from types import UnionType
-
-    if origin in (Union, UnionType):
+    if origin_type in (Union, UnionType):
         return " or ".join(string_format_type(t) for t in get_args(expected_type))
 
-    if origin is list:
+    if origin_type is list:
         return f"list of {string_format_type(get_args(expected_type)[0])}"
 
-    if origin is dict:
+    if origin_type is dict:
         key_t, val_t = get_args(expected_type)
         return f"dict[{string_format_type(key_t)}, {string_format_type(val_t)}]"
 
-    if origin is tuple:
+    if origin_type is tuple:
         return f"({', '.join(string_format_type(t) for t in get_args(expected_type))})"
 
-    if origin is Literal:
+    if origin_type is Literal:
         return f"one of these values {get_args(expected_type)}"
+
+    if origin_type in (Callable, collections.abc.Callable):
+        return "function (callable)"
 
     if hasattr(expected_type, "__name__"):
         return expected_type.__name__
@@ -2884,7 +2886,7 @@ class Coreg:
         """
 
         # Store bias variable names from the dictionary if undefined
-        if self._meta["inputs"]["fitorbin"]["bias_var_names"] is None:
+        if self._meta["inputs"]["fitorbin"]["bias_var_names"] is None and bias_vars is not None:
             self._meta["inputs"]["fitorbin"]["bias_var_names"] = list(bias_vars.keys())
 
         # Run the fit or bin, passing the dictionary of parameters
@@ -3081,14 +3083,14 @@ class CoregPipeline(Coreg):
             )
 
         # Raise error if the variables explicitly assigned don't match the ones passed in bias_vars
-        if not all(n in bias_vars.keys() for n in var_names):
+        if not all(n in bias_vars.keys() for n in var_names):  # type: ignore
             raise ValueError(
                 "Not all keys of `bias_vars` in .fit() match the `bias_var_names` defined during "
                 "instantiation of the bias correction step {}: {}.".format(coreg.__class__, var_names)
             )
 
         # Add subset dict for this pipeline step to args of fit and apply
-        return {n: bias_vars[n] for n in var_names}
+        return {n: bias_vars[n] for n in var_names}  # type: ignore
 
     # Need to override base Coreg method to work on pipeline steps
     def fit(

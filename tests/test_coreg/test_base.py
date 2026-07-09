@@ -6,7 +6,7 @@ import inspect
 import re
 import sys
 import warnings
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Literal, Mapping
 
 import geopandas as gpd
 import geoutils as gu
@@ -1070,7 +1070,6 @@ class TestAffineManipulation:
         assert np.percentile(np.abs(diff_it_gd), 50) < 0.03  # 10 times more precise than above
 
     def test_inputs_param_method(self) -> None:
-        from typing import Literal
 
         class Test_Dict:
             test_str: str
@@ -1105,9 +1104,8 @@ class TestAffineManipulation:
             "test_union_none": [[1, None], [1.5]],
         }
         for key, values in test_values.items():
-            print(key, values)
             for value in values[0]:
                 assert validate_typed_dict({key: value}, Test_Dict)
             for value in values[1]:
-                with pytest.raises(ValueError, match="expected type input"):
+                with pytest.raises(TypeError, match="invalid, must be"):
                     assert not validate_typed_dict({key: value}, Test_Dict)

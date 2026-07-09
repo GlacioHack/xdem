@@ -628,11 +628,11 @@ def _dh_minimize_fit(
             # (tip from Simon Gascoin: https://github.com/GlacioHack/xdem/pull/595#issuecomment-2387104719)
             init_offsets = (1, 1)
 
-    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)
+    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)  # type: ignore
 
     # Get final offsets with the right sign direction
-    offset_east = -results.x[0]
-    offset_north = -results.x[1]
+    offset_east = -results.x[0]  # type: ignore
+    offset_north = -results.x[1]  # type: ignore
     offset_vertical = float(np.nanmedian(dh_interpolator(-offset_east, -offset_north)))
 
     return offset_east, offset_north, offset_vertical
@@ -1540,7 +1540,7 @@ def _lzd_fit(
         init_offsets = np.zeros(3)
 
     # Run optimizer on function
-    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, loss=loss_func, **kwargs)
+    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, loss=loss_func, **kwargs)  # type: ignore
 
     # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert results is not None
