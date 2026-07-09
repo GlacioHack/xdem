@@ -196,6 +196,13 @@ def _propag_uncertainty_coreg(
     summary = pd.DataFrame(
         {"mean": df[t_r_names].mean(), "std": df[t_r_names].std(ddof=1)}
     )
+    # Track simulation success for the caller: how many of the requested nsim converged.
+    # A high skip fraction is itself a conditioning signal (ill-posed geometry, e.g. flat
+    # terrain), so expose it as summary metadata rather than only logging a warning.
+    n_success = len(list_df)
+    summary.attrs["nsim"] = int(nsim)
+    summary.attrs["n_success"] = int(n_success)
+    summary.attrs["frac_success"] = float(n_success) / float(nsim) if nsim else float("nan")
 
     return summary, df, list_coreg
 
