@@ -2028,7 +2028,7 @@ def _check_type(value: Any, expected_type: tuple[Any, ...]) -> bool:
         return isinstance(value, np.ndarray) and (
             np.issubdtype(value.dtype, np.integer) or np.issubdtype(value.dtype, np.floating)
         )
-
+    print(value, expected_type, origin_type)
     return isinstance(value, expected_type)
 
 
