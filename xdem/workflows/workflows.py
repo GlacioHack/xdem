@@ -20,7 +20,6 @@ Workflow class
 """
 
 import csv
-import ctypes.util
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -29,6 +28,7 @@ from typing import Any, Dict, List, Union
 
 import geoutils as gu
 import numpy as np
+import plutoprint
 from geoutils import Raster
 from geoutils.raster import RasterType
 
@@ -65,16 +65,6 @@ _ALIAS = {
     "totalcount": "Total count",
     "percentagevalidpoints": "Percentage valid points",
 }
-
-
-try:
-    lib_gobject_name = ctypes.util.find_library("gobject-2.0")
-    lib_pango_name = ctypes.util.find_library("pango-1.0")
-    from weasyprint import HTML
-
-    _has_weasyprint = True
-except ImportError:
-    _has_weasyprint = False
 
 
 class Workflows(ABC):
@@ -446,14 +436,11 @@ class Workflows(ABC):
         :return: None
         """
         if self.config["outputs"]["generate_pdf"]:
-            if not _has_weasyprint:
-                msg = (
-                    "Optional dependency 'weasyprint' required. "
-                    "Install it directly or through: pip install xdem[opt]."
-                )
-                raise ImportError(msg)
+            book = plutoprint.Book(plutoprint.PAGE_SIZE_A4, plutoprint.PAGE_MARGINS_NARROW)
+            book.load_url(str(self.outputs_folder / "report.html"))
 
-            HTML(self.outputs_folder / "report.html").write_pdf(self.outputs_folder / "report.pdf")
+            # Export the entire document to PDF
+            book.write_to_pdf(str(self.outputs_folder / "report.pdf"))
 
     def save_stat_as_csv(self, data: dict[str, float], file_name: str) -> None:
         """
