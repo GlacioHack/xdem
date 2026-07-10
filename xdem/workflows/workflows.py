@@ -28,7 +28,6 @@ from typing import Any, Dict, List, Union
 
 import geoutils as gu
 import numpy as np
-import plutoprint
 from geoutils import Raster
 from geoutils.raster import RasterType
 
@@ -39,7 +38,7 @@ from xdem.coreg.base import InputCoregDict, OutputCoregDict
 from xdem.examples import _FILEPATHS_ALL
 from xdem.workflows.schemas import validate_configuration
 
-# Inheritance of optional dependency class
+# Inheritance of optional dependencies
 try:
     from yaml.dumper import SafeDumper  # type: ignore
 
@@ -47,6 +46,14 @@ try:
 except ImportError:
     SafeDumper = object
     _HAS_YAML = False
+
+try:
+    import plutoprint
+
+    _HAS_PLUTOPRINT = True
+except ImportError:
+    _HAS_PLUTOPRINT = False
+
 
 _ALIAS = {
     "mean": "Mean",
@@ -435,7 +442,7 @@ class Workflows(ABC):
 
         :return: None
         """
-        if self.config["outputs"]["generate_pdf"]:
+        if self.config["outputs"]["generate_pdf"] and _HAS_PLUTOPRINT:
             book = plutoprint.Book(plutoprint.PAGE_SIZE_A4, plutoprint.PAGE_MARGINS_NARROW)
             book.load_url(str(self.outputs_folder / "report.html"))
 
