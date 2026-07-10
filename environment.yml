@@ -16,6 +16,7 @@ dependencies:
   - pandas
   - pyogrio
   - shapely
+  - plutoprint  # For CLI
 
 #  - pip
   # To run CI against the latest GeoUtils
