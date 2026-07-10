@@ -2,7 +2,7 @@
 3D DEM manipulation
 ===================
 
-Manipulating DEM is quite simple thanks to the use of several functions, depending on the needs. This can be useful for correcting certain shifts when they are known in advance.
+Applying 3D rigid transformations to DEMs is facilitated by the use of several functions, depending on the needs. This can be useful for correcting certain shifts when they are known in advance.
 
 In this page, we will show you how to properly do :
  - a simple translation with translate with :func:`~geoutils.Raster.translate`
@@ -61,12 +61,6 @@ centroid = [dem.bounds.left + dem.width / 2, dem.bounds.bottom + dem.height / 2,
 # Application
 rotated_dem = xdem.coreg.apply_matrix(dem, matrix=matrix, centroid=centroid)
 
-# Centroid of the rotation
-centroid = [dem.bounds.left + dem.width / 2, dem.bounds.bottom + dem.height / 2, np.nanmean(dem)]
-
-# Application
-rotated_dem = xdem.coreg.apply_matrix(dem, matrix=matrix, centroid=centroid)
-
 # %%
 # We can plot the difference between the original and rotated DEM. Even if a translation is applicated with a rotation, the transform and the footprint are the same before and after.
 #
@@ -78,7 +72,7 @@ plt.show()
 
 # %%
 # #### With an automatically constructed matrix
-# When several rotations are combined, the rotation matrix can be really hard to compute. To do this, you can use the function :func:`~xdem.coreg.matrix_from_translations_rotations`.
+# When several rotations and translations are combined, the rotation matrix can be really hard to compute. To do this, you can use the function :func:`~xdem.coreg.matrix_from_translations_rotations`.
 #
 # Here is an example of a rotation of 0.1 degree in X, 0.2 in Y and 0.3 in Z with the previous shifts `(shift_x, shift_z, shift_z)`.
 
