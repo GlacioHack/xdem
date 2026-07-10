@@ -11,4 +11,3 @@ affine
 pandas
 pyogrio
 shapely
-plutoprint

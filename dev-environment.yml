@@ -16,7 +16,6 @@ dependencies:
   - pandas
   - pyogrio
   - shapely
-  - plutoprint  # For CLI
 
   # Development-specific, to mirror manually in setup.cfg [options.extras_require].
   - pip
@@ -30,6 +29,7 @@ dependencies:
   - cerberus  # For CLI
   - pyyaml  # For CLI
   - tqdm  # For progress bars
+  - plutoprint  # For CLI
 
   # Test dependencies
   - pytest
