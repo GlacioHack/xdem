@@ -1821,7 +1821,7 @@ class InFitOrBinDict(TypedDict, total=False):
     fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str
 
     # Bin parameters: bin sizes, statistic and apply method
-    bin_sizes: int | dict[str, int | Iterable[float] | NDArrayf | tuple[NDArrayf, Any]]
+    bin_sizes: int | dict[str, int | Iterable[float] | NDArrayf | tuple[NDArrayf, Any] | list[int | float]]
     bin_statistic: Callable[[NDArrayf], np.floating[Any]]
     bin_apply_method: Literal["linear", "per_bin"]
     # Name of variables, and number of dimensions
