@@ -2023,9 +2023,9 @@ def _check_type(value: Any, expected_type: tuple[Any, ...]) -> bool:
     if origin_type is Literal:
         return value in get_args(expected_type)
 
-    print ("type(value)", type(value))
+    print("type(value)", type(value))
     # Expected type need to be a ndarray
-    if origin_type is np.ndarray or expected_type is np.ndarray :
+    if origin_type is np.ndarray :
         return isinstance(value, np.ndarray) and (
             np.issubdtype(value.dtype, np.integer) or np.issubdtype(value.dtype, np.floating)
         )
