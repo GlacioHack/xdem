@@ -443,11 +443,12 @@ class Workflows(ABC):
         :return: None
         """
         if self.config["outputs"]["generate_pdf"] and _HAS_PLUTOPRINT:
-            book = plutoprint.Book(plutoprint.PAGE_SIZE_A4, plutoprint.PAGE_MARGINS_NARROW)
+            book = plutoprint.Book(plutoprint.PAGE_SIZE_A4)
             book.load_url(str(self.outputs_folder / "report.html"))
 
             # Export the entire document to PDF
             book.write_to_pdf(str(self.outputs_folder / "report.pdf"))
+            logging.info("Report generated in " + str(self.outputs_folder / "report.pdf"))
 
     def save_stat_as_csv(self, data: dict[str, float], file_name: str) -> None:
         """
