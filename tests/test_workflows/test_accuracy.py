@@ -228,14 +228,65 @@ def test_run_without_coreg(get_accuracy_inputs_test, tmp_path, level, generated_
 
 
 @pytest.mark.parametrize(
+    "methods, raises_error",
+    [
+        (["NuthKaab", None, None], True),
+        (["DhMinimize", None, None], True),
+        (["VerticalShift", None, None], True),
+        (["DirectionalBias", None, None], True),
+        (["TerrainBias", None, None], True),
+        (["LZD", None, None], True),
+        (["CPD", None, None], False),
+        (["ICP", None, None], False),
+        # ([None, "LZD", "ICP"], False),
+        (["CPD", "VerticalShift", None], True),
+    ],
+)
+def test_sampling_grid_is_None(get_accuracy_inputs_test, tmp_path, methods, raises_error):
+    """
+    Test the behavior when sampling_grid = None with the different regulation methods.
+    """
+
+    user_config = get_accuracy_inputs_test
+    user_config["outputs"] = {"path": str(tmp_path), "level": 2}
+    user_config["inputs"]["sampling_grid"] = None
+    user_config["coregistration"] = dict()
+
+    pipeline = None
+    for m, step in enumerate(["step_one", "step_two", "step_three"]):
+        user_config["coregistration"][step] = dict()
+        user_config["coregistration"][step]["method"] = methods[m]
+        pipeline = pipeline + getattr(xdem.coreg, methods[m])() if pipeline else getattr(xdem.coreg, methods[m])()
+
+    if raises_error:
+        with pytest.raises(ValueError, match="selected coregistration method need"):
+            workflows = Accuracy(user_config)
+            workflows.run()
+    else:
+
+        # tba_dem = xdem.DEM(user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"]).reproject(crs="EPSG:4326")
+        # tba_dem.to_file(tmp_path / "tba_4326.tif")
+        # user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"] = str(tmp_path / "tba_4326.tif")
+
+        workflows = Accuracy(user_config)
+        workflows.run()
+
+        ref_dem = xdem.DEM(user_config["inputs"]["reference_elev"]["path_to_elev"])
+        tba_dem = xdem.DEM(user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"])
+
+        aligned_dem = pipeline.fit_and_apply(ref_dem, tba_dem)  # type: ignore
+        assert xdem.DEM(Path(tmp_path) / "rasters" / "aligned_elev.tif").raster_equal(aligned_dem)
+
+
+@pytest.mark.parametrize(
     "config",
     [
         (True, "reference_elev", "reference_elev", None),
         (False, "reference_elev", "reference_elev", None),
         (True, "to_be_aligned_elev", "to_be_aligned_elev", None),
         (False, "to_be_aligned_elev", "to_be_aligned_elev", None),
-        (True, None, None, "must be set to"),
-        (True, None, "reference_elev", "must be set to"),
+        (True, None, None, "selected coregistration method need"),
+        (True, None, "reference_elev", "selected coregistration method need"),
         (False, None, None, None),
         (False, None, "reference_elev", "same shape, transform and CRS"),
     ],
