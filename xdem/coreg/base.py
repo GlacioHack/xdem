@@ -1962,13 +1962,14 @@ def validate_typed_dict(data: dict[Any, Any], typed_dict: type) -> bool:
     # Checks the type for each input if it exists in data
     for key, expected_type in hints.items():
         if key in data:
+            print("# key:", key)
             # Stop the verification if type error
             if not _check_type(data[key], expected_type):
                 raise TypeError(
                     f"Argument '{key}' invalid, must be a {string_format_type(expected_type)}, "
                     f"got {data[key]!r} ({type(data[key]).__name__})"
                 )
-
+            print()
     return True
 
 
@@ -1982,22 +1983,26 @@ def _check_type(value: Any, expected_type: tuple[Any, ...]) -> bool:
 
     # Get type of expected_type
     origin_type = get_origin(expected_type)
-
+    print("_check_type", value, "( de type ", type(value), ") avec expected type", expected_type, "->", origin_type)
     # Expected type is a callable
     if origin_type in (Callable, collections.abc.Callable):
+        print("   => callable")
         return callable(value)
 
     # Expected type is a union of different types, iterate over them
     if origin_type in (Union, UnionType):
+        print("   => Union")
         return any(_check_type(value, arg) for arg in get_args(expected_type))
 
     # Expected type need to be a list
     if origin_type is list:
+        print("   => list")
         args = get_args(expected_type)
         return isinstance(value, list) and all(_check_type(v, args) for v in value)
 
     # Expected type need to be a tuple
     if origin_type is tuple:
+        print("   => tuple")
         args = get_args(expected_type)
         return (
             isinstance(value, tuple) and len(args) == len(value) and all(_check_type(v, t) for v, t in zip(value, args))
@@ -2005,11 +2010,13 @@ def _check_type(value: Any, expected_type: tuple[Any, ...]) -> bool:
 
     # Expected type need to be an Iterable
     if origin_type is collections.abc.Iterable:
+        print("   => Iterable")
         args = get_args(expected_type)
         return isinstance(value, collections.abc.Iterator) and all(_check_type(v, args) for v in value)
 
     # Expected type need to be another dict
     if origin_type is dict:
+        print("   => dict")
         key_type, val_type = get_args(expected_type)
         return isinstance(value, dict) and all(
             _check_type(k, key_type) and _check_type(v, val_type) for k, v in value.items()
@@ -2017,19 +2024,22 @@ def _check_type(value: Any, expected_type: tuple[Any, ...]) -> bool:
 
     # Expected type need to be another dict
     if isinstance(expected_type, type) and hasattr(expected_type, "__annotations__") and isinstance(value, dict):
+        print("   => expected_type")
         return validate_typed_dict(value, expected_type)
 
     # Expected type need to be a Literal
     if origin_type is Literal:
+        print("   => Literal")
         return value in get_args(expected_type)
 
-    print("type(value)", type(value))
     # Expected type need to be a ndarray
     if origin_type is np.ndarray:
+        print("   => ndarray")
         return isinstance(value, np.ndarray) and (
             np.issubdtype(value.dtype, np.integer) or np.issubdtype(value.dtype, np.floating)
         )
-    print(value, expected_type, origin_type)
+
+    print("   => isinstance")
     return isinstance(value, expected_type)
 
 
