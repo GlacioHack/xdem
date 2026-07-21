@@ -17,7 +17,7 @@ xDEM offers a **graphical user interface (GUI)** in the form of a QGIS plugin. T
 
 `````
 
-**QGIS** is an open soucre GIS, geographic information system. This software allows users to view and process geospatial data in order to extract information from it. Available on all platforms, QGIS offers a wide range of processing options. To supplement the basic functionality, extensions can be added, known as plugins. These are small modules that connect to the main software and communicate with it througth a python API.
+**QGIS** is an open source GIS, geographic information system. This software allows users to view and process geospatial data in order to extract information from it. Available on all platforms, QGIS offers a wide range of processing options. To supplement the basic functionality, extensions can be added, known as plugins. These are small modules that connect to the main software and communicate with it through a python API.
 
 ```{important}
 The QGIS plugin is a recent feature! Its interface and install process are subject to change depending on feedback for future releases.
@@ -88,7 +88,7 @@ For all of the plugin's algorithms, once processing is complete, the result is o
 :::
 
 ## Workflows
-The two workflows available in xdem via the {ref}`cli` have also been implemented in the plugin. 
+The two workflows available in xdem via the {ref}`cli` have also been implemented in the plugin.
 To use them, there is no need to use a configuration file as is usually the case, everything is directly configurable in the QGIS interface.
 
 :::{figure} imgs/qgis_plugin/topo_workflow_interface.png
