@@ -443,7 +443,7 @@ class Workflows(ABC):
         :return: None
         """
         if self.config["outputs"]["generate_pdf"] and _HAS_PLUTOPRINT:
-            book = plutoprint.Book(plutoprint.PAGE_SIZE_A4)
+            book = plutoprint.Book(plutoprint.PAGE_SIZE_A4, plutoprint.PAGE_MARGINS_NARROW)
             book.load_url(str(self.outputs_folder / "report.html"))
 
             # Export the entire document to PDF
