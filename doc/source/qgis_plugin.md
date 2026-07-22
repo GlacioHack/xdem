@@ -63,6 +63,7 @@ Input can be layers present in QGIS or files directly from the disk. As for the 
 
 ```{note}
 For the advanced parameters, the default settings are the same as those in the API.
+Blockwise mode is also available, it is normally accessed via the {class}`~xdem.coreg.BlockwiseCoreg` object and is provided here as the advanced parameter `blocksize`.
 ```
 
 Once the processing is complete, the `log` section provides information about the coregistration's metadata.
