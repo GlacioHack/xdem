@@ -69,4 +69,4 @@ Optional dependencies are:
 - [Numba](https://numba.pydata.org/) as engine for certain numerical operations (terrain attributes),
 - [Dask](https://www.dask.org/) for out-of-memory operations (coming soon),
 - [tqdm](https://tqdm.github.io/) for displaying progress bars,
-- [Cerberus](https://docs.python-cerberus.org/), [Pyyaml](https://pyyaml.org/) and [Weasyprint](https://weasyprint.org/) for the command-line interface and workflows.
+- [Cerberus](https://docs.python-cerberus.org/), [Pyyaml](https://pyyaml.org/) and [PlutoPrint](https://plutoprint.readthedocs.io/en/latest/) for the command-line interface and workflows.
