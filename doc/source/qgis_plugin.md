@@ -61,7 +61,7 @@ To get started with the plugin's features, here are two examples, a coregistrati
 The coregistration methods that are available in the Python API ({ref}`supported_coreg_method`) are also included in the plugin, each with its own dedicated interface.
 Inputs can be layers that are already loaded in QGIS or files directly from disk.
 Outputs can be saved to temporary files (the default) or written on disk.
-Here is the co-registration interface for the Least Z-difference method ({ref}`lzd`).
+Here is the co-registration interface for the {ref}`lzd` method.
 
 :::{figure} imgs/qgis_plugin/coreg_interface.png
 :width: 80%
