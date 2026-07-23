@@ -360,3 +360,5 @@ class Topo(Workflows):
 
         with open(self.outputs_folder / "report.html", "w", encoding="utf-8") as f:
             f.write(html)
+
+        logging.info("Report generated in " + str(self.outputs_folder / "report.html"))
