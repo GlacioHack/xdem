@@ -88,7 +88,7 @@ Here is an example of the slope processing interface configured with the method 
 :width: 80%
 :::
 
-For all of the plugin's algorithms, once processing is complete, the output file is opened in the current project. This feature can be disabled thank to the checkbox `Open output file after runing algorithm`, if visualization in QGIS is not necessary or if the dataset is too large.
+For all of the plugin's algorithms, once processing is complete, the output file is opened in the current project. This feature can be disabled thank to the checkbox `Open output file after running algorithm`, if visualization in QGIS is not necessary or if the dataset is too large.
 
 :::{figure} imgs/qgis_plugin/slope_result.png
 :width: 80%
