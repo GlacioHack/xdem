@@ -49,13 +49,13 @@ Most of xDEM's algorithms are integrated into the plugin, all available in the P
 :width: 80%
 :::
 
-Once the toolbox is open, xDEM algorithms appears at the bottom, in a dedecated section.
+Once the toolbox is open, xDEM algorithms appears at the bottom, in a dedicated section.
 
 :::{figure} imgs/qgis_plugin/toolbox.png
 :width: 30%
 :::
 
-To get started with the plugin's features, here are two examples, a coregistration followed by deriving the slope. The dataset used is the same as that used in the other xdem examples, which is Longyearbyen, available for download in [xdem-data repository](https://github.com/GlacioHack/xdem-data).
+To get started with the plugin's features, here are two examples, a coregistration followed by deriving the slope. The dataset used is the same as that used in the other xdem examples, which is Longyearbyen, described in {ref}`data`.
 
 ### Coregistration
 The coregistration methods that are available in the Python API ({ref}`supported_coreg_method`) are also included in the plugin, each with its own dedicated interface.
