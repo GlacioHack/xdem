@@ -333,7 +333,7 @@ def test_load_dem_alias():
     output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
 
     assert output_dem == xdem.DEM(xdem.examples.get_path(config_dem["path_to_elev"]))
-    assert inlier_mask == ~gu.Vector(mask_path).create_mask(output_dem)
+    assert inlier_mask.raster_equal(~gu.Vector(mask_path).create_mask(output_dem))
     assert mask_path == xdem.examples.get_path("longyearbyen_glacier_outlines")
 
 
@@ -352,7 +352,7 @@ def test_load_dem_mask(tmp_path):
     # path_to_mask = shapefile path
     config_dem["path_to_mask"] = xdem.examples.get_path("longyearbyen_glacier_outlines")
     dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
-    assert inlier_mask == ~gu.Vector(mask_path).create_mask(inlier_mask)
+    assert inlier_mask.raster_equal(~gu.Vector(mask_path).create_mask(inlier_mask))
     assert mask_path == config_dem["path_to_mask"]
 
     # path_to_mask = shapefile alias
@@ -377,4 +377,19 @@ def test_load_dem_mask(tmp_path):
     assert inlier_mask.raster_equal(mask_crop.reproject(dem, silent=True))
     assert mask_path == config_dem["path_to_mask"]
 
-    # path_to_mask = error (type ?)
+    # path_to_mask  = raster that not exists
+    config_dem["path_to_mask"] = tmp_path / "notexist.tif"
+    with pytest.raises(ValueError, match="not recognised as a mask"):
+        Workflows.load_dem(config_dem)
+
+    # path_to_mask = shapefile that not exists
+    config_dem["path_to_mask"] = tmp_path / "notexist.shp"
+    with pytest.raises(ValueError, match="not recognised as a mask"):
+        Workflows.load_dem(config_dem)
+
+    # path_to_mask = text file
+    with open(tmp_path / "example.txt", "w") as f:
+        f.write("some texte")
+    config_dem["path_to_mask"] = tmp_path / "example.txt"
+    with pytest.raises(ValueError, match="not recognised as a mask"):
+        Workflows.load_dem(config_dem)

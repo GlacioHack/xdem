@@ -394,19 +394,25 @@ class Workflows(ABC):
                 if mask_path in list(_FILEPATHS_ALL.keys()):
                     mask_path = xdem.examples.get_path(mask_path)
 
-                # Treats the mask according to its type (Vector or Raster)
+                # Treat the mask according to its type (Vector or Raster)
                 try:
                     mask = gu.Vector(mask_path)
                     inlier_mask = ~mask.create_mask(dem)
 
-                except pyogrio.errors.DataSourceError:
+                except pyogrio.errors.DataSourceError as vector_error:
                     try:
                         inlier_mask = gu.Raster(mask_path).astype(bool)
                         inlier_mask.data = inlier_mask.data.filled(False)
-
                         inlier_mask = inlier_mask.reproject(dem, silent=True)
-                    except rasterio.errors.RasterioIOError:
-                        raise ValueError("You provided a 'path_to_mask' value that is not recognised as a mask.")
+
+                    except rasterio.errors.RasterioIOError as raster_error:
+                        errors = ExceptionGroup(
+                            f"Could not read {mask_path!r} as either a vector or raster mask.",
+                            [vector_error, raster_error],
+                        )
+                        raise ValueError(
+                            "You provided a 'path_to_mask' value that is not recognised as a mask."
+                        ) from errors
 
             return dem, inlier_mask, mask_path
         else:
