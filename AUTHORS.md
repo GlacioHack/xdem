@@ -1,7 +1,7 @@
 # Credits
 
 ---
-© 2025 **xDEM developers**.
+© 2026 **xDEM developers**.
 
 **xDEM** is licensed under permissive Apache 2 license (See LICENSE file).
 
