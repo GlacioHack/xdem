@@ -50,6 +50,7 @@ This file keeps track of authors contributions.
 - **Amelie Froessl** [@ameliefroessl](https://github.com/ameliefroessl)
 - **Simon Gascoin** [@sgascoin](https://github.com/sgascoin)
 - **Clara Quinto** [@quinto-clara](https://github.com/quinto-clara)
+- **Antoine Ould** [@ould-a](https://github.com/ould-a)
 
 ## Original creators
 
