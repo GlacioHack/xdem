@@ -101,7 +101,7 @@ To use them, you don’t need a configuration file, unlike the {ref}`cli`, every
 :::{figure} imgs/qgis_plugin/topo_workflow_interface.png
 :width: 80%
 :::
-The process generates several output files, exactly the same set you’d obtain with {ref}`cli`: a folder containing raster(s), PNG figures, statistical tables, and both HTML and PDF reports. When the process is complete, the PDF report can be open in your default browser thanks to the checkbox `Open PDF report`.
+The process generates several output files, exactly the same set you’d obtain with {ref}`cli`: a folder containing raster(s), PNG figures, statistical tables, and both HTML and PDF reports. When the process is complete, the PDF report can be opened in your default browser thanks to the checkbox `Open PDF report`.
 
 ## Pipeline building
 QGIS offers a feature for creating pipelines through a graphical interface called the **Model Designer**.
