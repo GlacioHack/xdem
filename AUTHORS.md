@@ -1,7 +1,7 @@
 # Credits
 
 ---
-© 2025 **xDEM developers**.
+© 2026 **xDEM developers**.
 
 **xDEM** is licensed under permissive Apache 2 license (See LICENSE file).
 
@@ -50,6 +50,7 @@ This file keeps track of authors contributions.
 - **Amelie Froessl** [@ameliefroessl](https://github.com/ameliefroessl)
 - **Simon Gascoin** [@sgascoin](https://github.com/sgascoin)
 - **Clara Quinto** [@quinto-clara](https://github.com/quinto-clara)
+- **Antoine Ould** [@ould-a](https://github.com/ould-a)
 
 ## Original creators
 

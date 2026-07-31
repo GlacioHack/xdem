@@ -94,6 +94,7 @@ Information about the coregistration inputs and outputs is summarized in {func}`
 Often, an `inlier_mask` has to be passed to {func}`~xdem.coreg.Coreg.fit` to isolate static surfaces to utilize during coregistration (for instance removing vegetation, snow, glaciers). This mask can be easily derived using {func}`~geoutils.Vector.create_mask`.
 ```
 
+(supported_coreg_method)=
 ## Summary of supported methods
 
 ```{list-table}
@@ -570,6 +571,7 @@ These metadata are only inputs specific to a given method, outlined in the metho
 For instance, for {class}`xdem.coreg.Deramp`, an input `poly_order` to define the polynomial order used for the fit, and
 for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at which to do the directional correction.
 
+(blockwise)=
 ## Dividing coregistration in blocks
 
 ### The {class}`~xdem.coreg.BlockwiseCoreg` object
