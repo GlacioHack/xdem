@@ -2031,6 +2031,7 @@ class VerticalShift(AffineCoreg):
         super().__init__(
             meta={"vshift_reduc_func": vshift_reduc_func}, subsample=subsample, initial_shift=initial_shift
         )
+
     def _fit_rst_rst(
         self,
         ref_elev: NDArrayf,
