@@ -84,5 +84,6 @@ rotated_dem = xdem.coreg.apply_matrix(dem, matrix=matrix, centroid=centroid)
 diff_before = dem - rotated_dem
 diff_before.plot(cmap="RdYlBu", cbar_title="Elevation differences (m)")
 rotated_dem.get_footprint_projected(dem.crs, densify_points=5000).plot(ec="k", alpha=0.1)
+
 # %%
 # Even if a translation is applicated with a rotation, the transform and the footprint are the same before and after.
