@@ -11,7 +11,6 @@ In this page, we will show you how to properly do :
 
 """
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 import xdem
@@ -32,7 +31,6 @@ dem_shifted = dem.translate(shift_x, shift_y) + shift_z
 
 dem_shifted.plot(cmap="terrain", cbar_title="Elevation (m)")
 dem.get_footprint_projected(dem.crs, densify_points=5000).plot(ec="k", alpha=0.4)
-plt.show()
 
 # %%
 # Here the new DEM and the footprint of the original DEM. Note that the translation only updates the geotransform (no resampling is performed).
@@ -68,7 +66,6 @@ rotated_dem = xdem.coreg.apply_matrix(dem, matrix=matrix, centroid=centroid)
 
 diff_before = dem - rotated_dem
 diff_before.plot(cmap="RdYlBu", cbar_title="Elevation differences (m)")
-plt.show()
 
 # %%
 # #### With an automatically constructed matrix
@@ -87,7 +84,5 @@ rotated_dem = xdem.coreg.apply_matrix(dem, matrix=matrix, centroid=centroid)
 diff_before = dem - rotated_dem
 diff_before.plot(cmap="RdYlBu", cbar_title="Elevation differences (m)")
 rotated_dem.get_footprint_projected(dem.crs, densify_points=5000).plot(ec="k", alpha=0.1)
-plt.show()
-
 # %%
 # Even if a translation is applicated with a rotation, the transform and the footprint are the same before and after.
