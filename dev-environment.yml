@@ -28,8 +28,8 @@ dependencies:
   - lazrs-python  # For LAZ file support
   - cerberus  # For CLI
   - pyyaml  # For CLI
-  - weasyprint  # For CLI
   - tqdm  # For progress bars
+  - plutoprint  # For CLI
 
   # Test dependencies
   - pytest

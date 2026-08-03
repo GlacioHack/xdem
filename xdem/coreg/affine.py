@@ -1773,10 +1773,24 @@ class AffineCoreg(Coreg):
         # Define subsample size
         meta.update({"subsample": subsample})
 
-        # Define initial shift
+        # Define initial shift and test its consistency
         if initial_shift is not None:
-            meta.update({"initial_shift": initial_shift})
+            if not (
+                isinstance(initial_shift, tuple)
+                and (len(initial_shift) == 2 or len(initial_shift) == 3)
+                and all(isinstance(val, (float, int)) for val in initial_shift)
+            ):
+                raise ValueError("Argument `initial_shift` must be a tuple of exactly two or three numerical values.")
 
+            if len(initial_shift) == 2:
+                initial_shift += (0,)
+            elif initial_shift[2] != 0:  # initial z shift is not taken into account
+                initial_shift = (*initial_shift[:2], 0)
+                warnings.warn(
+                    "Initial shift in altitude is currently work in progress.",
+                    category=UserWarning,
+                )
+            meta.update({"initial_shift": initial_shift})
         super().__init__(meta=meta)
 
         if matrix is not None:
@@ -1961,7 +1975,10 @@ class VerticalShift(AffineCoreg):
     """
 
     def __init__(
-        self, vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]] = np.median, subsample: float | int = 1.0
+        self,
+        vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]] = np.median,
+        subsample: float | int = 1.0,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:  # pylint:
         # disable=super-init-not-called
         """
@@ -1970,10 +1987,14 @@ class VerticalShift(AffineCoreg):
         :param vshift_reduc_func: Reductor function to estimate the central tendency of the vertical shift.
             Defaults to the median.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+            These shifts are applied before the fit() part.
         """
         self._meta: CoregDict = {}  # All __init__ functions should instantiate an empty dict.
 
-        super().__init__(meta={"vshift_reduc_func": vshift_reduc_func}, subsample=subsample)
+        super().__init__(
+            meta={"vshift_reduc_func": vshift_reduc_func}, subsample=subsample, initial_shift=initial_shift
+        )
 
     def _fit_rst_rst(
         self,
@@ -2088,6 +2109,7 @@ class ICP(AffineCoreg):
         tolerance: float = 0.01,
         standardize: bool = True,
         subsample: float | int = 5e5,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:
         """
         Instantiate an ICP coregistration object.
@@ -2106,6 +2128,8 @@ class ICP(AffineCoreg):
         :param standardize: Whether to standardize input point clouds to the unit sphere for numerical convergence
             (tolerance is also standardized by the same factor).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+            These shifts are applied before the fit() part.
         """
 
         meta = {
@@ -2118,7 +2142,7 @@ class ICP(AffineCoreg):
             "only_translation": only_translation,
             "standardize": standardize,
         }
-        super().__init__(subsample=subsample, meta=meta)
+        super().__init__(subsample=subsample, meta=meta, initial_shift=initial_shift)
 
     def _fit_rst_rst(
         self,
@@ -2219,6 +2243,7 @@ class CPD(AffineCoreg):
         tolerance: float = 0.01,
         standardize: bool = True,
         subsample: int | float = 5e3,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ):
         """
         Instantiate a CPD coregistration object.
@@ -2232,6 +2257,8 @@ class CPD(AffineCoreg):
         :param standardize: Whether to standardize input point clouds to the unit sphere for numerical convergence
             (tolerance is also standardized by the same factor).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+            These shifts are applied before the fit() part.
         """
 
         meta_cpd = {
@@ -2242,7 +2269,7 @@ class CPD(AffineCoreg):
             "standardize": standardize,
         }
 
-        super().__init__(subsample=subsample, meta=meta_cpd)  # type: ignore
+        super().__init__(subsample=subsample, meta=meta_cpd, initial_shift=initial_shift)  # type: ignore
 
     def _fit_rst_rst(
         self,
@@ -2509,6 +2536,7 @@ class LZD(AffineCoreg):
         max_iterations: int = 200,
         tolerance: float = 0.01,
         subsample: float | int = 5e5,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ):
         """
          Instantiate an LZD coregistration object.
@@ -2520,6 +2548,8 @@ class LZD(AffineCoreg):
         :param max_iterations: Maximum allowed iterations before stopping.
         :param tolerance: Residual change threshold after which to stop the iterations.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+            These shifts are applied before the fit() part.
         """
         meta = {
             "fit_minimizer": fit_minimizer,
@@ -2528,7 +2558,7 @@ class LZD(AffineCoreg):
             "tolerance": tolerance,
             "only_translation": only_translation,
         }
-        super().__init__(subsample=subsample, meta=meta)
+        super().__init__(subsample=subsample, meta=meta, initial_shift=initial_shift)
 
     def _fit_rst_rst(
         self,
@@ -2622,6 +2652,7 @@ class DhMinimize(AffineCoreg):
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.minimize,
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] = nmad,
         subsample: int | float = 5e5,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:
         """
         Instantiate dh minimization object.
@@ -2629,10 +2660,12 @@ class DhMinimize(AffineCoreg):
         :param fit_minimizer: Minimizer for the coregistration function.
         :param fit_loss_func: Loss function for the minimization of residuals.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+            These shifts are applied before the fit() part.
         """
 
         meta_fit = {"fit_or_bin": "fit", "fit_minimizer": fit_minimizer, "fit_loss_func": fit_loss_func}
-        super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
+        super().__init__(subsample=subsample, meta=meta_fit, initial_shift=initial_shift)  # type: ignore
 
         # Specificity of DhMinimize: fit_loss_func need to always be a callable
         if isinstance(fit_loss_func, str):
