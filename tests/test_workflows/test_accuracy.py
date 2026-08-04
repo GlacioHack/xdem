@@ -230,24 +230,25 @@ def test_run_without_coreg(get_accuracy_inputs_test, tmp_path, level, generated_
 @pytest.mark.parametrize(
     "methods, raises_error",
     [
+        (["CPD", None, None], False),
+        (["ICP", None, None], False),
+        (["ICP", "CPD", None], False),
         (["NuthKaab", None, None], True),
         (["DhMinimize", None, None], True),
         (["VerticalShift", None, None], True),
         (["DirectionalBias", None, None], True),
         (["TerrainBias", None, None], True),
         (["LZD", None, None], True),
-        (["CPD", None, None], False),
-        (["ICP", None, None], False),
-        # ([None, "LZD", "ICP"], False),
         (["CPD", "VerticalShift", None], True),
     ],
 )
 def test_sampling_grid_is_None(get_accuracy_inputs_test, tmp_path, methods, raises_error):
     """
-    Test the behavior when sampling_grid = None with the different regulation methods.
+    Test the behavior when sampling_grid = None with the different coreg methods.
     """
-
     user_config = get_accuracy_inputs_test
+
+    user_config["inputs"]["reference_elev"]["path_to_mask"] = None
     user_config["outputs"] = {"path": str(tmp_path), "level": 2}
     user_config["inputs"]["sampling_grid"] = None
     user_config["coregistration"] = dict()
@@ -256,7 +257,8 @@ def test_sampling_grid_is_None(get_accuracy_inputs_test, tmp_path, methods, rais
     for m, step in enumerate(["step_one", "step_two", "step_three"]):
         user_config["coregistration"][step] = dict()
         user_config["coregistration"][step]["method"] = methods[m]
-        pipeline = pipeline + getattr(xdem.coreg, methods[m])() if pipeline else getattr(xdem.coreg, methods[m])()
+        if methods[m]:
+            pipeline = pipeline + getattr(xdem.coreg, methods[m])() if pipeline else getattr(xdem.coreg, methods[m])()
 
     if raises_error:
         with pytest.raises(ValueError, match="selected coregistration method need"):
@@ -264,18 +266,24 @@ def test_sampling_grid_is_None(get_accuracy_inputs_test, tmp_path, methods, rais
             workflows.run()
     else:
 
-        # tba_dem = xdem.DEM(user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"]).reproject(crs="EPSG:4326")
-        # tba_dem.to_file(tmp_path / "tba_4326.tif")
-        # user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"] = str(tmp_path / "tba_4326.tif")
+        ref_dem = xdem.DEM(user_config["inputs"]["reference_elev"]["path_to_elev"])
+
+        # Change the size of `tba_dem` to validate the absence of reprojection
+        tba_dem = xdem.DEM(user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"])
+        nrows, ncols = tba_dem.shape
+        tba_dem = tba_dem.icrop((0, 0, ncols - 10, nrows - 10))
+        tba_dem.to_file(tmp_path / "tba_cropped.tif")
+        user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"] = str(tmp_path / "tba_cropped.tif")
 
         workflows = Accuracy(user_config)
         workflows.run()
 
-        ref_dem = xdem.DEM(user_config["inputs"]["reference_elev"]["path_to_elev"])
-        tba_dem = xdem.DEM(user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"])
-
-        aligned_dem = pipeline.fit_and_apply(ref_dem, tba_dem)  # type: ignore
-        assert xdem.DEM(Path(tmp_path) / "rasters" / "aligned_elev.tif").raster_equal(aligned_dem)
+        aligned_dem = tba_dem.coregister_3d(ref_dem, pipeline, random_state=42)
+        aligned_dem.to_file(Path(tmp_path) / "rasters" / "res.tif")
+        aligned_dem = xdem.DEM(Path(tmp_path) / "rasters" / "res.tif")  # TODO CHANGE ISSUE GEOUTILS 900
+        assert xdem.DEM(Path(tmp_path) / "rasters" / "aligned_elev.tif").raster_equal(
+            aligned_dem, warn_failure_reason=True
+        )
 
 
 @pytest.mark.parametrize(

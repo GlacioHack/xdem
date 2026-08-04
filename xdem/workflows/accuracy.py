@@ -318,7 +318,12 @@ class Accuracy(Workflows):
 
         if self.compute_coreg:
 
-            self.diff_before = self.to_be_aligned_elev - self.reference_elev
+            # Reproject self.to_be_aligned_elev only if needed
+            try:
+                self.diff_before = self.to_be_aligned_elev - self.reference_elev
+            except ValueError:
+                self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(self.reference_elev)
+                self.diff_before = self.to_be_aligned_elev - self.reference_elev
             self.stats_before = self.diff_before.get_stats(stats_keys)
 
             self.diff_after = aligned_elev.reproject(self.reference_elev) - self.reference_elev
