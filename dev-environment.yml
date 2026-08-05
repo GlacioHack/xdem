@@ -29,7 +29,6 @@ dependencies:
   - cerberus  # For CLI
   - pyyaml  # For CLI
   - tqdm  # For progress bars
-  - plutoprint  # For CLI
 
   # Test dependencies
   - pytest
@@ -58,6 +57,8 @@ dependencies:
       # Optional dependencies with Pip
       # SciKit-GStat temporarily here until Conda version supports Python 3.13
       - scikit-gstat>=1.0.18
+      # For CLI
+      - plutoprint
 
       - -e ./
 
