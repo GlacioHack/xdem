@@ -45,7 +45,7 @@ from geoutils.raster.tiling import compute_tiling
 from xdem._misc import import_optional
 from xdem._typing import MArrayf, NDArrayf
 from xdem.coreg.affine import NuthKaab
-from xdem.coreg.base import Coreg, CoregPipeline
+from xdem.coreg.base import Coreg
 
 
 class BlockwiseCoreg:
@@ -56,7 +56,7 @@ class BlockwiseCoreg:
 
     def __init__(
         self,
-        step: Coreg | CoregPipeline,
+        step: Coreg,
         mp_config: MultiprocConfig | None = None,
         block_size_fit: int = 500,
         block_size_apply: int = 500,
@@ -65,7 +65,7 @@ class BlockwiseCoreg:
         """
         Instantiate a blockwise processing object for performing coregistration on subdivided DEM tiles.
 
-        :param step: An instantiated coregistration method or pipeline to apply on each tile.
+        :param step: An instantiated coregistration method to apply on each tile.
         :param mp_config: Configuration object for multiprocessing
         :param block_size_fit: Size of tiles to process per coregistration step in fit step.
         :param block_size_apply: Size of tiles to process per coregistration step in apply step.
@@ -118,17 +118,17 @@ class BlockwiseCoreg:
     def _coreg_wrapper(
         ref_dem_tiled: RasterType,
         tba_dem: RasterType,
-        coreg_method: Coreg | CoregPipeline,
+        coreg_method: Coreg,
         inlier_mask: RasterType | None = None,
-    ) -> Coreg | CoregPipeline:
+    ) -> Coreg:
         """
          Wrapper function to apply a coregistration method (e.g., Nuth & Kääb) on a pair of DEM tiles.
 
         :param ref_dem_tiled: Reference DEM tile to align to.
         :param tba_dem: DEM tile to be aligned.
-        :param coreg_method: Coregistration method or pipeline to apply.
+        :param coreg_method: Coregistration method to apply.
         :param inlier_mask: Optional mask indicating valid data points to consider during coregistration.
-        :return: The coregistration method or pipeline with updated transformation parameters.
+        :return: The coregistration method with updated transformation parameters.
         """
         coreg_method = coreg_method.copy()
         tba_dem_tiled = tba_dem.crop(ref_dem_tiled)
