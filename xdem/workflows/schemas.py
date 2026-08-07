@@ -107,7 +107,8 @@ INPUTS_DEM = {
     "downsample": {"type": ["integer", "float"], "required": False, "default": 1, "min": 1},
 }
 
-COREG_METHODS = ["NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD", None]
+
+COREG_METHODS = ["CPD", "ICP", "NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD", None]
 
 
 MIN_STATS = [
@@ -215,7 +216,7 @@ ACCURACY_SCHEMA = {
             "to_be_aligned_elev": {"type": "dict", "schema": INPUTS_DEM, "required": True},
             "sampling_grid": {
                 "type": "string",
-                "allowed": ["reference_elev", "to_be_aligned_elev"],
+                "allowed": ["reference_elev", "to_be_aligned_elev", None],
                 "default": "reference_elev",
                 "nullable": True,
                 "required": False,
