@@ -25,7 +25,6 @@ import logging
 from pathlib import Path
 
 import geoutils as gu
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -289,20 +288,16 @@ def test_run_prepare_datas(get_accuracy_inputs_test, tmp_path, config):
 @pytest.mark.parametrize(
     "config",
     [
-        ("reference_elev", ["reference_elev"]),
-        ("reference_elev", ["to_be_aligned_elev"]),
-        ("to_be_aligned_elev", ["reference_elev"]),
-        ("to_be_aligned_elev", ["to_be_aligned_elev"]),
-        ("reference_elev", ["reference_elev", "to_be_aligned_elev"]),
-        ("to_be_aligned_elev", ["reference_elev", "to_be_aligned_elev"]),
+        ("reference_elev", "reference_elev"),
+        ("reference_elev", "to_be_aligned_elev"),
+        ("to_be_aligned_elev", "reference_elev"),
+        ("to_be_aligned_elev", "to_be_aligned_elev"),
     ],
 )
-def test_prepare_datas(get_accuracy_inputs_test, tmp_path, config):
-    """
-    Test preparation data with all sampling_grid values
-    """
+def test_prepare_datas_with_overlap(get_accuracy_inputs_test, tmp_path, config):
+    """Test preparation data with all sampling_grid values when ref and tba do overlap."""
 
-    sampling_grid, dem_to_crop_list = config
+    sampling_grid, dem_to_crop = config
     user_config = get_accuracy_inputs_test
 
     # Save path before crop(s)
@@ -325,11 +320,10 @@ def test_prepare_datas(get_accuracy_inputs_test, tmp_path, config):
     crop["to_be_aligned_elev"] = (int(ncols / 2) + 1, int(nrows / 2) + 1, ncols, nrows)
 
     # Crop dems(s) and update config
-    for dem_to_crop in dem_to_crop_list:
-        dem = xdem.DEM(user_config["inputs"][dem_to_crop]["path_to_elev"])
-        dem_crop = dem.icrop(crop[dem_to_crop])
-        dem_crop.to_file(Path(tmp_path / (dem_to_crop + "_crop.tif")))
-        user_config["inputs"][dem_to_crop]["path_to_elev"] = Path(tmp_path / (dem_to_crop + "_crop.tif")).as_posix()
+    dem = xdem.DEM(user_config["inputs"][dem_to_crop]["path_to_elev"])
+    dem_crop = dem.icrop(crop[dem_to_crop])
+    dem_crop.to_file(Path(tmp_path / (dem_to_crop + "_crop.tif")))
+    user_config["inputs"][dem_to_crop]["path_to_elev"] = Path(tmp_path / (dem_to_crop + "_crop.tif")).as_posix()
 
     workflows = Accuracy(user_config)
     workflows.run()
@@ -356,36 +350,52 @@ def test_prepare_datas(get_accuracy_inputs_test, tmp_path, config):
     ).get_stats("mean")
 
     if sampling_grid == "reference_elev":
-
-        # If reference_elev is cropped or not
         dem_ref_ref = xdem.DEM(original_ref_path)
-        if "reference_elev" in dem_to_crop_list:
+        # If reference_elev is cropped (input)
+        if "reference_elev" == dem_to_crop:
             dem_ref_ref = dem_ref_ref.icrop(crop["reference_elev"])
         assert dem_ref_ref.get_stats("mean") == reference_elev_reprojected_mean
 
-        # If intersection between ref and tba is not null
-        if len(dem_to_crop_list) == 1:
-            assert xdem.DEM(original_tba_path).icrop(crop[dem_to_crop_list[0]]).get_stats("mean") == pytest.approx(
-                to_be_aligned_elev_reprojected_mean
-            )
-        else:
-            assert np.isnan(to_be_aligned_elev_reprojected_mean)
+        assert xdem.DEM(original_tba_path).icrop(crop[dem_to_crop]).get_stats("mean") == pytest.approx(
+            to_be_aligned_elev_reprojected_mean
+        )
 
     else:
-
-        # If to_be_aligned_elev is cropped or not
         dem_tba_ref = xdem.DEM(original_tba_path)
-        if "to_be_aligned_elev" in dem_to_crop_list:
+        # If to_be_aligned_elev is cropped (input)
+        if "to_be_aligned_elev" == dem_to_crop:
             dem_tba_ref = dem_tba_ref.icrop(crop["to_be_aligned_elev"])
         assert dem_tba_ref.get_stats("mean") == to_be_aligned_elev_reprojected_mean
 
-        # If intersection between ref and tba is not null
-        if len(dem_to_crop_list) == 1:
-            assert xdem.DEM(original_ref_path).icrop(crop[dem_to_crop_list[0]]).get_stats("mean") == pytest.approx(
-                reference_elev_reprojected_mean
-            )
-        else:
-            assert np.isnan(reference_elev_reprojected_mean)
+        assert xdem.DEM(original_ref_path).icrop(crop[dem_to_crop]).get_stats("mean") == pytest.approx(
+            reference_elev_reprojected_mean
+        )
+
+
+@pytest.mark.parametrize("process", [True, False])
+@pytest.mark.parametrize("sampling_grid", ["reference_elev", "to_be_aligned_elev"])
+def test_no_overlap(get_accuracy_inputs_test, tmp_path, process, sampling_grid):
+    """Test coreg/no coreg processes when ref and tba do not overlap."""
+    user_config = get_accuracy_inputs_test
+    user_config["inputs"]["sampling_grid"] = sampling_grid
+    if not process:
+        user_config["coregistration"] = {"process": False}
+
+    ref_dem = xdem.DEM(user_config["inputs"]["reference_elev"]["path_to_elev"])
+    nrows, ncols = ref_dem.shape
+    ref_dem = ref_dem.icrop((ncols - int(ncols / 2), nrows - int(nrows / 2), ncols, nrows))
+    ref_dem.to_file(tmp_path / "ref_cropped.tif")
+    user_config["inputs"]["reference_elev"]["path_to_elev"] = str(tmp_path / "ref_cropped.tif")
+
+    tba_dem = xdem.DEM(user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"])
+    nrows, ncols = tba_dem.shape
+    tba_dem = tba_dem.icrop((0, 0, ncols - int(ncols / 2), nrows - int(nrows / 2)))
+    tba_dem.to_file(tmp_path / "tba_cropped.tif")
+    user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"] = str(tmp_path / "tba_cropped.tif")
+
+    workflows = Accuracy(user_config)
+    with pytest.raises(ValueError, match="Reference and To-be-align elevations do not overlap."):
+        workflows.run()
 
 
 @pytest.mark.parametrize(

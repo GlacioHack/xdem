@@ -200,6 +200,9 @@ class Accuracy(Workflows):
         elif sampling_grid == "to_be_aligned_elev":
             self.reference_elev = self.reference_elev.reproject(self.to_be_aligned_elev, silent=True)
 
+        if not self.reference_elev.get_stats("validcount") or not self.to_be_aligned_elev.get_stats("validcount"):
+            raise ValueError("Reference and To-be-align elevations do not overlap.")
+
         # Intersection
         logging.info("Computing intersection")
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
