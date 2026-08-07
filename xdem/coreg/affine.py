@@ -61,44 +61,6 @@ from xdem.coreg.base import (
 ######################################
 
 
-def _check_inputs_bin_before_fit(
-    bin_before_fit: bool,
-    fit_optimizer: Callable[..., tuple[NDArrayf, Any]],
-    bin_sizes: int | dict[str, int | Iterable[float]],
-    bin_statistic: Callable[[NDArrayf], np.floating[Any]],
-) -> None:
-    """
-    Check input types of fit or bin_and_fit affine functions.
-
-    :param bin_before_fit: Whether to bin data before fitting the coregistration function.
-    :param fit_optimizer: Optimizer to minimize the coregistration function.
-    :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
-    :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
-    """
-
-    if not callable(fit_optimizer):
-        raise TypeError(
-            "Argument `fit_optimizer` must be a function (callable), " "got {}.".format(type(fit_optimizer))
-        )
-
-    if bin_before_fit:
-
-        # Check input types for "bin" to raise user-friendly errors
-        if not (
-            isinstance(bin_sizes, int)
-            or (isinstance(bin_sizes, dict) and all(isinstance(val, (int, Iterable)) for val in bin_sizes.values()))
-        ):
-            raise TypeError(
-                "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, "
-                "got {}.".format(type(bin_sizes))
-            )
-
-        if not callable(bin_statistic):
-            raise TypeError(
-                "Argument `bin_statistic` must be a function (callable), " "got {}.".format(type(bin_statistic))
-            )
-
-
 def _iterate_method(
     method: Callable[..., Any],
     iterating_input: Any,
@@ -651,7 +613,9 @@ def _dh_minimize_fit(
     loss_func = params_fit_or_bin["fit_loss_func"]
 
     def fit_func(coords_offsets: tuple[float, float]) -> np.floating[Any]:
-        return loss_func(_dh_minimize_fit_func(coords_offsets=coords_offsets, dh_interpolator=dh_interpolator))
+        return loss_func(
+            _dh_minimize_fit_func(coords_offsets=coords_offsets, dh_interpolator=dh_interpolator)
+        )  # type: ignore
 
     # Initial offset near zero
     init_offsets = (0, 0)
@@ -664,11 +628,11 @@ def _dh_minimize_fit(
             # (tip from Simon Gascoin: https://github.com/GlacioHack/xdem/pull/595#issuecomment-2387104719)
             init_offsets = (1, 1)
 
-    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)
+    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)  # type: ignore
 
     # Get final offsets with the right sign direction
-    offset_east = -results.x[0]
-    offset_north = -results.x[1]
+    offset_east = -results.x[0]  # type: ignore
+    offset_north = -results.x[1]  # type: ignore
     offset_vertical = float(np.nanmedian(dh_interpolator(-offset_east, -offset_north)))
 
     return offset_east, offset_north, offset_vertical
@@ -1576,7 +1540,7 @@ def _lzd_fit(
         init_offsets = np.zeros(3)
 
     # Run optimizer on function
-    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, loss=loss_func, **kwargs)
+    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, loss=loss_func, **kwargs)  # type: ignore
 
     # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert results is not None
@@ -2424,11 +2388,6 @@ class NuthKaab(AffineCoreg):
 
         self.vertical_shift = vertical_shift
 
-        # Input checks
-        _check_inputs_bin_before_fit(
-            bin_before_fit=bin_before_fit, fit_optimizer=fit_optimizer, bin_sizes=bin_sizes, bin_statistic=bin_statistic
-        )
-
         # Define iterative parameters and vertical shift
         meta_input_iterative = {
             "max_iterations": max_iterations,
@@ -2454,6 +2413,19 @@ class NuthKaab(AffineCoreg):
             super().__init__(
                 subsample=subsample, meta=meta_bin_and_fit, initial_shift=initial_shift
             )  # t)  # type: ignore
+
+        # Test consistency of the estimated initial shift given if provided
+        if initial_shift:
+
+            if len(initial_shift) == 2:
+                initial_shift += (0,)
+            elif initial_shift[2] != 0:  # initial z shift is not taken into account
+                initial_shift = (*initial_shift[:2], 0)
+                warnings.warn(
+                    "Initial shift in altitude is currently work in progress.",
+                    category=UserWarning,
+                )
+            self.meta["inputs"]["affine"]["initial_shift"] = initial_shift
 
     def _fit_rst_rst(
         self,
@@ -2694,6 +2666,13 @@ class DhMinimize(AffineCoreg):
 
         meta_fit = {"fit_or_bin": "fit", "fit_minimizer": fit_minimizer, "fit_loss_func": fit_loss_func}
         super().__init__(subsample=subsample, meta=meta_fit, initial_shift=initial_shift)  # type: ignore
+
+        # Specificity of DhMinimize: fit_loss_func need to always be a callable
+        if isinstance(fit_loss_func, str):
+            raise TypeError(
+                f"Argument 'fit_loss_func' invalid, must be a Callable for DhMinimize method, "
+                f"got {fit_loss_func} ({type(fit_loss_func).__name__})"
+            )
 
     def _fit_rst_rst(
         self,

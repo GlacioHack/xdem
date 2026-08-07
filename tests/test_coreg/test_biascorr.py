@@ -255,7 +255,7 @@ class TestBiasCorr:
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": 20}, {"elevation": (200, 500, 800)}))
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": 20}, {"elevation": [200, 500, 800]}))
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])
     def test_biascorr__bin_1d(self, fit_args: Any, bin_sizes: Any, bin_statistic: Any) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
@@ -278,7 +278,7 @@ class TestBiasCorr:
         bcorr.apply(elev=self.tba, bias_vars=bias_vars_dict)
 
     @pytest.mark.parametrize("fit_args", all_fit_args)
-    @pytest.mark.parametrize("bin_sizes", (4, {"elevation": (200, 500, 800), "slope": (0, 20, 40)}))
+    @pytest.mark.parametrize("bin_sizes", (4, {"elevation": [200, 500, 800], "slope": [0, 20, 40]}))
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])
     def test_biascorr__bin_2d(self, fit_args: Any, bin_sizes: Any, bin_statistic: Any) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
@@ -360,7 +360,7 @@ class TestBiasCorr:
             scipy.optimize.curve_fit,
         ],
     )
-    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": (200, 500, 800), "slope": (0, 20, 40)}))
+    @pytest.mark.parametrize("bin_sizes", (10, {"elevation": [200, 500, 800], "slope": [0, 20, 40]}))
     @pytest.mark.parametrize("bin_statistic", [np.median, np.nanmean])
     def test_biascorr__bin_and_fit_2d(
         self, fit_args: Any, fit_func: Any, fit_optimizer: Any, bin_sizes: Any, bin_statistic: Any
