@@ -295,9 +295,7 @@ def test_run_prepare_datas(get_accuracy_inputs_test, tmp_path, config):
     ],
 )
 def test_prepare_datas_with_overlap(get_accuracy_inputs_test, tmp_path, config):
-    """
-    Test preparation data with all sampling_grid values
-    """
+    """Test preparation data with all sampling_grid values when ref and tba do overlap."""
 
     sampling_grid, dem_to_crop = config
     user_config = get_accuracy_inputs_test
@@ -352,8 +350,6 @@ def test_prepare_datas_with_overlap(get_accuracy_inputs_test, tmp_path, config):
     ).get_stats("mean")
 
     if sampling_grid == "reference_elev":
-
-        # If reference_elev is cropped or not
         dem_ref_ref = xdem.DEM(original_ref_path)
         # If reference_elev is cropped (input)
         if "reference_elev" == dem_to_crop:
@@ -365,7 +361,6 @@ def test_prepare_datas_with_overlap(get_accuracy_inputs_test, tmp_path, config):
         )
 
     else:
-
         dem_tba_ref = xdem.DEM(original_tba_path)
         # If to_be_aligned_elev is cropped (input)
         if "to_be_aligned_elev" == dem_to_crop:
@@ -375,6 +370,32 @@ def test_prepare_datas_with_overlap(get_accuracy_inputs_test, tmp_path, config):
         assert xdem.DEM(original_ref_path).icrop(crop[dem_to_crop]).get_stats("mean") == pytest.approx(
             reference_elev_reprojected_mean
         )
+
+
+@pytest.mark.parametrize("process", [True, False])
+@pytest.mark.parametrize("sampling_grid", ["reference_elev", "to_be_aligned_elev"])
+def test_no_overlap(get_accuracy_inputs_test, tmp_path, process, sampling_grid):
+    """Test coreg/no coreg processes when ref and tba do not overlap."""
+    user_config = get_accuracy_inputs_test
+    user_config["inputs"]["sampling_grid"] = sampling_grid
+    if not process:
+        user_config["coregistration"] = {"process": False}
+
+    ref_dem = xdem.DEM(user_config["inputs"]["reference_elev"]["path_to_elev"])
+    nrows, ncols = ref_dem.shape
+    ref_dem = ref_dem.icrop((ncols - int(ncols / 2), nrows - int(nrows / 2), ncols, nrows))
+    ref_dem.to_file(tmp_path / "ref_cropped.tif")
+    user_config["inputs"]["reference_elev"]["path_to_elev"] = str(tmp_path / "ref_cropped.tif")
+
+    tba_dem = xdem.DEM(user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"])
+    nrows, ncols = tba_dem.shape
+    tba_dem = tba_dem.icrop((0, 0, ncols - int(ncols / 2), nrows - int(nrows / 2)))
+    tba_dem.to_file(tmp_path / "tba_cropped.tif")
+    user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"] = str(tmp_path / "tba_cropped.tif")
+
+    workflows = Accuracy(user_config)
+    with pytest.raises(ValueError, match="Reference and To-be-align elevations do not overlap."):
+        workflows.run()
 
 
 @pytest.mark.parametrize(
@@ -480,29 +501,3 @@ def test_vcrs_change(
     assert xdem.DEM(Path(tmp_path / "rasters" / "reference_elev_reprojected.tif")).vcrs == vcrs_res
     assert xdem.DEM(Path(tmp_path / "rasters" / "to_be_aligned_elev_reprojected.tif")).vcrs == vcrs_res
     assert xdem.DEM(Path(tmp_path / "rasters" / "aligned_elev.tif")).vcrs == vcrs_res
-
-
-@pytest.mark.parametrize("process", [True, False])
-@pytest.mark.parametrize("sampling_grid", ["reference_elev", "to_be_aligned_elev"])
-def test_no_overlap(get_accuracy_inputs_test, tmp_path, process, sampling_grid):
-    """Test coreg/no coreg processes when ref and tba do not overlap."""
-    user_config = get_accuracy_inputs_test
-    user_config["inputs"]["sampling_grid"] = sampling_grid
-    if not process:
-        user_config["coregistration"] = {"process": False}
-
-    ref_dem = xdem.DEM(user_config["inputs"]["reference_elev"]["path_to_elev"])
-    nrows, ncols = ref_dem.shape
-    ref_dem = ref_dem.icrop((ncols - int(ncols / 2), nrows - int(nrows / 2), ncols, nrows))
-    ref_dem.to_file(tmp_path / "ref_cropped.tif")
-    user_config["inputs"]["reference_elev"]["path_to_elev"] = str(tmp_path / "ref_cropped.tif")
-
-    tba_dem = xdem.DEM(user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"])
-    nrows, ncols = tba_dem.shape
-    tba_dem = tba_dem.icrop((0, 0, ncols - int(ncols / 2), nrows - int(nrows / 2)))
-    tba_dem.to_file(tmp_path / "tba_cropped.tif")
-    user_config["inputs"]["to_be_aligned_elev"]["path_to_elev"] = str(tmp_path / "tba_cropped.tif")
-
-    workflows = Accuracy(user_config)
-    with pytest.raises(ValueError, match="Reference and To-be-align elevations do not overlap."):
-        workflows.run()
