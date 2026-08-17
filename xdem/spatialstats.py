@@ -1499,7 +1499,10 @@ def sample_empirical_variogram(
     else:
         logging.info("Using " + str(n_jobs) + " cores...")
 
-        pool = mp.Pool(n_jobs, maxtasksperchild=1)
+        # Forking a multi-threaded parent is deprecated and can deadlock the
+        # child, so fork from a clean process where that method exists.
+        start_method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
+        pool = mp.get_context(start_method).Pool(n_jobs, maxtasksperchild=1)
         list_argdict = [
             {"i": i, "imax": n_variograms, "random_state": list_random_state[i], **args, **kwargs}  # type: ignore
             for i in range(n_variograms)
