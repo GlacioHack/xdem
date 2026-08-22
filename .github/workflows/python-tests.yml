@@ -37,7 +37,7 @@ jobs:
         use-mamba: true
         channel-priority: strict
         activate-environment: xdem-dev
-        
+
     - name: Get month for resetting cache
       id: get-date
       run: echo "cache_date=$(/bin/date -u '+%Y%m')" >> $GITHUB_ENV
