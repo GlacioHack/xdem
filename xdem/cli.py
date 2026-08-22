@@ -16,9 +16,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import argparse
 import logging
+import sys
 
 from xdem._misc import import_optional
 from xdem.workflows import Accuracy, Topo
@@ -113,10 +113,16 @@ def main(arg_list: list[str] | None = None) -> None:
         help="(Optional) Path to output folder (with --config, overrides configuration file)",
     )
 
-    if arg_list is not None and not len(arg_list):
+    # Print help for 'xdem' without arguments
+    arg_list = sys.argv[1:] if arg_list is None else arg_list
+    if not arg_list:
         arg_list = ["--help"]
 
     args = parser.parse_args(args=arg_list)
+
+    # Raise error for xdem --output without a --config
+    if args.command is not None and args.output and not args.config:
+        parser.error("Argument --output requires --config.")
 
     # Instance logger
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
@@ -125,9 +131,6 @@ def main(arg_list: list[str] | None = None) -> None:
     # fontTools creates noisy logs
     logging.getLogger("fontTools").setLevel(logging.WARNING)
     logging.getLogger("fontTools").propagate = False
-
-    if args.output and not args.config:
-        parser.error("Argument --output requires --config.")
 
     if args.command == "topo":
         if args.template_config or args.template_config is None:

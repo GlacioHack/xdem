@@ -23,6 +23,7 @@ test for CLI class
 
 import logging
 import os
+import subprocess
 
 # mypy: disable-error-code=no-untyped-def
 from pathlib import Path
@@ -35,6 +36,14 @@ from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOP
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 pytest.importorskip("cerberus")
+
+
+def test_xdem():
+    """Check if running simply 'xdem' in CLI does indeed show the help, without failure."""
+    result = subprocess.run(["xdem"], capture_output=True, text=True)
+
+    assert result.returncode == 0
+    assert "usage:" in result.stdout.lower()
 
 
 @pytest.mark.parametrize("help_arg", [[], ["-h"], ["--help"]])
