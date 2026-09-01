@@ -271,7 +271,7 @@ class BiasCorr(Coreg):
             raise ValueError("At least one `bias_var` should be passed to the `apply` function, got None.")
 
         # Check the bias_vars passed match the ones stored for this bias correction class
-        if not sorted(bias_vars.keys()) == sorted(self._meta["inputs"]["fitorbin"]["bias_var_names"]):
+        if not sorted(bias_vars.keys()) == sorted(self._meta["inputs"]["fitorbin"]["bias_var_names"]):  # type: ignore
             raise ValueError(
                 "The keys of `bias_vars` do not match the `bias_var_names` defined during "
                 "instantiation or fitting: {}.".format(self._meta["inputs"]["fitorbin"]["bias_var_names"])
