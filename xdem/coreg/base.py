@@ -52,12 +52,12 @@ from geoutils.interface.gridding import _grid_pointcloud
 from geoutils.interface.interpolation import _interp_points_base
 from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
 from geoutils.raster import Raster, RasterType, raster
-from geoutils.raster.transformation import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.referencing import _cast_pixel_interpretation, _coords
-from geoutils.raster.transformation import _translate
+from geoutils.raster.transformation import _resampling_method_from_str, _translate
 
 import xdem
+from xdem._misc import _subsample_numpy
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.fit import (
     polynomial_1d,
@@ -119,6 +119,45 @@ dict_key_to_str = {
 #####################################
 # Generic functions for preprocessing
 ###########################################
+
+
+def _as_eager_elevation(elev: Any) -> Any:
+    """Normalize eager elevation accessors for coregistration and uncertainty without computing Dask inputs."""
+
+    import xarray as xr
+    from geoutils._dispatch import is_dask_array, is_dask_dataframe
+    from geoutils.pointcloud.base import PointCloudBase
+    from geoutils.raster.base import RasterBase
+
+    # Inspect metadata first so unsupported lazy data are rejected before any computation
+    if isinstance(elev, xr.DataArray):
+        elev = elev.rst
+    if isinstance(elev, RasterBase):
+        if elev._chunks is not None:
+            raise NotImplementedError("Dask coregistration and uncertainty analysis are not supported yet.")
+        return elev.to_geoutils() if elev._is_xr else elev
+    if isinstance(elev, PointCloudBase):
+        if elev._is_dask:
+            raise NotImplementedError("Dask coregistration and uncertainty analysis are not supported yet.")
+        source = elev.to_geoutils() if elev._is_pd else elev
+        if source.data_column is None:
+            # Coregistration works with 2D geometry and an elevation column, including for native 3D points
+            frame = source.ds.copy()
+            column = "_xdem_elevation"
+            while column in frame.columns:
+                column += "_"
+            frame[column] = source.data
+            frame.geometry = gpd.points_from_xy(frame.geometry.x, frame.geometry.y, crs=frame.crs)
+            source = PointCloud(frame, data_column=column)
+        return source
+    if is_dask_array(elev) or is_dask_dataframe(elev):
+        raise NotImplementedError("Dask coregistration and uncertainty analysis are not supported yet.")
+
+    # Preserve an accessor's selected elevation column when a raw dataframe is supplied as reference
+    if isinstance(elev, gpd.GeoDataFrame):
+        if elev.attrs.get("data_column") is not None or (elev.geom_type.eq("Point").all() and elev.has_z.all()):
+            return _as_eager_elevation(PointCloud(elev, data_column=elev.attrs.get("data_column")))
+    return elev
 
 
 def _preprocess_coreg_fit_raster_raster(
@@ -599,7 +638,7 @@ def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArra
         # Take a subsample within the valid values
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UserWarning)
-            indices = gu.stats.sampling._subsample_numpy(
+            indices = _subsample_numpy(
                 ma_valid,
                 subsample=params_random["subsample"],
                 return_indices=True,
@@ -1379,11 +1418,10 @@ def _apply_matrix_pts(
         invert=invert,
     )
 
-    # Finally, transform back to a new GeoDataFrame
-    transformed_epc = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(x=tx, y=ty, crs=epc.crs),
-        data={z_name: tz},
-    )
+    # Preserve auxiliary columns and the row index while updating only geometry and elevation
+    transformed_epc = epc.copy()
+    transformed_epc[z_name] = tz
+    transformed_epc.geometry = gpd.points_from_xy(x=tx, y=ty, crs=epc.crs)
 
     return transformed_epc
 

@@ -16,40 +16,28 @@
 # limitations under the License.
 
 """DEM class and functions."""
+
 from __future__ import annotations
 
 import pathlib
 import warnings
-from typing import Any, Literal
+from typing import Literal
 
 import rasterio as rio
-from affine import Affine
-from geoutils.raster import RasterType, Raster
-from pyproj import CRS
+from geoutils.raster import Raster, RasterType
 from pyproj.crs import VerticalCRS
 
-from xdem._typing import NDArrayf
-from xdem.vcrs import (
-    _parse_vcrs_name_from_product,
-    _check_vcrs_input
-)
 from xdem.dem.base import DEMBase
+from xdem.vcrs import _check_vcrs_input, _parse_vcrs_name_from_product
 
-class DEM(Raster, DEMBase):  # type: ignore
+
+class DEM(DEMBase, Raster):  # type: ignore
     """
     The digital elevation model.
 
     The DEM has a single main attribute in addition to that inherited from :class:`geoutils.Raster`:
         vcrs: :class:`pyproj.VerticalCRS`
             Vertical coordinate reference system of the DEM.
-
-    Other derivative attributes are:
-        vcrs_name: :class:`str`
-            Name of vertical CRS of the DEM.
-        vcrs_grid: :class:`str`
-            Grid path to the vertical CRS of the DEM.
-        ccrs: :class:`pyproj.CompoundCRS`
-            Compound vertical and horizontal CRS of the DEM.
 
     The attributes inherited from :class:`geoutils.Raster` are:
         data: :class:`np.ndarray`
@@ -93,36 +81,27 @@ class DEM(Raster, DEMBase):  # type: ignore
         :param force_nodata: Force nodata value to be used (overwrites the metadata). Default reads from metadata.
         """
 
-        self.data: NDArrayf
-        self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
-
-        # If DEM is passed, simply point back to DEM
-        if isinstance(filename_or_dataset, DEM):
-            for key in filename_or_dataset.__dict__:
-                setattr(self, key, filename_or_dataset.__dict__[key])
-            return
-        # Else rely on parent Raster class options (including raised errors)
-        else:
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
-                super().__init__(
-                    filename_or_dataset,
-                    load_data=load_data,
-                    parse_sensor_metadata=parse_sensor_metadata,
-                    silent=silent,
-                    downsample=downsample,
-                    force_nodata=force_nodata,
-                )
+        # Reuse Raster's metadata-only construction, including copies of existing rasters
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Parse metadata from file not implemented")
+            super().__init__(
+                filename_or_dataset,
+                load_data=load_data,
+                parse_sensor_metadata=parse_sensor_metadata,
+                silent=silent,
+                downsample=downsample,
+                force_nodata=force_nodata,
+            )
 
         # Ensure DEM has only one band: self.bands can be None when data is not loaded through the Raster class
-        if self.bands is not None and len(self.bands) > 1:
+        if self.count > 1:
             raise ValueError(
                 "DEM rasters should be composed of one band only. Either use argument `bands` to specify "
                 "a single band on opening, or use .split_bands() on an opened raster."
             )
 
         # If no vertical CRS was provided by the user or defined in the CRS
-        if vcrs is None and "product" in self.tags:
+        if vcrs is None and self.vcrs is None and "product" in self.tags:
             vcrs = _parse_vcrs_name_from_product(self.tags["product"])
 
         # Cast CRS with vertical CRS (returns 2D or 3D) and re-set

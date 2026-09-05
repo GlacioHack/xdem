@@ -48,12 +48,11 @@ class TestBinning:
     )
 
     def test_nd_binning(self, test_output_dir: str) -> None:
-        """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
+        """Checks that binning sampled DEM differences produces the expected bins, statistics and saved dataframes."""
 
-        # Subsampler
-        indices = gu.stats.sampling.subsample_array(
-            self.diff.data.flatten(), subsample=10000, return_indices=True, random_state=42
-        )
+        # Select all valid cells in this small example and index their matching flattened terrain variables
+        sample_rows, sample_cols = self.diff.subsample(subsample=1, return_indices=True, random_state=42)
+        indices = np.ravel_multi_index((sample_rows, sample_cols), self.diff.shape)
 
         # 1D binning, by default will create 10 bins
         df = xdem.spatialstats.nd_binning(

@@ -38,6 +38,7 @@ from xdem import DEM
 from xdem._misc import import_optional
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
 from xdem.examples import _FILEPATHS_ALL
+from xdem.vcrs import vertical_unit_symbol
 from xdem.workflows.schemas import validate_configuration
 
 # Inheritance of optional dependencies
@@ -223,7 +224,8 @@ class Workflows(ABC):
         kwargs["cmap"] = cmap
 
         # Add colormap
-        kwargs["cbar_title"] = f"Elevation differences ({dem.crs.linear_units})"
+        vunit = vertical_unit_symbol(dem.crs)
+        kwargs.setdefault("cbar_title", f"Elevation differences ({vunit})" if vunit else "Elevation differences")
 
         # Force figsize with the good ratio to prevent larger right axe if not filled
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
@@ -260,6 +262,9 @@ class Workflows(ABC):
         import_optional("matplotlib")
         import matplotlib.pyplot as plt
         from matplotlib.gridspec import GridSpec
+
+        vunit = vertical_unit_symbol(dem.crs)
+        unit_label = f" ({vunit})" if vunit else ""
 
         # Raster data
         data = dem.data
@@ -308,7 +313,7 @@ class Workflows(ABC):
         # Plot DEM with colorbar
         im = ax_map.imshow(data, aspect="auto", **kwargs)
         ax_map.text(0.5, 1.12, title, transform=ax_map.transAxes, ha="center", va="top")
-        fig.colorbar(im, cax=cax).set_label(f"Elevation differences ({dem.crs.linear_units})")
+        fig.colorbar(im, cax=cax).set_label(f"Elevation differences{unit_label}")
 
         # Lines profiles
         y = np.arange(ny)
@@ -318,7 +323,7 @@ class Workflows(ABC):
         ax_left.yaxis.tick_left()
         ax_left.yaxis.set_label_position("left")
         ax_left.set_xlabel(
-            f"Mean along lines ({dem.crs.linear_units})\n"
+            f"Mean along lines{unit_label}\n"
             f"Min: {np.round(profile_rows_stats[0], 2)} / Max: {np.round(profile_rows_stats[1], 2)}"
         )
 
@@ -329,7 +334,7 @@ class Workflows(ABC):
         ax_bottom.yaxis.tick_left()
         ax_bottom.xaxis.set_label_position("bottom")
         ax_bottom.set_xlabel(
-            f"Mean along columns ({dem.crs.linear_units})\n"
+            f"Mean along columns{unit_label}\n"
             f"Min: {np.round(profile_cols_stats[0], 2)} / Max: {np.round(profile_cols_stats[1], 2)}"
         )
 

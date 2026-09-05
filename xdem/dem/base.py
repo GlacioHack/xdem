@@ -16,44 +16,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module of DEMBase class, parent of DEM class and 'dem' accessor."""
+"""Module of DEMBase class, parent of DEM class and ``dem`` accessor."""
 
 from __future__ import annotations
 
-import pathlib
 import warnings
-import re
-from typing import Any, Callable, Literal, overload, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, Literal, TypeVar, Union
 
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
-from affine import Affine
+import xarray as xr
 from geoutils import profiler
-from geoutils._typing import NDArrayNum
-from geoutils._dispatch import has_geo_attr, get_geo_attr
+from geoutils._dispatch import get_geo_attr
+from geoutils.multiproc import MultiprocConfig
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.base import RasterBase
-from geoutils.multiproc import MultiprocConfig
 from geoutils.stats import nmad
 from pyproj import CRS
-import xarray as xr
-from pyproj.crs import CompoundCRS, VerticalCRS
+from pyproj.crs import VerticalCRS
 
 import xdem
 from xdem import coreg, terrain
 from xdem._misc import copy_doc
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg import Coreg
+from xdem.coreg.base import _as_eager_elevation
 from xdem.spatialstats import (
+    _estimate_model_heteroscedasticity,
+    _preprocess_values_with_mask_to_array,
     infer_heteroscedasticity_from_stable,
     infer_spatial_correlation_from_stable,
 )
 from xdem.vcrs import (
-    _build_ccrs_from_crs_and_vcrs,
     _to_vcrs_2d,
-    _vcrs_from_crs,
-    _vcrs_from_user_input,
+    _VerticalReference,
 )
 
 # Input/output is a RasterType (= Raster or RasterAccessor subclass)
@@ -61,79 +58,21 @@ DEMType = TypeVar("DEMType", bound="DEMBase")
 # For inputs, we also accept a xr.DataArray
 DEMLike = Union["DEMBase", xr.DataArray]
 
-class DEMBase(RasterBase):
+
+class DEMBase(RasterBase, _VerticalReference):  # type: ignore[misc]
+    """Share elevation methods between DEM and the 'dem' Xarray accessor.
+
+    This is an internal base class built on RasterBase. It inherits _VerticalReference so that DEMBase and EPCBase
+    reuse the same VCRS metadata and manipulation without code duplication. ``vcrs`` exposes the vertical part,
+    while the inherited ``crs`` property contains the complete 3D CRS.
     """
-    This class is non-public and made to be subclassed.
 
-    It is built on top of the RasterBase class. It implements all the functions shared by the DEM class and the
-    'dem' Xarray accessor.
-    """
+    if TYPE_CHECKING:
+        data: Any
 
-    def __init__(self):
-        """
-        Initialize additional DEM metadata as None, for it to be overridden in sublasses.
-        """
+    def _set_vcrs_crs(self, new_crs: CRS) -> None:
+        """Store the vertical reference in the raster's CRS metadata."""
 
-        super().__init__()
-        self._vcrs: VerticalCRS | Literal["Ellipsoid"] | None = None
-        self._data: NDArrayf
-
-    @property
-    def vcrs(self) -> VerticalCRS | Literal["Ellipsoid"] | None:
-        """
-        Vertical coordinate reference system of the DEM.
-        """
-        return _vcrs_from_crs(self.crs)
-
-    @property
-    def _vcrs_name(self) -> str | None:
-        """Name of vertical coordinate reference system of the DEM."""
-
-        if self.vcrs is not None:
-            # If it is the ellipsoid
-            if isinstance(self.vcrs, str):
-                # Need to call CRS() here to make it work with rasterio.CRS...
-                vcrs_name = f"Ellipsoid (No vertical CRS). Datum: {CRS(self.crs).ellipsoid.name}."
-            # Otherwise, return the vertical reference name
-            else:
-                vcrs_name = self.vcrs.name
-        else:
-            vcrs_name = None
-
-        return vcrs_name
-
-    @property
-    def _vcrs_grid(self) -> str | None:
-        """Human-readable vertical grid description of the DEM."""
-
-        if self.vcrs is None or isinstance(self.vcrs, str):
-            return None
-
-        vcrs = CRS(self.vcrs)
-
-        try:
-            op = vcrs.coordinate_operation
-            if op is not None and op.grids:
-                return op.grids[0].short_name
-        except Exception:
-            pass
-
-        return None
-
-    def set_vcrs(
-        self,
-        new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int,
-    ) -> None:
-        """
-        Set the vertical coordinate reference system of the DEM.
-
-        :param new_vcrs: Vertical coordinate reference system either as a name ("Ellipsoid", "EGM08", "EGM96"),
-            an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
-        """
-
-        # Get vertical CRS and re-set the CRS
-        new_vcrs = _vcrs_from_user_input(vcrs_input=new_vcrs)
-        new_crs = _build_ccrs_from_crs_and_vcrs(crs=self.crs, vcrs=new_vcrs)
         self.set_crs(new_crs)
 
     def to_vcrs(
@@ -142,7 +81,7 @@ class DEMBase(RasterBase):
         force_source_vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | VerticalCRS | int | None = None,
         mp_config: MultiprocConfig | None = None,
         **kwargs: Any,
-    ) -> DEMLike:
+    ) -> DEMLike | None:
         """
         Convert the DEM to another vertical coordinate reference system.
 
@@ -151,14 +90,17 @@ class DEMBase(RasterBase):
         :param force_source_vcrs: Force a source vertical CRS (uses metadata by default). Same formats as for `vcrs`.
         :param mp_config: Multiprocessing configuration.
 
-        :return: DEM with vertical reference transformed, or None.
+        :param kwargs: Deprecated ``inplace`` option for updating the source instead of returning a copy.
+        :returns: DEM or DataArray with transformed elevations, or None when updating in place.
         """
 
         # Raise deprecation warning for old in-place behaviour
         if "inplace" in kwargs and kwargs["inplace"]:
-            warnings.warn("Argument 'inplace' is deprecated and will be removed in future versions. "
-                          "Use dem = dem.to_vcrs() instead.",
-                          category=DeprecationWarning)
+            warnings.warn(
+                "Argument 'inplace' is deprecated and will be removed in future versions. "
+                "Use dem = dem.to_vcrs() instead.",
+                category=DeprecationWarning,
+            )
             inplace = True
         else:
             inplace = False
@@ -171,17 +113,16 @@ class DEMBase(RasterBase):
         if new_dem is None:
             if inplace:
                 return None
-            else:
-                return self.copy(deep=False)
+            if not self._is_xr and not self.is_loaded:
+                return self.__class__(self)
+            return self.copy(deep=False)
 
         # If inplace, update DEM and vcrs
         if inplace:
-            self._data = new_dem.data
+            self.data = new_dem.data
             self.set_crs(new_crs=get_geo_attr(new_dem, "crs"))
             return None
-        # Otherwise, return new DEM
-        else:
-            return new_dem
+        return new_dem
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def slope(
@@ -383,7 +324,7 @@ class DEMBase(RasterBase):
         inlier_mask: Raster | NDArrayb = None,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] = None,
         random_state: int | np.random.Generator | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> DEMLike:
         """
         Coregister DEM to a reference DEM in three dimensions.
@@ -404,26 +345,29 @@ class DEMBase(RasterBase):
         :return: Coregistered DEM
         """
 
-        src_dem = self.copy()
-
-        # Check inputs
+        # Check inputs before loading elevation values
         if not isinstance(coreg_method, Coreg):
             raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
 
+        # Reuse eager coregistration with equivalent GeoUtils objects for every accessor input
+        source = _as_eager_elevation(self)
+        reference = _as_eager_elevation(reference_elev)
+        mask = _as_eager_elevation(inlier_mask)
+        variables = None if bias_vars is None else {name: _as_eager_elevation(var) for name, var in bias_vars.items()}
         aligned_dem = coreg_method.fit_and_apply(
-            reference_elev,
-            src_dem,
-            inlier_mask=inlier_mask,
+            reference,
+            source.copy(),
+            inlier_mask=mask,
             random_state=random_state,
-            bias_vars=bias_vars,
+            bias_vars=variables,
             **kwargs,
         )
 
-        return aligned_dem
+        return self._cast_raster_output(aligned_dem)
 
     def estimate_uncertainty(
         self,
-        other_elev: DEMLike | gpd.GeoDataFrame,
+        other_elev: DEMLike | gpd.GeoDataFrame | xdem.EPC,
         stable_terrain: Raster | NDArrayb = None,
         approach: Literal["H2022", "R2009", "Basic"] = "H2022",
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
@@ -469,21 +413,48 @@ class DEMBase(RasterBase):
         :return: Uncertainty raster, Variogram of uncertainty correlation.
         """
 
+        # Normalize eager accessors and reject unsupported Dask inputs before computing any statistics
+        source = _as_eager_elevation(self)
+        other_elev = _as_eager_elevation(other_elev)
+        stable_terrain = _as_eager_elevation(stable_terrain)
+        list_vars = tuple(_as_eager_elevation(var) for var in list_vars)
+        dem = xdem.DEM(source) if self._is_xr else self
+        if isinstance(other_elev, gu.PointCloud):
+            z_name = other_elev.data_column
+            other_elev = other_elev.ds
+
         # Summarize approach steps
         approach_dict = {
             "H2022": {"heterosc": True, "multi_range": True},
             "R2009": {"heterosc": False, "multi_range": True},
             "Basic": {"heterosc": False, "multi_range": False},
         }
+        if approach not in approach_dict:
+            raise ValueError("Approach must be one of 'H2022', 'R2009' or 'Basic'.")
+        if precision_of_other not in ("finer", "same"):
+            raise ValueError("Precision of other elevation must be 'finer' or 'same'.")
 
         # Elevation change with the other DEM or elevation point cloud
-        if has_geo_attr(other_elev, "transform"):
-            dh = other_elev.reproject(self, silent=True) - self
+        points = None
+        correlation_options: dict[str, Any] = {}
+        if isinstance(other_elev, Raster):
+            dh = other_elev.reproject(dem, silent=True) - dem
         elif isinstance(other_elev, gpd.GeoDataFrame):
-            other_elev = other_elev.to_crs(self.crs)
+            other_elev = other_elev.to_crs(dem.crs)
             points = (other_elev.geometry.x.values, other_elev.geometry.y.values)
-            dh = other_elev[z_name].values - self.interp_points(points)
-            stable_terrain = stable_terrain
+            dh = other_elev[z_name].values - dem.interp_points(points, as_array=True)
+
+            # Sample a raster mask at the reference points; a point mask can already follow their row order
+            if isinstance(stable_terrain, np.ndarray) and stable_terrain.shape == dem.shape:
+                stable_terrain = dem.copy(new_array=stable_terrain.astype(np.float32))
+            if isinstance(stable_terrain, Raster):
+                stable_raster = stable_terrain.reproject(dem, resampling="nearest", silent=True)
+                stable_terrain = stable_raster.interp_points(points, method="nearest", as_array=True) == 1
+            correlation_options = {
+                "coords": np.column_stack(points),
+                "gsd": dem.res[0],
+                "subsample_method": "cdist_point",
+            }
         else:
             raise TypeError("Other elevation should be a DEM or elevation point cloud object.")
 
@@ -498,20 +469,43 @@ class DEMBase(RasterBase):
             list_var_rast = []
             for var in list_vars:
                 if isinstance(var, str):
-                    list_var_rast.append(getattr(terrain, var)(self))
+                    list_var_rast.append(getattr(terrain, var)(dem))
                 else:
-                    list_var_rast.append(var)
+                    list_var_rast.append(var.reproject(dem, silent=True))
 
-            # Estimate variable error from these variables
-            sig_dh = infer_heteroscedasticity_from_stable(
-                dvalues=dh,
-                list_var=list_var_rast,
-                spread_statistic=spread_estimator,
-                stable_mask=stable_terrain,
-            )[0]
+            if points is None:
+                # Fit and evaluate on the same raster grid for two DEMs
+                sig_dh = infer_heteroscedasticity_from_stable(
+                    dvalues=dh,
+                    list_var=list_var_rast,
+                    spread_statistic=spread_estimator,
+                    stable_mask=stable_terrain,
+                )[0]
+                correlation_errors = sig_dh
+            else:
+                # Fit at the point coordinates, then evaluate the error model over the complete DEM grid
+                sampled_vars = [var.interp_points(points, as_array=True) for var in list_var_rast]
+                stable_values, _ = _preprocess_values_with_mask_to_array(
+                    [dh] + sampled_vars, include_mask=stable_terrain, gsd=dem.res[0], preserve_shape=False
+                )
+                _, error_model = _estimate_model_heteroscedasticity(
+                    dvalues=stable_values[0],
+                    list_var=stable_values[1:],
+                    list_var_names=["var" + str(i + 1) for i in range(len(sampled_vars))],
+                    spread_statistic=spread_estimator,
+                )
+                grid_vars = tuple(var.get_nanarray().ravel() for var in list_var_rast)
+                sig_dh = dem.copy(new_array=error_model(grid_vars).reshape(dem.shape))
+                correlation_errors = error_model(tuple(sampled_vars))
         # Otherwise, return a constant error raster
         else:
-            sig_dh = self.copy(new_array=spread_estimator(dh[stable_terrain]) * np.ones(self.shape))
+            # The shared mask preparation also handles the default of using all finite terrain
+            stable_values, _ = _preprocess_values_with_mask_to_array(
+                dh, include_mask=stable_terrain, gsd=dem.res[0], preserve_shape=False
+            )
+            spread = spread_estimator(stable_values)
+            sig_dh = dem.copy(new_array=spread * np.ones(dem.shape))
+            correlation_errors = sig_dh if points is None else np.full(dh.shape, spread)
 
         # If the approach does not allow multiple ranges of spatial correlation
         if not approach_dict[approach]["multi_range"]:
@@ -526,41 +520,29 @@ class DEMBase(RasterBase):
         # Otherwise keep all ranges
         corr_sig = infer_spatial_correlation_from_stable(
             dvalues=dh,
-            list_models=list(list_vario_models),
+            list_models=[list_vario_models] if isinstance(list_vario_models, str) else list(list_vario_models),
             stable_mask=stable_terrain,
-            errors=sig_dh,
+            errors=correlation_errors,
             estimator=variogram_estimator,
             random_state=random_state,
+            **correlation_options,
         )[2]
 
-        return sig_dh, corr_sig
+        return self._cast_raster_output(sig_dh), corr_sig
 
-    def to_pointcloud(
-        self,
-        data_column_name: str = "b1",
-        data_band: int = 1,
-        auxiliary_data_bands: list[int] | None = None,
-        auxiliary_column_names: list[str] | None = None,
-        subsample: float | int = 1,
-        skip_nodata: bool = True,
-        as_array: bool = False,
-        random_state: int | np.random.Generator | None = None,
-        force_pixel_offset: Literal["center", "ul", "ur", "ll", "lr"] = "ul",
-    ) -> NDArrayNum | xdem.EPC:
+    def _cast_pointcloud_output(self, pointcloud: Any) -> Any:
+        """Preserve EPC behavior for point outputs from DEMs and their accessors."""
 
-        pc = super().to_pointcloud(
-            data_column_name=data_column_name,
-            data_band=data_band,
-            auxiliary_data_bands=auxiliary_data_bands,
-            auxiliary_column_names=auxiliary_column_names,
-            subsample=subsample,
-            skip_nodata=skip_nodata,
-            as_array=as_array,
-            random_state=random_state,
-            force_pixel_offset=force_pixel_offset,
-        )
+        # GeoUtils chooses the native class or dataframe representation and attaches the data column
+        output = super()._cast_pointcloud_output(pointcloud)
+        if isinstance(output, gu.PointCloud):
+            return xdem.EPC(output)
 
-        if isinstance(pc, gu.PointCloud):
-            return xdem.EPC(pc)
-        else:
-            return pc
+        # Register lazily because raster-to-point conversion may create the first Dask dataframe
+        from geoutils._dispatch import is_dask_dataframe
+
+        if is_dask_dataframe(output):
+            from xdem.epc.pd_accessor import _register_dask_epc_accessor
+
+            _register_dask_epc_accessor()
+        return output

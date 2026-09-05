@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from geoutils import Raster, Vector
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.multiproc import MultiprocConfig, ClusterGenerator
+from geoutils.multiproc import ClusterGenerator, MultiprocConfig
 
 import xdem
 from xdem.coreg import BlockwiseCoreg, Coreg
@@ -35,7 +35,7 @@ def step() -> Coreg:
 
 @pytest.fixture
 def mp_config(tmp_path: Path) -> MultiprocConfig:
-    return MultiprocConfig(chunk_size=25, outfile=tmp_path / "aligned_dem.tif")
+    return MultiprocConfig(chunks=25, outfile=tmp_path / "aligned_dem.tif")
 
 
 @pytest.fixture
@@ -188,7 +188,7 @@ class TestBlockwiseCoreg:
             tba_crop = tba.icrop(bbox=(0, 0, block_size, block_size))
             tba = tba_crop.reproject(tba)
 
-        config_mc = MultiprocConfig(chunk_size=block_size, outfile=tmp_path / "test.tif")
+        config_mc = MultiprocConfig(chunks=block_size, outfile=tmp_path / "test.tif")
         blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step_coreg, mp_config=config_mc, block_size_fit=block_size)
         blockwise_coreg.fit(ref, tba, mask)
         blockwise_coreg.apply(tba)
@@ -218,7 +218,7 @@ class TestBlockwiseCoreg:
         """
 
         config_mc = MultiprocConfig(
-            chunk_size=block_size, outfile=tmp_path / "test.tif", cluster=ClusterGenerator("multi", nb_workers=4)
+            chunks=block_size, outfile=tmp_path / "test.tif", cluster=ClusterGenerator("multi", nb_workers=4)
         )
         with pytest.raises(
             ValueError, match="The blockwise coregistration only supports affine coregistration methods."
@@ -243,7 +243,7 @@ class TestBlockwiseCoreg:
         """
 
         config_mc = MultiprocConfig(
-            chunk_size=block_size, outfile=tmp_path / "test.tif", cluster=ClusterGenerator("multi", nb_workers=4)
+            chunks=block_size, outfile=tmp_path / "test.tif", cluster=ClusterGenerator("multi", nb_workers=4)
         )
         with pytest.raises(
             ValueError,
@@ -263,7 +263,7 @@ class TestBlockwiseCoreg:
             tba = tba_crop.reproject(tba)
 
         config_mc = MultiprocConfig(
-            chunk_size=block_size, outfile=tmp_path / "test.tif", cluster=ClusterGenerator("multi", nb_workers=4)
+            chunks=block_size, outfile=tmp_path / "test.tif", cluster=ClusterGenerator("multi", nb_workers=4)
         )
         blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step, mp_config=config_mc, block_size_fit=block_size)
         blockwise_coreg.fit(ref, tba, mask)

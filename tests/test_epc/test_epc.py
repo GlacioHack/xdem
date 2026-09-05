@@ -135,7 +135,7 @@ class TestEPC:
 
         # Setting a vertical CRS during instantiation should work here
         epc = EPC(self.gdf1, vcrs="EGM96")
-        assert epc.vcrs_name == "EGM96 height"
+        assert epc.vcrs == CRS.from_epsg(5773)
 
         # Tests 2: instantiation with a file that has a 3D CRS
         # Create such a file
@@ -143,8 +143,8 @@ class TestEPC:
         epc_reproj = epc.reproject(crs=4979)
 
         # Save to temporary folder
-        temp_file = tmp_path / "test.tif"
-        epc_reproj.save(temp_file)
+        temp_file = tmp_path / "test.gpkg"
+        epc_reproj.to_file(temp_file)
 
         # Check opening a EPC with a 3D CRS sets the vcrs
         epc_3d = EPC(temp_file)
@@ -153,8 +153,8 @@ class TestEPC:
         # Check that a warning is raised when trying to override with user input
         with pytest.warns(
             UserWarning,
-            match="The CRS in the point cloud metadata already has a vertical component, "
-            "the user-input 'EGM08' will override it.",
+            match="The CRS in the elevation metadata already has a vertical component, "
+            "the user-provided 'EGM08' will override it.",
         ):
             EPC(temp_file, vcrs="EGM08")
 
@@ -197,31 +197,27 @@ class TestEPC:
 
         # Check setting ellipsoid
         epc.set_vcrs(new_vcrs="Ellipsoid")
-        assert epc.vcrs_name is not None
-        assert "Ellipsoid (No vertical CRS)." in epc.vcrs_name
-        assert epc.vcrs_grid is None
+        assert epc.vcrs == "Ellipsoid"
 
         # Check setting EGM96
         epc.set_vcrs(new_vcrs="EGM96")
-        assert epc.vcrs_name == "EGM96 height"
-        assert epc.vcrs_grid == "us_nga_egm96_15.tif"
+        assert epc.vcrs == CRS.from_epsg(5773)
 
         # Check setting EGM08
         epc.set_vcrs(new_vcrs="EGM08")
-        assert epc.vcrs_name == "EGM2008 height"
-        assert epc.vcrs_grid == "us_nga_egm08_25.tif"
+        assert epc.vcrs == CRS.from_epsg(3855)
 
         # -- Test 2: we check with grids --
         # Most grids aren't going to be downloaded, so this warning can be raised
         warnings.filterwarnings("ignore", category=UserWarning, message="Grid*")
 
         epc.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
-        assert epc.vcrs_name == "unknown using geoidgrids=us_nga_egm96_15.tif"
-        assert epc.vcrs_grid == "us_nga_egm96_15.tif"
+        assert isinstance(epc.vcrs, CRS)
+        assert epc.vcrs.name == "unknown using geoidgrids=us_nga_egm96_15.tif"
 
         epc.set_vcrs(new_vcrs="us_nga_egm08_25.tif")
-        assert epc.vcrs_name == "unknown using geoidgrids=us_nga_egm08_25.tif"
-        assert epc.vcrs_grid == "us_nga_egm08_25.tif"
+        assert isinstance(epc.vcrs, CRS)
+        assert epc.vcrs.name == "unknown using geoidgrids=us_nga_egm08_25.tif"
 
         # Check that other existing grids are well detected in the pyproj.datadir
         epc.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
@@ -244,11 +240,11 @@ class TestEPC:
 
         # Reproject in WGS84 2D
         epc = epc.reproject(crs=4326)
-        epc_before_trans = epc.copy()
 
         # Set ellipsoid as vertical reference
         epc.set_vcrs(new_vcrs="Ellipsoid")
-        ccrs_init = epc.ccrs
+        crs_init = epc.crs
+        epc_before_trans = epc.copy()
         median_before = np.nanmean(epc)
         # Transform to EGM96 geoid not inplace (default)
         trans_epc = epc.to_vcrs(vcrs="EGM96")
@@ -269,8 +265,7 @@ class TestEPC:
         assert median_after - median_before == pytest.approx(-32, rel=0.1)
 
         # Check that the results are consistent with the operation done independently
-        ccrs_dest = xdem.vcrs._build_ccrs_from_crs_and_vcrs(epc.crs, xdem.vcrs._vcrs_from_user_input("EGM96"))
-        transformer = Transformer.from_crs(crs_from=ccrs_init, crs_to=ccrs_dest, always_xy=True)
+        transformer = Transformer.from_crs(crs_from=crs_init, crs_to=trans_epc.crs, always_xy=True)
 
         xx, yy = epc.geometry.x.values, epc.geometry.y.values
         x = xx[5]

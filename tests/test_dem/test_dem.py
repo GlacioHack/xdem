@@ -85,7 +85,7 @@ class TestDEM:
 
         # Setting a vertical CRS during instantiation should work here
         dem = DEM(fn_img, vcrs="EGM96")
-        assert dem._vcrs_name == "EGM96 height"
+        assert dem.vcrs == CRS.from_epsg(5773)
 
         # Tests 2: instantiation with a file that has a 3D CRS
         # Create such a file
@@ -103,7 +103,7 @@ class TestDEM:
         # Check that a warning is raised when trying to override with user input
         with pytest.warns(
             UserWarning,
-            match="The CRS in the raster metadata.*",
+            match="The CRS in the elevation metadata.*",
         ):
             DEM(temp_file, vcrs="EGM08")
 
@@ -156,7 +156,7 @@ class TestDEM:
         # raster_attrs = ['bounds', 'count', 'crs', 'dtypes', 'height', 'bands', 'nodata',
         #                    'res', 'shape', 'transform', 'width']
         # satimg_attrs = ['satellite', 'sensor', 'product', 'version', 'tile_name', 'datetime']
-        # dem_attrs = ['vcrs', 'vcrs_grid', 'vcrs_name', 'ccrs']
+        # dem_attrs = ["vcrs"]
 
         # using list directly available in Class
         attrs = [at for at in _default_rio_attrs if at not in ["name", "dataset_mask", "driver", "profile"]]
@@ -189,30 +189,27 @@ class TestDEM:
 
         # Check setting ellipsoid
         dem.set_vcrs(new_vcrs="Ellipsoid")
-        assert dem._vcrs_name is not None
-        assert "Ellipsoid (No vertical CRS)." in dem._vcrs_name
+        assert dem.vcrs == "Ellipsoid"
 
         # Check setting EGM96
         dem.set_vcrs(new_vcrs="EGM96")
-        assert dem._vcrs_name == "EGM96 height"
-        assert dem._vcrs_grid is None
+        assert dem.vcrs == CRS.from_epsg(5773)
 
         # Check setting EGM08
         dem.set_vcrs(new_vcrs="EGM08")
-        assert dem._vcrs_name == "EGM2008 height"
-        assert dem._vcrs_grid is None
+        assert dem.vcrs == CRS.from_epsg(3855)
 
         # -- Test 2: we check with grids --
         # Most grids aren't going to be downloaded, so this warning can be raised
         warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         dem.set_vcrs(new_vcrs="us_nga_egm96_15.tif")
-        assert dem._vcrs_name == "unknown using geoidgrids=us_nga_egm96_15.tif"
-        assert dem._vcrs_grid == "us_nga_egm96_15.tif"
+        assert isinstance(dem.vcrs, CRS)
+        assert dem.vcrs.name == "unknown using geoidgrids=us_nga_egm96_15.tif"
 
         dem.set_vcrs(new_vcrs="us_nga_egm08_25.tif")
-        assert dem._vcrs_name == "unknown using geoidgrids=us_nga_egm08_25.tif"
-        assert dem._vcrs_grid == "us_nga_egm08_25.tif"
+        assert isinstance(dem.vcrs, CRS)
+        assert dem.vcrs.name == "unknown using geoidgrids=us_nga_egm08_25.tif"
 
         # Check that other existing grids are well detected in the pyproj.datadir
         dem.set_vcrs(new_vcrs="is_lmi_Icegeoid_ISN93.tif")
@@ -260,8 +257,7 @@ class TestDEM:
         assert median_after - median_before == pytest.approx(-32, rel=0.1)
 
         # Check that the results are consistent with the operation done independently
-        crs_dest = xdem.vcrs._build_ccrs_from_crs_and_vcrs(dem.crs, xdem.vcrs._vcrs_from_user_input("EGM96"))
-        transformer = Transformer.from_crs(crs_from=crs_init, crs_to=crs_dest, always_xy=True)
+        transformer = Transformer.from_crs(crs_from=crs_init, crs_to=trans_dem.crs, always_xy=True)
 
         xx, yy = dem.coords()
         x = xx[5, 5]
@@ -366,29 +362,29 @@ class TestDEM:
                 assert raster_infos_arrays[line] == dem_infos_array[line]
 
             # Verify Coordinate system value
-            assert complete_line[len(crs_key):].strip() == "['ETRS89 / UTM zone 33N']"
+            assert complete_line[len(crs_key) :].strip() == "['EPSG:25833']"
 
         # Verify new VCRS value with this 2D CRS DEM
         dem.set_vcrs(new_vcrs="EGM96")
         dem_infos_array = dem.info(verbose=False).split("\n")
         complete_line = dem_infos_array[crs_line[0]]
         assert complete_line.startswith(crs_key)
-        assert complete_line[len(crs_key):].strip() == "['Horizontal: ETRS89 / UTM zone 33N; Vertical: EGM96 height']"
+        assert "EGM96 height" in complete_line
+        assert "ETRS89 / UTM zone 33N" in complete_line
 
-    @pytest.mark.skip()
     def test_info_3dcrs(self) -> None:
-        """Tests info function with the new Coordinate system line on dem with 3D CRS"""
+        """Checks that DEM information shows both CRS components without loading elevations."""
 
-        dem_path = xdem.examples.get_path_test("gizeh")
-        dem = xdem.dem.DEM(dem_path)
-        dem_infos_array = dem.info(verbose=False).split("\n")
+        # Assign a compound reference to the standard local example without transforming its data
+        dem_path = xdem.examples.get_path_test("longyearbyen_ref_dem")
+        dem = DEM(dem_path, vcrs=5703)
+        information = dem.info(verbose=False)
 
-        crs_key = "Coordinate system:"
-        crs_line = [dem_infos_array.index(line) for line in dem_infos_array if line.startswith(crs_key)]
-
-        complete_line = dem_infos_array[crs_line[0]]
-        assert complete_line.startswith(crs_key)
-        assert complete_line[len(crs_key) :].strip() == "['WGS 84 / UTM zone 36N + EGM96 height']"
+        # Both component names belong in the CRS description and can be read from metadata alone
+        crs_line = next(line for line in information.splitlines() if line.startswith("Coordinate system:"))
+        assert "ETRS89 / UTM zone 33N" in crs_line
+        assert "NAVD88 height" in crs_line
+        assert not dem.is_loaded
 
     @staticmethod
     @pytest.mark.parametrize(

@@ -29,10 +29,9 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import scipy
-from geoutils.stats.sampling import _subsample_numpy
 from numpy.polynomial.polynomial import polyval, polyval2d
 
-from xdem._misc import import_optional
+from xdem._misc import _subsample_numpy, import_optional
 from xdem._typing import NDArrayf
 
 if TYPE_CHECKING:

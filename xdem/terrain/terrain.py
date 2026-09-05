@@ -494,7 +494,8 @@ def get_terrain_attribute(
             result = map_overlap(
                 _terrain_attribute_raster_block, dem, config, attribute=attr, depth=block_depth, **options
             )
-            outputs.append(result)
+            # Restore the native raster subclass without loading the worker output file
+            outputs.append(dem.__class__(result))
     elif dask_backend:
         import_optional("dask")
         import dask.array as da

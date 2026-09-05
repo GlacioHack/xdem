@@ -4,7 +4,7 @@ channels:
 dependencies:
   - python>=3.10,<3.15
   # Core dependencies
-  - geoutils=0.2.5
+  - geoutils>=0.2.5  # Overriden by main branch in the pip section until the accessor release
   # First-order dependency on the above
   - geopandas>=0.12.0
   - rasterio>=1.3,<2
@@ -24,6 +24,7 @@ dependencies:
 
   # Optional dependencies
   - dask  # For scalable operations
+  - dask-geopandas  # For scalable point cloud operations
   - numba=0.*  # For fast numerical operations (terrain)
   - matplotlib=3.*  # For plotting
   - scikit-learn  # For optimizations
@@ -63,7 +64,6 @@ dependencies:
       # For CLI
       - plutoprint
 
+      # Follow upstream main while developing against the unreleased GeoUtils accessors
+      - git+https://github.com/GlacioHack/geoutils.git@main
       - -e ./
-
-    # To run CI against latest GeoUtils
-#      - git+https://github.com/rhugonnet/geoutils.git

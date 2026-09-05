@@ -23,17 +23,17 @@ from __future__ import annotations
 import os
 import pathlib
 import warnings
-from typing import Literal, TypedDict, Any, TYPE_CHECKING
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 from urllib.error import HTTPError
 
-from geoutils.raster.referencing import _coords
-from geoutils.multiproc import MultiprocConfig
-from geoutils.multiproc.mparray import map_overlap_multiproc_save
-from geoutils._dispatch import get_geo_attr
-
-import numpy as np
 import affine
+import numpy as np
 import pyproj
+from geoutils._dispatch import get_geo_attr
+from geoutils.multiproc import MultiprocConfig
+from geoutils.multiproc.mparray import map_overlap
+from geoutils.raster.referencing import _ij2xy
 from pyproj import CRS
 from pyproj.crs import BoundCRS, CompoundCRS, GeographicCRS, VerticalCRS
 from pyproj.crs.coordinate_system import Ellipsoidal3DCS
@@ -44,15 +44,10 @@ from xdem._misc import import_optional
 from xdem._typing import MArrayf, NDArrayf
 
 if TYPE_CHECKING:
-    from xdem import DEM
-    from xdem.dem.base import DEMBase
-
-# Optional Dask import
-try:
     import dask.array as da
-except ImportError:
-    da = None  # type: ignore[assignment]
 
+    from xdem import DEM
+    from xdem.dem.base import DEMBase, DEMLike
 
 # Sources for defining vertical references:
 # AW3D30: https://www.eorc.jaxa.jp/ALOS/en/aw3d30/aw3d30v11_format_e.pdf
@@ -76,6 +71,7 @@ vcrs_dem_products = {
     "COPDEM": "EGM08",
 }
 
+
 def _check_vcrs_input(vcrs: Any, crs: Any) -> Any:
     """
     Process user-input vertical CRS and CRS, and return normalized CRS output.
@@ -87,6 +83,10 @@ def _check_vcrs_input(vcrs: Any, crs: Any) -> Any:
     """
 
     # Parse 2D/3D CRS
+    if crs is None:
+        if vcrs is not None:
+            raise ValueError("A horizontal CRS is required before setting a vertical CRS.")
+        return None
     crs = pyproj.CRS.from_user_input(crs)
 
     # Vertical CRS from different sources
@@ -101,7 +101,7 @@ def _check_vcrs_input(vcrs: Any, crs: Any) -> Any:
         # User input takes precedence over CRS metadata
         if vcrs_from_crs is not None and vcrs_from_user != vcrs_from_crs:
             warnings.warn(
-                "The CRS in the raster metadata already has a vertical component, "
+                "The CRS in the elevation metadata already has a vertical component, "
                 f"the user-provided '{vcrs}' will override it."
             )
         out_vcrs = vcrs_from_user
@@ -110,11 +110,12 @@ def _check_vcrs_input(vcrs: Any, crs: Any) -> Any:
 
     # Build final CRS
     if out_vcrs is not None:
-        out_crs = _build_ccrs_from_crs_and_vcrs(crs, out_vcrs)
+        out_crs = _combine_crs_and_vcrs(crs, out_vcrs)
     else:
         out_crs = crs
 
     return out_crs
+
 
 # EPSG codes for units
 _UNIT_SYMBOLS = {
@@ -125,7 +126,8 @@ _UNIT_SYMBOLS = {
     "9102": "°",
 }
 
-def vertical_unit_symbol(crs) -> str | None:
+
+def vertical_unit_symbol(crs: Any) -> str | None:
     """
     Return the short unit symbol of the vertical axis (e.g. "m", "ft").
 
@@ -167,6 +169,7 @@ def vertical_unit_symbol(crs) -> str | None:
 
     return None
 
+
 def _parse_vcrs_name_from_product(product: str) -> str | None:
     """
     Parse vertical CRS name from DEM product name.
@@ -184,7 +187,7 @@ def _parse_vcrs_name_from_product(product: str) -> str | None:
     return vcrs_name
 
 
-def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) -> CRS:
+def _combine_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) -> CRS:
     """
     Build a 3D CRS (compound or expanded) from a horizontal CRS and a vertical CRS input.
 
@@ -203,7 +206,7 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) ->
 
         if Version(pyproj.__version__) >= Version("3.5.1"):
             crs_from = CRS(crs).to_2d()
-            ccrs = CompoundCRS(
+            combined_crs = CompoundCRS(
                 name="Horizontal: " + CRS(crs).name + "; Vertical: " + vcrs.name,
                 components=[crs_from, vcrs],
             )
@@ -219,7 +222,7 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) ->
                 )
             # If 2D
             else:
-                ccrs = CompoundCRS(
+                combined_crs = CompoundCRS(
                     name="Horizontal: " + CRS(crs).name + "; Vertical: " + vcrs.name,
                     components=[crs_from, vcrs],
                 )
@@ -227,11 +230,11 @@ def _build_ccrs_from_crs_and_vcrs(crs: CRS, vcrs: CRS | Literal["Ellipsoid"]) ->
     # Else if "Ellipsoid" was passed, there is no vertical CRS, but we expand the ellipsoid to 3D
     # We isolate the 2D horizontal CRS (removing potential geoids), then expand it to 3D
     elif isinstance(vcrs, str) and vcrs.lower() == "ellipsoid":
-        ccrs = CRS(crs).to_2d().to_3d()
+        combined_crs = CRS(crs).to_2d().to_3d()
     else:
         raise ValueError("Invalid vcrs given. Must be a vertical CRS or the literal string 'Ellipsoid'.")
 
-    return ccrs
+    return combined_crs
 
 
 def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> BoundCRS:
@@ -268,8 +271,8 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> BoundCRS:
     if old_way:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", module="pyproj")
-            ccrs = pyproj.Proj(init="EPSG:4326", geoidgrids=grid).crs
-            bound_crs = ccrs.sub_crs_list[1]
+            combined_crs = pyproj.Proj(init="EPSG:4326", geoidgrids=grid).crs
+            bound_crs = combined_crs.sub_crs_list[1]
 
     # The clean way
     else:
@@ -314,6 +317,7 @@ _vcrs_meta: dict[str, VCRSMetaDict] = {
     "EGM08": {"grid": "us_nga_egm08_25.tif", "epsg": 3855},  # EGM2008 at 2.5 minute resolution
     "EGM96": {"grid": "us_nga_egm96_15.tif", "epsg": 5773},  # EGM1996 at 15 minute resolution
 }
+
 
 def _vcrs_from_crs(crs: CRS | None) -> CRS | Literal["Ellipsoid"] | None:
     """Get the vertical CRS from a CRS."""
@@ -411,28 +415,6 @@ def _vcrs_from_user_input(
     return vcrs
 
 
-def _grid_from_user_input(vcrs_input: str | pathlib.Path | int | CRS) -> str | None:
-
-    # If a grid or name was passed, get grid name
-    if isinstance(vcrs_input, (str, pathlib.Path)):
-        # If the string is within the supported names
-        if isinstance(vcrs_input, str) and vcrs_input in _vcrs_meta.keys():
-            grid = _vcrs_meta[vcrs_input]["grid"]
-        # If it's a pathlib path
-        elif isinstance(vcrs_input, pathlib.Path):
-            grid = vcrs_input.name
-        # Or an ellipsoid
-        elif vcrs_input.lower() == "ellipsoid":
-            grid = None
-        # Or a string path
-        else:
-            grid = vcrs_input
-    # Otherwise, there is none
-    else:
-        grid = None
-
-    return grid
-
 def _build_vertical_transformer(crs_from: CRS, crs_to: CRS) -> pyproj.Transformer:
     """
     Build the best available transformer for a vertical CRS transformation.
@@ -459,6 +441,7 @@ def _build_vertical_transformer(crs_from: CRS, crs_to: CRS) -> pyproj.Transforme
 
     return trans_group.transformers[0]
 
+
 def _transform_zz(
     transformer: pyproj.Transformer,
     xx: NDArrayf,
@@ -474,63 +457,92 @@ def _transform_zz(
 
     return zz_trans
 
+
 # Vertical CRS transformation for DEMs
 ######################################
+
 
 def _to_vcrs_2d_pyproj(
     data: NDArrayf,
     transform: affine.Affine,
     transformer: pyproj.Transformer,
+    area_or_point: Literal["Area", "Point"] | None = None,
+    pixel_offset: tuple[int, int] = (0, 0),
 ) -> NDArrayf:
     """
-    Base function: transforms one raster block from source to destination vertical CRS.
+    Transform raster elevations at their original pixel coordinates, optionally starting at a tile's row and column.
+
+    We need the original transform and global pixel indices because rebuilding coordinates from a tile's origin
+    changes floating-point rounding for fractional pixel sizes. Each backend must sample the geoid at the same points.
     """
-    xx, yy = _coords(shape=data.shape, transform=transform, area_or_point=None)
+
+    # 1/ Prepare the global pixel indices, preserving an optional band axis
+    has_band_axis = data.ndim == 3 and data.shape[0] == 1
+    if has_band_axis:
+        data = data[0]
+    row_start, col_start = pixel_offset
+    rows = np.arange(row_start, row_start + data.shape[0])
+    cols = np.arange(col_start, col_start + data.shape[1])
+
+    # 2/ Transform elevations at the same coordinates as the full raster
+    # GeoUtils applies the shared Area/Point convention before the original affine transform
+    xx, _ = _ij2xy(i=0, j=cols, transform=transform, area_or_point=area_or_point)
+    _, yy = _ij2xy(i=rows, j=0, transform=transform, area_or_point=area_or_point)
+    xx, yy = np.meshgrid(xx, yy)
     zz_trans = _transform_zz(
         transformer=transformer,
         xx=xx,
         yy=yy,
         zz=data,
     )
-    return zz_trans.astype(data.dtype, copy=False)
+
+    # 3/ Retain the input mask, floating precision and dimensions after transformation
+    values = np.asanyarray(zz_trans).astype(data.dtype, copy=False)
+    return values[None, ...] if has_band_axis else values
+
 
 def _to_vcrs_2d_block_dask(
     data: NDArrayf,
     *,
     transform: affine.Affine,
-    src_ccrs_wkt: str,
-    dst_ccrs_wkt: str,
+    src_crs_wkt: str,
+    dst_crs_wkt: str,
+    area_or_point: Literal["Area", "Point"] | None = None,
     block_info: list[dict[str, Any]] | None = None,
 ) -> NDArrayf:
-    """Dask block wrapper deriving the local transform from block_info."""
+    """Transform a Dask block at global pixel indices supplied by block_info."""
 
     if block_info is None:
         raise ValueError("block_info must be provided.")
 
-    # Reconstruct transform from block info
-    row_loc, col_loc = block_info[0]["array-location"]
+    # Read the tile's starting indices without recomputing a rounded affine origin
+    row_loc, col_loc = block_info[0]["array-location"][-2:]
 
     # Dask may return slices or (start, stop) tuples depending on version
     row_start = row_loc.start if hasattr(row_loc, "start") else row_loc[0]
     col_start = col_loc.start if hasattr(col_loc, "start") else col_loc[0]
-    block_transform = transform * affine.Affine.translation(col_start, row_start)
 
     # Rebuild transformer inside the block (serialization issues with a Pyproj transformer if passing it)
     transformer = _build_vertical_transformer(
-        crs_from=CRS.from_wkt(src_ccrs_wkt),
-        crs_to=CRS.from_wkt(dst_ccrs_wkt),
+        crs_from=CRS.from_wkt(src_crs_wkt),
+        crs_to=CRS.from_wkt(dst_crs_wkt),
     )
 
     return _to_vcrs_2d_pyproj(
         data=data,
-        transform=block_transform,
+        transform=transform,
         transformer=transformer,
+        area_or_point=area_or_point,
+        pixel_offset=(row_start, col_start),
     )
+
+
 def _dask_to_vcrs_2d(
     darr: da.Array,
     transform: affine.Affine,
-    src_ccrs: CRS,
-    dst_ccrs: CRS,
+    src_crs: CRS,
+    dst_crs: CRS,
+    area_or_point: Literal["Area", "Point"] | None = None,
 ) -> da.Array:
     """Blockwise vertical CRS transform using Dask."""
 
@@ -539,64 +551,82 @@ def _dask_to_vcrs_2d(
     return darr.map_blocks(
         _to_vcrs_2d_block_dask,
         transform=transform,
-        src_ccrs_wkt=src_ccrs.to_wkt(),
-        dst_ccrs_wkt=dst_ccrs.to_wkt(),
+        src_crs_wkt=src_crs.to_wkt(),
+        dst_crs_wkt=dst_crs.to_wkt(),
+        area_or_point=area_or_point,
         dtype=darr.dtype,
         meta=np.array((), dtype=darr.dtype),
     )
 
+
 def _to_vcrs_2d_block_mp(
     dem: DEM,
-    src_ccrs_wkt: str,
-    dst_ccrs_wkt: str,
+    src_crs_wkt: str,
+    dst_crs_wkt: str,
+    source_transform: affine.Affine,
 ) -> DEM:
-    """Multiprocessing block wrapper using the tile-local transform directly."""
+    """Transform a multiprocessing tile using the original raster transform and global pixel indices."""
 
     # Rebuild transformer inside the block (serialization issues with a Pyproj transformer if passing it)
     transformer = _build_vertical_transformer(
-        crs_from=CRS.from_wkt(src_ccrs_wkt),
-        crs_to=CRS.from_wkt(dst_ccrs_wkt),
+        crs_from=CRS.from_wkt(src_crs_wkt),
+        crs_to=CRS.from_wkt(dst_crs_wkt),
     )
 
-    # Transform
+    # Worker windows lie on the source grid; round inverse coordinates to recover their integer offsets
+    col_start, row_start = ~source_transform * (dem.transform.c, dem.transform.f)
+    pixel_offset = (int(round(row_start)), int(round(col_start)))
+
+    # Transform using global indices so fractional pixels match the eager and Dask calculations exactly
     out_data = _to_vcrs_2d_pyproj(
         data=dem.data,
-        transform=dem.transform,
+        transform=source_transform,
         transformer=transformer,
+        area_or_point=dem.area_or_point,
+        pixel_offset=pixel_offset,
     )
 
     return dem.from_array(
         data=out_data,
         transform=dem.transform,
-        crs=dem.crs,
+        crs=CRS.from_wkt(dst_crs_wkt),
         nodata=dem.nodata,
         area_or_point=dem.area_or_point,
         tags=dem.tags,
     )
 
+
 def _multiproc_to_vcrs_2d(
     dem: DEM,
     *,
-    src_ccrs: CRS,
-    dst_ccrs: CRS,
+    src_crs: CRS,
+    dst_crs: CRS,
     mp_config: MultiprocConfig,
 ) -> DEM:
     """
     Vertical CRS transform using multiprocessing.
     """
 
-    out_dem = map_overlap_multiproc_save(
+    out_dem = map_overlap(
         _to_vcrs_2d_block_mp,
         dem,
         mp_config,
-        src_ccrs.to_wkt(),
-        dst_ccrs.to_wkt(),
+        src_crs.to_wkt(),
+        dst_crs.to_wkt(),
+        source_transform=dem.transform,
         depth=0,
     )
-    out_dem.set_crs(dst_ccrs)
+
+    # GeoUtils' overlap writer retains the input grid CRS, so update the file's vertical metadata explicitly
+    import rasterio as rio
 
     from xdem.dem.dem import DEM
-    return DEM(out_dem)
+
+    with rio.open(out_dem.name, "r+") as dataset:
+        dataset.crs = dst_crs
+        dataset.update_tags(**dem.tags)
+    return DEM(out_dem.name)
+
 
 def _get_vertical_transform_crss(
     crs: Any,
@@ -604,8 +634,11 @@ def _get_vertical_transform_crss(
     force_source_vcrs: Any | None = None,
 ) -> tuple[CRS, CRS]:
     """
-    Build source and destination compound CRS for a vertical transformation, and raise errors where necessary.
+    Build source and destination 3D CRS for a vertical transformation, and raise errors where necessary.
     """
+
+    if crs is None:
+        raise ValueError("A horizontal CRS is required before transforming a vertical CRS.")
 
     # Get source VCRS from current CRS
     src_vcrs = _vcrs_from_crs(crs)
@@ -613,37 +646,38 @@ def _get_vertical_transform_crss(
     # Early exit if conversion not defined
     if src_vcrs is None and force_source_vcrs is None:
         raise ValueError(
-            "The current DEM has no vertical reference, define one with .set_vcrs() "
-            "or by passing `vcrs` to perform a conversion."
+            "The elevation data have no vertical reference, define one with .set_vcrs() "
+            "or by passing `force_source_vcrs` to perform a conversion."
         )
 
-    # Initial Compound CRS
+    # Build the source 3D CRS
     if force_source_vcrs is not None:
         if src_vcrs is not None:
             warnings.warn(
                 category=UserWarning,
-                message=f"Overriding the vertical CRS of the DEM "
-                        f"with the one provided in `force_source_vcrs`: {force_source_vcrs}.",
+                message=f"Overriding the vertical CRS of the elevation data "
+                f"with the one provided in `force_source_vcrs`: {force_source_vcrs}.",
             )
         force_src_vcrs = _vcrs_from_user_input(force_source_vcrs)
-        src_ccrs = _build_ccrs_from_crs_and_vcrs(crs, vcrs=force_src_vcrs)
+        src_crs = _combine_crs_and_vcrs(crs, vcrs=force_src_vcrs)
     else:
-        src_ccrs = crs
+        src_crs = crs
 
-    # Destination Compound CRS
-    dst_ccrs = _build_ccrs_from_crs_and_vcrs(
+    # Build the destination 3D CRS
+    dst_crs = _combine_crs_and_vcrs(
         crs,
         vcrs=_vcrs_from_user_input(vcrs_input=dst_vcrs),
     )
 
-    return src_ccrs, dst_ccrs
+    return src_crs, dst_crs
+
 
 def _to_vcrs_2d(
     dem: DEMBase,
     dst_vcrs: Any,
     force_source_vcrs: Any | None = None,
     mp_config: MultiprocConfig | None = None,
-) -> DEMBase | None:
+) -> DEMLike | None:
     """
     Transform DEM to a different vertical CRS (no change in horizontal CRS).
 
@@ -653,12 +687,12 @@ def _to_vcrs_2d(
     :param dst_vcrs: Destination vertical CRS.
     :param force_source_vcrs: Force the source vertical CRS if not defined or to override it.
     :param mp_config: Multiprocessing configuration.
-    :returns: Transformed elevation array and destination compound CRS.
+    :returns: DEM or DataArray with transformed elevations and destination CRS, or None when no change is needed.
     """
 
     # Cannot use Multiprocessing backend and Dask backend simultaneously
     mp_backend = mp_config is not None
-    dask_backend = da is not None and dem._chunks is not None
+    dask_backend = dem._chunks is not None
 
     if mp_backend and dask_backend:
         raise ValueError(
@@ -666,16 +700,16 @@ def _to_vcrs_2d(
             "from to_vcrs(). To use Multiprocessing, use a DEM object input and pass mp_config."
         )
 
-    # Build source and destination compound CRS from the input vertical CRSs
-    src_ccrs, dst_ccrs = _get_vertical_transform_crss(
+    # Build source and destination 3D CRS from the input vertical CRSs
+    src_crs, dst_crs = _get_vertical_transform_crss(
         crs=dem.crs,
         dst_vcrs=dst_vcrs,
         force_source_vcrs=force_source_vcrs,
     )
     transform = get_geo_attr(dem, "transform")
 
-    # If both compound CRS are equal, do not run any transform
-    if src_ccrs.equals(dst_ccrs):
+    # If both 3D CRS are equal, do not run any transform
+    if src_crs.equals(dst_crs):
         warnings.warn(
             message="Source and destination vertical CRS are the same, skipping vertical transformation.",
             category=UserWarning,
@@ -685,14 +719,14 @@ def _to_vcrs_2d(
     # Build transformer once to trigger grid download outside of parallelization + validate best available transform
     # We won't be able to pass the transformer directly to the chunked functions (not serializable),
     # so we'll repass the src/dst CRS
-    _build_vertical_transformer(crs_from=src_ccrs, crs_to=dst_ccrs)
+    _build_vertical_transformer(crs_from=src_crs, crs_to=dst_crs)
 
     # Multiprocessing backend
     if mp_backend:
         dem_out = _multiproc_to_vcrs_2d(
             dem=dem,
-            src_ccrs=src_ccrs,
-            dst_ccrs=dst_ccrs,
+            src_crs=src_crs,
+            dst_crs=dst_crs,
             mp_config=mp_config,
         )
         return dem_out
@@ -703,24 +737,163 @@ def _to_vcrs_2d(
             zz_trans = _dask_to_vcrs_2d(
                 darr=dem.data,
                 transform=transform,
-                src_ccrs=src_ccrs,
-                dst_ccrs=dst_ccrs,
+                src_crs=src_crs,
+                dst_crs=dst_crs,
+                area_or_point=dem.area_or_point,
             )
         else:
             # Direct NumPy backend
-            transformer = _build_vertical_transformer(crs_from=src_ccrs, crs_to=dst_ccrs)
+            transformer = _build_vertical_transformer(crs_from=src_crs, crs_to=dst_crs)
             zz_trans = _to_vcrs_2d_pyproj(
                 data=dem.data,
                 transform=transform,
                 transformer=transformer,
+                area_or_point=dem.area_or_point,
             )
 
-        dem_out = dem.from_array(
-            data=zz_trans,
-            transform=transform,
-            crs=dst_ccrs,
-            nodata=dem.nodata,
-            area_or_point=dem.area_or_point,
-            tags=dem.tags,
-        )
+        dem_out = dem.copy(new_array=zz_trans)
+        get_geo_attr(dem_out, "set_crs")(dst_crs)
+
         return dem_out
+
+
+# Shared vertical metadata for raster and point elevation data
+############################################################
+
+
+class _VerticalReference(ABC):
+    """Keep VCRS metadata and its manipulation consistent across DEMBase and EPCBase.
+
+    We need this because DEMs and elevation point clouds use the same vertical reference metadata and rules for
+    reading or setting it. Keeping that code here avoids duplicating it in DEMBase and EPCBase, so their native
+    classes and accessors all use the same implementation.
+
+    The public ``vcrs`` property returns the vertical part. The existing ``crs`` property returns the complete 3D
+    reference, so separate properties for its name, grid or combined form are unnecessary.
+
+    Each concrete backend supplies CRS access and assignment without loading elevations. Numerical vertical
+    transformations stay in the raster and point implementations because their data representations differ.
+    """
+
+    @property
+    @abstractmethod
+    def crs(self) -> Any:
+        """Horizontal or three-dimensional CRS, without loading elevation values."""
+
+    @abstractmethod
+    def _set_vcrs_crs(self, new_crs: CRS) -> None:
+        """Replace CRS metadata without loading elevation values."""
+
+    @property
+    def vcrs(self) -> VerticalCRS | Literal["Ellipsoid"] | None:
+        """
+        Vertical coordinate reference system of the elevation data.
+        """
+        return _vcrs_from_crs(self.crs)
+
+    def set_vcrs(
+        self,
+        new_vcrs: Literal["Ellipsoid"] | Literal["EGM08"] | Literal["EGM96"] | str | pathlib.Path | VerticalCRS | int,
+    ) -> None:
+        """
+        Set the vertical coordinate reference system of the elevation data.
+
+        :param new_vcrs: Vertical coordinate reference system either as a name ("Ellipsoid", "EGM08", "EGM96"),
+            an EPSG code or pyproj.crs.VerticalCRS, or a path to a PROJ grid file (https://github.com/OSGeo/PROJ-data).
+        """
+
+        # Require horizontal referencing before combining it with the vertical datum
+        if self.crs is None:
+            raise ValueError("A horizontal CRS is required before setting a vertical CRS.")
+
+        # Get vertical CRS and re-set the CRS
+        new_vcrs = _vcrs_from_user_input(vcrs_input=new_vcrs)
+        new_crs = _combine_crs_and_vcrs(crs=self.crs, vcrs=new_vcrs)
+        self._set_vcrs_crs(new_crs)
+
+
+# Vertical CRS transformation for elevation point clouds
+########################################################
+
+
+def _to_vcrs_1d_dataframe(ds: Any, data_column: str | None, src_crs: CRS, dst_crs: CRS) -> Any:
+    """Transform one point partition, preserving its index, auxiliary columns and elevation dtype."""
+
+    import geopandas as gpd
+
+    # Build the transformer inside the worker and transform only elevation values
+    transformer = _build_vertical_transformer(src_crs, dst_crs)
+    elevations = ds[data_column].to_numpy() if data_column is not None else ds.geometry.z.to_numpy()
+    transformed = _transform_zz(transformer, ds.geometry.x.to_numpy(), ds.geometry.y.to_numpy(), elevations)
+    values = np.asarray(transformed).astype(elevations.dtype, copy=False)
+
+    # Preserve horizontal geometry and auxiliary data while replacing the elevation representation
+    result = ds.copy()
+    if data_column is not None:
+        result[data_column] = values
+    else:
+        result.geometry = gpd.points_from_xy(ds.geometry.x, ds.geometry.y, z=values, crs=ds.crs)
+    result.set_crs(dst_crs, allow_override=True, inplace=True)
+    result.attrs["data_column"] = data_column
+    return result
+
+
+def _to_vcrs_1d(
+    epc: Any,
+    dst_vcrs: Any,
+    force_source_vcrs: Any = None,
+    mp_config: MultiprocConfig | None = None,
+) -> Any:
+    """Transform native or accessor elevation points with eager, Dask or multiprocessing execution."""
+
+    from geoutils.pointcloud.base import _get_dataframe_attrs, _set_dataframe_attrs
+    from geoutils.pointcloud.las import _point_partition_size
+
+    # Reject mixed backends before inspecting any elevation values
+    if mp_config is not None and epc._is_dask:
+        raise ValueError("Cannot use multiprocessing and Dask simultaneously. Remove mp_config for Dask inputs.")
+    src_crs, dst_crs = _get_vertical_transform_crss(epc.crs, dst_vcrs, force_source_vcrs)
+    if src_crs.equals(dst_crs):
+        warnings.warn("Source and destination vertical CRS are the same, skipping vertical transformation.")
+        return epc.copy() if epc.is_loaded or epc._is_pd else epc.__class__(epc)
+
+    # Resolve any missing grid once before sending work to workers
+    _build_vertical_transformer(src_crs, dst_crs)
+    if epc._is_dask:
+        if epc.data_column is None:
+            raise ValueError("Dask-backed point clouds require an explicit data column.")
+        meta = epc.ds._meta.set_crs(dst_crs, allow_override=True)
+        result = epc.ds.map_partitions(_to_vcrs_1d_dataframe, epc.data_column, src_crs, dst_crs, meta=meta)
+        attrs = _get_dataframe_attrs(epc.ds).copy()
+        attrs["crs"] = dst_crs
+        _set_dataframe_attrs(result, attrs)
+        return result
+
+    # Load a separate native object for multiprocessing so the source keeps its metadata-only state
+    if mp_config is not None:
+        import pandas as pd
+
+        source = epc
+        if not epc.is_loaded:
+            source = epc.__class__(epc)
+            source.load(mp_config=mp_config)
+        partition_size = _point_partition_size(mp_config)
+        futures = [
+            mp_config.cluster.submit(
+                _to_vcrs_1d_dataframe,
+                source.ds.iloc[start : start + partition_size],
+                epc.data_column,
+                src_crs,
+                dst_crs,
+            )
+            for start in range(0, source.point_count, partition_size)
+        ]
+        parts = mp_config.cluster.gather(futures)
+        result = pd.concat(parts) if parts else _to_vcrs_1d_dataframe(source.ds, epc.data_column, src_crs, dst_crs)
+    else:
+        result = _to_vcrs_1d_dataframe(epc.ds, epc.data_column, src_crs, dst_crs)
+
+    # Reconstruct the runtime native class or return the dataframe directly for accessors
+    if epc._is_pd:
+        return result
+    return epc.__class__(result, data_column=epc.data_column)

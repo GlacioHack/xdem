@@ -393,9 +393,7 @@ class TestCoregClass:
         aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
 
         # Perform fit and apply
-        aligned_and = coreg_fit_and_apply.fit_and_apply(
-            **self.fit_params, fit_kwargs=fit_kwargs
-        )
+        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, fit_kwargs=fit_kwargs)
 
         # Check outputs are the same: aligned raster, and metadata keys and values
 
@@ -963,8 +961,7 @@ class TestAffineManipulation:
     @pytest.mark.parametrize("regrid_method", [None, "iterative", "griddata"])
     @pytest.mark.parametrize("matrix", list_matrices)
     def test_apply_matrix__raster(self, regrid_method: None | str, matrix: NDArrayf) -> None:
-        """Test that apply matrix gives consistent results between points and rasters (thus validating raster
-        implementation, as point implementation is validated above), for all possible regridding methods."""
+        """Checks that affine raster transformations reproduce a plane's exact transformed point elevations."""
 
         # Create a synthetic raster and convert to point cloud
         # dem = gu.Raster(self.ref)
@@ -983,9 +980,14 @@ class TestAffineManipulation:
         # Interpolate transformed DEM at coordinates of the transformed point cloud
         # Because the raster created as a constant slope (plan-like), the interpolated values should be very close
         z_points = trans_dem.interp_points(
-            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values),
+            as_array=True,
+            nodata_propagation="propagate",
         )
-        valids = np.isfinite(z_points)
+        # Exclude partial interpolation windows, where edge clamping cannot reproduce an inclined plane
+        cols, rows = ~trans_dem.transform * (trans_epc.geometry.x.values, trans_epc.geometry.y.values)
+        interior = (cols >= 1) & (cols <= trans_dem.width - 2) & (rows >= 1) & (rows <= trans_dem.height - 2)
+        valids = np.isfinite(z_points) & interior
         assert np.count_nonzero(valids) > 0
         assert np.allclose(z_points[valids], trans_epc.z.values[valids], rtol=10e-5)
 
@@ -1025,7 +1027,7 @@ class TestAffineManipulation:
         assert np.array_equal(np.logical_or(smallest_mask, mask_nodata_gd), mask_nodata_gd)
 
     def test_apply_matrix__raster_realdata(self) -> None:
-        """Testing real data no complex matrix only to avoid all loops"""
+        """Checks that iterative and triangulated affine regridding agree on real terrain away from data gaps."""
 
         # Use real data
         dem = self.ref
@@ -1045,10 +1047,14 @@ class TestAffineManipulation:
 
         # Interpolate transformed DEM at coordinates of the transformed point cloud, and check values are very close
         z_points_it = trans_dem_it.interp_points(
-            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values),
+            as_array=True,
+            nodata_propagation="propagate",
         )
         z_points_gd = trans_dem_gd.interp_points(
-            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values),
+            as_array=True,
+            nodata_propagation="propagate",
         )
 
         valids = np.logical_and(np.isfinite(z_points_it), np.isfinite(z_points_gd))

@@ -30,6 +30,10 @@ jobs:
         run: |
           python -m pip install . -vv
 
+      # Comment this temporary override after the GeoUtils accessor release
+      - name: Install latest GeoUtils main
+        run: python -m pip install --upgrade --force-reinstall --no-deps "geoutils @ git+https://github.com/GlacioHack/geoutils.git@main"
+
       # Check import works
       - name: Check import works with base environment
         run: python -c "import xdem"
