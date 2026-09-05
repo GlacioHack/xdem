@@ -253,10 +253,10 @@ class TestAffineCoreg:
         self, coreg_method__shift: tuple[type[AffineCoreg], tuple[float, float, float]]
     ) -> None:
         """
-        Checks that translation fits reproduce fixed reference values on the real example data.
+        Test that the translation co-registration outputs are always exactly the same on the real example data.
         """
 
-        # Use full DEMs and reference values computed with GeoUtils' normalized finite-neighbor interpolation
+        # Use entire DEMs here (to compare to original values from older package versions)
         ref, tba, outlines = load_examples_fullsize()
         inlier_mask = ~outlines.create_mask(ref)
 
@@ -458,7 +458,7 @@ class TestAffineCoreg:
         self, coreg_method__shifts_rotations: tuple[type[AffineCoreg], tuple[float, float, float]]
     ) -> None:
         """
-        Checks that rigid fits reproduce fixed translation and rotation references on the real example data.
+        Test that the rigid co-registration outputs is always exactly the same on the real example data.
         """
 
         # Use entire DEMs here (to compare to original values from older package versions)

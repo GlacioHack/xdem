@@ -27,16 +27,9 @@ import re
 import warnings
 from typing import Any, Callable, Iterable, TypeVar
 
-import geoutils as gu
 from packaging.version import Version
 
 import xdem
-
-# Support GeoUtils main and its pending relocation of the sampling module
-if hasattr(gu, "sampling"):
-    _subsample_numpy = gu.sampling.subsampling._subsample_numpy
-else:
-    _subsample_numpy = gu.stats.sampling._subsample_numpy
 
 
 def get_progress(iterable: Any | None = None, **kwargs: Any) -> Any:

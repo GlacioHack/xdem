@@ -95,11 +95,13 @@ class NeedsTestError(ValueError):
 
 class TestDEMInheritance:
     """
-    Test that DEM and its Xarray accessor inherit the same elevation API without shadowing shared implementations.
+    Test that DEM and its Xarray accessor use the shared DEM base classes.
 
-    The generic consistency classes below exercise public behavior. This class checks the complementary ownership
-    contract: VCRS and DEM methods stay on their internal bases, while each concrete interface only implements the
-    storage-specific hooks and conversions it needs.
+    This class tests:
+    - ``DEM`` and ``DEMAccessor`` inheritance from ``DEMBase`` and ``_VerticalReference``,
+    - The absence of unused overrides for methods already implemented by those base classes.
+
+    The consistency classes below test the behavior of the shared methods.
     """
 
     def test_shared_method_ownership(self) -> None:
@@ -121,10 +123,15 @@ class TestDEMInheritance:
 
 class TestClassVsAccessorConsistencyInherited:
     """
-    Test class to check the consistency between the outputs of a light subset of inherited RasterBase
-    attributes and methods through the DEM class and Xarray accessor.
+    Test representative ``RasterBase`` behavior inherited by DEM and its Xarray accessor.
 
-    This ensures that DEM preserves inherited raster behaviour without re-testing the full GeoUtils API.
+    This class tests:
+    - Metadata properties that do not read the elevation array,
+    - Methods returning coordinates, arrays or rasters,
+    - Input and output loading for eager calls,
+    - Input and output laziness for Dask calls.
+
+    The complete ``RasterBase`` API is tested in GeoUtils.
     """
 
     # Run tests for different DEMs
@@ -321,16 +328,17 @@ class TestClassVsAccessorConsistencyInherited:
 
 class TestClassVsAccessorConsistencyDEMBase:
     """
-    Test class to check the consistency between the outputs, loading, laziness and chunked operations
-    of the DEM class and Xarray accessor for DEMBase-specific attributes or methods.
+    Test the ``DEMBase`` and vertical-reference API through DEM and its Xarray accessor.
 
-    All DEM-specific shared attributes should be the same.
-    All DEM-specific operations manipulating the array should yield a comparable results, accounting for the fact that
-    DEM class relies on masked-arrays and the Xarray accessor on NaN arrays.
+    This class tests:
+    - Shared properties for equal values and expected loading,
+    - Shared methods for equal outputs and expected loading,
+    - Class constructors for equal DEM and DataArray results,
+    - Automatic coverage of every public method using ``NeedsTestError``,
+    - Chunked methods for exact results and unchanged source laziness.
 
-    Properties and methods are discovered automatically from DEMBase, and the case tables below define their inputs
-    and expected loading behavior. Coregistration and uncertainty need richer inputs and multiple-output comparisons,
-    so the final class in this module tests them separately.
+    Comparisons account for masked arrays in DEM and NaN arrays in Xarray. Coregistration and uncertainty are tested
+    separately below because they need additional inputs.
     """
 
     # Run tests for different DEMs
@@ -687,11 +695,12 @@ class TestClassVsAccessorConsistencyDEMBase:
 
 class TestDEMEagerAnalysis:
     """
-    Test coregistration and uncertainty methods that need richer inputs than the generic consistency table above.
+    Test coregistration and uncertainty through DEM and its Xarray accessor.
 
-    These tests compare native DEM results with Xarray accessor results for raster and point references, masks, bias
-    variables, coregistration methods and uncertainty approaches. The last tests document the intentionally unsupported
-    Dask boundary and check that rejection does not compute or replace any lazy input.
+    This class tests:
+    - ``coregister_3d`` with raster and point references, masks and bias variables,
+    - ``estimate_uncertainty`` with raster and point references, masks and all approaches,
+    - Clear rejection of lazy analysis inputs without computing or replacing them.
     """
 
     def test_coregister_3d__bias_variables_and_mask(self, accessor_dem_path: Path) -> None:

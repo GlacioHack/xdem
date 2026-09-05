@@ -256,11 +256,13 @@ class TestVCRS:
 
 class TestToVCRSChunked:
     """
-    Test that each supported way of running a vertical transformation returns the same result.
+    Test vertical transformations across eager, Dask and multiprocessing backends.
 
-    The tests below compare results from regular, Dask and multiprocessing calls. They cover "Area" and "Point"
-    pixel interpretation, fractional coordinates, Xarray data with and without a band dimension, point clouds of
-    different sizes, lazy loading, output metadata and a direct calculation with PyProj.
+    This class tests:
+    - ``to_vcrs`` for DEM and Xarray inputs with ``Area`` and ``Point`` coordinates,
+    - Fractional raster coordinates, optional band dimensions and exact backend equality,
+    - ``to_vcrs`` for empty and partitioned point clouds,
+    - Output metadata, source laziness and independent PyProj results.
     """
 
     @pytest.mark.parametrize("area_or_point", ["Area", "Point"])

@@ -961,7 +961,8 @@ class TestAffineManipulation:
     @pytest.mark.parametrize("regrid_method", [None, "iterative", "griddata"])
     @pytest.mark.parametrize("matrix", list_matrices)
     def test_apply_matrix__raster(self, regrid_method: None | str, matrix: NDArrayf) -> None:
-        """Checks that affine raster transformations reproduce a plane's exact transformed point elevations."""
+        """Test that apply matrix gives consistent results between points and rasters (thus validating raster
+        implementation, as point implementation is validated above), for all possible regridding methods."""
 
         # Create a synthetic raster and convert to point cloud
         # dem = gu.Raster(self.ref)
@@ -1027,7 +1028,7 @@ class TestAffineManipulation:
         assert np.array_equal(np.logical_or(smallest_mask, mask_nodata_gd), mask_nodata_gd)
 
     def test_apply_matrix__raster_realdata(self) -> None:
-        """Checks that iterative and triangulated affine regridding agree on real terrain away from data gaps."""
+        """Testing real data no complex matrix only to avoid all loops"""
 
         # Use real data
         dem = self.ref

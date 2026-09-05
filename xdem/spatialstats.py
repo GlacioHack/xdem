@@ -35,6 +35,7 @@ import pandas as pd
 import scipy.ndimage
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
+from geoutils.sampling.subsampling import _subsample_numpy
 from geoutils.vector.vector import Vector, VectorType
 from numpy.typing import ArrayLike
 from packaging.version import Version
@@ -44,7 +45,7 @@ from scipy.optimize import curve_fit
 from scipy.spatial.distance import cdist, pdist, squareform
 from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_dd
 
-from xdem._misc import _subsample_numpy, deprecate, import_optional
+from xdem._misc import deprecate, import_optional
 from xdem._typing import NDArrayb, NDArrayf
 
 if TYPE_CHECKING:

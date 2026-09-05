@@ -30,11 +30,15 @@ class NeedsTestError(ValueError):
 
 class TestEPCInheritance:
     """
-    Test the elevation API shared by EPC and its Pandas accessor on top of GeoUtils point clouds.
+    Test that EPC and its Pandas accessor use the shared EPC base classes.
 
-    The tests first check that concrete interfaces inherit shared implementations without overriding them, then compare
-    public metadata and a representative set of inherited PointCloudBase methods. Vertical transformations and
-    coregistration require dedicated inputs and are covered by the two following classes.
+    This class tests:
+    - Shared methods inherited without unused overrides,
+    - EPC metadata for equal values through both interfaces,
+    - Representative ``PointCloudBase`` methods for equal outputs and correct output types,
+    - Automatic coverage of every public EPC method using ``NeedsTestError``.
+
+    Vertical transformations and coregistration are tested in the classes below.
     """
 
     elevation_bases = (EPCBase, _VerticalReference)
@@ -138,11 +142,15 @@ class TestEPCInheritance:
 
 class TestEPCVerticalTransform:
     """
-    Test EPC vertical reference metadata and elevation transformations through both concrete interfaces.
+    Test vertical-reference methods through EPC and its Pandas accessor.
 
-    The tests cover missing CRS errors, elevation columns and 3D geometry, eager, Dask and multiprocessing execution,
-    exact PyProj results, metadata changes before loading and no-op or incompatible backend cases. Generic raster VCRS
-    behavior is covered in test_vcrs.py.
+    This class tests:
+    - ``set_vcrs`` before loading and without a horizontal CRS,
+    - ``to_vcrs`` for elevation columns and 3D point geometry,
+    - Exact equality across eager, Dask and multiprocessing calls,
+    - No-op transformations and incompatible backend errors.
+
+    Raster vertical transformations are tested in ``test_vcrs.py``.
     """
 
     def test_vcrs__missing_horizontal_reference(self, epc_frame: gpd.GeoDataFrame) -> None:
@@ -307,11 +315,12 @@ class TestEPCVerticalTransform:
 
 class TestEPCCoregistration:
     """
-    Test eager EPC coregistration through the native class and Pandas accessor.
+    Test eager coregistration through EPC and its Pandas accessor.
 
-    The tests compare exact vertical-shift results for elevation columns and 3D geometry against raster references in
-    both native and accessor form. They also define the current Dask boundary and verify that rejecting it leaves the
-    source graph untouched.
+    This class tests:
+    - ``coregister_3d`` with elevations in a column or in 3D point geometry,
+    - Raster references supplied as DEM objects or Xarray accessors,
+    - Clear rejection of Dask inputs without running or changing the lazy input.
     """
 
     @pytest.mark.parametrize("use_z", [False, True])

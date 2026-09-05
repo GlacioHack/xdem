@@ -55,9 +55,9 @@ from geoutils.raster import Raster, RasterType, raster
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.referencing import _cast_pixel_interpretation, _coords
 from geoutils.raster.transformation import _resampling_method_from_str, _translate
+from geoutils.sampling.subsampling import _subsample_numpy
 
 import xdem
-from xdem._misc import _subsample_numpy
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.fit import (
     polynomial_1d,

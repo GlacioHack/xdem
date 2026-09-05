@@ -21,11 +21,15 @@ from xdem.epc.pd_accessor import EPCAccessor, _register_dask_epc_accessor
 
 class TestEPCAccessor:
     """
-    Test construction and eager behavior specific to the EPC Pandas accessor.
+    Test eager behavior specific to the EPC Pandas accessor.
 
-    The tests cover accessor validation, shared point constructors, independent copies and native EPC conversion, then
-    verify vector-file opening with elevation-column, auxiliary-column and vertical-reference metadata intact. Shared
-    elevation methods are compared with EPC in test_base.py.
+    This class tests:
+    - ``__init__`` validation through ``frame.epc``,
+    - ``from_xyz``, ``from_array`` and ``from_tuples`` constructors,
+    - ``copy`` and ``to_xdem`` with independent elevation-column selection,
+    - ``open_epc`` for vector files and preserved elevation metadata.
+
+    Shared EPC methods are compared with the native class in ``test_base.py``.
     """
 
     def test_init__validation(self, epc_frame: gpd.GeoDataFrame) -> None:
@@ -111,9 +115,14 @@ class TestEPCLas:
     """
     Test optional LAS and LAZ support through native, Pandas, Dask and multiprocessing interfaces.
 
-    The tests cover empty files, partitioned reading and writing, exact packed dimensions, CRS and elevation metadata,
-    source loading state and missing optional dependencies. LASPy supplies an independent file-level comparison where
-    possible, while GeoUtils owns the underlying format implementation.
+    This class tests:
+    - ``open_epc`` with empty files and each supported set of columns,
+    - ``open_epc`` with eager, Dask and multiprocessing readers,
+    - ``to_las`` with eager, Dask and multiprocessing writers,
+    - Exact stored LAS fields, CRS metadata and source loading state,
+    - Missing optional LAS dependencies.
+
+    LASPy supplies an independent file comparison while GeoUtils provides the format implementation.
     """
 
     @pytest.mark.parametrize("lazy", [False, True])
@@ -263,9 +272,13 @@ class TestEPCLazyMethods:
     """
     Test inherited point cloud methods through eager Pandas and Dask EPC accessors.
 
-    The tests compare conversion types and loading behavior, native dataframe export, lazy copying and explicit loading,
-    then exact statistics and gridding across point partitions. Every Dask case retains the original source graph after
-    the output is evaluated.
+    This class tests:
+    - ``to_xdem`` and ``to_geoutils`` output types and loading behavior,
+    - Native ``ds`` export and LAS column loading,
+    - ``copy`` and ``load`` without changing the Dask source,
+    - ``get_stats`` and ``grid`` across point partitions.
+
+    Every Dask case checks that evaluating the result leaves the source graph unchanged.
     """
 
     @pytest.mark.parametrize("method", ["to_xdem", "to_geoutils"])

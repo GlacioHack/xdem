@@ -299,10 +299,9 @@ class TestTerrainAttribute:
     @pytest.mark.parametrize("attribute", xdem.terrain.available_attributes)
     def test_attributes__multiproc(self, attribute: str, surfit_windowsizes: tuple[str, int, int]) -> None:
         """
-        Checks that terrain attributes match exactly across eager and multiprocessing for different neighborhoods.
-        """
+        Test that terrain attributes are exactly equal in multiprocessing or in normal processing, and for varying
+        window sizes/surface fit methods, to verify that the depth (overlap) of the map_overlap is properly defined."""
 
-        # 1/ Prepare the multiprocessing configuration and options
         # Fractal roughness with tested window sizes of less than 13 will expectedly raise a warning
         warnings.filterwarnings("ignore", category=UserWarning, message="Fractal roughness results.*")
 
@@ -328,12 +327,10 @@ class TestTerrainAttribute:
         else:
             kwargs = {}
 
-        # 2/ Calculate terrain attributes with each backend
         # Derive with "DEM.attribute()" function, with and without multiproc
         attr_mp = getattr(self.dem, attribute)(mp_config=mp_config, **kwargs)
         attr_nomp = getattr(self.dem, attribute)(**kwargs)
 
-        # 3/ Compare outputs
         # Check equality
         assert attr_mp.georeferenced_grid_equal(attr_nomp)
         np.testing.assert_array_equal(attr_mp.get_nanarray(), attr_nomp.get_nanarray())
@@ -346,7 +343,6 @@ class TestTerrainAttribute:
     def test_get_terrain_attribute__multiproc_inputs(self, surfit_windowsizes: tuple[str, int, int]) -> None:
         """Test the get_terrain attribute function in multiprocessing returns the right input number/type."""
 
-        # 1/ Prepare the multiprocessing configuration and options
         # Fractal roughness with tested window sizes of less than 13 will expectedly raise a warning
         warnings.filterwarnings("ignore", category=UserWarning, message="Fractal roughness results.*")
 
@@ -366,7 +362,6 @@ class TestTerrainAttribute:
         # Unpack argument of surface fit/window size
         surface_fit, window_size, window_size_fractal = surfit_windowsizes
 
-        # 2/ Check the single-attribute output
         # Validate that giving only one terrain attribute only returns that, and not a list of len() == 1
         xdem.terrain.get_terrain_attribute(
             self.dem, "slope", mp_config=mp_config, resolution=self.dem.res, surface_fit=surface_fit
@@ -376,7 +371,6 @@ class TestTerrainAttribute:
         assert isinstance(slope_u, gu.Raster)
         os.remove(outfile)
 
-        # 3/ Check multiple attributes against individual calls
         # Create four products at the same time
         xdem.terrain.get_terrain_attribute(
             self.dem,
@@ -420,7 +414,6 @@ class TestTerrainAttribute:
         assert roughness_u.raster_equal(roughness_m)
         assert fractal_roughness_u.raster_equal(fractal_roughness_m)
 
-        # 4/ Compare with the eager calculation
         # Compare with classic terrain attribute calculation
         slope_classic = self.dem.slope(surface_fit=surface_fit)
         hillshade_classic = self.dem.hillshade(surface_fit=surface_fit)
@@ -531,9 +524,11 @@ class TestTerrainAttributeChunked:
     """
     Test terrain attributes across eager, Dask and multiprocessing backends.
 
-    The tests below cover every terrain algorithm family with uneven chunks, windows larger than chunks and missing
-    tiles. They also check exact backend equality, output order and dimensions, supported dtypes, overlap depth,
-    Fourier-transform chunk restoration and invalid backend options.
+    This class tests:
+    - ``get_terrain_attribute`` for exact backend equality with uneven and empty chunks,
+    - Window overlap when calculation windows are larger than chunks,
+    - Requested attribute order, dimensions, chunk sizes and output dtypes,
+    - Errors for incompatible Dask and multiprocessing inputs.
     """
 
     @pytest.mark.parametrize("engine", ["scipy", "numba"])
