@@ -29,10 +29,9 @@ import numpy as np
 import rasterio as rio
 import scipy
 
-import xdem.spatialstats
+import xdem.fit
 from xdem._typing import NDArrayb, NDArrayf
-from xdem.coreg.base import Coreg, InRandomDict, fit_workflows
-from xdem.cosampling import _subsample_rst_pts
+from xdem.coreg.base import Coreg, InRandomDict, _subsample_rst_pts, fit_workflows
 from xdem.fit import polynomial_2d
 
 BiasCorrType = TypeVar("BiasCorrType", bound="BiasCorr")
@@ -193,7 +192,8 @@ class BiasCorr(Coreg):
             inlier_mask=inlier_mask,
             ref_transform=ref_transform,
             tba_transform=tba_transform,
-            sampling_strategy="same_xy",  # The "same_xy" sampling strategy has to be enforced for bias corrections (always same coordinates)
+            # Compare elevations and predictors at identical locations for bias correction
+            sampling_strategy="same_xy",
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
@@ -300,22 +300,22 @@ class BiasCorr(Coreg):
         else:
             if self._meta["inputs"]["fitorbin"]["bin_apply_method"] == "linear":
                 # N-D interpolation of binning
-                bin_interpolator = xdem.spatialstats.interp_nd_binning(
-                    df=self._meta["outputs"]["fitorbin"]["bin_dataframe"],
-                    list_var_names=list(bias_vars.keys()),
+                bin_interpolator = xdem.fit.interp_binning(
+                    table=self._meta["outputs"]["fitorbin"]["bin_dataframe"],
+                    value_name="bias",
                     statistic=self._meta["inputs"]["fitorbin"]["bin_statistic"],
                     min_count=kwargs.get("min_count", 0),
                 )
-                corr = bin_interpolator(tuple(var.flatten() for var in bias_vars.values()))
+                corr = bin_interpolator(bias_vars)
                 first_var = list(bias_vars.keys())[0]
                 corr = corr.reshape(np.shape(bias_vars[first_var]))
 
             else:
                 # Get N-D binning statistic for each pixel of the new list of variables
-                corr = xdem.spatialstats.get_perbin_nd_binning(
-                    df=self._meta["outputs"]["fitorbin"]["bin_dataframe"],
-                    list_var=list(bias_vars.values()),
-                    list_var_names=list(bias_vars.keys()),
+                corr = xdem.fit.get_perbin_binning(
+                    table=self._meta["outputs"]["fitorbin"]["bin_dataframe"],
+                    value_name="bias",
+                    predictors=bias_vars,
                     statistic=self._meta["inputs"]["fitorbin"]["bin_statistic"],
                 )
 

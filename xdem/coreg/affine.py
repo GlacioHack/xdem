@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import Any, Callable, Iterable, Literal, TypeVar, TypedDict
+from typing import Any, Callable, Iterable, Literal, TypedDict, TypeVar
 
 import affine
 import geopandas as gpd
@@ -32,12 +32,12 @@ import pandas as pd
 import rasterio as rio
 import scipy.optimize
 import scipy.spatial
+from geoutils._typing import Number
+from geoutils.interface.interpolation import _interp_points_base as _interp_points
+from geoutils.raster.referencing import _coords, _res
+from geoutils.stats import nmad
 from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation as Rot
-from geoutils._typing import Number
-from geoutils.interface.interpolate import _interp_points
-from geoutils.raster.georeferencing import _coords, _res
-from geoutils.stats import nmad
 
 from xdem._misc import get_progress, import_optional
 from xdem._typing import NDArrayb, NDArrayf
@@ -52,13 +52,14 @@ from xdem.coreg.base import (
     _apply_matrix_pts_mat,
     _apply_matrix_rst,
     _bin_or_and_fit_nd,
+    _get_subsample_mask_pts_rst,
     _make_matrix_valid,
     _reproject_horizontal_shift_samecrs,
+    _subsample_rst_pts,
     invert_matrix,
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
 )
-from xdem.cosampling import _subsample_rst_pts, _get_subsample_mask_pts_rst
 from xdem.fit import index_trimmed
 
 ######################################
@@ -329,7 +330,9 @@ def _subsample_rst_pts_interpolator(
 
 
 def _get_centroid_scale(
-    ref_elev: NDArrayf | gpd.GeoDataFrame, transform: affine.Affine | None, z_name: str | None = None,
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    transform: affine.Affine | None,
+    z_name: str | None = None,
 ) -> tuple[tuple[float, float, float], float]:
     """
     Get centroid and standardization factor from reference elevation (whether it is a DEM or an elevation point cloud).
@@ -362,9 +365,11 @@ def _get_centroid_scale(
     # For an elevation point cloud
     else:
         # Derive centroid
-        centroid = (np.nanmedian(ref_elev.geometry.x.values),
-                    np.nanmedian(ref_elev.geometry.y.values),
-                    np.nanmedian(ref_elev[z_name].values))
+        centroid = (
+            np.nanmedian(ref_elev.geometry.x.values),
+            np.nanmedian(ref_elev.geometry.y.values),
+            np.nanmedian(ref_elev[z_name].values),
+        )
 
         # Derive standardization factor
         std_fac = float(
@@ -415,6 +420,7 @@ def _standardize_epc(
 # Helper for computing normals
 ##############################
 
+
 class DemGeometryDict(TypedDict, total=False):
     """Keys and types of DEM-derived geometry rasters."""
 
@@ -422,6 +428,7 @@ class DemGeometryDict(TypedDict, total=False):
     ny: NDArrayf
     nz: NDArrayf
     curv: NDArrayf
+
 
 def _dem_normals_curvature(
     dem: NDArrayf,
@@ -511,6 +518,7 @@ def _dem_normals_curvature(
 
     return out
 
+
 def _epc_normals_curvature(points: NDArrayf, neighbours: int) -> tuple[NDArrayf, NDArrayf]:
     """
     Compute normals and curvature-like variation measure from a point cloud using kNN PCA.
@@ -525,14 +533,14 @@ def _epc_normals_curvature(points: NDArrayf, neighbours: int) -> tuple[NDArrayf,
 
     tree = cKDTree(Y)
     _, idx = tree.query(Y, k=k + 1)  # includes itself
-    idx = idx[:, 1:]                 # drop self
-    neigh = Y[idx]                   # (M,k,3)
+    idx = idx[:, 1:]  # drop self
+    neigh = Y[idx]  # (M,k,3)
 
     mu = neigh.mean(axis=1, keepdims=True)
     Xc = neigh - mu
     C = np.einsum("mki,mkj->mij", Xc, Xc) / max(k - 1, 1)
 
-    evals, evecs = np.linalg.eigh(C)      # ascending
+    evals, evecs = np.linalg.eigh(C)  # ascending
     normals = evecs[:, :, 0]
     normals /= np.linalg.norm(normals, axis=1, keepdims=True) + 1e-12
 
@@ -540,6 +548,7 @@ def _epc_normals_curvature(points: NDArrayf, neighbours: int) -> tuple[NDArrayf,
     curvature = np.clip(curvature, 1e-12, None)
 
     return normals.astype(float), curvature.astype(float)
+
 
 def _axis_weights_from_epc(
     epc: NDArrayf,
@@ -573,13 +582,13 @@ def _axis_weights_from_epc(
 
     # Per axis
     if anisotropic == "per_axis":
-        w = 1.0 / (std ** 2)
+        w = 1.0 / (std**2)
 
     # For XY vs Z, we sum the variances of X/Y and take the half-squareroot
     elif anisotropic == "xy_vs_z":
         std_xy = np.sqrt(0.5 * (std[0] ** 2 + std[1] ** 2))
         std_xy = max(std_xy, eps)
-        w_xy = 1.0 / (std_xy ** 2)
+        w_xy = 1.0 / (std_xy**2)
         w_z = 1.0 / (std[2] ** 2)
         w = np.array([w_xy, w_xy, w_z], dtype=float)
 
@@ -587,6 +596,7 @@ def _axis_weights_from_epc(
         raise ValueError("anisotropic must be None, 'xy_vs_z', or 'per_axis'.")
 
     return w.astype(float)
+
 
 ################################
 # Affine coregistrations methods
@@ -646,11 +656,13 @@ def _nuth_kaab_bin_fit(
 
     # Trim if required
     if "trim_residuals" in params_fit_or_bin.keys() and params_fit_or_bin["trim_residuals"]:
-        ind = index_trimmed(y,
-                            central_estimator=params_fit_or_bin["trim_central_statistic"],
-                            spread_estimator=params_fit_or_bin["trim_spread_statistic"],
-                            spread_coverage=params_fit_or_bin["trim_spread_coverage"],
-                            iterative=params_fit_or_bin["trim_iterative"])
+        ind = index_trimmed(
+            y,
+            central_estimator=params_fit_or_bin["trim_central_statistic"],
+            spread_estimator=params_fit_or_bin["trim_spread_statistic"],
+            spread_coverage=params_fit_or_bin["trim_spread_coverage"],
+            iterative=params_fit_or_bin["trim_iterative"],
+        )
         logging.info(f"Trimmed {np.count_nonzero(ind)} residuals.")
         # Keep data not trimmed
         y = y[~ind]
@@ -703,6 +715,7 @@ def _nuth_kaab_aux_vars_grad(
 
     return gradient_x, gradient_y
 
+
 def _nuth_kaab_iteration_step(
     coords_offsets: tuple[float, float, float],
     sub_rst: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
@@ -747,7 +760,7 @@ def _nuth_kaab_iteration_step(
     grady = sub_grady((coords_y, coords_x))
 
     # Original NK slope/aspect from raw pixel gradients
-    slope_tan = np.sqrt(gradx ** 2 + grady ** 2)
+    slope_tan = np.sqrt(gradx**2 + grady**2)
     aspect = np.arctan2(-gradx, grady)
     aspect += np.pi
 
@@ -755,12 +768,7 @@ def _nuth_kaab_iteration_step(
     slope_min = 0.0001  # Prevent tiny slope blow-up numerically
     with np.errstate(divide="ignore", invalid="ignore"):
         y = dh_step / slope_tan
-    mask_valid = (
-            np.isfinite(y)
-            & np.isfinite(aspect)
-            & np.isfinite(slope_tan)
-            & (slope_tan > slope_min)
-    )
+    mask_valid = np.isfinite(y) & np.isfinite(aspect) & np.isfinite(slope_tan) & (slope_tan > slope_min)
 
     if np.count_nonzero(mask_valid) == 0:
         raise ValueError(
@@ -774,17 +782,15 @@ def _nuth_kaab_iteration_step(
 
     # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
     easting_offset, northing_offset, _ = _nuth_kaab_bin_fit(
-        dh=dh_step, slope_tan=slope_tan, aspect=aspect, params_fit_or_bin=params_fit_bin,
+        dh=dh_step,
+        slope_tan=slope_tan,
+        aspect=aspect,
+        params_fit_or_bin=params_fit_bin,
     )
 
     # Compute statistic on offset to know if it reached tolerance
     # The easting and northing are here in pixels because of the slope/aspect derivation
-    offset_translation = float(
-        np.sqrt(
-            (easting_offset * res[0]) ** 2
-            + (northing_offset * res[1]) ** 2
-        )
-    )
+    offset_translation = float(np.sqrt((easting_offset * res[0]) ** 2 + (northing_offset * res[1]) ** 2))
     step_statistics = {"translation": offset_translation}
 
     # Increment the offsets by the new offset
@@ -1064,6 +1070,7 @@ def vertical_shift(
 # 4/ Iterative closest point
 ############################
 
+
 def _collapse_weights_to_points(weights: NDArrayf | None, n: int) -> NDArrayf | None:
     """
     Convert various weight shapes to per-point weights of shape (N,).
@@ -1087,9 +1094,7 @@ def _collapse_weights_to_points(weights: NDArrayf | None, n: int) -> NDArrayf | 
             return np.nanmean(w, axis=1).astype(float, copy=False)
         if w.shape == (3, n):
             return np.nanmean(w, axis=0).astype(float, copy=False)
-    raise ValueError(
-        f"Unsupported weights shape {w.shape}. Expected (N,), (N,1), (N,3) or (3,N) where N={n}."
-    )
+    raise ValueError(f"Unsupported weights shape {w.shape}. Expected (N,), (N,1), (N,3) or (3,N) where N={n}.")
 
 
 def _icp_fit_func(
@@ -1154,7 +1159,7 @@ def _icp_fit_func(
         trans_tba = _apply_matrix_pts_mat(mat=tba, matrix=matrix)
 
         # Vector residuals (3, N)
-        r = (trans_tba - ref)
+        r = trans_tba - ref
 
         # Apply axis weight for anisotropic X/Y versus Z (3, N)
         if sqrt_w_axis is not None:
@@ -1174,8 +1179,8 @@ def _icp_fit_func(
         # If using linearized point-to-plane (Low, 2004)
         if linearized:
             # Work in Nx3 for dot products
-            p = tba.T   # (N,3)
-            q = ref.T   # (N,3)
+            p = tba.T  # (N,3)
+            q = ref.T  # (N,3)
             n = norm.T  # (N,3)
 
             # Build residual directly without forming A explicitly: A_rot = cross(p, n); A_trans = n; B = dot(n, q - p)
@@ -1209,6 +1214,7 @@ def _icp_fit_func(
         raise ValueError("ICP method must be 'point-to-point' or 'point-to-plane'.")
 
     return res
+
 
 def _icp_fit(
     ref: NDArrayf,
@@ -1244,10 +1250,13 @@ def _icp_fit(
     # Trim if required
     if "trim_residuals" in params_fit_or_bin.keys() and params_fit_or_bin["trim_residuals"]:
         res = _icp_fit_func((ref, tba, norms), 0, 0, 0, 0, 0, 0, method=method)
-        ind = index_trimmed(res, central_estimator=params_fit_or_bin["trim_central_statistic"],
-                            spread_estimator=params_fit_or_bin["trim_spread_statistic"],
-                            spread_coverage=params_fit_or_bin["trim_spread_coverage"],
-                            iterative=params_fit_or_bin["trim_iterative"])
+        ind = index_trimmed(
+            res,
+            central_estimator=params_fit_or_bin["trim_central_statistic"],
+            spread_estimator=params_fit_or_bin["trim_spread_statistic"],
+            spread_coverage=params_fit_or_bin["trim_spread_coverage"],
+            iterative=params_fit_or_bin["trim_iterative"],
+        )
         logging.info(f"Trimmed {np.count_nonzero(ind)} residuals.")
         # Keep data not trimmed
         ref = ref[:, ~ind]
@@ -1275,7 +1284,7 @@ def _icp_fit(
                 method=method,
                 linearized=linearized,
                 weights=weights,
-                axis_weights=axis_weights
+                axis_weights=axis_weights,
             )
 
         # Initial offset near zero
@@ -1296,7 +1305,7 @@ def _icp_fit(
                 method=method,
                 linearized=linearized,
                 weights=weights,
-                axis_weights=axis_weights
+                axis_weights=axis_weights,
             )
 
         # Initial offset near zero
@@ -1393,13 +1402,14 @@ def _icp_iteration_step(
     # Compute statistics to know if they reached tolerance
     # (offsets in translation/rotation, but can also be other statistics)
     translations = step_matrix[:3, 3]
-    offset_translation = np.sqrt(np.sum(translations ** 2))
+    offset_translation = np.sqrt(np.sum(translations**2))
     rotations = step_matrix[:3, :3]
     offset_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
 
     step_statistics = {"translation": offset_translation, "rotation": offset_rotation}
 
     return new_matrix, step_statistics, None
+
 
 def icp(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
@@ -1439,9 +1449,11 @@ def icp(
     """
 
     # Derive centroid and scale ahead of any potential iterative sampling loop, and scale translation tolerance
-    centroid, scale = _get_centroid_scale(ref_elev=ref_elev if isinstance(ref_elev, np.ndarray) else tba_elev,
-                                          transform=ref_transform if ref_transform is not None else tba_transform,
-                                          z_name=z_name)
+    centroid, scale = _get_centroid_scale(
+        ref_elev=ref_elev if isinstance(ref_elev, np.ndarray) else tba_elev,
+        transform=ref_transform if ref_transform is not None else tba_transform,
+        z_name=z_name,
+    )
     if not standardize:
         scale = 1
     tolerance_translation /= scale
@@ -1462,9 +1474,7 @@ def icp(
         elif isinstance(tba_elev, np.ndarray):
             fixed_elev = "tba"
         else:
-            raise TypeError(
-                "point-to-plane ICP requires one input to be a DEM array to derive normals."
-            )
+            raise TypeError("point-to-plane ICP requires one input to be a DEM array to derive normals.")
 
         # The normals must always be derived relative to a "fixed reference" (we don't rotate them during iterations),
         # so internally we'll need to invert inputs if 'tba' is the array, then invert the matrix at the end
@@ -1596,6 +1606,7 @@ def icp(
 # 5/ Coherent Point Drift
 #########################
 
+
 def _plane_ratio_from_curvature(curvature: NDArrayf, lsg_lambda: float, max_plane_ratio: float) -> NDArrayf:
     """
     Port of Matlab pre-calculation:
@@ -1606,8 +1617,10 @@ def _plane_ratio_from_curvature(curvature: NDArrayf, lsg_lambda: float, max_plan
     a = np.maximum(a, 0.0) * float(max_plane_ratio)
     return a
 
+
 # CPD cache precomputation (reused across iterations)
 #####################################################
+
 
 def _cpd_precompute(
     ref_epc: NDArrayf,
@@ -1688,9 +1701,7 @@ def _cpd_precompute(
         return cache
 
     # We precompute geometry-heavy terms independent of sigma2.
-    V = float((X[:, 0].max() - X[:, 0].min())
-              * (X[:, 1].max() - X[:, 1].min())
-              * (X[:, 2].max() - X[:, 2].min()))
+    V = float((X[:, 0].max() - X[:, 0].min()) * (X[:, 1].max() - X[:, 1].min()) * (X[:, 2].max() - X[:, 2].min()))
     V = max(V, 1e-12)
 
     # Normals and curvature
@@ -1726,8 +1737,8 @@ def _cpd_precompute(
         invSigma[i] = W + (float(a[i]) / float(nWn[i])) * (wn @ wn.T)
 
     invSigma_flat = invSigma.reshape(N, 9)  # (N,9)
-    x_invSigma = np.einsum("ni,nij->nj", X, invSigma)                # (N,3)
-    x_invSigma_x = np.einsum("ni,nij,nj->n", X, invSigma, X)         # (N,)
+    x_invSigma = np.einsum("ni,nij->nj", X, invSigma)  # (N,3)
+    x_invSigma_x = np.einsum("ni,nij,nj->n", X, invSigma, X)  # (N,)
 
     # Precompute dot(x, n)
     X_normal = np.sum(X * Wn, axis=1)  # (N,)
@@ -1736,7 +1747,7 @@ def _cpd_precompute(
     X3 = X.T  # (3,N)
     Y3 = Y.T  # (3,M)
     X_X2 = np.sum((X * X) * w[None, :], axis=1)  # (N,)
-    Y_Y2 = np.sum(Y3 * Y3, axis=0)   # (M,)
+    Y_Y2 = np.sum(Y3 * Y3, axis=0)  # (M,)
     X_Y = X_X2[:, None] + Y_Y2[None, :]  # (N,M)
 
     # pi(m) base (before sigma2-dependent scaling and outlier reweighting)
@@ -1748,23 +1759,23 @@ def _cpd_precompute(
     confidence_Y = np.ones(M, dtype=float)
 
     cache["lsg"] = {
-        "X": X,                     # target/GMM (N,3)
-        "Y": Y,                     # source/moving (M,3)
+        "X": X,  # target/GMM (N,3)
+        "Y": Y,  # source/moving (M,3)
         "N": N,
         "M": M,
         "V": V,
         "w": axis_weights,
         "Wn": Wn,
         "nWn": nWn,
-        "ref_normals": ref_normals, # (N,3)
-        "curvature": curvature,     # (N,)
-        "a": a,                     # (N,)
+        "ref_normals": ref_normals,  # (N,3)
+        "curvature": curvature,  # (N,)
+        "a": a,  # (N,)
         "invSigma_flat": invSigma_flat,
         "x_invSigma": x_invSigma,
         "x_invSigma_x": x_invSigma_x,
         "X_normal": X_normal,
         "X_X2": X_X2,
-        "f_X_scaled": f_X_scaled,   # (N,)
+        "f_X_scaled": f_X_scaled,  # (N,)
         "confidence_Y": confidence_Y,
         "lsg_lambda": float(lsg_lambda),
         "max_plane_ratio": float(max_plane_ratio),
@@ -1795,11 +1806,11 @@ def _lsg_update_sigma_dependent(cache_lsg: dict[str, Any], sigma2: float, weight
     w0 = float(w0 / (1.0 - float(weight_cpd) + w0))
 
     # Outlier mixing for source points (Matlab uses confidence_X on source; here source is Y)
-    wn = (1.0 - (1.0 - w0) * confidence_Y)              # (M,)
-    f_Y = (1.0 - wn) / np.clip(wn, 1e-12, None)         # (M,)
+    wn = 1.0 - (1.0 - w0) * confidence_Y  # (M,)
+    f_Y = (1.0 - wn) / np.clip(wn, 1e-12, None)  # (M,)
 
     # F_matrix = f_X .* f_Y (N,M)
-    F_matrix = f_X_scaled[:, None] * f_Y[None, :]       # (N,M)
+    F_matrix = f_X_scaled[:, None] * f_Y[None, :]  # (N,M)
 
     # E-step constants
     C_const = float((2.0 * np.pi * sigma2) ** 1.5 * (1.0 / V))
@@ -1811,6 +1822,7 @@ def _lsg_update_sigma_dependent(cache_lsg: dict[str, Any], sigma2: float, weight
 # -----------------------------------------------------------------------------
 # Classic CPD helpers (E-step / M-step / shrink step)
 # -----------------------------------------------------------------------------
+
 
 def _cpd_estep_classic(
     X: NDArrayf,
@@ -1856,7 +1868,7 @@ def _cpd_estep_classic(
             idx = idx[:, None]
             dists = dists[:, None]
 
-        d2 = (dists.astype(float) ** 2)  # already weighted by w through scaling
+        d2 = dists.astype(float) ** 2  # already weighted by w through scaling
         num = np.exp(-d2 / (2.0 * float(sigma2))).astype(X.dtype)  # (M,k)
 
         rows = np.repeat(np.arange(M), idx.shape[1])
@@ -1876,6 +1888,7 @@ def _cpd_estep_classic(
     PX = np.matmul(P, X)
 
     return {"P": P, "Pt1": Pt1, "P1": P1, "Np": np.asarray(Np), "PX": PX}
+
 
 def _cpd_mstep_classic_fit_minimizer(
     X: NDArrayf,
@@ -1900,10 +1913,10 @@ def _cpd_mstep_classic_fit_minimizer(
     N, D = X.shape
     M, _ = TY.shape
 
-    P = estep["P"]   # (M,N) in your implementation
-    P1 = estep["P1"] # (M,)
+    P = estep["P"]  # (M,N) in your implementation
+    P1 = estep["P1"]  # (M,)
     Np = float(estep["Np"])
-    PX = estep["PX"] # (N,D) since PX = P @ X
+    PX = estep["PX"]  # (N,D) since PX = P @ X
 
     # Get centroid of each point cloud (unchanged, needed for shrink step outputs)
     muX = np.divide(np.sum(PX, axis=0), Np)
@@ -1943,9 +1956,9 @@ def _cpd_mstep_classic_fit_minimizer(
 
                 # Build residuals for all pairs (m,n)
                 # diff[m,n,:] = X[n,:] - trans_Y[m,:]
-                diff = X[None, :, :] - trans_Y[:, None, :]     # (M,N,3)
+                diff = X[None, :, :] - trans_Y[:, None, :]  # (M,N,3)
                 diff = diff * np.sqrt(w[None, None, :])
-                r = P_sqrt[:, :, None] * diff                 # (M,N,3)
+                r = P_sqrt[:, :, None] * diff  # (M,N,3)
                 return r.reshape(-1)
 
             init_offsets = np.zeros(7, dtype=float)  # log_s=0 => s=1
@@ -1958,10 +1971,10 @@ def _cpd_mstep_classic_fit_minimizer(
                 t = params[3:6]
                 s = 1.0
 
-                trans_Y = (s * (TY @ R.T)) + t.reshape(1, 3)   # (M,3)
-                diff = X[None, :, :] - trans_Y[:, None, :]    # (M,N,3)
+                trans_Y = (s * (TY @ R.T)) + t.reshape(1, 3)  # (M,3)
+                diff = X[None, :, :] - trans_Y[:, None, :]  # (M,N,3)
                 diff = diff * np.sqrt(w[None, None, :])
-                r = P_sqrt[:, :, None] * diff                 # (M,N,3)
+                r = P_sqrt[:, :, None] * diff  # (M,N,3)
                 return r.reshape(-1)
 
             init_offsets = np.zeros(6, dtype=float)
@@ -1976,10 +1989,10 @@ def _cpd_mstep_classic_fit_minimizer(
                 t = params[0:3]
                 s = float(np.exp(params[3]))
 
-                trans_Y = (s * TY) + t.reshape(1, 3)           # (M,3)
-                diff = X[None, :, :] - trans_Y[:, None, :]    # (M,N,3)
+                trans_Y = (s * TY) + t.reshape(1, 3)  # (M,3)
+                diff = X[None, :, :] - trans_Y[:, None, :]  # (M,N,3)
                 diff = diff * np.sqrt(w[None, None, :])
-                r = P_sqrt[:, :, None] * diff                 # (M,N,3)
+                r = P_sqrt[:, :, None] * diff  # (M,N,3)
                 return r.reshape(-1)
 
             init_offsets = np.zeros(4, dtype=float)
@@ -1991,10 +2004,10 @@ def _cpd_mstep_classic_fit_minimizer(
                 t = params[0:3]
                 s = 1.0
 
-                trans_Y = (s * TY) + t.reshape(1, 3)           # (M,3)
-                diff = X[None, :, :] - trans_Y[:, None, :]    # (M,N,3)
+                trans_Y = (s * TY) + t.reshape(1, 3)  # (M,3)
+                diff = X[None, :, :] - trans_Y[:, None, :]  # (M,N,3)
                 diff = diff * np.sqrt(w[None, None, :])
-                r = P_sqrt[:, :, None] * diff                 # (M,N,3)
+                r = P_sqrt[:, :, None] * diff  # (M,N,3)
                 return r.reshape(-1)
 
             init_offsets = np.zeros(3, dtype=float)
@@ -2020,6 +2033,7 @@ def _cpd_mstep_classic_fit_minimizer(
 
     return R_opt, t_opt, s_opt
 
+
 def _cpd_mstep_classic_fit_minimizer_fast(
     X: NDArrayf,
     TY: NDArrayf,
@@ -2042,7 +2056,7 @@ def _cpd_mstep_classic_fit_minimizer_fast(
     N, D = X.shape
     M, _ = TY.shape
 
-    P = estep["P"]    # (M,N)
+    P = estep["P"]  # (M,N)
     P1 = estep["P1"]  # (M,)
     Np = float(estep["Np"])
     PX = estep["PX"]  # (M,3) if computed as P @ X; if your PX is (N,3) swap accordingly
@@ -2060,7 +2074,11 @@ def _cpd_mstep_classic_fit_minimizer_fast(
     Xbar = PX / P1_safe[:, None]  # (M,3)
 
     # Build the SVD-derived terms too (so shrink step is unchanged)
-    muX = np.divide(np.sum(estep["PX"], axis=0), Np) if estep["PX"].shape[0] == N else np.divide(np.sum(P @ X, axis=0), Np)
+    muX = (
+        np.divide(np.sum(estep["PX"], axis=0), Np)
+        if estep["PX"].shape[0] == N
+        else np.divide(np.sum(P @ X, axis=0), Np)
+    )
     muY = np.divide(np.sum(np.dot(np.transpose(P), TY), axis=0), Np)
     X_hat = X - np.tile(muX, (N, 1))
     Y_hat = TY - np.tile(muY, (M, 1))
@@ -2082,8 +2100,8 @@ def _cpd_mstep_classic_fit_minimizer_fast(
                 t = params[3:6]
                 s = float(np.exp(params[6]))
 
-                pred = (s * (TY @ R.T)) + t.reshape(1, 3)   # (M,3)
-                r = w_sqrt[:, None] * (Xbar - pred)  * np.sqrt(w[None, :])         # (M,3)
+                pred = (s * (TY @ R.T)) + t.reshape(1, 3)  # (M,3)
+                r = w_sqrt[:, None] * (Xbar - pred) * np.sqrt(w[None, :])  # (M,3)
                 return r.reshape(-1)
 
             init_offsets = np.zeros(7, dtype=float)
@@ -2096,7 +2114,7 @@ def _cpd_mstep_classic_fit_minimizer_fast(
                 s = 1.0
 
                 pred = (s * (TY @ R.T)) + t.reshape(1, 3)
-                r = w_sqrt[:, None] * (Xbar - pred)  * np.sqrt(w[None, :])
+                r = w_sqrt[:, None] * (Xbar - pred) * np.sqrt(w[None, :])
                 return r.reshape(-1)
 
             init_offsets = np.zeros(6, dtype=float)
@@ -2110,7 +2128,7 @@ def _cpd_mstep_classic_fit_minimizer_fast(
                 s = float(np.exp(params[3]))
 
                 pred = (s * TY) + t.reshape(1, 3)
-                r = w_sqrt[:, None] * (Xbar - pred)  * np.sqrt(w[None, :])
+                r = w_sqrt[:, None] * (Xbar - pred) * np.sqrt(w[None, :])
                 return r.reshape(-1)
 
             init_offsets = np.zeros(4, dtype=float)
@@ -2120,7 +2138,7 @@ def _cpd_mstep_classic_fit_minimizer_fast(
             def fit_func(params: NDArrayf) -> NDArrayf:
                 t = params[0:3]
                 pred = TY + t.reshape(1, 3)
-                r = w_sqrt[:, None] * (Xbar - pred)  * np.sqrt(w[None, :])
+                r = w_sqrt[:, None] * (Xbar - pred) * np.sqrt(w[None, :])
                 return r.reshape(-1)
 
             init_offsets = np.zeros(3, dtype=float)
@@ -2139,6 +2157,7 @@ def _cpd_mstep_classic_fit_minimizer_fast(
 
     return R_opt, t_opt, s_opt
 
+
 def _cpd_shrink_classic(
     X: NDArrayf,
     Ycur: NDArrayf,
@@ -2152,10 +2171,10 @@ def _cpd_shrink_classic(
     """
     Update variance and objective function for classic CPD.
     """
-    P = estep["P"]          # (M,N)
-    Pt1 = estep["Pt1"]      # (N,)
-    P1 = estep["P1"]        # (M,)
-    Np = float(estep["Np"]) # scalar
+    P = estep["P"]  # (M,N)
+    Pt1 = estep["Pt1"]  # (N,)
+    P1 = estep["P1"]  # (M,)
+    Np = float(estep["Np"])  # scalar
 
     N, D = X.shape
     M, Dy = Ycur.shape
@@ -2163,8 +2182,8 @@ def _cpd_shrink_classic(
         raise ValueError("X and Ycur must have the same dimensionality.")
 
     # Weighted means (Fig. 2, Eq. 6)
-    muX = (Pt1 @ X) / max(Np, 1e-12)          # (D,)
-    muY = (P1 @ Ycur) / max(Np, 1e-12)        # (D,)
+    muX = (Pt1 @ X) / max(Np, 1e-12)  # (D,)
+    muY = (P1 @ Ycur) / max(Np, 1e-12)  # (D,)
 
     # Centered clouds
     X_hat = X - muX[None, :]
@@ -2189,6 +2208,7 @@ def _cpd_shrink_classic(
 
     return float(sigma2_new), float(q)
 
+
 def _cpd_estep_lsg(
     cache_lsg: dict[str, Any],
     sigma_terms: dict[str, Any],
@@ -2208,20 +2228,20 @@ def _cpd_estep_lsg(
     :param TY: Transformed moving/source point cloud using the current estimate, shape (M,3).
         This mirrors classic CPD where the E-step is evaluated at the current transform.
     """
-    X = cache_lsg["X"]                     # (N,3)
-    a = cache_lsg["a"]                     # (N,)
+    X = cache_lsg["X"]  # (N,3)
+    a = cache_lsg["a"]  # (N,)
     invSigma_flat = cache_lsg["invSigma_flat"]  # (N,9)
-    x_invSigma = cache_lsg["x_invSigma"]        # (N,3)
-    x_invSigma_x = cache_lsg["x_invSigma_x"]    # (N,)
+    x_invSigma = cache_lsg["x_invSigma"]  # (N,3)
+    x_invSigma_x = cache_lsg["x_invSigma_x"]  # (N,)
     w = cache_lsg["w"]  # (3,)
     Wn = cache_lsg["Wn"]  # (N,3)
     nWn = cache_lsg["nWn"]  # (N,)
     X_normal = cache_lsg["X_normal"]  # (N,) = x^T W n
     X_X2 = cache_lsg["X_X2"]  # (N,)
 
-    F_matrix = sigma_terms["F_matrix"]          # (N,M)
-    C_const = sigma_terms["C_const"]            # scalar
-    c_const = sigma_terms["c_const"]            # scalar
+    F_matrix = sigma_terms["F_matrix"]  # (N,M)
+    C_const = sigma_terms["C_const"]  # scalar
+    c_const = sigma_terms["c_const"]  # scalar
 
     gY = np.asarray(TY, dtype=float)  # (M,3)
     gY2 = np.sum((gY * gY) * w[None, :], axis=1)  # (M,)
@@ -2281,8 +2301,8 @@ def _cpd_estep_lsg(
         P_nb = F_nb * np.exp(c_const * (a_nb * plane_term + quad_term))  # (M,k)
 
         # Scatter into P (N,M)
-        rows = idx.reshape(-1)                      # n indices
-        cols = np.repeat(np.arange(M), k_eff)       # m indices
+        rows = idx.reshape(-1)  # n indices
+        cols = np.repeat(np.arange(M), k_eff)  # m indices
         P[rows, cols] = P_nb.reshape(-1)
 
     # Normalize (same for both paths)
@@ -2364,8 +2384,8 @@ def _cpd_mstep_lsg_least_squares(
 
     :return: (R, t)
     """
-    M0 = estep["M0"]    # (M,3,3)
-    M1 = estep["M1"]    # (M,3)
+    M0 = estep["M0"]  # (M,3,3)
+    M1 = estep["M1"]  # (M,3)
 
     # Build whitened terms once for this M-step
     Ls, mus = _lsg_build_whitened_terms(M0=M0, M1=M1)
@@ -2381,9 +2401,9 @@ def _cpd_mstep_lsg_least_squares(
             # offsets = [rx, ry, rz, tx, ty, tz]
             R = Rot.from_rotvec(offsets[:3]).as_matrix()
             t = offsets[3:6]
-            gY = (TY @ R.T) + t.reshape(1, 3)               # (M,3)
-            diff = gY - mus                                 # (M,3)
-            r = np.einsum("mij,mj->mi", Ls, diff)           # (M,3)
+            gY = (TY @ R.T) + t.reshape(1, 3)  # (M,3)
+            diff = gY - mus  # (M,3)
+            r = np.einsum("mij,mj->mi", Ls, diff)  # (M,3)
             return r.reshape(-1)
 
         # Initial offset near zero
@@ -2395,9 +2415,9 @@ def _cpd_mstep_lsg_least_squares(
         def fit_func(offsets: NDArrayf) -> NDArrayf:
             # offsets = [tx, ty, tz]
             t = offsets[:3]
-            gY = TY + t.reshape(1, 3)                        # (M,3)
-            diff = gY - mus                                  # (M,3)
-            r = np.einsum("mij,mj->mi", Ls, diff)            # (M,3)
+            gY = TY + t.reshape(1, 3)  # (M,3)
+            diff = gY - mus  # (M,3)
+            r = np.einsum("mij,mj->mi", Ls, diff)  # (M,3)
             return r.reshape(-1)
 
         # Initial offset near zero
@@ -2432,9 +2452,9 @@ def _cpd_shrink_lsg(
 
     Updates sigma2 and returns loglikelihood-like objective, following the same quadratic structure used in LSG code.
     """
-    M0 = estep["M0"]            # (M,3,3)
-    M1 = estep["M1"]            # (M,3)
-    M2 = estep["M2"]            # (M,)
+    M0 = estep["M0"]  # (M,3,3)
+    M1 = estep["M1"]  # (M,3)
+    M2 = estep["M2"]  # (M,)
     sum_P = float(estep["sum_P"])
 
     # g(y) = R y + t
@@ -2506,8 +2526,9 @@ def _cpd_fit(
         w = cache["classic"]["w"]
 
         # 1/ Expectation step
-        estep = _cpd_estep_classic(X=X, Y=Y, TY=TY, w=w, weight_cpd=weight_cpd, sigma2=float(sigma2),
-                                   knn_tree=knn_tree, knn_k=knn_k)
+        estep = _cpd_estep_classic(
+            X=X, Y=Y, TY=TY, w=w, weight_cpd=weight_cpd, sigma2=float(sigma2), knn_tree=knn_tree, knn_k=knn_k
+        )
 
         # 2/ Minimization step
         use_generic_mstep = False  # To check internally the consistency with old implementation
@@ -2516,13 +2537,19 @@ def _cpd_fit(
         else:
             mstep_func = _cpd_mstep_classic_fit_minimizer_fast
         R, t, s = mstep_func(
-            X=X, TY=TY, estep=estep, scale=scale, w=w, only_translation=only_translation,
-            params_fit_or_bin=params_fit_or_bin
+            X=X,
+            TY=TY,
+            estep=estep,
+            scale=scale,
+            w=w,
+            only_translation=only_translation,
+            params_fit_or_bin=params_fit_or_bin,
         )
 
         # 3/ Update variance and objective function
-        sigma2_new, q = _cpd_shrink_classic(X=X, Ycur=TY, estep=estep, R=R, s=s, w=w,
-                                            sigma2=float(sigma2), sigma2_min=float(sigma2_min))
+        sigma2_new, q = _cpd_shrink_classic(
+            X=X, Ycur=TY, estep=estep, R=R, s=s, w=w, sigma2=float(sigma2), sigma2_min=float(sigma2_min)
+        )
 
     # LSG-CPD
     else:
@@ -2530,7 +2557,6 @@ def _cpd_fit(
         # by a least-squares minimization of whitened residuals.
         assert cache is not None and cache["lsg"] is not None
         cache_lsg = cache["lsg"]
-
 
         sigma_terms = _lsg_update_sigma_dependent(
             cache_lsg=cache_lsg,
@@ -2571,6 +2597,7 @@ def _cpd_fit(
 
     return matrix, float(sigma2_new), float(q)
 
+
 def _cpd_iteration_step(
     iterating_input: tuple[NDArrayf, float, float],
     ref_epc: NDArrayf,
@@ -2605,7 +2632,7 @@ def _cpd_iteration_step(
         only_translation=only_translation,
         lsg=lsg,
         cache=cache,
-        params_fit_or_bin=params_fit_or_bin
+        params_fit_or_bin=params_fit_or_bin,
     )
 
     # Compute statistic on offset to know if it reached tolerance
@@ -2616,13 +2643,17 @@ def _cpd_iteration_step(
 
     translations = step_matrix[:3, 3]
     rotations = step_matrix[:3, :3]
-    offset_translation = np.sqrt(np.sum(translations ** 2))
+    offset_translation = np.sqrt(np.sum(translations**2))
     offset_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
 
-    step_statistics = {"objective_func": float(offset_q), "translation": float(offset_translation),
-                       "rotation": float(offset_rotation)}
+    step_statistics = {
+        "objective_func": float(offset_q),
+        "translation": float(offset_translation),
+        "rotation": float(offset_rotation),
+    }
 
     return (new_matrix, new_sigma2, new_q), step_statistics, None
+
 
 def cpd(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
@@ -2679,9 +2710,7 @@ def cpd(
         elif isinstance(tba_elev, np.ndarray):
             fixed_elev = "tba"
         else:
-            raise TypeError(
-                "LSG-CPD requires one input to be a DEM array to derive normals."
-            )
+            raise TypeError("LSG-CPD requires one input to be a DEM array to derive normals.")
 
         # The normals must always be derived relative to a "fixed reference" (we don't rotate them during iterations),
         # so internally we'll need to invert inputs if 'tba' is the array, then invert the matrix at the end
@@ -2772,7 +2801,7 @@ def cpd(
             sigma2_min,
             only_translation,
             lsg,
-            cpd_cache
+            cpd_cache,
         )  # For iterative sampling, tba_epc is updated above
         new_output, new_stats, output_iterative, _ = _iterate_method(
             method=_cpd_iteration_step,
@@ -2837,6 +2866,7 @@ def cpd(
 # 6/ Least Z-difference
 #######################
 
+
 def _lzd_aux_vars(
     ref_elev: NDArrayf | gpd.GeoDataFrame,
     tba_elev: NDArrayf | gpd.GeoDataFrame,
@@ -2886,6 +2916,7 @@ def _lzd_aux_vars(
     gradient_y = -gradient_y / res[1]  # Because raster Y axis is inverted, need to add a minus
 
     return gradient_x, gradient_y
+
 
 def _lzd_fit_func_nonlinear(
     inputs: tuple[Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf], NDArrayf, tuple[float, float, float]],
@@ -3059,12 +3090,14 @@ def _lzd_fit_func(
 
     return res
 
+
 def _convert_lengthscale_gstools_gpytorch(correlation_range: float):
 
     # Divide by 2 because I used rescale=2 in GSTools (to get effective range)
     gp_lengthscale = correlation_range / 2 / np.sqrt(2)
 
     return gp_lengthscale
+
 
 def _gls_lazy_gpytorch(
     xcoord: NDArrayf,
@@ -3076,7 +3109,8 @@ def _gls_lazy_gpytorch(
     outputscale=1.0,
     cg_tol=1e-3,
     max_preconditioner_size=100,
-    jitter=1e-3):
+    jitter=1e-3,
+):
     """
     Perform generalized least squares (GLS) using GPyTorch lazy covariances based on kernels to scale efficiently
     with a large number of points.
@@ -3088,8 +3122,9 @@ def _gls_lazy_gpytorch(
     # This feature requires GPytorch and dependencies (torch, linear_operator)
     import_optional("gpytorch")
 
-    import torch
     import gpytorch
+    import torch
+
     # Dependency of GPyTorch (used to live in GPyTorch directly)
     from linear_operator.operators import (
         DiagLinearOperator,
@@ -3127,11 +3162,10 @@ def _gls_lazy_gpytorch(
     K_lazy = MatmulLinearOperator(DK, D)
 
     # 2/ Use conjugate-gradient settings for solving inversion
-    with gpytorch.settings.cg_tolerance(cg_tol), \
-         gpytorch.settings.max_preconditioner_size(max_preconditioner_size):
+    with gpytorch.settings.cg_tolerance(cg_tol), gpytorch.settings.max_preconditioner_size(max_preconditioner_size):
 
-        Sinv_y = gpytorch.functions.solve(K_lazy, Yt)    # n×1
-        Sinv_X = gpytorch.functions.solve(K_lazy, Xt)    # n×p
+        Sinv_y = gpytorch.functions.solve(K_lazy, Yt)  # n×1
+        Sinv_X = gpytorch.functions.solve(K_lazy, Xt)  # n×p
 
     # We compute the terms required for the GLS
     XtSinvX = Xt.T @ Sinv_X
@@ -3145,8 +3179,21 @@ def _gls_lazy_gpytorch(
 
     return beta_hat.numpy(), se_beta.numpy(), cov_beta.numpy()
 
-def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, sig_h_other, corr_h_other,
-                          sig_h_grid=None, corr_h_grid=None, force_opti: Literal["gls", "tls"] | None = None):
+
+def _lzd_fit_error_propag(
+    x,
+    y,
+    z,
+    dh,
+    gx,
+    gy,
+    pixel_size,
+    sig_h_other,
+    corr_h_other,
+    sig_h_grid=None,
+    corr_h_grid=None,
+    force_opti: Literal["gls", "tls"] | None = None,
+):
     """
     Error-aware LZD using either generalized least-squares (GLS) or total least-squares (TLS), depending on
     the error structure of the inputs.
@@ -3162,7 +3209,6 @@ def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, sig_h_other, corr_h_o
     # dh = np.random.normal(size=50)
     # gx = np.random.normal(size=50)
     # gy = np.random.normal(size=50)
-
 
     #
     # var_h_other = None
@@ -3182,16 +3228,9 @@ def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, sig_h_other, corr_h_o
     # var_gx = np.abs(np.random.normal(size=50))
     # var_gy = np.abs(np.random.normal(size=50))
 
-
     # Linear regression Y = β X
     # Independent variable
-    X = np.stack([
-        -gx,
-        -gy,
-        y + gy * z,
-        -x - gx * z,
-        gx * y - gy * x
-    ])
+    X = np.stack([-gx, -gy, y + gy * z, -x - gx * z, gx * y - gy * x])
     # Dependent variable
     Y = dh
 
@@ -3265,13 +3304,12 @@ def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, sig_h_other, corr_h_o
         # We pass sigma for Y = dh, which can depend on both inputs
         sig_h_o = sig_h_other if sig_h_other is not None else 0
         sig_h_g = sig_h_grid if sig_h_grid is not None else 0
-        sig_dh = np.sqrt(sig_h_o ** 2 + sig_h_g ** 2)
+        sig_dh = np.sqrt(sig_h_o**2 + sig_h_g**2)
         # Perform GLS with GPyTorch
         beta, sd_beta, cov_beta = _gls_lazy_gpytorch(xcoord=x, ycoord=y, X=X2, Y=Y, sig_Y=sig_dh, lengthscale=gp_ls)
 
         logging.info(f"GPyTorch-based GLS beta: {beta}")
         logging.info(f"GPyTorch-based GLS SE: {sd_beta}")
-
 
     # 2/ TOTAL LEAST SQUARES: Errors in both dependent variable Y and independent variable X
     # In our case, if the gridded elevation and its gradient have significant errors
@@ -3284,27 +3322,26 @@ def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, sig_h_other, corr_h_o
 
         # Transform sigma in variance to simplify writing below
         # If sig_h_grid is not defined, we simply apply a fraction of sig_h_other
-        var_h_grid = sig_h_grid ** 2 if sig_h_grid is not None else np.mean(sig_h_other ** 2) / 1000 * np.ones(len(x))
+        var_h_grid = sig_h_grid**2 if sig_h_grid is not None else np.mean(sig_h_other**2) / 1000 * np.ones(len(x))
 
         # Get amplitude of gradient errors from elevation errors and their correlations
         corr_func = corr_h_grid[0] if corr_h_grid is not None else None
         corr_grad_spacing = corr_func(2 * pixel_size) if corr_func is not None else 0
 
-        logging.info("Correlation at gradient spacing: {:.2f}".format(corr_grad_spacing))
-        var_gx = var_h_grid / 2 * (1 - corr_grad_spacing) / (pixel_size ** 2)
-        var_gy = var_h_grid / 2 * (1 - corr_grad_spacing) / (pixel_size ** 2)
+        logging.info(f"Correlation at gradient spacing: {corr_grad_spacing:.2f}")
+        var_gx = var_h_grid / 2 * (1 - corr_grad_spacing) / (pixel_size**2)
+        var_gy = var_h_grid / 2 * (1 - corr_grad_spacing) / (pixel_size**2)
         var_dh = var_h_grid + sig_h_other**2 if sig_h_other is not None else var_h_grid
         var_z = var_h_grid / 10000
         var_x = var_h_grid / 10000
         var_y = var_h_grid / 10000
 
-        from scipy.odr import ODR, multilinear, Data
+        from scipy.odr import ODR, Data, multilinear
+
         # CAVEAT: This ODR implementation doesn't support autocorrelation of the variables,
         # only heteroscedasticity and inter-correlation between independent variables
-
         # Thankfully, both elevation errors and its gradient errors share the same correlation lengths,
         # so we can simply sample sparse points according to the correlation error
-
         # 1/ Covariance of dependent variable
         cov_Y = var_dh
         # Convert to weight, easy for a vector variance
@@ -3315,13 +3352,15 @@ def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, sig_h_other, corr_h_o
         # The 6th term, the intercept constant (z translation), doesn't need to be defined yet for the covariance
 
         # Diagonals
-        var_X = np.array([
-            var_gx,
-            var_gy,
-            z**2 * var_gy + var_z * gy**2 + var_y,
-            z**2 * var_gx + var_z * gx**2 + var_x,
-            y**2 * var_gx + x**2 * var_gy + var_x * gy**2 + var_y * gx**2
-        ])
+        var_X = np.array(
+            [
+                var_gx,
+                var_gy,
+                z**2 * var_gy + var_z * gy**2 + var_y,
+                z**2 * var_gx + var_z * gx**2 + var_x,
+                y**2 * var_gx + x**2 * var_gy + var_x * gy**2 + var_y * gx**2,
+            ]
+        )
 
         ratio_X = np.mean(cov_Y) / np.var(Y)
         logging.info(f"Y error/variance ratio: {ratio_X}")
@@ -3386,6 +3425,7 @@ def _lzd_fit_error_propag(x, y, z, dh, gx, gy, pixel_size, sig_h_other, corr_h_o
 
     return beta, sd_beta, cov_beta
 
+
 def _lzd_fit_linearized(
     x: NDArrayf,
     y: NDArrayf,
@@ -3419,10 +3459,13 @@ def _lzd_fit_linearized(
     # Trim if required
     if "trim_residuals" in params_fit_or_bin.keys() and params_fit_or_bin["trim_residuals"]:
         res = _lzd_fit_func((x, y, z, dh, gradx, grady), 0, 0, 0, 0, 0, 0)
-        ind = index_trimmed(res, central_estimator=params_fit_or_bin["trim_central_statistic"],
-                            spread_estimator=params_fit_or_bin["trim_spread_statistic"],
-                            spread_coverage=params_fit_or_bin["trim_spread_coverage"],
-                            iterative=params_fit_or_bin["trim_iterative"])
+        ind = index_trimmed(
+            res,
+            central_estimator=params_fit_or_bin["trim_central_statistic"],
+            spread_estimator=params_fit_or_bin["trim_spread_statistic"],
+            spread_coverage=params_fit_or_bin["trim_spread_coverage"],
+            iterative=params_fit_or_bin["trim_iterative"],
+        )
         logging.info(f"Trimmed {np.count_nonzero(ind)} residuals.")
         # Keep data not trimmed
         x = x[~ind]
@@ -3485,10 +3528,20 @@ def _lzd_fit_linearized(
         beta = results.x
         err_beta = None
     else:
-        beta, err_beta, _ = _lzd_fit_error_propag(x=x, y=y, z=z, dh=dh, gx=gradx, gy=grady, pixel_size=pixel_size,
-                                                  sig_h_other=errors[0], corr_h_other=errors[1],
-                                                  sig_h_grid=errors[2], corr_h_grid=errors[3],
-                                                  force_opti=force_opti)
+        beta, err_beta, _ = _lzd_fit_error_propag(
+            x=x,
+            y=y,
+            z=z,
+            dh=dh,
+            gx=gradx,
+            gy=grady,
+            pixel_size=pixel_size,
+            sig_h_other=errors[0],
+            corr_h_other=errors[1],
+            sig_h_grid=errors[2],
+            corr_h_grid=errors[3],
+            force_opti=force_opti,
+        )
 
     # Mypy: having beta as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert beta is not None
@@ -3507,12 +3560,15 @@ def _lzd_fit(
     sub_grady: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
     params_fit_or_bin: Any,  # InFitOrBinDict
     only_translation: bool,
-    sub_errors: tuple[
-        Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf] | None,
-        Callable | None,
-        Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf] | None,
-        Callable | None,
-    ] | None,
+    sub_errors: (
+        tuple[
+            Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf] | None,
+            Callable | None,
+            Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf] | None,
+            Callable | None,
+        ]
+        | None
+    ),
     pixel_size: float,
     force_opti: Literal["ols", "gls", "tls"] | None = None,
     linearized: bool = True,
@@ -3547,9 +3603,7 @@ def _lzd_fit(
     if not linearized:
         if sub_errors is not None or force_opti is not None:
             # Nonlinear path currently ignores GLS/TLS error propagation
-            logging.info(
-                "Nonlinear LZD does not use GLS/TLS error propagation; using residual+loss only."
-            )
+            logging.info("Nonlinear LZD does not use GLS/TLS error propagation; using residual+loss only.")
 
         step_matrix = _lzd_fit_nonlinear(
             sub_rst=sub_rst,
@@ -3643,7 +3697,12 @@ def _lzd_iteration_step(
     params_fit_or_bin: InFitOrBinDict,
     only_translation: bool,
     linearized: bool,
-    sub_errors: tuple[Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf], Callable, Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf], Callable],
+    sub_errors: tuple[
+        Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+        Callable,
+        Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+        Callable,
+    ],
     pixel_size: float,
     force_opti: Literal["ols", "gls", "tls"] = None,
 ) -> tuple[NDArrayf, dict[str, float], NDArrayf | None]:
@@ -3697,7 +3756,7 @@ def _lzd_iteration_step(
     # Compute statistics to know if they reached tolerance
     # (offsets in translation/rotation, but can also be other statistics)
     translations = step_matrix[:3, 3]
-    offset_translation = np.sqrt(np.sum(translations ** 2))
+    offset_translation = np.sqrt(np.sum(translations**2))
     rotations = step_matrix[:3, :3]
     offset_rotation = np.rad2deg(np.arccos(np.clip((np.trace(rotations) - 1) / 2, -1, 1)))
 
@@ -3743,12 +3802,15 @@ def lzd(
 
     # Estimate centroid to use
     transform = ref_transform if ref_transform is not None else tba_transform
-    centroid = _get_centroid_scale(ref_elev=ref_elev if isinstance(ref_elev, np.ndarray) else tba_elev,
-                                   transform=transform)[0]
+    centroid = _get_centroid_scale(
+        ref_elev=ref_elev if isinstance(ref_elev, np.ndarray) else tba_elev, transform=transform
+    )[0]
 
     pixel_size = _res(transform)[0]
-    logging.info(f"Using {"reference" if ref_transform is not None else "to-be-aligned"} "
-                 f"as continuous grid for deriving gradients.")
+    logging.info(
+        f"Using {"reference" if ref_transform is not None else "to-be-aligned"} "
+        f"as continuous grid for deriving gradients."
+    )
 
     # Check that DEM CRS is projected, otherwise slope is not correctly calculated
     if not crs.is_projected:
@@ -3796,11 +3858,15 @@ def lzd(
     # If input errors were defined
     if any(x is not None for x in [sig_ref, sig_tba, corr_ref, corr_tba]):
         if sig_ref is not None:
-            sub_sig_ref = _reproject_horizontal_shift_samecrs(sig_ref, src_transform=transform, return_interpolator=True)
+            sub_sig_ref = _reproject_horizontal_shift_samecrs(
+                sig_ref, src_transform=transform, return_interpolator=True
+            )
         else:
             sub_sig_ref = None
         if sig_tba is not None:
-            sub_sig_tba = _reproject_horizontal_shift_samecrs(sig_tba, src_transform=transform, return_interpolator=True)
+            sub_sig_tba = _reproject_horizontal_shift_samecrs(
+                sig_tba, src_transform=transform, return_interpolator=True
+            )
         else:
             sub_sig_tba = None
         # We want to pass the errors as "sigma_other", "correlation_other", "sigma_grid", "correlation_grid",
@@ -3827,7 +3893,7 @@ def lzd(
         linearized,
         sub_errors,
         pixel_size,
-        force_opti
+        force_opti,
     )
     final_matrix, _, output_iterative, err_beta = _iterate_method(
         method=_lzd_iteration_step,
@@ -3903,7 +3969,7 @@ class AffineCoreg(Coreg):
         z_name: str | None = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
-        ** kwargs: Any,
+        **kwargs: Any,
     ) -> None:
         raise NotImplementedError("This method is meant to be subclassed.")
 
@@ -4851,10 +4917,12 @@ class DhMinimize(AffineCoreg):
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
 
-        warnings.warn(message="DhMinimize is deprecated due to redundancy with LZD. To replicate "
-                              "the old behaviour, use LZD with linearized=False, only_translation=True, "
-                              "fit_optimizer=scipy.optimize.minimize and fit_loss_func=nmad",
-                      category=DeprecationWarning)
+        warnings.warn(
+            message="DhMinimize is deprecated due to redundancy with LZD. To replicate "
+            "the old behaviour, use LZD with linearized=False, only_translation=True, "
+            "fit_optimizer=scipy.optimize.minimize and fit_loss_func=nmad",
+            category=DeprecationWarning,
+        )
 
         meta_fit = {"fit_or_bin": "fit", "fit_minimizer": fit_minimizer, "fit_loss_func": fit_loss_func}
         super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore

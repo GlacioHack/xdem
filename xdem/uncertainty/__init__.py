@@ -16,4 +16,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from xdem.uncertainty.uncertainty import *  # noqa
+"""Error structures, estimation and uncertainty propagation workflows."""
+
+from xdem.uncertainty.error_structure import (
+    ErrorComponent,
+    ErrorMagnitude,
+    ErrorStructure,
+)
+from xdem.uncertainty.numerical import PropagationResult
+from xdem.uncertainty.uncertainty import (
+    estimate_error_structure,
+    number_effective_samples,
+    patches_method,
+    propagate_uncertainty,
+    propagate_uncertainty_coreg,
+    spatial_error_propagation,
+)
+
+__all__ = [
+    "ErrorComponent",
+    "ErrorMagnitude",
+    "ErrorStructure",
+    "PropagationResult",
+    "estimate_error_structure",
+    "number_effective_samples",
+    "patches_method",
+    "propagate_uncertainty",
+    "propagate_uncertainty_coreg",
+    "spatial_error_propagation",
+]

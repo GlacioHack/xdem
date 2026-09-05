@@ -33,14 +33,14 @@ import geoutils as gu
 import numpy as np
 import rasterio as rio
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.raster import Raster, RasterType
-from geoutils.raster.array import get_array_and_mask
-from geoutils.raster.distributed_computing import (
+from geoutils.multiproc import (
     MultiprocConfig,
+    compute_tiling,
     map_multiproc_collect,
     map_overlap_multiproc_save,
 )
-from geoutils.raster.tiling import compute_tiling
+from geoutils.raster import Raster, RasterType
+from geoutils.raster.array import get_array_and_mask
 
 from xdem._misc import import_optional
 from xdem._typing import MArrayf, NDArrayb, NDArrayf

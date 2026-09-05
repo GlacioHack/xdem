@@ -24,17 +24,16 @@ import copy
 import inspect
 import logging
 import warnings
+from collections.abc import Mapping
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
-    Generator,
     Iterable,
     Literal,
-    Mapping,
     TypedDict,
     TypeVar,
     overload,
-    TYPE_CHECKING
 )
 
 import affine
@@ -50,13 +49,12 @@ import scipy.ndimage
 import scipy.optimize
 from geoutils import profiler
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.interface.interpolate import _interp_points
+from geoutils.interface.interpolation import _interp_points_base as _interp_points
 from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
 from geoutils.raster import Raster, RasterType, raster
-from geoutils.raster._geotransformations import _resampling_method_from_str
 from geoutils.raster.array import get_array_and_mask
-from geoutils.raster.georeferencing import _cast_pixel_interpretation, _coords
-from geoutils.raster.geotransformations import _translate
+from geoutils.raster.referencing import _cast_pixel_interpretation, _coords
+from geoutils.raster.transformation import _resampling_method_from_str, _translate
 
 import xdem
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -66,7 +64,6 @@ from xdem.fit import (
     robust_norder_polynomial_fit,
     sumsin_1d,
 )
-from xdem.spatialstats import nd_binning
 
 if TYPE_CHECKING:
     from xdem.coreg.pipeline import CoregPipeline
@@ -126,7 +123,7 @@ dict_key_to_str = {
     "anisotropic": "Weights axis distances separately",
     "sampling_strategy": "Sampling strategy for point-point registration",
     "cpd_weight": "Weight of CPD outlier removal",
-    "cpd_lsg": "CPD variant LSG using normals"
+    "cpd_lsg": "CPD variant LSG using normals",
 }
 
 
@@ -296,6 +293,7 @@ def _preprocess_coreg_fit_raster_raster(
         raise ValueError("All values of the inlier mask are NaNs in either 'reference_dem' or 'dem_to_be_aligned'.")
 
     return ref_dem, tba_dem, inlier_mask, ref_transform, tba_transform, final_crs, area_or_point
+
 
 def _preprocess_coreg_fit_raster_point(
     raster_elev: NDArrayf | MArrayf | RasterType,
@@ -496,8 +494,9 @@ def _preprocess_coreg_fit(
             if isinstance(to_be_aligned_elev, gpd.GeoDataFrame)
             else to_be_aligned_elev.data_column  # type: ignore
         )
-        ref_elev, tba_elev = _preprocess_coreg_fit_point_point(reference_elev=ref_elev, to_be_aligned_elev=tba_elev,
-                                                               z_name=z_name)
+        ref_elev, tba_elev = _preprocess_coreg_fit_point_point(
+            reference_elev=ref_elev, to_be_aligned_elev=tba_elev, z_name=z_name
+        )
         # Arguments required for _fit_pts_pts from outputs of this function
         main_args = {
             "ref_elev": ref_elev,
@@ -508,6 +507,7 @@ def _preprocess_coreg_fit(
         }
 
     return main_args
+
 
 def _preprocess_coreg_apply(
     elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
@@ -603,7 +603,6 @@ def _postprocess_coreg_apply_rst(
 
     # Resample the array on the original grid
     if resample:
-
         # TODO: Use this function for a translation only, for consistency with the rest of Coreg?
         #  (would require checking transform difference is only a translation)
         # applied_elev = _reproject_horizontal_shift_samecrs(raster_arr=applied_elev, src_transform=out_transform,
@@ -763,17 +762,17 @@ def _bin_or_and_fit_nd(
         if isinstance(params_fit_or_bin["bin_sizes"], dict):
             var_order = list(bias_vars.keys())
             # Declare type to write integer or tuple to the variable
-            bin_sizes: int | tuple[int, ...] | tuple[NDArrayf, ...] = tuple(
-                np.array(params_fit_or_bin["bin_sizes"][var]) for var in var_order
-            )
+            bin_sizes: Any = tuple(params_fit_or_bin["bin_sizes"][var] for var in var_order)
         # Otherwise, write integer directly
         else:
             bin_sizes = params_fit_or_bin["bin_sizes"]
 
     # If fit minimizer is default least_squares, and x0 not passed, set initial vector to ones (like in curve_fit)
-    if ("fit_minimizer" in params_fit_or_bin and
-            params_fit_or_bin["fit_minimizer"] == scipy.optimize.least_squares
-            and "x0" not in kwargs):
+    if (
+        "fit_minimizer" in params_fit_or_bin
+        and params_fit_or_bin["fit_minimizer"] == scipy.optimize.least_squares
+        and "x0" not in kwargs
+    ):
         sig = inspect.signature(params_fit_or_bin["fit_func"])
         nb_params = len(sig.parameters) - 1
         x0 = np.ones(nb_params)
@@ -823,12 +822,16 @@ def _bin_or_and_fit_nd(
             params_fit_or_bin["bin_statistic"].__name__,
         )
 
-        df = nd_binning(
-            values=values,
-            list_var=list(bias_vars.values()),
-            list_var_names=list(bias_vars.keys()),
-            list_var_bins=bin_sizes,
+        df = gu.stats.grouped_stats(
+            values={"bias": values},
+            by=bias_vars,
+            bins=(
+                dict.fromkeys(bias_vars, bin_sizes)
+                if isinstance(bin_sizes, (int, np.integer))
+                else dict(zip(bias_vars, bin_sizes))
+            ),
             statistics=(params_fit_or_bin["bin_statistic"], "count"),
+            observed=False,
         )
         results = None
 
@@ -841,21 +844,22 @@ def _bin_or_and_fit_nd(
             params_fit_or_bin["fit_func"].__name__,
         )
 
-        df = nd_binning(
-            values=values,
-            list_var=list(bias_vars.values()),
-            list_var_names=list(bias_vars.keys()),
-            list_var_bins=bin_sizes,
+        df = gu.stats.grouped_stats(
+            values={"bias": values},
+            by=bias_vars,
+            bins=(
+                dict.fromkeys(bias_vars, bin_sizes)
+                if isinstance(bin_sizes, (int, np.integer))
+                else dict(zip(bias_vars, bin_sizes))
+            ),
             statistics=(params_fit_or_bin["bin_statistic"], "count"),
+            observed=False,
         )
 
         # Now, we need to pass this new data to the fitting function and optimizer
-        # We use only the N-D binning estimates (maximum dimension, equal to length of variable list)
-        df_nd = df[df.nd == len(bias_vars)]
-
-        # We get the middle of bin values for variable, and statistic for the diff
-        new_vars = [pd.IntervalIndex(df_nd[var_name]).mid.values for var_name in bias_vars.keys()]
-        new_diff = df_nd[params_fit_or_bin["bin_statistic"].__name__].values
+        # Read the predictor centres and bias statistic from GeoUtils labelled groups
+        new_vars = [pd.IntervalIndex(df.index.get_level_values(name)).mid.values for name in bias_vars]
+        new_diff = df[("bias", params_fit_or_bin["bin_statistic"].__name__)].values
         # TODO: pass a new sigma based on "count" and original sigma (and correlation?)?
         #  sigma values would have to be binned above also
 
@@ -875,6 +879,7 @@ def _bin_or_and_fit_nd(
 
         # For generic minimizer (including default)
         else:
+
             def func_wrapped(params):
                 return params_fit_or_bin["fit_func"](xdata, *params) - ydata
 
@@ -1298,9 +1303,7 @@ def _iterate_affine_regrid_small_rotations(
     res_x = dem_rst.res[0]  # Resolution in X
     res_y = dem_rst.res[1]  # Resolution in Y
     niter = 1  # Starting iteration
-
     while niter < max_niter:
-
         # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
         tx, ty = _apply_matrix_pts_arr(x=x, y=y, z=new_z, matrix=matrix, invert=True, centroid=centroid)[:2]
 
@@ -1312,7 +1315,6 @@ def _iterate_affine_regrid_small_rotations(
 
         # Only check residuals after first iteration (to remove NaNs) then every 5 iterations to reduce computing time
         if niter == 1 or niter == niter_check:
-
             # Compute difference between exact grid coordinates and current coordinates, and stop if tolerance reached
             diff_x = x0 - x
             diff_y = y0 - y
@@ -1579,7 +1581,6 @@ def apply_matrix(
         return _apply_matrix_pts(epc=elev, matrix=matrix, invert=invert, centroid=centroid, z_name=z_name)
     # Or apply matrix to raster (often requires re-gridding)
     else:
-
         # First, we apply the affine matrix for the array/transform
         if isinstance(elev, gu.Raster):
             transform = elev.transform
@@ -1778,6 +1779,7 @@ class InputCoregDict(TypedDict, total=False):
     specific: InSpecificDict
     affine: InAffineDict
 
+
 class OutputCoregDict(TypedDict, total=False):
     random: OutRandomDict
     fitorbin: OutFitOrBinDict
@@ -1872,7 +1874,9 @@ class Coreg:
     def __add__(self, other: CoregType) -> CoregPipeline:
         """Return a pipeline consisting of self and the other processing function."""
 
-        from xdem.coreg.pipeline import CoregPipeline  # Local import to avoid circularity
+        from xdem.coreg.pipeline import (
+            CoregPipeline,  # Local import to avoid circularity
+        )
 
         if not isinstance(other, Coreg):
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
@@ -1901,7 +1905,6 @@ class Coreg:
 
     @property
     def is_translation(self) -> bool | None:
-
         # If matrix exists in keys, or can be derived from to_matrix(), we conclude
         if "matrix" in self._meta["outputs"]["affine"].keys():
             matrix = self._meta["outputs"]["affine"]["matrix"]
@@ -2078,7 +2081,6 @@ class Coreg:
 
         # Override subsample argument of instantiation if passed to fit
         if subsample is not None:
-
             # Check if subsample argument was also defined at instantiation (not default value), and raise warning
             argspec = inspect.getfullargspec(self.__class__)
             sub_meta = self._meta["inputs"]["random"]["subsample"]
@@ -2500,7 +2502,6 @@ class Coreg:
 
         # If input is a raster
         if isinstance(kwargs["elev"], np.ndarray):
-
             # See if a _apply_rst exists
             try:
                 # Run the associated apply function
@@ -2589,7 +2590,6 @@ class Coreg:
 
         # Save results if fitting was performed
         if self._meta["inputs"]["fitorbin"]["fit_or_bin"] in ["fit", "bin_and_fit"] and results is not None:
-
             # Write the results to metadata in different ways depending on optimizer returns
             if self._meta["inputs"]["fitorbin"]["fit_minimizer"] in (w["optimizer"] for w in fit_workflows.values()):
                 params = results[0]
@@ -2605,7 +2605,6 @@ class Coreg:
                 # Calculation to get the error on parameters (see description of scipy.optimize.curve_fit)
                 # perr = np.sqrt(np.diag(results[1]))
                 # self._meta["outputs"]["fitorbin"].update({"fit_perr": perr})
-
             else:
                 params = results[0]
 
@@ -2669,7 +2668,6 @@ class Coreg:
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
-
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
         raise NotImplementedCoregApply("This should have been implemented by subclassing.")
 
@@ -2680,6 +2678,226 @@ class Coreg:
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> gpd.GeoDataFrame:
-
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
         raise NotImplementedCoregApply("This should have been implemented by subclassing.")
+
+
+########################################
+# SAMPLING POLICY FOR COREGISTRATION
+########################################
+
+
+def _sample_coreg_inputs(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: Any,
+    ref_transform: Any,
+    tba_transform: Any,
+    crs: Any,
+    area_or_point: Any,
+    z_name: str | None,
+    subsample: int | float,
+    random_state: Any,
+    aux_vars: Mapping[str, Any] | None,
+    aux_tied_to: str,
+    independent: bool,
+) -> list[Any]:
+    """Apply coregistration's common or independent sampling policy through GeoUtils."""
+
+    # Reattach the spatial metadata removed by Coreg.fit preprocessing
+    inputs = []
+    for values, transform in ((ref_elev, ref_transform), (tba_elev, tba_transform)):
+        if isinstance(values, gpd.GeoDataFrame):
+            inputs.append(PointCloud(values.reset_index(drop=True), data_column=z_name))
+        else:
+            inputs.append(
+                Raster.from_array(
+                    np.ma.masked_invalid(values),
+                    transform=transform,
+                    crs=crs,
+                    area_or_point=area_or_point,
+                    nodata=np.nan if np.issubdtype(values.dtype, np.floating) else None,
+                )
+            )
+
+    # Use an available raster grid to locate a plain inlier mask in mixed raster and point comparisons
+    first, second = inputs
+    raster = first if isinstance(first, Raster) else second if isinstance(second, Raster) else None
+    mask = None if np.all(inlier_mask) else inlier_mask
+    if isinstance(mask, np.ndarray) and mask.ndim == 2 and raster is not None:
+        mask = Raster.from_array(
+            mask.astype(bool), transform=raster.transform, crs=raster.crs, area_or_point=area_or_point
+        )
+
+    # Bind array auxiliaries to their native grid before GeoUtils interpolates or masks them
+    owner = first if aux_tied_to == "ref" else second
+    auxiliary = {}
+    for name, values in (aux_vars or {}).items():
+        if np.ndim(values) == 2:
+            grid = owner if isinstance(owner, Raster) else raster
+            if grid is None:
+                raise ValueError("A raster auxiliary requires a raster input defining its grid.")
+            auxiliary[name] = Raster.from_array(
+                np.ma.masked_invalid(values),
+                transform=grid.transform,
+                crs=grid.crs,
+                area_or_point=area_or_point,
+                nodata=np.nan if np.issubdtype(values.dtype, np.floating) else None,
+            )
+        else:
+            auxiliary[name] = values
+
+    # Retain the coregistration policy of silently capping oversized sample budgets
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message="Subsample value of .* is larger than the number of valid pixels", category=UserWarning
+        )
+        # Draw separately for algorithms such as ICP, preserving each dataset's own valid population
+        if independent:
+            samples = []
+            for index, value in enumerate(inputs):
+                tied = (index == 0 and aux_tied_to == "ref") or (index == 1 and aux_tied_to == "tba")
+                samples.append(
+                    value.cosample(
+                        value,
+                        auxiliary=auxiliary if tied else None,
+                        auxiliary_at="self",
+                        mask=mask,
+                        subsample=subsample,
+                        random_state=random_state,
+                        align="reproject",
+                        **({"strategy": "sequential"} if isinstance(value, Raster) else {}),
+                    )
+                )
+        else:
+            samples = [
+                first.cosample(
+                    second,
+                    auxiliary=auxiliary,
+                    auxiliary_at="self" if aux_tied_to == "ref" else "other",
+                    mask=mask,
+                    subsample=subsample,
+                    random_state=random_state,
+                    align="reproject",
+                    **({"strategy": "sequential"} if isinstance(first, Raster) else {}),
+                )
+            ]
+
+    return samples
+
+
+def _subsample_rst_pts(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    ref_transform: Any,
+    tba_transform: Any,
+    crs: Any,
+    area_or_point: Any,
+    z_name: str | None,
+    subsample: int | float = 1,
+    random_state: Any = None,
+    sampling_strategy: str = "same_xy",
+    aux_vars: Mapping[str, Any] | None = None,
+    aux_tied_to: str = "ref",
+) -> tuple[NDArrayf, NDArrayf, dict[str, NDArrayf] | None]:
+    """Return the 3-by-N coordinate arrays required by coregistration optimizers."""
+
+    # Validate algorithm policy independently of the generic GeoUtils sampling API
+    if sampling_strategy not in {"same_xy", "independent"}:
+        raise ValueError("sampling_strategy must be 'same_xy' or 'independent'.")
+    if aux_tied_to not in {"ref", "tba"}:
+        raise ValueError("aux_tied_to must be 'ref' or 'tba'.")
+
+    # Delegate alignment, masks and pair selection to the shared GeoUtils sampling interface
+    samples = _sample_coreg_inputs(
+        ref_elev,
+        tba_elev,
+        inlier_mask,
+        ref_transform,
+        tba_transform,
+        crs,
+        area_or_point,
+        z_name,
+        subsample,
+        random_state,
+        aux_vars,
+        aux_tied_to,
+        sampling_strategy == "independent",
+    )
+
+    # Read native spatial outputs in grid or point order, as the original sampling masks did
+    primary_xyz = []
+    auxiliary_values = []
+    for sample in samples:
+        if isinstance(sample, Raster):
+            valid = ~np.ma.getmaskarray(sample.data[0])
+            coordinates = sample.ij2xy(*np.where(valid))
+            values = dict(zip(sample.tags["long_name"], sample.data[:, valid].data))
+        else:
+            coordinates = (sample.ds.geometry.x.to_numpy(), sample.ds.geometry.y.to_numpy())
+            values = {name: sample.ds[name].to_numpy() for name in sample.ds if name != "geometry"}
+
+        # Keep the coordinate orientation consumed by the existing fitting algorithms
+        reference_xyz = np.vstack((*coordinates, values["self"]))
+        other_xyz = np.vstack((*coordinates, values["other"]))
+        primary_xyz.append((reference_xyz, other_xyz))
+        auxiliary_values.append({name: values[name] for name in values if name not in {"self", "other"}})
+
+    # Use the same locations for paired fitting or each dataset's own sample for independent fitting
+    if sampling_strategy == "same_xy":
+        reference, aligned = primary_xyz[0]
+        auxiliary = auxiliary_values[0]
+    else:
+        reference, aligned = primary_xyz[0][0], primary_xyz[1][0]
+        owner = 0 if aux_tied_to == "ref" else 1
+        auxiliary = auxiliary_values[owner]
+    return reference, aligned, auxiliary if aux_vars is not None else None
+
+
+def _get_subsample_mask_pts_rst(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: Any,
+    z_name: str | None,
+    area_or_point: Any,
+    subsample: int | float = 1,
+    random_state: Any = None,
+    aux_vars: Mapping[str, Any] | None = None,
+) -> NDArrayb:
+    """Select locations for iterative interpolators using GeoUtils common sampling."""
+
+    # Match the finite point population used by the existing iterative interpolators
+    crs = None
+    if isinstance(ref_elev, gpd.GeoDataFrame):
+        ref_elev = ref_elev[np.isfinite(ref_elev[z_name])]
+        crs = ref_elev.crs
+    if isinstance(tba_elev, gpd.GeoDataFrame):
+        tba_elev = tba_elev[np.isfinite(tba_elev[z_name])]
+        crs = tba_elev.crs
+
+    # Select common valid observations after removing unusable elevation rows
+    sample = _sample_coreg_inputs(
+        ref_elev,
+        tba_elev,
+        inlier_mask,
+        transform,
+        transform,
+        crs,
+        area_or_point,
+        z_name,
+        subsample,
+        random_state,
+        aux_vars,
+        "ref",
+        False,
+    )[0]
+
+    # Read the common raster mask directly or place selected point rows in the original point population
+    if isinstance(sample, Raster):
+        return ~np.ma.getmaskarray(sample.data[0])
+    support = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+    selected = np.zeros(len(support), dtype=bool)
+    selected[sample.ds.index.to_numpy()] = True
+    return selected

@@ -13,11 +13,11 @@ import pytest
 import rasterio as rio
 import scipy.optimize
 from geoutils import Raster, Vector
-from geoutils.raster.geotransformations import _translate
+from geoutils.raster.transformation import _translate
 from geoutils.stats import nmad
 from scipy.ndimage import binary_dilation
 
-from xdem import coreg, examples, DEM
+from xdem import DEM, coreg, examples
 from xdem.coreg.affine import (
     AffineCoreg,
     _reproject_horizontal_shift_samecrs,
@@ -58,8 +58,8 @@ class TestAffineCoreg:
     fit_args_rst_rst = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
 
     # Convert DEMs to points with a bit of subsampling for speed-up
-    ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
-    tba_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
+    ref_pts = ref.to_pointcloud(data_column_name="z", subsample=3000, random_state=42).ds
+    tba_pts = ref.to_pointcloud(data_column_name="z", subsample=3000, random_state=42).ds
 
     # Raster-Point
     fit_args_rst_pts = dict(reference_elev=ref, to_be_aligned_elev=tba_pts, inlier_mask=inlier_mask)
@@ -591,8 +591,9 @@ class TestAffineCoreg:
     @pytest.mark.parametrize("trim_spread_coverage", [3, 5])  # type: ignore
     @pytest.mark.parametrize("trim_iterative", [True, False])  # type: ignore
     @pytest.mark.parametrize("coreg_method", [coreg.NuthKaab, coreg.LZD, coreg.ICP])  # type: ignore
-    def test_coreg_rigid__trimming(self, coreg_method, trim_central_statistic, trim_spread_statistic,
-                                   trim_spread_coverage,trim_iterative) -> None:
+    def test_coreg_rigid__trimming(
+        self, coreg_method, trim_central_statistic, trim_spread_statistic, trim_spread_coverage, trim_iterative
+    ) -> None:
         """Test trimming schemes."""
 
         # Get reference elevation
@@ -613,9 +614,15 @@ class TestAffineCoreg:
 
         # Run co-registration
         subsample_size = 50000
-        c = coreg_method(subsample=subsample_size, trim_residuals=True, trim_central_statistic=trim_central_statistic,
-                         trim_spread_statistic=trim_spread_statistic, trim_spread_coverage=trim_spread_coverage,
-                         trim_iterative=trim_iterative, **kwargs)
+        c = coreg_method(
+            subsample=subsample_size,
+            trim_residuals=True,
+            trim_central_statistic=trim_central_statistic,
+            trim_spread_statistic=trim_spread_statistic,
+            trim_spread_coverage=trim_spread_coverage,
+            trim_iterative=trim_iterative,
+            **kwargs,
+        )
         c.fit(ref, ref_shifted_rotated, random_state=42)
 
         # Get invert of resulting matrices
@@ -626,8 +633,7 @@ class TestAffineCoreg:
             atol_px = 0.1
         else:
             atol_px = 1
-        assert np.allclose(invert_fit_shifts_translations[0:3], shifts_rotations[0:3], atol=atol_px*ref.res[0])
-
+        assert np.allclose(invert_fit_shifts_translations[0:3], shifts_rotations[0:3], atol=atol_px * ref.res[0])
 
     @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD])
     def test_coreg_rigid__standardize(self, coreg_method: coreg.Coreg) -> None:
@@ -706,13 +712,17 @@ class TestAffineCoreg:
             """Return if coregistration is symmetric."""
             icp_or_cpd = c.__class__.__name__ in ["ICP", "CPD"]
 
-            icp_p2point = ("specific" in c.meta["inputs"] and
-                           "icp_method" in c.meta["inputs"]["specific"] and
-                           c.meta["inputs"]["specific"]["icp_method"] == "point-to-point")
+            icp_p2point = (
+                "specific" in c.meta["inputs"]
+                and "icp_method" in c.meta["inputs"]["specific"]
+                and c.meta["inputs"]["specific"]["icp_method"] == "point-to-point"
+            )
 
-            cpd_nolsg = ("specific" in c.meta["inputs"] and
-                           "cpd_lsg" in c.meta["inputs"]["specific"] and
-                           c.meta["inputs"]["specific"]["cpd_lsg"] == False)
+            cpd_nolsg = (
+                "specific" in c.meta["inputs"]
+                and "cpd_lsg" in c.meta["inputs"]["specific"]
+                and c.meta["inputs"]["specific"]["cpd_lsg"] == False
+            )
 
             return icp_or_cpd and (icp_p2point or cpd_nolsg)
 

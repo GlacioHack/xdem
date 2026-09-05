@@ -50,9 +50,10 @@ Additionally, we recommend reading the **{ref}`static-surfaces` guide page** on 
 
 ## Quick use
 
-The estimation of the spatial structure of random errors of elevation data is conveniently
-wrapped in a single method {func}`~xdem.DEM.estimate_uncertainty`, which estimates, models and returns **a map of
-variable error** matching the DEM, and **a function describing the spatial correlation of these errors**.
+The spatial structure of random elevation errors is represented by an {class}`~xdem.ErrorStructure`. It contains named
+independent {class}`~xdem.ErrorComponent` objects, each combining an error magnitude with a normalized spatial
+correlation. Keeping those parts separate makes the contribution of short range, long range and independent errors
+explicit while supporting random fields and analytical covariance from the same object.
 
 ```{code-cell} ipython3
 :tags: [hide-cell]
@@ -78,18 +79,47 @@ tba_dem_coreg = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab() + xdem.core
 ```
 
 ```{code-cell} ipython3
-# Estimate elevation uncertainty assuming both DEMs have similar precision
-sig_dem, rho_sig = tba_dem_coreg.estimate_uncertainty(ref_dem, stable_terrain=inlier_mask, precision_of_other="same", random_state=42)
+# Estimate the target DEM structure assuming both DEMs have the same error structure
+error_structure = tba_dem_coreg.estimate_error_structure(
+    ref_dem,
+    stable_terrain=inlier_mask,
+    other_error="same",
+    n_pairs=100_000,
+    random_state=42,
+)
 
-# The error map variability is estimated from slope and curvature by default
-sig_dem.plot(cmap="Purples", cbar_title=r"Error in elevation (1$\sigma$, m)")
+# Evaluate the combined magnitude from the default slope and curvature predictors
+predictors = {
+    "slope": tba_dem_coreg.slope(),
+    "max_curvature": tba_dem_coreg.max_curvature(),
+}
+error_magnitude = error_structure.predict_magnitude(predictors, like=tba_dem_coreg)
+error_magnitude.plot(cmap="Purples", cbar_title="Elevation error magnitude (m)")
 
-# The spatial correlation function represents how much errors are correlated at a certain distance
-print("Random elevation errors at a distance of 1 km are correlated at {:.2f} %.".format(rho_sig(1000) * 100))
+# Inspect representative correlation and generate one spatially structured error realization
+print(
+    "Errors 1 km apart have a representative correlation of {:.2f} %.".format(
+        error_structure.predict_correlation(1000) * 100
+    )
+)
+random_error = error_structure.generate_random_field(tba_dem_coreg, predictors=predictors, random_state=42)
 ```
 
-Three methods can be considered for this estimation, which are described right below.
-Additionally, the subfunctions used to perform the uncertainty analysis are detailed in **the {ref}`error-struc` section** below.
+The default estimate separates a predictor dependent short range component from a constant long range component.
+Custom named components can be passed when the expected instrument or processing errors justify another structure.
+The legacy {func}`~xdem.DEM.estimate_uncertainty` tuple interface remains available during the transition.
+
+### Separating components from one error proxy
+
+Estimation first models the total local error magnitude from the predictors. It standardizes the centered error proxy
+with that model and fits the requested nested correlations, whose partial sills provide initial component variance
+shares. A second fit then compares conditional pair semivariances with the exact endpoint covariance equation. This
+uses differences in both distance and local magnitude to distinguish a variable component from fixed contributions.
+
+The separation is conditional on the component forms supplied by the user; one error proxy cannot uniquely identify
+arbitrary unknown sources. Overlapping ranges and correlations near the sampled spatial extent are therefore reported
+in ``error_structure.fit_diagnostics["identifiability"]``. Pair coordinates and endpoint values are discarded after
+their compact conditional summaries have been calculated.
 
 ## Summary of available methods
 
@@ -146,7 +176,7 @@ spread, and Dowd's estimator for the variogram. See the **{ref}`robust-estimator
 
 ### Propagating errors to spatial derivatives
 
-Exact uncertainty propagation scales exponentially with data (by computing every pairwise combinations,
+Exact uncertainty propagation scales quadratically with data (by computing every pairwise combinations,
 for potentially millions of elevation data points or pixels).
 To remedy this, [Rolstad et al. (2009)](http://dx.doi.org/10.3189/002214309789470950) and [Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922)
 both provide an approximation of exact uncertainty propagations for spatial derivatives (to avoid long
@@ -164,7 +194,7 @@ computing times). **These approximations are valid in different contexts**, desc
      - Validity
    * - Exact discretized
      - Exact
-     - Slow on large samples (exponential complexity)
+     - Slow on large samples (quadratic complexity)
      - Always
    * - R2009
      - Conservative
@@ -197,202 +227,109 @@ For more statistical background on the methods below, see the **{ref}`spatial-st
 (error-struc)=
 ## Spatial structure of error
 
-Below we detail the steps used to estimate the two components of uncertainty: heteroscedasticity and spatial
-correlation of errors in {func}`~xdem.DEM.estimate_uncertainty`, as these are most easily customized
-by calling their subfunctions independently.
+An {class}`~xdem.ErrorStructure` estimates error magnitude and spatial correlation together, then stores them as
+separate parts of named components. This is important when the same error proxy contains, for example, a variable
+short range contribution and a constant long range contribution: each contribution retains its own magnitude and
+correlation rather than being summarized by a single error map and variogram.
 
-```{important}
-Some uncertainty functionalities are **being adapted to operate directly in SciKit-GStat** (e.g., fitting a sum of
-variogram models, pairwise subsampling for grid data). This will allow to simplify function inputs and outputs of xDEM,
-for instance by relying on a single, consistent {func}`~skgstat.Variogram` object.
+### Magnitude and correlation
 
-This will trigger API changes in future package versions.
+Use {meth}`~xdem.ErrorStructure.estimate` when an elevation difference on stable terrain is already available.
+For two elevation datasets, {func}`~xdem.uncertainty.estimate_error_structure` also prepares their common finite
+support through GeoUtils cosampling and applies the selected error attribution.
+
+Grouped magnitude estimation uses `geoutils.stats.grouped_stats`. Its tables have named predictor index levels and
+`(value, statistic)` columns. {func}`~xdem.fit.interp_binning` interpolates these groups, with missing groups filled
+and predictions clamped to the outer group centres. {class}`~xdem.ErrorMagnitude` adds the error-specific scaling,
+variance subtraction and positivity constraints. Correlations are portable `geoutils.VariogramModel` objects.
+
+```python
+# Inspect the fitted components without keeping the sampled pairs
+error_structure.plot_magnitude()
+error_structure.plot_correlation()
+
+# Inspect a component's magnitude model and normalized correlation
+short_range = error_structure["short_range"]
+print(short_range.magnitude.grouped_statistics)
+print(short_range.correlation)
 ```
 
-### Heteroscedasticity
-
-The first component of uncertainty is the estimation and modelling of elevation
-[heteroscedasticity](https://en.wikipedia.org/wiki/Heteroscedasticity) (or variability in
-random elevation errors) through {func}`~xdem.spatialstats.infer_heteroscedasticity_from_stable`, which has three steps.
-
-**Step 1: Empirical estimation of heteroscedasticity**
-
-The variability in errors is empirically estimated by [data binning](https://en.wikipedia.org/wiki/Data_binning)
-in N-dimensions of the elevation differences on stable terrain, using the function {func}`~xdem.spatialstats.nd_binning`.
-Plotting of 1- and 2D binnings can be facilitated by the functions {func}`~xdem.spatialstats.plot_1d_binning` and
-{func}`~xdem.spatialstats.plot_2d_binning`.
-
-The most common explanatory variables for elevation heteroscedasticity are the terrain slope and curvature (used as
-default, see {ref}`terrain-attributes`), and other quality metrics passed by the user such as the correlation
-(for [stereo](https://en.wikipedia.org/wiki/Photogrammetry#Stereophotogrammetry) DEMs)
-or the interferometric coherence (for [InSAR](https://en.wikipedia.org/wiki/Interferometric_synthetic-aperture_radar) DEMs).
-
-```{code-cell} ipython3
-# Get elevation differences and stable terrain mask
-dh = ref_dem - tba_dem_coreg
-glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
-stable_terrain = ~glacier_outlines.create_mask(dh)
-
-# Derive slope and curvature
-slope, curv = ref_dem.get_terrain_attribute(attribute=["slope", "curvature"])
-
-# Use only array of stable terrain
-dh_arr = dh[stable_terrain]
-slope_arr = slope[stable_terrain]
-curv_arr = curv[stable_terrain]
-
-# Estimate the variable error by bin of slope and curvature
-df_h = xdem.spatialstats.nd_binning(
-    dh_arr, list_var=[slope_arr, curv_arr], list_var_names=["slope", "curv"], statistics=["count", gu.stats.nmad], list_var_bins=[np.linspace(0, 60, 10), np.linspace(-10, 10, 10)]
-)
-
-# Plot 2D binning
-xdem.spatialstats.plot_2d_binning(df_h, "slope", "curv", "nmad", "Slope (degrees)", "Curvature (100 m-1)", "NMAD (m)")
-```
-
-**Step 2: Modelling of the heteroscedasticity**
-
-Once empirically estimated, elevation heteroscedasticity can be modelled either by a function fit, or by
-N-D linear interpolation using {func}`~xdem.spatialstats.interp_nd_binning`, in order to yield a value for any slope
-and curvature:
-
-```{code-cell} ipython3
-# Derive a numerical function of the measurement error
-sig_dh_func = xdem.spatialstats.interp_nd_binning(df_h, list_var_names=["slope", "curv"])
-```
-
-**Step 3: Applying the model**
-
-Using the model, we can estimate the random error on all terrain using their slope
-and curvature, and derive a map of random errors in elevation change:
-
-```{code-cell} ipython3
-# Apply function to the slope and curvature on all terrain
-sig_dh_arr = sig_dh_func((slope.data, curv.data))
-
-# Convert to raster and plot
-sig_dh = dh.copy(new_array=sig_dh_arr)
-sig_dh.plot(cmap="Purples", cbar_title=r"Random error in elevation change (1$\sigma$, m)")
-```
-
-### Spatial correlation of errors
-
-The second component of uncertainty is the estimation and modelling of spatial correlations of random errors through
-{func}`~xdem.spatialstats.infer_spatial_correlation_from_stable`, which has three steps.
-
-**Step 1: Standardization**
-
-If heteroscedasticity was considered, elevation differences can be standardized by the variable error to
-reduce its influence on the estimation of spatial correlations. Otherwise, elevation differences are used directly.
-
-```{code-cell} ipython3
-# Standardize the data
-z_dh = dh / sig_dh
-# Mask values to keep only stable terrain
-z_dh.set_mask(~stable_terrain)
-# Plot the standardized data on stable terrain
-z_dh.plot(cmap="RdBu", vmin=-3, vmax=3, cbar_title="Standardized elevation changes (unitless)")
-```
-
-**Step 2: Empirical estimation of the variogram**
-
-An empirical variogram can be estimated with {func}`~xdem.spatialstats.sample_empirical_variogram`.
-
-```{code-cell} ipython3
-# Sample empirical variogram
-df_vgm = xdem.spatialstats.sample_empirical_variogram(values=z_dh, subsample=500, n_variograms=5, random_state=42)
-```
-
-**Step 3: Modelling of the variogram**
-
-Once empirically estimated, the variogram can be modelled by a functional form with {func}`~xdem.spatialstats.fit_sum_model_variogram`.
-Plotting of the empirical and modelled variograms is facilitated by {func}`~xdem.spatialstats.plot_variogram`.
-
-```{code-cell} ipython3
-# Fit the sum of a gaussian and spherical model
-func_sum_vgm, params_variogram_model = xdem.spatialstats.fit_sum_model_variogram(
-    list_models=["Gaussian", "Spherical"], empirical_variogram=df_vgm
-)
-# Plot empirical and modelled variogram
-xdem.spatialstats.plot_variogram(df_vgm, [func_sum_vgm], ["Sum of gaussian and spherical"], xscale="log")
-```
+For generic variography outside uncertainty estimation, use `raster.variogram(...)` or `pointcloud.variogram(...)`,
+then `.fit(...)`, `.plot()` and `.to_dataframe()` on the resulting GeoUtils object.
 
 ## Propagation of errors
 
-The two uncertainty components estimated above allow to propagate elevation errors.
-xDEM provides methods to theoretically propagate errors to spatial derivatives (mean or sum in an area), with efficient
-computing times.
-For more complex derivatives (such as terrain attributes), we recommend to combine the structure of error
-defined above with random field simulation methods available in packages such as [GSTools](https://geostat-framework.readthedocs.io/projects/gstools/en/stable/).
+The same error structure supports analytical covariance propagation and numerical propagation through arbitrary
+calculations. In both cases the component magnitudes are evaluated on the observation support.
 
-### Spatial derivatives
+### Analytical spatial averages
 
-The propagation of random errors to a spatial derivative is done with
-{func}`~xdem.spatialstats.spatial_error_propagation`, which divides into three steps.
+{func}`~xdem.uncertainty.spatial_error_propagation` returns the standard uncertainty of each area average. With
+normalized averaging weights, it sums the covariance between observations, evaluating each component's magnitude
+at both endpoints. This accounts for components with different spatial scales and different magnitude predictors.
 
-Each step derives a part of the standard error in the area.
-For example, for the error of the mean elevation difference $\sigma_{\overline{dh}}$:
-
-$$
-\sigma_{\overline{dh}} = \frac{\overline{\sigma_{dh}}}{\sqrt{N_{eff}}}
-$$
-
-```{code-cell} ipython3
-# Get an area of interest where we want to propagate errors
+```python
 outline_brom = gu.Vector(glacier_outlines.ds[glacier_outlines.ds["NAME"] == "Brombreen"])
-mask_brom = outline_brom.create_mask(dh)
-```
-
-**Step 1: Account for variable error**
-
-We compute the mean of the variable random error in the area $\overline{\sigma_{dh}}$.
-
-```{code-cell} ipython3
-# Calculate the mean random error in the area
-mean_sig = np.nanmean(sig_dh[mask_brom])
-```
-
-**Step 2: Account for spatial correlation**
-
-We estimate the number of effective samples in the area $N_{eff}$ due to the spatial correlations.
-
-```{note}
-:class: margin
-
-**We notice a warning below:** The resolution for rasterizing the outline was automatically chosen based on the short correlation range.
-```
-
-```{code-cell} ipython3
----
-mystnb:
-  output_stderr: show
----
-# Calculate the area-averaged uncertainty with these models
-neff = xdem.spatialstats.number_effective_samples(area=outline_brom, params_variogram_model=params_variogram_model)
-```
-
-**Step 3: Derive final error**
-
-And we can now compute our final random error for the mean elevation change in this area of interest:
-
-```{code-cell} ipython3
-# Compute the standard error
-sig_dh_brom = mean_sig / np.sqrt(neff)
-
-# Mean elevation difference
-dh_brom = np.nanmean(dh[mask_brom])
-
-# Plot the result
-dh.plot(cmap="RdYlBu", cbar_title="Elevation differences (m)")
-outline_brom.plot(dh, fc="none", ec="black", lw=2)
-plt.text(
-    outline_brom.ds.centroid.x.values[0],
-    outline_brom.ds.centroid.y.values[0] - 1500,
-    f"{dh_brom:.2f} \n$\\pm$ {sig_dh_brom:.2f} m",
-    color="black",
-    fontweight="bold",
-    va="top",
-    ha="center",
+standard_errors = xdem.uncertainty.spatial_error_propagation(
+    [outline_brom], error_structure, support=tba_dem_coreg, predictors=predictors,
+    subsample=1000, random_state=42,
 )
-plt.show()
 ```
+
+Pass `subsample=None` for the complete discrete covariance sum. A bare numeric area retains the stationary circular
+approximation; use a spatial mask or vector and explicit support for variable magnitudes or independent errors.
+{func}`~xdem.uncertainty.number_effective_samples` uses the squared average local standard deviation divided by the
+variance of the average, preserving the relation between these two uncertainty summaries.
+
+### Numerical spatial averages, terrain and coregistration
+
+{func}`~xdem.uncertainty.propagate_uncertainty` generates Gaussian elevation error fields from the supplied structure,
+adds each field to the original elevations and reruns a calculation. It shares one simulation engine between
+spatial, terrain, coregistration and user supplied calculations. Magnitude predictors remain fixed during simulation.
+
+```python
+# Average elevations inside a vector area for every realization
+area_result = xdem.uncertainty.propagate_uncertainty(
+    tba_dem_coreg, "spatial", areas=[outline_brom], error_structure=error_structure,
+    predictors=predictors, nsim=100, random_state=42,
+)
+
+# Recompute slope for every realization
+slope_result = xdem.uncertainty.propagate_uncertainty(
+    tba_dem_coreg, "terrain", attribute="slope", error_structure=error_structure,
+    predictors=predictors, nsim=100, random_state=42,
+)
+slope_result.std.plot(cbar_title="Slope standard uncertainty (degrees)")
+
+# A callable can describe a complete calculation, including several successive operations
+mask_brom = outline_brom.create_mask(tba_dem_coreg, as_array=True)
+mean_slope_result = xdem.uncertainty.propagate_uncertainty(
+    tba_dem_coreg,
+    lambda dem: np.ma.mean(xdem.terrain.slope(dem).data[mask_brom]),
+    error_structure=error_structure, predictors=predictors, nsim=100, random_state=42,
+)
+```
+
+The returned {class}`~xdem.uncertainty.PropagationResult` contains the original `estimate`, ensemble `mean` and `std`,
+successful simulation counts and per-output valid counts. Spatial results retain their coordinates and masks.
+For nonlinear operations the ensemble mean can differ from the original estimate. Terrain aspect automatically
+uses circular summaries; custom angular calculations can pass `circular_period`.
+
+Individual outputs are retained only with `return_samples=True`. By default errors in a user supplied operation
+are raised; `on_error="warn"` records and skips failed realizations. At least two successful realizations are required.
+
+Coregistration uses fresh fitted objects for every realization and records failed fits. The convenience function
+{func}`~xdem.uncertainty.propagate_uncertainty_coreg` returns the mean/STD table, the simulation table and fitted
+objects. The general entry point with `operation="coreg"` returns a `PropagationResult` with those diagnostics in
+its metadata. `precoreg=True` performs an initial alignment before fitting the simulated residual transforms.
+
+### Empirical patch estimates
+
+{func}`~xdem.uncertainty.patches_method` estimates uncertainty from observed proxy values in many patches. It retains
+the convolution and quadrant algorithms, the valid-area threshold, and the reported rasterized patch areas.
+It operates on observations directly and does not require an ErrorStructure.
+
+### Migrating existing code
+
+All functions in `xdem.spatialstats` are deprecated. The [migration guide](uncertainty_migration.md) maps the former
+functions to GeoUtils, `xdem.fit` and the uncertainty modules, with examples of the new input and output contracts.

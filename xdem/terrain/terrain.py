@@ -26,11 +26,11 @@ from typing import Literal, Sized, overload
 import geoutils as gu
 import numpy as np
 from geoutils import profiler
-from geoutils.raster import Raster, RasterType
-from geoutils.raster.distributed_computing import (
+from geoutils.multiproc import (
     MultiprocConfig,
     map_overlap_multiproc_save,
 )
+from geoutils.raster import Raster, RasterType
 
 from xdem._typing import DTypeLike, MArrayf, NDArrayf
 from xdem.terrain.freq import _texture_shading_fft

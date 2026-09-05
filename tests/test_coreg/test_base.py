@@ -138,33 +138,45 @@ class TestCoregClass:
         assert corr_copy.meta != corr.meta
 
     @pytest.mark.parametrize("subsample", [10, 10000, 0.5, 1])
-    def test_get_subsample_on_valid_mask(self, subsample: float | int) -> None:
-        """Test the subsampling function called by all subclasses"""
+    def test_coreg_cosampling_support(self, subsample: float | int) -> None:
+        """Checks that coregistration sampling preserves valid locations, observation order and auxiliary values."""
 
-        # Define a valid mask
-        width = height = 50
+        # Give each observation a unique value so sampled coordinates and auxiliaries can be checked together
         rng = np.random.default_rng(42)
-        valid_mask = rng.integers(low=0, high=2, size=(width, height), dtype=bool)
+        valid_mask = rng.integers(0, 2, size=(50, 50), dtype=bool)
+        values = np.arange(2500.0).reshape(valid_mask.shape)
+        options = dict(
+            ref_elev=values,
+            tba_elev=values + 2,
+            inlier_mask=valid_mask,
+            ref_transform=rio.transform.from_origin(0, 50, 1, 1),
+            tba_transform=rio.transform.from_origin(0, 50, 1, 1),
+            crs=rio.crs.CRS.from_epsg(32632),
+            area_or_point="Area",
+            z_name="z",
+            subsample=subsample,
+            random_state=42,
+            aux_vars={"quality": values * 2},
+        )
 
-        # Define a class with a subsample and random_state in the .metadata
-        params_random={"subsample": subsample, "random_state": 42}
+        # Draw the same sample twice to check reproducible correspondence between the datasets
+        reference, aligned, auxiliary = xdem.coreg.base._subsample_rst_pts(**options)
+        repeated = xdem.coreg.base._subsample_rst_pts(**options)[0]
 
-        subsample_mask = xdem.coreg.base._get_subsample_on_valid_mask(params_random=params_random,
-                                                                      valid_mask=valid_mask)
+        # Preserve the sample budget, common finite population and reproducible ordering
+        expected = int(subsample * np.count_nonzero(valid_mask)) if subsample <= 1 else int(subsample)
+        assert reference.shape == (3, min(expected, np.count_nonzero(valid_mask)))
+        assert valid_mask.ravel()[reference[2].astype(int)].all()
+        np.testing.assert_array_equal(reference, repeated)
 
-        # Check that it returns a same-shaped array that is boolean
-        assert np.shape(valid_mask) == np.shape(subsample_mask)
-        assert subsample_mask.dtype == bool
-        # Check that the subsampled values are all within valid values
-        assert all(valid_mask[subsample_mask])
-        # Check that the number of subsampled value is coherent, or the maximum possible
-        if subsample <= 1:
-            # If value lower than 1, fraction of valid pixels
-            subsample_val: float | int = int(subsample * np.count_nonzero(valid_mask))
-        else:
-            # Otherwise the number of pixels
-            subsample_val = subsample
-        assert np.count_nonzero(subsample_mask) == min(subsample_val, np.count_nonzero(valid_mask))
+        # Check shared coordinates and the known two-unit difference between paired elevations
+        np.testing.assert_array_equal(reference[:2], aligned[:2])
+        np.testing.assert_array_equal(reference[2] + 2, aligned[2])
+        assert np.all(np.diff(reference[2]) > 0)
+
+        # Auxiliary values must follow the same selected observations and ordering
+        assert auxiliary is not None
+        np.testing.assert_array_equal(auxiliary["quality"], reference[2] * 2)
 
     all_coregs = [
         coreg.VerticalShift,
@@ -605,6 +617,7 @@ class TestCoregClass:
         )
 
         assert np.array_equal(dem_arr, dem_arr2_fixed)
+
 
 class TestAffineManipulation:
 

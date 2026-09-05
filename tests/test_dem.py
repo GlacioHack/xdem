@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import warnings
-from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -561,75 +560,6 @@ class TestDEM:
 
         for method in pipeline.pipeline:
             assert "initial_shift" not in method.meta["inputs"]["affine"]
-
-    def test_estimate_uncertainty(self) -> None:
-
-        # Import optional skgstat or skip test
-        pytest.importorskip("skgstat")
-
-        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
-
-        dem_ref = DEM(fn_ref)
-        dem_tba = DEM(fn_tba)
-
-        sig_h, corr_sig = dem_tba.estimate_uncertainty(dem_ref, random_state=42)
-
-        assert isinstance(sig_h, gu.Raster)
-        assert callable(corr_sig)
-
-    # TODO: Temporary test for new API
-    def test_infer_uncertainty__with_pc(self) -> None:
-
-        # Import optional skgstat or skip test
-        pytest.importorskip("skgstat")
-
-        warnings.filterwarnings("ignore", category=UserWarning)
-
-        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
-
-        dem_ref = DEM(fn_ref)
-        epc_ref = dem_ref.to_pointcloud()
-        dem_tba = DEM(fn_tba)
-
-        from xdem.uncertainty.uncertainty import _infer_uncertainty
-        # sig_h, corr_sig = _infer_uncertainty(epc_ref, dem_tba, random_state=42)
-        # sig_h, corr_sig = _infer_uncertainty(dem_tba, epc_ref, random_state=42)
-        sig_h, corr_sig = _infer_uncertainty(dem_ref, dem_tba, random_state=42)
-
-        import matplotlib.pyplot as plt
-        plt.figure()
-        sig_h.plot()
-        plt.show()
-
-        plt.figure()
-        x = np.linspace(0, 10000, 50)
-        plt.plot(x, corr_sig(x))
-        plt.xscale("log")
-        plt.show()
-        print(corr_sig(1000))
-
-        from geoutils import PointCloud
-        assert isinstance(sig_h, PointCloud)
-        assert callable(corr_sig)
-
-
-        assert False
-
-
-    @pytest.mark.skipif(find_spec("skgstat") is not None, reason="Only runs if scikit-gstat is missing.")
-    def test_estimate_uncertainty__missing_dep(self) -> None:
-        """Check that proper import error is raised when skgstat is missing"""
-
-        fn_ref = xdem.examples.get_path_test("longyearbyen_ref_dem")
-        fn_tba = xdem.examples.get_path_test("longyearbyen_tba_dem")
-
-        dem_ref = DEM(fn_ref)
-        dem_tba = DEM(fn_tba)
-
-        with pytest.raises(ImportError, match="Optional dependency 'scikit-gstat' required.*"):
-            dem_tba.estimate_uncertainty(dem_ref)
 
     def test_to_pointcloud__type_override(self) -> None:
 
