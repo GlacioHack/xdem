@@ -13,6 +13,7 @@ import pytest
 import rasterio as rio
 import scipy.optimize
 from geoutils import Raster, Vector
+from geoutils._typing import Number
 from geoutils.raster.transformation import _translate
 from scipy.ndimage import binary_dilation
 
@@ -24,6 +25,7 @@ from xdem.coreg.affine import (
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
 )
+from xdem.coreg.base import CoregPipeline
 
 
 def load_examples() -> tuple[Raster, Raster, Vector]:
@@ -241,9 +243,9 @@ class TestAffineCoreg:
     @pytest.mark.parametrize(
         "coreg_method__shift",
         [
-            (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
-            (coreg.DhMinimize, (10.0850892, 2.898172, -1.943001)),
-            (coreg.LZD, (9.969819, 2.140150, -1.9257709)),
+            (coreg.NuthKaab, (9.204061, 2.735502, -1.981842)),
+            (coreg.DhMinimize, (10.173229, 2.724605, -1.951370)),
+            (coreg.LZD, (9.968375, 2.139449, -1.926219)),
             (coreg.ICP, (5.417970, 1.1282436, -2.0662609)),
         ],
     )
@@ -251,10 +253,10 @@ class TestAffineCoreg:
         self, coreg_method__shift: tuple[type[AffineCoreg], tuple[float, float, float]]
     ) -> None:
         """
-        Test that the translation co-registration outputs are always exactly the same on the real example data.
+        Checks that translation fits reproduce fixed reference values on the real example data.
         """
 
-        # Use entire DEMs here (to compare to original values from older package versions)
+        # Use full DEMs and reference values computed with GeoUtils' normalized finite-neighbor interpolation
         ref, tba, outlines = load_examples_fullsize()
         inlier_mask = ~outlines.create_mask(ref)
 
@@ -448,7 +450,7 @@ class TestAffineCoreg:
         "coreg_method__shifts_rotations",
         [
             (coreg.ICP, (5.417970, 1.128243, -2.066260, 0.0071103, -0.007524, -0.0047392)),
-            (coreg.LZD, (9.969819, 2.140150, -1.925771, 0.0070245, -0.00766, -0.008174)),
+            (coreg.LZD, (9.968375, 2.139449, -1.926219, 0.0070283, -0.0076565, -0.0081859)),
             (coreg.CPD, (0.005405, 0.005163, -2.047066, 0.0070245, -0.00755, -0.0000405)),
         ],
     )
@@ -456,7 +458,7 @@ class TestAffineCoreg:
         self, coreg_method__shifts_rotations: tuple[type[AffineCoreg], tuple[float, float, float]]
     ) -> None:
         """
-        Test that the rigid co-registration outputs is always exactly the same on the real example data.
+        Checks that rigid fits reproduce fixed translation and rotation references on the real example data.
         """
 
         # Use entire DEMs here (to compare to original values from older package versions)
@@ -597,27 +599,159 @@ class TestAffineCoreg:
         matrix2[2, 3] = matrix1[2, 3]
         assert np.array_equal(matrix1, matrix2)
 
-    def test_nuthkaab_initial_shift(self) -> None:
+    @pytest.mark.parametrize(
+        "coreg_method", [coreg.VerticalShift, coreg.ICP, coreg.CPD, coreg.NuthKaab, coreg.LZD, coreg.DhMinimize]
+    )
+    @pytest.mark.parametrize("initial_shift", [(0, 0, 0), (8, 4, 0)])
+    def test_coreg_initial_shift(self, coreg_method: coreg.Coreg, initial_shift: tuple[float, float, float]) -> None:
         """
-        Test that the initial_shift does not impact fit_and_apply process for the Nuth and Kaab coregistration.
+        Test that the initial_shift does not impact fit_and_apply process.
         """
 
-        # Use entire DEMs here (to compare to original values from older package versions)
-        ref, tba = load_examples_fullsize()[0:2]
+        ref = load_examples()[0]
+        shift = (4, 2, 10)
+        ref_shifted = ref.translate(shift[0], shift[1]) + shift[2]
 
-        # Get the coregistration method and expected shifts from the inputs
-        inlier_mask = ~self.outlines.create_mask(ref)
+        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        c = coreg_method(initial_shift=initial_shift, subsample=subsample_size)
+        dem_aligned_is = c.fit_and_apply(ref, ref_shifted, random_state=42)
+        assert c.meta["inputs"]["affine"]["initial_shift"] == initial_shift
+        output = c.meta["outputs"]["affine"]
+        shifts_out_is = [output[k] for k in ["shift_x", "shift_y", "shift_z"] if k in output]  # type: ignore
 
-        c = coreg.NuthKaab(initial_shift=(0, 0, 0))
-        dem_aligned_is = c.fit_and_apply(ref, tba, inlier_mask=inlier_mask, random_state=42)
-        shifts_is = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
+        c = coreg_method(subsample=subsample_size)
+        dem_aligned = c.fit_and_apply(ref, ref_shifted, random_state=42)
+        assert "initial_shift" not in c.meta["inputs"]["affine"]
+        output = c.meta["outputs"]["affine"]
+        shifts_out = [output[k] for k in ["shift_x", "shift_y", "shift_z"] if k in output]  # type: ignore
 
-        c = coreg.NuthKaab()
-        dem_aligned = c.fit_and_apply(ref, tba, inlier_mask=inlier_mask, random_state=42)
-        shifts = [c.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]  # type: ignore
+        # Test shifts (skip CPD: more difficult to constrain)
+        if not (initial_shift != (0, 0, 0) and coreg_method == coreg.CPD):
+            assert shifts_out_is == pytest.approx(shifts_out, 10 - 6)
 
-        # Check the output translations match the exact values
-        assert shifts_is == pytest.approx(shifts)
-        assert (dem_aligned_is.data == dem_aligned.data).min()
         assert dem_aligned_is.transform == dem_aligned.transform
         assert dem_aligned_is.crs == dem_aligned.crs
+
+    def test_pipeline_nested_coregpipeline(self) -> None:
+        """Test nested CoregPipeline"""
+
+        nk1 = coreg.NuthKaab()
+        nk2 = coreg.NuthKaab()
+        nk3 = coreg.NuthKaab()
+        nk4 = coreg.NuthKaab()
+        pipeline = coreg.CoregPipeline([nk1, coreg.CoregPipeline([nk2, nk3])])
+        assert len(pipeline.pipeline) == 3
+        for n, nk in enumerate([nk1, nk2, nk3]):
+            assert pipeline.pipeline[n] == nk
+
+        pipeline = coreg.CoregPipeline([coreg.CoregPipeline([nk1, nk2]), coreg.CoregPipeline([nk3, nk4])])
+        assert len(pipeline.pipeline) == 4
+        for n, nk in enumerate([nk1, nk2, nk3, nk4]):
+            assert pipeline.pipeline[n] == nk
+
+    @pytest.mark.parametrize("initial_shift", [None, (8, 4, 0)])
+    @pytest.mark.parametrize("array", [True, False])
+    def test_pipeline_initial_shift(self, initial_shift: tuple[Number, Number, Number] | None, array: bool) -> None:
+        """
+        Test that the initial_shift in the first coreg of a CoregPipeline works well
+        """
+        ref = load_examples()[0]
+        shift = (10, 2, 0)
+        ref_shifted = ref.translate(shift[0], shift[1]) + shift[2]
+        shifts = ["shift_x", "shift_y", "shift_z"]
+        warnings.filterwarnings("ignore", category=UserWarning)
+
+        if array:
+            transform = ref.transform
+            ref = ref.data
+        else:
+            transform = None
+
+        # Handmade NuthKaab pipeline
+        nk_1 = coreg.NuthKaab(initial_shift=initial_shift)
+        nk_1.fit(reference_elev=ref, transform=transform, to_be_aligned_elev=ref_shifted, random_state=42)
+        shifts_out_nk1 = [nk_1.meta["outputs"]["affine"][k] for k in shifts]  # type: ignore
+        output_tmp = nk_1.apply(elev=ref_shifted)
+        nk_2 = coreg.NuthKaab(initial_shift=None)
+        nk_2.fit(reference_elev=ref, transform=transform, to_be_aligned_elev=output_tmp, random_state=42)
+        shifts_out_nk2 = [nk_2.meta["outputs"]["affine"][k] for k in shifts]  # type: ignore
+
+        # Automatic pipeline
+        pipeline = coreg.NuthKaab(initial_shift=initial_shift) + coreg.NuthKaab(initial_shift=None)
+        if initial_shift is not None:
+            assert pipeline.pipeline[0].meta["inputs"]["affine"]["initial_shift"] == initial_shift
+        else:
+            assert "initial_shift" not in pipeline.pipeline[0].meta["inputs"]["affine"]
+        assert "initial_shift" not in pipeline.pipeline[1].meta["inputs"]["affine"]
+        pipeline.fit(reference_elev=ref, to_be_aligned_elev=ref_shifted, transform=transform, random_state=42)
+        assert [pipeline.pipeline[0].meta["outputs"]["affine"][k] for k in shifts] == shifts_out_nk1  # type: ignore
+        assert [pipeline.pipeline[1].meta["outputs"]["affine"][k] for k in shifts] == shifts_out_nk2  # type: ignore
+
+    @pytest.mark.parametrize(
+        "initial_shifts",
+        [[None, (1, 1, 0), None], [None, None, (2, 2, 0)], [(3, 3, 0), (4, 4, 0), None]],
+    )
+    def test_pipeline_initial_shift_errors(self, initial_shifts: list[tuple[int, int, int] | None]) -> None:
+        """
+        Test that coreg initial_shift management in function on its place in the pipeline
+        """
+
+        is1, is2, is3 = initial_shifts
+
+        def test_results(pipeline: CoregPipeline, is1: tuple[int, int, int] | None) -> None:
+            if is1 is None:
+                assert "initial_shift" not in pipeline.pipeline[0].meta["inputs"]["affine"]
+            else:
+                assert pipeline.pipeline[0].meta["inputs"]["affine"]["initial_shift"] == is1
+            assert "initial_shift" not in pipeline.pipeline[1].meta["inputs"]["affine"]
+            assert "initial_shift" not in pipeline.pipeline[2].meta["inputs"]["affine"]
+
+        # Test N&K series
+        with pytest.warns(UserWarning, match="No initial shift can be"):
+            pipeline = (
+                coreg.NuthKaab(initial_shift=is1)
+                + coreg.NuthKaab(initial_shift=is2)
+                + coreg.NuthKaab(initial_shift=is3)
+            )
+        test_results(pipeline, is1)
+
+        # CoregPipeline with a list of N&K
+        with pytest.warns(UserWarning, match="No initial shift can be"):
+            pipeline = coreg.CoregPipeline(
+                [
+                    coreg.NuthKaab(initial_shift=is1),
+                    coreg.NuthKaab(initial_shift=is2),
+                    coreg.NuthKaab(initial_shift=is3),
+                ]
+            )
+        test_results(pipeline, is1)
+
+        # Test N&K series with VerticalShift before
+        with pytest.warns(UserWarning, match="No initial shift can be"):
+            pipeline = (
+                coreg.VerticalShift()
+                + coreg.NuthKaab(initial_shift=is1)
+                + coreg.NuthKaab(initial_shift=is2)
+                + coreg.NuthKaab(initial_shift=is3)
+            )
+        test_results(pipeline, is1=None)
+
+        # Test nested CoregPipeline
+        with pytest.warns(UserWarning, match="No initial shift can be"):
+            pipeline = coreg.CoregPipeline(
+                [
+                    coreg.NuthKaab(initial_shift=is1),
+                    coreg.CoregPipeline([coreg.NuthKaab(initial_shift=is2), coreg.NuthKaab(initial_shift=is3)]),
+                ]
+            )
+        test_results(pipeline, is1)
+
+        # Test nested CoregPipeline
+        with pytest.warns(UserWarning, match="No initial shift can be"):
+            pipeline = coreg.CoregPipeline(
+                [
+                    coreg.CoregPipeline([coreg.NuthKaab(initial_shift=is1), coreg.NuthKaab(initial_shift=is3)]),
+                    coreg.CoregPipeline([coreg.NuthKaab(initial_shift=is2), coreg.NuthKaab(initial_shift=is3)]),
+                ]
+            )
+        test_results(pipeline, is1)

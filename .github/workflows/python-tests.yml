@@ -26,19 +26,17 @@ jobs:
         shell: bash -l {0}
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     # We initiate the environment empty, and check if a key for this environment doesn't already exist in the cache
     - name: Initiate empty environment
-      uses: conda-incubator/setup-miniconda@v3
+      uses: conda-incubator/setup-miniconda@v4
       with:
         miniforge-version: latest
         auto-update-conda: true
         use-mamba: true
-        mamba-version: "2.0.5"
         channel-priority: strict
         activate-environment: xdem-dev
-        python-version:
 
     - name: Get month for resetting cache
       id: get-date
@@ -46,7 +44,7 @@ jobs:
       shell: bash
 
     - name: Cache conda env
-      uses: actions/cache@v5
+      uses: actions/cache@v6
       with:
         path: ${{ env.CONDA }}/envs
         key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ matrix.dep-level }}-${{ env.cache_date }}-${{ hashFiles('dev-environment.yml') }}-${{ env.CACHE_NUMBER }}
@@ -71,7 +69,7 @@ jobs:
       run: pip install -e .[test]
 
     - name: Install project environment (optional)
-      if: ${{ matrix.dep-level != 'base' }}
+      if: ${{ matrix.dep-level != 'base'}}
       run: pip install -e .[test,${{ matrix.dep-level }}]
 
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
@@ -81,8 +79,7 @@ jobs:
 
     - name: Print conda environment (for debugging)
       run: |
-        conda info
-        conda list
+        conda info ; conda list
 
     - name: Test with pytest
       run: pytest -ra --cov=xdem/ --cov-report=lcov --durations=0

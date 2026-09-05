@@ -16,9 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import argparse
-import ctypes.util
 import logging
 import sys
 
@@ -26,25 +24,11 @@ from xdem._misc import import_optional
 from xdem.workflows import Accuracy, Topo
 from xdem.workflows.schemas import COMPLETE_CONFIG_ACCURACY, COMPLETE_CONFIG_TOPO
 
-try:
-    lib_gobject_name = ctypes.util.find_library("gobject-2.0")
-    lib_pango_name = ctypes.util.find_library("pango-1.0")
-    if lib_gobject_name and lib_pango_name:
-        from weasyprint import HTML
 
-        _has_libgobject = True
-    else:
-        _has_libgobject = False
-    _has_weasyprint = _has_libgobject
-except ImportError:
-    _has_weasyprint = False
-
-
-def main() -> None:
+def main(arg_list: list[str] | None = None) -> None:
     """
     Main function for the CLI
     """
-
     yaml = import_optional("yaml", package_name="pyyaml")
 
     parser = argparse.ArgumentParser(prog="xdem", description="CLI tool to run xDEM workflows", add_help=False)
@@ -128,7 +112,17 @@ def main() -> None:
         "--output",
         help="(Optional) Path to output folder (with --config, overrides configuration file)",
     )
-    args = parser.parse_args(args=None if sys.argv[1:] else ["--help"])
+
+    # Print help for 'xdem' without arguments
+    arg_list = sys.argv[1:] if arg_list is None else arg_list
+    if not arg_list:
+        arg_list = ["--help"]
+
+    args = parser.parse_args(args=arg_list)
+
+    # Raise error for xdem --output without a --config
+    if args.command is not None and args.output and not args.config:
+        parser.error("Argument --output requires --config.")
 
     # Instance logger
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
@@ -137,9 +131,6 @@ def main() -> None:
     # fontTools creates noisy logs
     logging.getLogger("fontTools").setLevel(logging.WARNING)
     logging.getLogger("fontTools").propagate = False
-
-    if args.output and not args.config:
-        parser.error("Argument --output requires --config.")
 
     if args.command == "topo":
         if args.template_config or args.template_config is None:
@@ -171,14 +162,6 @@ def main() -> None:
 
     else:
         raise ValueError(f"{args.command} doesn't exist, valid command are 'accuracy', 'topo'")
-
-    if args.config:
-        if not _has_weasyprint:
-            msg = "Optional dependency 'weasyprint' required. " "Install it directly or through: pip install xdem[opt]."
-            raise ImportError(msg)
-
-        logger.info("Generating HTML and PDF report")
-        HTML(workflow.outputs_folder / "report.html").write_pdf(workflow.outputs_folder / "report.pdf")
 
     logger.info("End of execution")
 

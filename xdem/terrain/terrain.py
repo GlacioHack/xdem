@@ -21,30 +21,30 @@
 from __future__ import annotations
 
 import warnings
-from typing import Literal, Sized, overload, TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal, Sized, overload
 
-import geoutils as gu
 import numpy as np
+import xarray as xr
 from geoutils import profiler
-from geoutils.raster import Raster, RasterType
-from geoutils.raster.referencing import _res
+from geoutils._dispatch import get_geo_attr, has_geo_attr, is_dask_array
 from geoutils.multiproc import (
     MultiprocConfig,
-    map_overlap_multiproc_save,
+    map_overlap,
 )
-from geoutils._dispatch import has_geo_attr, get_geo_attr
+from geoutils.raster import Raster, RasterType
+from geoutils.raster.referencing import _res
 
-from xdem._typing import DTypeLike, NDArrayf
 from xdem._misc import import_optional
+from xdem._typing import DTypeLike, NDArrayf
 from xdem.terrain.freq import _texture_shading_fft
 from xdem.terrain.surfit import _get_surface_attributes
 from xdem.terrain.window import _get_windowed_indexes
 
 if TYPE_CHECKING:
-    from xdem.dem.base import DEMLike
-    from xdem import DEM
     from geoutils.raster.base import RasterLike
-    import dask.array as da
+
+    from xdem.dem.base import DEMLike
 
 # List available attributes
 available_attributes = [
@@ -84,111 +84,30 @@ list_requiring_windowed_index = [
     "topographic_position_index",
     "roughness",
     "rugosity",
-    "fractal_roughness",
 ]
-# 3/ Requiring fractal domain
+
+# 3/ Requiring windowed fractal index
+list_requiring_windowed_fractal_index = ["fractal_roughness"]
+
+# 4/ Requiring fractal domain
 list_requiring_frequency_domain = ["texture_shading"]
 
 # Helpers for chunked execution
 ###############################
 
-def _multiproc_get_terrain_attribute(
-    dem: DEM,
-    attr: str,
-    resolution: float,
-    degrees: bool,
-    hillshade_altitude: float,
-    hillshade_azimuth: float ,
-    hillshade_z_factor: float,
-    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"],
-    curv_method: Literal["geometric", "directional"],
-    tri_method: Literal["Riley", "Wilson"],
-    window_size: int,
-    engine: Literal["scipy", "numba"],
-    texture_alpha: float,
-    out_dtype: DTypeLike | None,
-    depth: int,
-    mp_config: MultiprocConfig,
-) -> Raster:
 
-    # Wrap up the block function to work with a Raster
-    def _raster_block_func(block: Raster) -> Raster:
-        arr = _get_terrain_attribute_base(
-            block.data,
-            attribute=[attr],
-            resolution=resolution,
-            degrees=degrees,
-            hillshade_altitude=hillshade_altitude,
-            hillshade_azimuth=hillshade_azimuth,
-            hillshade_z_factor=hillshade_z_factor,
-            surface_fit=surface_fit,
-            curv_method=curv_method,
-            tri_method=tri_method,
-            window_size=window_size,
-            engine=engine,
-            texture_alpha=texture_alpha,
-            out_dtype=out_dtype,
-        )[0]
-        return block.copy(new_array=arr)
+def _terrain_attribute_array_block(array: NDArrayf, attribute: str, **kwargs: Any) -> NDArrayf:
+    """Calculate one terrain attribute on an array block, including its overlap."""
 
-    # Return a map overlap
-    return map_overlap_multiproc_save(
-        _raster_block_func,
-        dem,
-        mp_config,
-        depth=depth,
-    )
+    return _get_terrain_attribute_base(array, attribute=[attribute], **kwargs)[0]
 
-def _dask_get_terrain_attribute(
-    array: da.Array,
-    attr: str,
-    resolution: float | tuple[float, float] | None,
-    degrees: bool,
-    hillshade_altitude: float,
-    hillshade_azimuth: float,
-    hillshade_z_factor: float,
-    surface_fit: str,
-    curv_method: str,
-    tri_method: str,
-    window_size: int,
-    engine: str,
-    texture_alpha: float,
-    out_dtype: np.dtype[Any] | None,
-    depth: int,
-) -> da.Array:
-    """Apply one terrain attribute with Dask overlap."""
 
-    import_optional("dask")
-    import dask.array as da
+def _terrain_attribute_raster_block(raster: Raster, attribute: str, **kwargs: Any) -> Raster:
+    """Calculate one terrain attribute on a georeferenced multiprocessing tile."""
 
-    def _block_func(block: np.ndarray) -> np.ndarray:
-        return _get_terrain_attribute_base(
-            block,
-            attribute=[attr],
-            resolution=resolution,
-            degrees=degrees,
-            hillshade_altitude=hillshade_altitude,
-            hillshade_azimuth=hillshade_azimuth,
-            hillshade_z_factor=hillshade_z_factor,
-            surface_fit=surface_fit,
-            curv_method=curv_method,
-            tri_method=tri_method,
-            window_size=window_size,
-            engine=engine,
-            texture_alpha=texture_alpha,
-            out_dtype=out_dtype,
-        )[0]
+    values = _terrain_attribute_array_block(raster.data, attribute=attribute, **kwargs)
+    return raster.copy(new_array=values)
 
-    dtype = out_dtype if out_dtype is not None else array.dtype
-
-    return da.map_overlap(
-        _block_func,
-        array,
-        depth=depth,
-        boundary="none",
-        trim=True,
-        dtype=dtype,
-    )
 
 @overload
 def get_terrain_attribute(
@@ -204,6 +123,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -225,6 +145,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -246,6 +167,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -267,6 +189,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -288,6 +211,7 @@ def get_terrain_attribute(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
@@ -356,7 +280,8 @@ def get_terrain_attribute(
         "ZevenbergThorne" or "Florinsky".
     :param curv_method: Method to calculate the curvatures: "geometric" or "directional".
     :param tri_method: Method to calculate the Terrain Ruggedness Index: "Riley" (topography) or "Wilson" (bathymetry).
-    :param window_size: Window size for windowed attributes (TPI, TRI, roughnesses, rugosity).
+    :param window_size: Window size for windowed attributes (TPI, TRI, roughness, rugosity).
+    :param window_size_fractal: Window size for windowed fractal attributes (fractal roughness).
     :param engine: Engine to use for computing the attributes, windowed and surface fit attributes all support
         "scipy" or "numba".
     :param out_dtype: Output dtype of the terrain attributes, can only be a floating type. Defaults to that of the
@@ -379,6 +304,10 @@ def get_terrain_attribute(
 
     :returns: One or multiple arrays of the requested attribute(s)
     """
+
+    # Normalize DataArrays to the shared raster interface without reading their values
+    if isinstance(dem, xr.DataArray):
+        dem = dem.rst
 
     # 0/ Deprecating slope method
     if slope_method is not None:
@@ -416,7 +345,7 @@ def get_terrain_attribute(
                 "Use 'ZevenbergThorne' or 'Florinsky' instead."
             )
 
-    # Check robust to any input (Xarray or
+    # Derive pixel spacing from raster metadata when available
     if has_geo_attr(dem, "transform"):
         transform = get_geo_attr(dem, "transform")
         resolution = _res(transform)
@@ -436,14 +365,19 @@ def get_terrain_attribute(
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
 
     # Warn if default window size for fractal roughness
-    if "fractal_roughness" in attribute and window_size == 3:
-        warnings.warn(
-            category=UserWarning,
-            stacklevel=2,
-            message="Fractal roughness results with window size of less than 13 can be inaccurate."
-            "Consider deriving it separately from other attributes that use a default window size of "
-            "3.",
-        )
+    if "fractal_roughness" in attribute:
+        if window_size_fractal < 5:
+            warnings.warn(
+                category=UserWarning,
+                stacklevel=2,
+                message="Fractal roughness can only be computed on window sizes larger or equal to 5.",
+            )
+        elif window_size_fractal < 13:
+            warnings.warn(
+                category=UserWarning,
+                stacklevel=2,
+                message="Fractal roughness results with window size of less than 13 can be inaccurate.",
+            )
 
     attributes_requiring_resolution = attributes_requiring_surface_fit + (
         ["rugosity"] if "rugosity" in attribute else []
@@ -468,7 +402,12 @@ def get_terrain_attribute(
     elif isinstance(resolution, Sized):
         resolution = resolution[0]
 
-    choices = list_requiring_surface_fit + list_requiring_windowed_index + list_requiring_frequency_domain
+    choices = (
+        list_requiring_surface_fit
+        + list_requiring_windowed_index
+        + list_requiring_windowed_fractal_index
+        + list_requiring_frequency_domain
+    )
     for attr in attribute:
         if attr not in choices:
             raise ValueError(f"Attribute '{attr}' is not supported. Choices: {choices}")
@@ -491,7 +430,8 @@ def get_terrain_attribute(
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
 
     # Raise warning if CRS is not projected and using a surface fit attribute
-    if isinstance(dem, gu.Raster) and not dem.crs.is_projected and len(attributes_requiring_surface_fit) > 0:
+    crs = get_geo_attr(dem, "crs") if has_geo_attr(dem, "crs") else None
+    if crs is not None and not crs.is_projected and attributes_requiring_surface_fit:
         warnings.warn(
             category=UserWarning,
             message=f"DEM is not in a projected CRS, the following surface fit attributes might be "
@@ -499,114 +439,113 @@ def get_terrain_attribute(
             f"Use DEM.reproject(crs=DEM.get_metric_crs()) to reproject in a projected CRS.",
         )
 
-    # 2/ Processing: chunked or normal depending on input
+    # 2/ Select the required neighborhood and execution backend
 
-    # Derive depth argument from method or window size,
-    # This is the overlap between tiles (1 for 3x3, 2 for 5x5, etc).
-    if any((attr in list_requiring_windowed_index) for attr in attribute):
+    # Include the largest requested window so each tile has all neighboring elevations
+    window_depth = 0
+    if any(attr in list_requiring_windowed_index for attr in attribute):
         window_depth = window_size // 2
-    else:
-        window_depth = 0
-
-    if any((attr in list_requiring_surface_fit) for attr in attribute):
-        if surface_fit.lower() == "florinsky":
-            surface_fit_depth = 2
-        else:
-            surface_fit_depth = 1
-    else:
-        surface_fit_depth = 0
-
-    # We take the maximum required depth
+    if "fractal_roughness" in attribute:
+        window_depth = max(window_depth, window_size_fractal // 2)
+    surface_fit_depth = 0
+    if attributes_requiring_surface_fit:
+        surface_fit_depth = 2 if surface_fit.lower() == "florinsky" else 1
     depth = max(window_depth, surface_fit_depth)
 
-    # Detect backend
-    dask_backend = (
-            getattr(dem, "_is_xr", False)
-            and hasattr(dem.data, "chunks")
-            and dem.data.chunks is not None
-    )
-    mp_backend = mp_config is not None
+    # Inspect chunk metadata without triggering implicit loading of file-backed rasters
+    raster: Any = dem if has_geo_attr(dem, "transform") else None
+    dask_backend = raster._chunks is not None if raster is not None else is_dask_array(dem)
+    if mp_config is not None and dask_backend:
+        raise ValueError("Cannot use multiprocessing and Dask simultaneously. Remove mp_config for Dask inputs.")
+    if mp_config is not None and not isinstance(dem, Raster):
+        raise TypeError("The DEM must be a Raster to use multiprocessing.")
 
-    # If multiprocessing
-    if mp_backend:
-        if not isinstance(dem, Raster):
-            raise TypeError("The DEM must be a Raster to use multiprocessing.")
+    # Pass identical numerical options to eager calculations and worker callbacks
+    options: dict[str, Any] = {
+        "resolution": resolution,
+        "degrees": degrees,
+        "hillshade_altitude": hillshade_altitude,
+        "hillshade_azimuth": hillshade_azimuth,
+        "hillshade_z_factor": hillshade_z_factor,
+        "surface_fit": surface_fit,
+        "curv_method": curv_method,
+        "tri_method": tri_method,
+        "window_size": window_size,
+        "window_size_fractal": window_size_fractal,
+        "engine": engine,
+        "texture_alpha": texture_alpha,
+        "out_dtype": out_dtype,
+    }
 
-        list_raster = []
+    # 3/ Calculate attributes and preserve the caller's raster or array interface
+    if mp_config is not None:
+        outputs = []
         for attr in attribute:
-            mp_config_copy = mp_config.copy()
-            if mp_config.outfile is not None and len(attribute) > 1:
-                mp_config_copy.outfile = mp_config_copy.outfile.split(".")[0] + "_" + attr + ".tif"
+            config = mp_config.copy()
+            if len(attribute) > 1:
+                outfile = Path(config.outfile)
+                config.outfile = str(outfile.with_name(outfile.stem + "_" + attr + outfile.suffix))
 
-            raster = _multiproc_get_terrain_attribute(
-                dem,
-                attr=attr,
-                resolution=resolution,
-                degrees=degrees,
-                hillshade_altitude=hillshade_altitude,
-                hillshade_azimuth=hillshade_azimuth,
-                hillshade_z_factor=hillshade_z_factor,
-                surface_fit=surface_fit,
-                curv_method=curv_method,
-                tri_method=tri_method,
-                window_size=window_size,
-                engine=engine,
-                texture_alpha=texture_alpha,
-                out_dtype=out_dtype,
-                depth=depth,
-                mp_config=mp_config_copy,
+            # Texture shading uses a global FFT: independent tiles would change its result
+            block_depth = depth
+            if attr in list_requiring_frequency_domain:
+                config.chunks = dem.shape
+                block_depth = 0
+            result = map_overlap(
+                _terrain_attribute_raster_block, dem, config, attribute=attr, depth=block_depth, **options
             )
-            list_raster.append(raster)
+            outputs.append(result)
+    elif dask_backend:
+        import_optional("dask")
+        import dask.array as da
 
-    else:
-        if dask_backend:
-            list_raster = []
-            for attr in attribute:
-                array = _dask_get_terrain_attribute(
-                    dem.data,
-                    attr=attr,
-                    resolution=resolution,
-                    degrees=degrees,
-                    hillshade_altitude=hillshade_altitude,
-                    hillshade_azimuth=hillshade_azimuth,
-                    hillshade_z_factor=hillshade_z_factor,
-                    surface_fit=surface_fit,
-                    curv_method=curv_method,
-                    tri_method=tri_method,
-                    window_size=window_size,
-                    engine=engine,
-                    texture_alpha=texture_alpha,
-                    out_dtype=out_dtype,
-                    depth=depth,
+        array: Any = raster.data if raster is not None else dem
+        has_band_axis = array.ndim == 3 and array.shape[0] == 1
+        if has_band_axis:
+            array = array[0]
+        outputs = []
+        for attr in attribute:
+            # Defer the global FFT as one task while preserving the source's original chunks
+            if attr in list_requiring_frequency_domain:
+                result = (
+                    array.rechunk(array.shape)
+                    .map_blocks(
+                        _terrain_attribute_array_block,
+                        attribute=attr,
+                        dtype=out_dtype,
+                        meta=np.empty((0, 0), dtype=out_dtype),
+                        **options,
+                    )
+                    .rechunk(array.chunks)
                 )
-                list_raster.append(dem.copy(new_array=array))
-
-        else:
-            list_arr = _get_terrain_attribute_base(  # type: ignore
-                dem.data if has_geo_attr(dem, "transform") else dem,
-                attribute,
-                resolution,
-                degrees,
-                hillshade_altitude,
-                hillshade_azimuth,
-                hillshade_z_factor,
-                surface_fit,
-                curv_method,
-                tri_method,
-                window_size,
-                engine,
-                texture_alpha,
-                out_dtype,
-            )
-            if has_geo_attr(dem, "transform"):
-                list_raster = [dem.copy(new_array=array) for array in list_arr]
             else:
-                list_raster = list_arr
+                result = da.map_overlap(
+                    _terrain_attribute_array_block,
+                    array,
+                    attribute=attr,
+                    depth=depth,
+                    boundary="none",
+                    trim=True,
+                    dtype=out_dtype,
+                    meta=np.empty((0, 0), dtype=out_dtype),
+                    **options,
+                )
+            if has_band_axis:
+                result = result[None, ...]
+            outputs.append(raster.copy(new_array=result) if raster is not None else result)
+    else:
+        array = raster.data if raster is not None else dem
+        has_band_axis = array.ndim == 3 and array.shape[0] == 1
+        if has_band_axis:
+            array = array[0]
+        arrays = _get_terrain_attribute_base(array, attribute=attribute, **options)
+        if has_band_axis:
+            arrays = [array[None, ...] for array in arrays]
+        outputs = [raster.copy(new_array=array) for array in arrays] if raster is not None else arrays
 
-    # If list has length of one, return first element directly
-    if len(list_raster) == 1:
-        return list_raster[0]
-    return list_raster
+    # Return the sole attribute directly, preserving the requested order for multiple attributes
+    return outputs[0] if len(outputs) == 1 else outputs
+
 
 def _get_terrain_attribute_base(
     dem: NDArrayf,
@@ -620,17 +559,19 @@ def _get_terrain_attribute_base(
     curv_method: Literal["geometric", "directional"] = "geometric",
     tri_method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
+    window_size_fractal: int = 13,
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
 ) -> list[NDArrayf]:
-    """
-    See description of get_terrain_attribute().
-    """
+    """Calculate terrain attributes by algorithm family and return them in the requested order."""
 
     # Create list of required for each type
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
     attributes_requiring_windowed_index = [attr for attr in attribute if attr in list_requiring_windowed_index]
+    attributes_requiring_windowed_fractal_index = [
+        attr for attr in attribute if attr in list_requiring_windowed_fractal_index
+    ]
     attributes_requiring_frequency_domain = [attr for attr in attribute if attr in list_requiring_frequency_domain]
 
     # Get array of DEM, we need to be able to use NaNs to propagate invalid values in attributes
@@ -697,6 +638,24 @@ def _get_terrain_attribute_base(
     else:
         windowed_indexes = []  # type: ignore
 
+    # Process windowed fractal attributes
+    if len(attributes_requiring_windowed_fractal_index) > 0:
+
+        windowed_fractal_indexes = _get_windowed_indexes(
+            dem=dem_arr,
+            windowed_indexes=attributes_requiring_windowed_fractal_index,
+            window_size=window_size_fractal,
+            resolution=resolution,
+            out_dtype=out_dtype,
+            tri_method=tri_method,
+            engine=engine,
+        )
+        windowed_fractal_indexes = [
+            windowed_fractal_indexes[i] for i in range(windowed_fractal_indexes.shape[0])
+        ]  # type: ignore
+    else:
+        windowed_fractal_indexes = []  # type: ignore
+
     # Process frequency domain attributes
     if len(attributes_requiring_frequency_domain) > 0:
         frequency_attributes = []
@@ -709,14 +668,15 @@ def _get_terrain_attribute_base(
         frequency_attributes = []  # type: ignore
 
     # Convert 3D array output to list of 2D arrays
-    output_attributes = surface_attributes + windowed_indexes + frequency_attributes
-    order_indices = [
-        attribute.index(a)
-        for a in attributes_requiring_surface_fit
+    output_attributes = surface_attributes + windowed_indexes + windowed_fractal_indexes + frequency_attributes
+
+    calculated_attributes = (
+        attributes_requiring_surface_fit
         + attributes_requiring_windowed_index
+        + attributes_requiring_windowed_fractal_index
         + attributes_requiring_frequency_domain
-    ]
-    output_attributes[:] = [output_attributes[idx] for idx in order_indices]
+    )
+    output_attributes = [output_attributes[calculated_attributes.index(attr)] for attr in attribute]
 
     return output_attributes
 
@@ -1758,7 +1718,7 @@ def rugosity(
 @overload
 def fractal_roughness(
     dem: NDArrayf,
-    window_size: int = 13,
+    window_size_fractal: int = 13,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf: ...
@@ -1767,7 +1727,7 @@ def fractal_roughness(
 @overload
 def fractal_roughness(
     dem: DEMLike,
-    window_size: int = 13,
+    window_size_fractal: int = 13,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
 ) -> RasterLike: ...
@@ -1776,7 +1736,7 @@ def fractal_roughness(
 @profiler.profile("xdem.terrain.fractal_roughness", memprof=True)
 def fractal_roughness(
     dem: NDArrayf | DEMLike,
-    window_size: int = 13,
+    window_size_fractal: int = 13,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
 ) -> NDArrayf | RasterLike:
@@ -1787,7 +1747,7 @@ def fractal_roughness(
     Based on: Taud et Parrot (2005), https://doi.org/10.4000/geomorphologie.622.
 
     :param dem: The DEM to calculate the roughness from.
-    :param window_size: The size of the window for deriving the metric.
+    :param window_size_fractal: The size of the window for deriving the metric.
     :param mp_config: Multiprocessing configuration, run the function in multiprocessing if not None.
     :param engine: Engine to use for computing the attribute, "scipy" or "numba".
 
@@ -1812,7 +1772,7 @@ def fractal_roughness(
     return get_terrain_attribute(
         dem=dem,
         attribute="fractal_roughness",
-        window_size=window_size,
+        window_size_fractal=window_size_fractal,
         mp_config=mp_config,
         engine=engine,
     )
