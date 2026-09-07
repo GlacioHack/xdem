@@ -50,6 +50,7 @@ dependencies:
   - sphinx-gallery
   - autovizwidget
   - graphviz
+  - imagemagick  # For sphinx.ext.imgconverter to convert SVG images during LaTeX/PDF builds
   - myst-nb
   - numpydoc
 

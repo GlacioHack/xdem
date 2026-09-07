@@ -49,6 +49,7 @@ extensions = [
     "sphinx.ext.autosummary",  # Create API doc summary texts from the docstrings.
     "sphinx.ext.inheritance_diagram",  # For class inheritance diagrams (see coregistration.rst).
     "sphinx.ext.graphviz",  # To render graphviz diagrams.
+    "sphinx.ext.imgconverter",  # To convert SVG images to a LaTeX-compatible format in PDF builds.
     "sphinx_design",  # To render nice blocks
     "sphinx_autodoc_typehints",  # Include type hints in the API documentation.
     "sphinxcontrib.programoutput",
