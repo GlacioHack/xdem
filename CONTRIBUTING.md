@@ -18,6 +18,29 @@ The technical steps to contributing to xDEM are:
 9. Push to your fork,
 10. Open a pull request from GitHub to discuss and eventually merge.
 
+## AI-assisted contribution policy
+
+We welcome AI-assisted contributions under the following conditions:
+
+- **Human communication.** Write the core PR description yourself, explaining the motivation, approach, 
+  and validation in your own words. AI may polish or translate your writing and help prepare supporting
+  lists, tables, or other displays, but must not replace your own explanation. The same principle 
+  applies to comments during PR review, and opening an issue or discussion.
+
+- **Human review and accountability.** Personally review, understand, and validate the entire contribution, 
+  including code, tests, and documentation, before requesting review. Run relevant tests and accurately report 
+  what you checked. You remain accountable for the contribution and must be able to explain your choices and address
+  review feedback.
+
+- **References and licensing.** AI-generated code may reproduce or adapt existing copyrighted implementations 
+  without identifying their sources. For major features or conceptual changes to methods, algorithms, or
+  design, make a reasonable search for relevant literature and existing implementations. Verify and cite relevant 
+  sources, and check for potential code reuse. Ensure that any reused or adapted material has a compatible license 
+  and retains required attribution and notices. Flag unresolved provenance or licensing concerns to maintainers.
+
+Maintainers may decline PRs whose descriptions appear predominantly AI-generated, or that do not demonstrate sufficient 
+human understanding, validation, or attention to source.
+
 ## Development environment
 
 xDEM currently supports Python versions of 3.10 to 3.14 (see `dev-environment.yml` for detailed dependencies), which are
