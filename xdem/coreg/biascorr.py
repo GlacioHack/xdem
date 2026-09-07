@@ -52,7 +52,7 @@ class BiasCorr(Coreg):
         fit_func: (
             Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
         ) = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None = None,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -68,7 +68,8 @@ class BiasCorr(Coreg):
             "bin" to correct with a statistic of central tendency in defined bins, or "bin_and_fit" to perform a fit on
             the binned statistics.
         :param fit_func: Function to fit to the bias with variables later passed in .fit().
-        :param fit_optimizer: Optimizer to minimize the function.
+        :param fit_optimizer: Optimizer to minimize the function. If None, use OLS for a built-in linear model, the
+            optimizer associated with a named fit workflow, or :func:`scipy.optimize.curve_fit` otherwise.
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
@@ -87,9 +88,10 @@ class BiasCorr(Coreg):
                     "Argument `fit_func` must be a function (callable) "
                     "or the string '{}', got {}.".format("', '".join(fit_workflows.keys()), type(fit_func))
                 )
-            if fit_optimizer is not None and not callable(fit_optimizer):
+            is_ols = isinstance(fit_optimizer, str) and fit_optimizer == "ols"
+            if fit_optimizer is not None and not is_ols and not callable(fit_optimizer):
                 raise TypeError(
-                    "Argument `fit_optimizer` must be a function (callable) or None, "
+                    "Argument `fit_optimizer` must be a function (callable), 'ols' or None, "
                     "got {}.".format(type(fit_optimizer))
                 )
 
@@ -127,7 +129,12 @@ class BiasCorr(Coreg):
         # Now we write the relevant attributes to the class metadata
         # For fitting
         if fit_or_bin == "fit":
-            meta_fit = {"fit_func": fit_func, "fit_optimizer": fit_optimizer, "bias_var_names": list_bias_var_names}
+            meta_fit = {
+                "fit_or_bin": fit_or_bin,
+                "fit_func": fit_func,
+                "fit_optimizer": fit_optimizer,
+                "bias_var_names": list_bias_var_names,
+            }
             # Somehow mypy doesn't understand that fit_func and fit_optimizer can only be callables now,
             # even writing the above "if" in a more explicit "if; else" loop with new variables names and typing
             super().__init__(meta=meta_fit)  # type: ignore
@@ -135,6 +142,7 @@ class BiasCorr(Coreg):
         # For binning
         elif fit_or_bin == "bin":
             meta_bin = {
+                "fit_or_bin": fit_or_bin,
                 "bin_sizes": bin_sizes,
                 "bin_statistic": bin_statistic,
                 "bin_apply_method": bin_apply_method,
@@ -145,6 +153,7 @@ class BiasCorr(Coreg):
         # For both
         else:
             meta_bin_and_fit = {
+                "fit_or_bin": fit_or_bin,
                 "fit_func": fit_func,
                 "fit_optimizer": fit_optimizer,
                 "bin_sizes": bin_sizes,
@@ -154,7 +163,6 @@ class BiasCorr(Coreg):
             super().__init__(meta=meta_bin_and_fit)  # type: ignore
 
         # Add subsample attribute
-        self._meta["inputs"]["fitorbin"]["fit_or_bin"] = fit_or_bin
         self._meta["inputs"]["random"]["subsample"] = subsample
 
         # Add number of dimensions attribute (length of bias_var_names, counted generically for iterator)
@@ -323,7 +331,7 @@ class DirectionalBias(BiasCorr):
         angle: float = 0,
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin_and_fit",
         fit_func: Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"] = "nfreq_sumsin",
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None = None,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -338,7 +346,7 @@ class DirectionalBias(BiasCorr):
             "bin" to correct with a statistic of central tendency in defined bins, or "bin_and_fit" to perform a fit on
             the binned statistics.
         :param fit_func: Function to fit to the bias with variables later passed in .fit().
-        :param fit_optimizer: Optimizer to minimize the function.
+        :param fit_optimizer: Optimizer to minimize the function. If None, use the default for the selected fit model.
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
@@ -467,7 +475,7 @@ class TerrainBias(BiasCorr):
         fit_func: (
             Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
         ) = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None = None,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -481,7 +489,7 @@ class TerrainBias(BiasCorr):
             "bin" to correct with a statistic of central tendency in defined bins, or "bin_and_fit" to perform a fit on
             the binned statistics.
         :param fit_func: Function to fit to the bias with variables later passed in .fit().
-        :param fit_optimizer: Optimizer to minimize the function.
+        :param fit_optimizer: Optimizer to minimize the function. If None, use the default for the selected fit model.
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
@@ -632,7 +640,7 @@ class Deramp(BiasCorr):
         poly_order: int = 2,
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
         fit_func: Callable[..., NDArrayf] = polynomial_2d,
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | None = None,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -646,13 +654,17 @@ class Deramp(BiasCorr):
             "bin" to correct with a statistic of central tendency in defined bins, or "bin_and_fit" to perform a fit on
             the binned statistics.
         :param fit_func: Function to fit to the bias with variables later passed in .fit().
-        :param fit_optimizer: Optimizer to minimize the function.
+        :param fit_optimizer: Optimizer to minimize the function. If None, use OLS for the standard polynomial model.
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
+
+        # Use the linear solver only for the standard polynomial model
+        self._fit_linear = fit_func is polynomial_2d
+
         super().__init__(
             fit_or_bin,
             fit_func,
@@ -664,7 +676,7 @@ class Deramp(BiasCorr):
             subsample,
         )
         self._meta["inputs"]["specific"]["poly_order"] = poly_order
-        self._meta["inputs"]["fitorbin"]["design_matrix_func"] = design_matrix_polynomial_2d(poly_order)
+        self._design_matrix_func = design_matrix_polynomial_2d(poly_order)
         self._needs_vars = False
 
     def _fit_rst_rst(  # type: ignore

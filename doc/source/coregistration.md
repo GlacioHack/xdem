@@ -532,7 +532,7 @@ For both **inputs** and **outputs**, four consistent categories of metadata are 
 
 - An input `fit_or_bin` to either fit a parametric model by passing **"fit"**, perform an empirical binning by passing **"bin"**, or to fit a parametric model to the binning with **"bin_and_fit" (only "fit" or "bin_and_fit" possible for affine methods)**,
 - An input `fit_func` to pass any parametric function to fit to the bias **(pre-defined for affine methods)**,
-- An input `fit_optimizer` to pass any optimizer function to perform the fit minimization,
+- An input `fit_optimizer` that stores the optimizer used for the fit, including **"ols"** for linear methods,
 - An input `bin_sizes` to pass the size or edges of the bins for each variable,
 - An input `bin_statistic` to pass the statistic to compute in each bin,
 - An input `bin_apply_method` to pass the method to apply the binning for correction,
