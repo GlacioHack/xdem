@@ -870,6 +870,68 @@ def _preprocess_pts_rst_subsample(
     return sub_ref, sub_tba, sub_bias_vars, sub_coords
 
 
+def _ols_fit(
+    design_matrix_func: Callable[[NDArrayf], NDArrayf],
+    xdata: NDArrayf,
+    ydata: NDArrayf,
+    sigma: NDArrayf | None,
+) -> tuple[NDArrayf, None]:
+    """
+    Solve a linear model with direct OLS via np.linalg.lstsq.
+
+    A design matrix builder can normalize predictor coordinates before constructing poorly scaled columns. If the
+    builder defines ``unnormalize_coeffs``, the fitted coefficients are converted back to the original coordinates.
+
+    :param design_matrix_func: Callable that takes xdata and returns the design matrix (N, P).
+    :param xdata: Predictor data passed to design_matrix_func.
+    :param ydata: Observations to fit (N,).
+    :param sigma: Optional per-observation standard deviations; used for weighted OLS.
+
+    :returns: Tuple of (coefficients, None), mimicking the (popt, pcov) return of curve_fit.
+    """
+    # Build the linear system and apply optional inverse-standard-deviation weights
+    design_matrix = design_matrix_func(xdata)
+    if sigma is not None:
+        inverse_sigma = 1.0 / sigma
+        design_matrix = design_matrix * inverse_sigma[:, np.newaxis]
+        ydata = ydata * inverse_sigma
+
+    # Solve the system and restore coefficients from any internal coordinate normalization
+    coeffs = np.linalg.lstsq(design_matrix, ydata, rcond=None)[0]
+    if hasattr(design_matrix_func, "unnormalize_coeffs"):
+        coeffs = design_matrix_func.unnormalize_coeffs(coeffs)
+    return coeffs, None
+
+
+def _call_fit_optimizer(
+    params_fit_or_bin: InFitOrBinDict,
+    design_matrix_func: Callable[[NDArrayf], NDArrayf] | None,
+    xdata: NDArrayf,
+    ydata: NDArrayf,
+    sigma: NDArrayf | None,
+    **kwargs: Any,
+) -> tuple[NDArrayf, Any]:
+    """Fit observations with the optimizer selected when the coregistration was initialized."""
+
+    fit_optimizer = params_fit_or_bin["fit_optimizer"]
+
+    # Use the dedicated design matrix for a linear model
+    if fit_optimizer == "ols":
+        if design_matrix_func is None:
+            raise ValueError("The 'ols' fit optimizer requires a design matrix function.")
+        return _ols_fit(design_matrix_func, xdata, ydata, sigma)
+
+    # Call user optimizers through the established curve_fit-compatible interface
+    return fit_optimizer(
+        f=params_fit_or_bin["fit_func"],
+        xdata=xdata,
+        ydata=ydata,
+        sigma=sigma,
+        absolute_sigma=True,
+        **kwargs,
+    )
+
+
 @overload
 def _bin_or_and_fit_nd(
     fit_or_bin: Literal["fit"],
@@ -877,6 +939,7 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
+    design_matrix_func: Callable[[NDArrayf], NDArrayf] | None = None,
     **kwargs: Any,
 ) -> tuple[None, tuple[NDArrayf, Any]]: ...
 
@@ -888,6 +951,7 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
+    design_matrix_func: Callable[[NDArrayf], NDArrayf] | None = None,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame, None]: ...
 
@@ -899,6 +963,7 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
+    design_matrix_func: Callable[[NDArrayf], NDArrayf] | None = None,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame, tuple[NDArrayf, Any]]: ...
 
@@ -909,6 +974,7 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
+    design_matrix_func: Callable[[NDArrayf], NDArrayf] | None = None,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame | None, tuple[NDArrayf, Any] | None]:
     """
@@ -921,6 +987,7 @@ def _bin_or_and_fit_nd(
     :param values: Valid values to bin or fit.
     :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
     :param weights: Array of weights for the coregistration.
+    :param design_matrix_func: Function that builds the design matrix when the selected optimizer is "ols".
     """
 
     if fit_or_bin is None:
@@ -949,11 +1016,15 @@ def _bin_or_and_fit_nd(
     # Get number of variables
     nd = len(bias_vars)
 
-    # Remove random state for keyword argument if its value is not in the optimizer function
+    # Remove random_state if the selected optimizer does not accept it
     if fit_or_bin in ["fit", "bin_and_fit"]:
-        fit_func_args = inspect.getfullargspec(params_fit_or_bin["fit_optimizer"]).args
-        if "random_state" not in fit_func_args and "random_state" in kwargs:
-            kwargs.pop("random_state")
+        fit_optimizer = params_fit_or_bin["fit_optimizer"]
+        if fit_optimizer == "ols":
+            kwargs.pop("random_state", None)
+        else:
+            fit_func_args = inspect.getfullargspec(fit_optimizer).args
+            if "random_state" not in fit_func_args:
+                kwargs.pop("random_state", None)
 
     # We need to sort the bin sizes in the same order as the bias variables if a dict is passed for bin_sizes
     if fit_or_bin in ["bin", "bin_and_fit"]:
@@ -975,12 +1046,16 @@ def _bin_or_and_fit_nd(
             params_fit_or_bin["fit_func"].__name__,
         )
 
-        results = params_fit_or_bin["fit_optimizer"](
-            f=params_fit_or_bin["fit_func"],
-            xdata=np.array([var.flatten() for var in bias_vars.values()]).squeeze(),
-            ydata=values.flatten(),
-            sigma=weights.flatten() if weights is not None else None,
-            absolute_sigma=True,
+        xdata = np.array([var.flatten() for var in bias_vars.values()]).squeeze()
+        ydata = values.flatten()
+        sigma = weights.flatten() if weights is not None else None
+
+        results = _call_fit_optimizer(
+            params_fit_or_bin=params_fit_or_bin,
+            design_matrix_func=design_matrix_func,
+            xdata=xdata,
+            ydata=ydata,
+            sigma=sigma,
             **kwargs,
         )
         df = None
@@ -1035,12 +1110,16 @@ def _bin_or_and_fit_nd(
         if np.all(~ind_valid):
             raise ValueError("Only NaN values after binning, did you pass the right bin edges?")
 
-        results = params_fit_or_bin["fit_optimizer"](
-            f=params_fit_or_bin["fit_func"],
-            xdata=np.array([var[ind_valid].flatten() for var in new_vars]).squeeze(),
-            ydata=new_diff[ind_valid].flatten(),
-            sigma=weights[ind_valid].flatten() if weights is not None else None,
-            absolute_sigma=True,
+        xdata_bin = np.array([var[ind_valid].flatten() for var in new_vars]).squeeze()
+        ydata_bin = new_diff[ind_valid].flatten()
+        sigma_bin = weights[ind_valid].flatten() if weights is not None else None
+
+        results = _call_fit_optimizer(
+            params_fit_or_bin=params_fit_or_bin,
+            design_matrix_func=design_matrix_func,
+            xdata=xdata_bin,
+            ydata=ydata_bin,
+            sigma=sigma_bin,
             **kwargs,
         )
     logging.debug("%dD bias estimated.", nd)
@@ -1807,7 +1886,7 @@ class InFitOrBinDict(TypedDict, total=False):
 
     # Fit parameters: function to fit and optimizer
     fit_func: Callable[..., NDArrayf]
-    fit_optimizer: Callable[..., tuple[NDArrayf, Any]]
+    fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"]
 
     # TODO: Solve redundancy between optimizer and minimizer (curve_fit or minimize as default?)
     # For a minimization problem
@@ -1957,6 +2036,8 @@ class Coreg:
     _is_affine: bool | None = None
     _is_translation: bool | None = None
     _needs_vars: bool = False
+    _fit_linear: bool = False
+    _design_matrix_func: Callable[[NDArrayf], NDArrayf] | None = None
     _meta: CoregDict
 
     def __init__(self, meta: dict[str, Any] | None = None) -> None:
@@ -1966,6 +2047,16 @@ class Coreg:
         # above which make up the CoregDict altogether
         dict_meta = CoregDict(inputs={}, outputs={})
         if meta is not None:
+            meta = meta.copy()
+
+            # Resolve the default once so metadata and info() expose the optimizer that will run
+            if (
+                meta.get("fit_or_bin") in ["fit", "bin_and_fit"]
+                and "fit_optimizer" in meta
+                and meta["fit_optimizer"] is None
+            ):
+                meta["fit_optimizer"] = "ols" if self._fit_linear else scipy.optimize.curve_fit
+
             # First, we get the typed dictionary keys ("random", "fitorbin", etc),
             # this is a typing class so requires to get its keys in __annotations__
             list_input_levels = list(InputCoregDict.__annotations__.keys())
@@ -2772,6 +2863,7 @@ class Coreg:
             values=values,
             bias_vars=bias_vars,
             weights=weights,
+            design_matrix_func=self._design_matrix_func,
             **kwargs,
         )
 
@@ -2782,17 +2874,18 @@ class Coreg:
         if self._meta["inputs"]["fitorbin"]["fit_or_bin"] in ["fit", "bin_and_fit"] and results is not None:
 
             # Write the results to metadata in different ways depending on optimizer returns
-            if self._meta["inputs"]["fitorbin"]["fit_optimizer"] in (w["optimizer"] for w in fit_workflows.values()):
+            fit_optimizer = self._meta["inputs"]["fitorbin"]["fit_optimizer"]
+            if callable(fit_optimizer) and fit_optimizer in (w["optimizer"] for w in fit_workflows.values()):
                 params = results[0]
                 order_or_freq = results[1]
-                if self._meta["inputs"]["fitorbin"]["fit_optimizer"] == robust_norder_polynomial_fit:
+                if fit_optimizer == robust_norder_polynomial_fit:
                     self._meta["outputs"]["specific"] = {"best_poly_order": order_or_freq}
                 else:
                     self._meta["outputs"]["specific"] = {"best_nb_sin_freq": order_or_freq}
 
-            elif self._meta["inputs"]["fitorbin"]["fit_optimizer"] == scipy.optimize.curve_fit:
+            elif fit_optimizer == scipy.optimize.curve_fit:
                 params = results[0]
-                # Calculation to get the error on parameters (see description of scipy.optimize.curve_fit)
+                # Calculate parameter errors from the covariance returned by scipy.optimize.curve_fit
                 perr = np.sqrt(np.diag(results[1]))
                 self._meta["outputs"]["fitorbin"].update({"fit_perr": perr})
 
