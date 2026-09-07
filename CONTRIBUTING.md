@@ -36,7 +36,7 @@ We welcome AI-assisted contributions under the following conditions:
   without identifying their sources. For major features or conceptual changes to methods, algorithms, or
   design, make a reasonable search for relevant literature and existing implementations. Verify and cite relevant
   sources, and check for potential code reuse. Ensure that any reused or adapted material has a compatible license 
-  with [xDEM's LICENSE](./LCENSE), and flag it to maintainers.
+  with [xDEM's LICENSE](./LICENSE), and flag it to maintainers.
 
 Maintainers may decline PRs whose descriptions appear predominantly AI-generated, or that do not demonstrate sufficient
 human understanding and validation, or attention to copyright and source.
