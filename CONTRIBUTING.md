@@ -32,7 +32,7 @@ We welcome AI-assisted contributions under the following conditions:
   what you checked. You remain accountable for the contribution and must be able to explain your choices and address
   review feedback.
 
-- **References and licensing.** AI-generated code may reproduce or adapt existing copyrighted implementations 
+- **References and licensing (copyright).** AI-generated code may reproduce or adapt existing copyrighted implementations 
   without identifying their sources. For major features or conceptual changes to methods, algorithms, or
   design, make a reasonable search for relevant literature and existing implementations. Verify and cite relevant 
   sources, and check for potential code reuse. Ensure that any reused or adapted material has a compatible license 
@@ -40,6 +40,9 @@ We welcome AI-assisted contributions under the following conditions:
 
 Maintainers may decline PRs whose descriptions appear predominantly AI-generated, or that do not demonstrate sufficient 
 human understanding, validation, or attention to source.
+
+This AI policy was inspired from that of [NumPy](https://numpy.org/devdocs/dev/ai_policy.html) and [SciPy](https://docs.scipy.org/doc/scipy/dev/conduct/ai_policy.html) as of Sept 2026, 
+which was itself inspired by that of [SymPy](https://www.sympy.org/en/index.html).
 
 ## Development environment
 
