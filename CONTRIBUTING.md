@@ -22,26 +22,26 @@ The technical steps to contributing to xDEM are:
 
 We welcome AI-assisted contributions under the following conditions:
 
-- **Human communication.** Write the core PR description yourself, explaining the motivation, approach, 
+- **Human communication.** Write the core PR description yourself, explaining the motivation, approach,
   and validation in your own words. AI may polish or translate your writing and help prepare supporting
-  lists, tables, or other displays, but must not replace your own explanation. The same principle 
+  lists, tables, or other displays, but must not replace your own explanation. The same principle
   applies to comments during PR review, and opening an issue or discussion.
 
-- **Human review and accountability.** Personally review, understand, and validate the entire contribution, 
-  including code, tests, and documentation, before requesting review. Run relevant tests and accurately report 
+- **Human review and accountability.** Personally review, understand, and validate the entire contribution,
+  including code, tests, and documentation, before requesting review. Run relevant tests and accurately report
   what you checked. You remain accountable for the contribution and must be able to explain your choices and address
   review feedback.
 
-- **References and licensing (copyright).** AI-generated code may reproduce or adapt existing copyrighted implementations 
+- **References and licensing (copyright).** AI-generated code may reproduce or adapt existing copyrighted implementations
   without identifying their sources. For major features or conceptual changes to methods, algorithms, or
-  design, make a reasonable search for relevant literature and existing implementations. Verify and cite relevant 
-  sources, and check for potential code reuse. Ensure that any reused or adapted material has a compatible license 
+  design, make a reasonable search for relevant literature and existing implementations. Verify and cite relevant
+  sources, and check for potential code reuse. Ensure that any reused or adapted material has a compatible license
   and retains required attribution and notices. Flag unresolved provenance or licensing concerns to maintainers.
 
-Maintainers may decline PRs whose descriptions appear predominantly AI-generated, or that do not demonstrate sufficient 
+Maintainers may decline PRs whose descriptions appear predominantly AI-generated, or that do not demonstrate sufficient
 human understanding, validation, or attention to source.
 
-This AI policy was inspired from that of [NumPy](https://numpy.org/devdocs/dev/ai_policy.html) and [SciPy](https://docs.scipy.org/doc/scipy/dev/conduct/ai_policy.html) as of Sept 2026, 
+This AI policy was inspired from that of [NumPy](https://numpy.org/devdocs/dev/ai_policy.html) and [SciPy](https://docs.scipy.org/doc/scipy/dev/conduct/ai_policy.html) as of Sept 2026,
 which was itself inspired by that of [SymPy](https://www.sympy.org/en/index.html).
 
 ## Development environment
