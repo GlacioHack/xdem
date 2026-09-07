@@ -28,6 +28,8 @@ from typing import Any, Dict, List, Union
 
 import geoutils as gu
 import numpy as np
+import pyogrio.errors
+import rasterio.errors
 from geoutils import Raster
 from geoutils.raster import RasterType
 
@@ -38,7 +40,7 @@ from xdem.coreg.base import InputCoregDict, OutputCoregDict
 from xdem.examples import _FILEPATHS_ALL
 from xdem.workflows.schemas import validate_configuration
 
-# Inheritance of optional dependency class
+# Inheritance of optional dependencies
 try:
     from yaml.dumper import SafeDumper  # type: ignore
 
@@ -46,6 +48,14 @@ try:
 except ImportError:
     SafeDumper = object
     _HAS_YAML = False
+
+try:
+    import plutoprint
+
+    _HAS_PLUTOPRINT = True
+except ImportError:
+    _HAS_PLUTOPRINT = False
+
 
 _ALIAS = {
     "mean": "Mean",
@@ -110,14 +120,21 @@ class Workflows(ABC):
 
         logging.info(f"Outputs folder: {self.outputs_folder.absolute()}")
         self.outputs_folder.mkdir(parents=True, exist_ok=True)
+
+    def create_output_dir(self, sub_dir: Path | None = None) -> None:
+        """
+        Create sub directories table/rasters/tables
+
+        :param sub_dir: path to replace outputs_folder
+        :return: None
+        """
+        if sub_dir:
+            self.outputs_folder = sub_dir
+            self.outputs_folder.mkdir(parents=True, exist_ok=True)
         logging.info(f"Outputs will be saved at {self.outputs_folder}")
 
         for folder in ["plots", "rasters", "tables"]:
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
-
-        self.dico_to_show = [
-            ("Information about inputs", self.config["inputs"]),
-        ]
 
     class NoAliasDumper(SafeDumper):  # type: ignore
         """
@@ -145,7 +162,12 @@ class Workflows(ABC):
 
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"File not found : {self.config_path}")
+
+        if not Path(self.config_path).suffix in [".yaml", ".yml"]:
+            raise ValueError("Unsupported configuration file format. " "Please use .yaml, or .yml file.")
+
         with open(self.config_path) as f:
+            config_dict = yaml.safe_load(f)
 
             def replace_none_str_with_none_type(some_dict: Dict[str, Any]) -> Dict[str, Any]:
                 """Replace all "None" (None after serialization) values to None"""
@@ -158,7 +180,7 @@ class Workflows(ABC):
                         some_dict[k] = v
                 return some_dict
 
-            return replace_none_str_with_none_type(yaml.safe_load(f))
+            return replace_none_str_with_none_type(config_dict)
 
     def generate_plot(
         self,
@@ -194,12 +216,14 @@ class Workflows(ABC):
 
         # Apply default cmap if not given in inputs
         if "cmap" in kwargs:
-            print(kwargs["cmap"])
             cmap = plt.get_cmap(name=kwargs["cmap"])
         else:
             cmap = plt.get_cmap(name="terrain")
         cmap.set_bad(color="k", alpha=None)
         kwargs["cmap"] = cmap
+
+        # Add colormap
+        kwargs["cbar_title"] = f"Elevation differences ({dem.crs.linear_units})"
 
         # Force figsize with the good ratio to prevent larger right axe if not filled
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
@@ -214,6 +238,100 @@ class Workflows(ABC):
             plt.title(title_dem_right)
         else:
             ax2.set_axis_off()
+
+        plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
+        plt.close()
+
+    def generate_plot_with_profiles(
+        self,
+        dem: RasterType,
+        title: str,
+        filename: str,
+        **kwargs: Any,
+    ) -> None:
+        """
+        Generate plot from a DEM with profiles.
+
+        :param dem: Input digital elevation model
+        :param title: Title of dem plot
+        :param filename: Filename of figure
+        """
+
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
+        from matplotlib.gridspec import GridSpec
+
+        # Raster data
+        data = dem.data
+        ny, nx = data.shape
+
+        # Initial min/max for mean profiles
+        profile_cols = data.mean(axis=0)
+        profile_cols_stats = [profile_cols.min(), profile_cols.max()]
+        profile_rows = data.mean(axis=1)
+        profile_rows_stats = [profile_rows.min(), profile_rows.max()]
+
+        # Keep profiles with at least more than 50% of valid values
+        nb_valid_rows, nb_valid_cols = data.count(axis=1), data.count(axis=0)
+        min_valid_rows, min_valid_cols = data.shape[1] / 2.0, data.shape[0] / 2.0
+
+        # Update profiles values according to valid values
+        profile_rows = np.ma.masked_where(nb_valid_rows < min_valid_rows, data.mean(axis=1))
+        profile_cols = np.ma.masked_where(nb_valid_cols < min_valid_cols, data.mean(axis=0))
+
+        # Force figsize with the same size as generate_plot function
+        size_font = 6
+        plt.rc("font", size=size_font)
+        plt.rc("axes", titlesize=size_font)
+        plt.rc("axes", labelsize=size_font)
+        plt.rc("xtick", labelsize=size_font)
+        plt.rc("ytick", labelsize=size_font)
+        plt.rc("legend", fontsize=size_font)
+        plt.rc("figure", titlesize=size_font)
+
+        gs = GridSpec(2, 3, width_ratios=[1.2, 4, 0.3], height_ratios=[4, 1.2])  # 1 for the colobar
+
+        fig = plt.figure()
+        ax_left = fig.add_subplot(gs[0, 0])
+        ax_map = fig.add_subplot(gs[0, 1])
+        cax = fig.add_subplot(gs[0, 2])
+        ax_bottom = fig.add_subplot(gs[1, 1])
+
+        # Apply default cmap if not given in inputs
+        if "cmap" in kwargs:
+            cmap = plt.get_cmap(name=kwargs["cmap"])
+        else:
+            cmap = plt.get_cmap(name="terrain")
+        cmap.set_bad(color="k", alpha=None)
+        kwargs["cmap"] = cmap
+
+        # Plot DEM with colorbar
+        im = ax_map.imshow(data, aspect="auto", **kwargs)
+        ax_map.text(0.5, 1.12, title, transform=ax_map.transAxes, ha="center", va="top")
+        fig.colorbar(im, cax=cax).set_label(f"Elevation differences ({dem.crs.linear_units})")
+
+        # Lines profiles
+        y = np.arange(ny)
+        ax_left.plot(profile_rows, y, color="black")
+        ax_left.set_ylim(ax_map.get_ylim())
+        ax_left.invert_xaxis()
+        ax_left.yaxis.tick_left()
+        ax_left.yaxis.set_label_position("left")
+        ax_left.set_xlabel(
+            f"Mean along lines ({dem.crs.linear_units})\n"
+            f"Min: {np.round(profile_rows_stats[0], 2)} / Max: {np.round(profile_rows_stats[1], 2)}"
+        )
+
+        # Columns profiles
+        x = np.arange(nx)
+        ax_bottom.plot(x, profile_cols, color="black")
+        ax_bottom.set_xlim(ax_map.get_xlim())
+        ax_bottom.yaxis.tick_left()
+        ax_bottom.xaxis.set_label_position("bottom")
+        ax_bottom.set_xlabel(
+            f"Mean along columns ({dem.crs.linear_units})\n"
+            f"Min: {np.round(profile_cols_stats[0], 2)} / Max: {np.round(profile_cols_stats[1], 2)}"
+        )
 
         plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
         plt.close()
@@ -247,6 +365,7 @@ class Workflows(ABC):
         :return: DEM.
         """
         mask_path = None
+
         if config_dem is not None:
 
             path_to_elev = config_dem["path_to_elev"]
@@ -254,30 +373,44 @@ class Workflows(ABC):
             if path_to_elev in list(_FILEPATHS_ALL.keys()):
                 path_to_elev = xdem.examples.get_path(path_to_elev)
 
-            dem = xdem.DEM(path_to_elev, downsample=config_dem.get("downsample", 1))
+            # Get default value
+            config_dem["downsample"] = config_dem.get("downsample", 1)
+
+            dem = xdem.DEM(path_to_elev, downsample=config_dem["downsample"])
             inlier_mask = None
-            from_vcrs = config_dem.get("from_vcrs", None)
-            to_vcrs = config_dem.get("to_vcrs", None)
-            if from_vcrs:
-                dem.set_vcrs(from_vcrs)
-            if to_vcrs:
-                if dem.vcrs is None and from_vcrs is None:
-                    raise ValueError(
-                        "You provided a 'to_vcrs' value, but the corresponding DEM does not have a current VCRS "
-                        "(either in the metadata or entered via the 'from_vcrs' value)."
-                    )
-                if from_vcrs != to_vcrs:
-                    dem.to_vcrs(to_vcrs, inplace=True)
+
+            force_vcrs = config_dem.get("force_vcrs", None)
+            if force_vcrs:
+                dem.set_vcrs(force_vcrs)
+
             if config_dem.get("force_source_nodata") is not None:
                 dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
+
             if config_dem.get("path_to_mask") is not None:
+
                 mask_path = config_dem["path_to_mask"]
+
                 # If alias, get its path
                 if mask_path in list(_FILEPATHS_ALL.keys()):
                     mask_path = xdem.examples.get_path(mask_path)
 
-                mask = gu.Vector(mask_path)
-                inlier_mask = ~mask.create_mask(dem)
+                # Treat the mask according to its type (Vector or Raster)
+                try:
+                    mask = gu.Vector(mask_path)
+                    inlier_mask = ~mask.create_mask(dem)
+
+                except pyogrio.errors.DataSourceError as vector_error:
+                    try:
+                        inlier_mask = gu.Raster(mask_path).astype(bool)
+                        inlier_mask.data = inlier_mask.data.filled(False)
+                        inlier_mask = inlier_mask.reproject(dem, silent=True)
+
+                    except rasterio.errors.RasterioIOError as raster_error:
+                        raise ValueError(
+                            f"You provided a 'path_to_mask' value that is not recognised as a mask. "
+                            f"Vector error: {vector_error}. "
+                            f"Raster error: {raster_error}."
+                        ) from raster_error
 
             return dem, inlier_mask, mask_path
         else:
@@ -321,6 +454,20 @@ class Workflows(ABC):
         :param list_dict: List containing tuples of title and various dictionaries.
         :return: None
         """
+
+    def generate_pdf(self) -> None:
+        """
+        Create PDF report page from HTML page.
+
+        :return: None
+        """
+        if self.config["outputs"]["generate_pdf"] and _HAS_PLUTOPRINT:
+            book = plutoprint.Book(plutoprint.PAGE_SIZE_A4, plutoprint.PAGE_MARGINS_NARROW)
+            book.load_url(str(self.outputs_folder / "report.html"))
+
+            # Export the entire document to PDF
+            book.write_to_pdf(str(self.outputs_folder / "report.pdf"))
+            logging.info("Report generated in " + str(self.outputs_folder / "report.pdf"))
 
     def save_stat_as_csv(self, data: dict[str, float], file_name: str) -> None:
         """

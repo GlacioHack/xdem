@@ -2101,12 +2101,6 @@ class Coreg:
         if not isinstance(other, Coreg):
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
 
-        # Cancel possible initial shift(s) in CoregPipeline case
-        if "affine" in self.meta["inputs"] and "initial_shift" in self.meta["inputs"]["affine"]:
-            del self.meta["inputs"]["affine"]["initial_shift"]
-        if "affine" in other.meta["inputs"] and "initial_shift" in other.meta["inputs"]["affine"]:
-            del other.meta["inputs"]["affine"]["initial_shift"]
-
         return CoregPipeline([self, other])
 
     @property
@@ -2400,9 +2394,14 @@ class Coreg:
         if self._meta["inputs"]["affine"].get("initial_shift") is not None:
             shift_x = self._meta["inputs"]["affine"]["initial_shift"][0]  # type: ignore
             shift_y = self._meta["inputs"]["affine"]["initial_shift"][1]  # type: ignore
+
             # shift_z is currently always equal to zero
-            reference_elev = reference_elev.translate(-shift_x, -shift_y)  # type: ignore
-            initial_shift_apply = True
+            if isinstance(reference_elev, (gu.Raster, gpd.GeoDataFrame, gu.PointCloud)):
+                reference_elev = reference_elev.translate(-shift_x, -shift_y)  # type: ignore
+                initial_shift_apply = True
+            else:
+                transform = _translate(transform, xoff=-shift_x, yoff=-shift_y)
+                initial_shift_apply = True
 
         # Pre-process the inputs, by reprojecting and converting to arrays
         ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point, z_name = _preprocess_coreg_fit(
@@ -2981,7 +2980,33 @@ class CoregPipeline(Coreg):
 
         :param: Processing steps to run in the sequence they are given.
         """
-        self.pipeline = pipeline
+
+        def put_coreg_in_series(pipeline: list[Coreg]) -> list[Coreg]:
+            """
+            Translate all nested CoregPipeline in Coreg series
+
+            :param pipeline: Processing steps to run in the sequence they are given.
+            :return: list of simple Coreg(s).
+            """
+            list_coreg = []
+            for step in pipeline:
+                if not isinstance(step, CoregPipeline):
+                    list_coreg.append(step)
+                else:
+                    list_coreg = list_coreg + put_coreg_in_series(step)  # type: ignore
+            return list_coreg
+
+        self.pipeline = put_coreg_in_series(pipeline)
+
+        for i, step in enumerate(self.pipeline):
+            if i > 0 and "affine" in step.meta["inputs"] and "initial_shift" in step.meta["inputs"]["affine"]:
+                warnings.warn(
+                    message="No initial shift can be defined in a coregistration pipeline other than for the first "
+                    f"step. Overidding to initial_shift=None for step number {i}. Remove initial shift parameters"
+                    " outside of the first step to silence this warning.",
+                    category=UserWarning,
+                )
+                del step.meta["inputs"]["affine"]["initial_shift"]
 
         super().__init__()
 
@@ -3095,27 +3120,16 @@ class CoregPipeline(Coreg):
             # Filter warnings of individual pipelines now that the one above was raised
             warnings.filterwarnings("ignore", message="Subsample argument passed to*", category=UserWarning)
 
-        # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
-        ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point, z_name = _preprocess_coreg_fit(
-            reference_elev=reference_elev,
-            to_be_aligned_elev=to_be_aligned_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
-        )
-        tba_dem_mod = tba_dem.copy()
-        out_transform = transform
+        tba_dem_mod = to_be_aligned_elev.copy()
 
         for i, coreg in enumerate(self.pipeline):
             logging.debug("Running pipeline step: %d / %d", i + 1, len(self.pipeline))
 
             main_args_fit = {
-                "reference_elev": ref_dem,
+                "reference_elev": reference_elev,
                 "to_be_aligned_elev": tba_dem_mod,
+                "transform": transform,
                 "inlier_mask": inlier_mask,
-                "transform": out_transform,
                 "crs": crs,
                 "z_name": z_name,
                 "weights": weights,
@@ -3123,7 +3137,7 @@ class CoregPipeline(Coreg):
                 "random_state": random_state,
             }
 
-            main_args_apply = {"elev": tba_dem_mod, "transform": out_transform, "crs": crs, "z_name": z_name}
+            main_args_apply = {"elev": tba_dem_mod, "transform": transform, "crs": crs, "z_name": z_name}
 
             # If non-affine method that expects a bias_vars argument
             if coreg._needs_vars:
@@ -3138,10 +3152,10 @@ class CoregPipeline(Coreg):
             # Step apply: one output for a geodataframe, two outputs for array/transform
             # We only run this step if it's not the last, otherwise it is unused!
             if i != (len(self.pipeline) - 1):
-                if isinstance(tba_dem_mod, gpd.GeoDataFrame):
+                if isinstance(tba_dem_mod, (Raster, gpd.GeoDataFrame, PointCloud)):
                     tba_dem_mod = coreg.apply(**main_args_apply)
                 else:
-                    tba_dem_mod, out_transform = coreg.apply(**main_args_apply)
+                    tba_dem_mod, transform = coreg.apply(**main_args_apply)
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -3269,11 +3283,6 @@ class CoregPipeline(Coreg):
             other = [other]
 
         pipelines = self.pipeline + other
-
-        # Cancel possible initial shift(s) in CoregPipeline case
-        for method in pipelines:
-            if "affine" in method.meta["inputs"] and "initial_shift" in method.meta["inputs"]["affine"]:
-                del method.meta["inputs"]["affine"]["initial_shift"]
 
         return CoregPipeline(pipelines)
 

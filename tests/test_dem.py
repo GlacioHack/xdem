@@ -539,29 +539,6 @@ class TestDEM:
             # Output DEM
             assert dem_aligned.raster_equal(manually_aligned, warn_failure_reason=True)
 
-    @staticmethod
-    @pytest.mark.parametrize(
-        "pipeline",
-        [
-            xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift(),
-            xdem.coreg.NuthKaab(initial_shift=(10, 5)) + xdem.coreg.VerticalShift(),
-            xdem.coreg.VerticalShift() + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
-            xdem.coreg.NuthKaab(initial_shift=(10, 5))
-            + xdem.coreg.VerticalShift()
-            + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
-            xdem.coreg.VerticalShift()
-            + xdem.coreg.NuthKaab(initial_shift=(10, 5))
-            + xdem.coreg.NuthKaab(initial_shift=(10, 5)),
-        ],
-    )
-    def test_nuthkaab_coregpipeline(pipeline: Any) -> None:
-        """
-        Test initial shift cancellation in coreg pipeline method
-        """
-
-        for method in pipeline.pipeline:
-            assert "initial_shift" not in method.meta["inputs"]["affine"]
-
     def test_estimate_uncertainty(self) -> None:
 
         # Import optional skgstat or skip test

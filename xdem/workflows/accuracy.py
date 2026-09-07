@@ -57,6 +57,7 @@ class Accuracy(Workflows):
         self.df_stats: pd.DataFrame | None = None
 
         super().__init__(config_dem, output)
+        self.create_output_dir()
 
         self.compute_coreg = self.config["coregistration"]["process"]
 
@@ -96,7 +97,6 @@ class Accuracy(Workflows):
             title_dem_right="To-be-aligned elevation",
             vmin=vmin,
             vmax=vmax,
-            cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
         )
         if ref_mask is not None or tba_mask is not None:
             if ref_mask is not None:
@@ -114,8 +114,11 @@ class Accuracy(Workflows):
                 title_dem_right="Masked terrain for to-be-aligned elevation",
                 vmin=vmin,
                 vmax=vmax,
-                cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
+
+        self.dico_to_show = [
+            ("Information about inputs", self.config["inputs"]),
+        ]
 
         return vmin, vmax
 
@@ -147,7 +150,6 @@ class Accuracy(Workflows):
             config_coreg = self.config["coregistration"].get(step)
             if config_coreg:
                 method_name = config_coreg.get("method")
-                print(method_name)
                 coreg_extra = config_coreg.get("extra_information", {})
                 coreg_fun = partial(method_map[method_name], **coreg_extra)
                 coreg_functions.append(coreg_fun())
@@ -179,10 +181,10 @@ class Accuracy(Workflows):
         :param vmin: to plot elevation data with the same scale
         :param vmax: to plot elevation data with the same scale
         """
-        sampling_source = self.config["inputs"]["sampling_grid"]
+        sampling_grid = self.config["inputs"]["sampling_grid"]
 
         # Reprojection
-        if sampling_source == "reference_elev":
+        if sampling_grid == "reference_elev":
             crs_utm = self.reference_elev.get_metric_crs()
         else:
             crs_utm = self.to_be_aligned_elev.get_metric_crs()
@@ -193,16 +195,31 @@ class Accuracy(Workflows):
             self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(crs=crs_utm)
             self.reference_elev = self.reference_elev.reproject(crs=crs_utm)
 
-        if sampling_source == "reference_elev":
+        if sampling_grid == "reference_elev":
             self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(self.reference_elev, silent=True)
-        elif sampling_source == "to_be_aligned_elev":
+        elif sampling_grid == "to_be_aligned_elev":
             self.reference_elev = self.reference_elev.reproject(self.to_be_aligned_elev, silent=True)
+
+        if not self.reference_elev.get_stats("validcount") or not self.to_be_aligned_elev.get_stats("validcount"):
+            msg_error = "Reference and to-be-aligned elevation datasets do not overlap horizontally. "
+            if self.compute_coreg:
+                msg_error += (
+                    "All possible coregistration methods rely on elevation differencing, and thus "
+                    "produce only NaNs. "
+                )
+            else:
+                msg_error += "No differences can be calculated. "
+            msg_error += (
+                "If no large misalignment was expected, check the georeferencing of your data and re-set it "
+                "manually with 'set_crs()' or 'set_transform()'."
+            )
+            raise ValueError(msg_error)
 
         # Intersection
         logging.info("Computing intersection")
         coord_intersection = self.reference_elev.intersection(self.to_be_aligned_elev)
 
-        if sampling_source == "reference_elev":
+        if sampling_grid == "reference_elev":
             self.to_be_aligned_elev = self.to_be_aligned_elev.crop(coord_intersection)
             self.generate_plot(
                 self.to_be_aligned_elev,
@@ -210,7 +227,6 @@ class Accuracy(Workflows):
                 filename="preprocessed_to_be_aligned_elev_map",
                 vmin=vmin,
                 vmax=vmax,
-                cbar_title=f"Elevation ({self.to_be_aligned_elev.crs.linear_units})",
             )
         else:
             self.reference_elev = self.reference_elev.crop(coord_intersection)
@@ -220,7 +236,6 @@ class Accuracy(Workflows):
                 filename="preprocessed_reference_elev_map",
                 vmin=vmin,
                 vmax=vmax,
-                cbar_title=f"Elevation ({self.reference_elev.crs.linear_units})",
             )
 
         if self.level > 1:
@@ -237,7 +252,6 @@ class Accuracy(Workflows):
         # Compute user statistics
         dict_stats_aliased = {}
         list_to_compute = self.config["statistics"]
-        print("list_to_compute", list_to_compute)
 
         if list_to_compute is not None:
             logging.info(f"Computing statistics on {name_of_data}: {list_to_compute}")
@@ -320,16 +334,14 @@ class Accuracy(Workflows):
             logging.info("Coregistration not executed, returned to_be_aligned_elev")
             aligned_elev = self.to_be_aligned_elev
 
-        output_grid = self.config["outputs"]["output_grid"]
-        ref_elev = self.reference_elev if output_grid == "reference_elev" else self.to_be_aligned_elev
         stats_keys = ["min", "max", "nmad", "median"]
 
         if self.compute_coreg:
 
-            self.diff_before = self.to_be_aligned_elev - ref_elev
+            self.diff_before = self.to_be_aligned_elev - self.reference_elev
             self.stats_before = self.diff_before.get_stats(stats_keys)
 
-            self.diff_after = aligned_elev.reproject(ref_elev) - ref_elev
+            self.diff_after = aligned_elev.reproject(self.reference_elev) - self.reference_elev
             self.stats_after = self.diff_after.get_stats(stats_keys)
 
             vmin_diff = min(
@@ -341,25 +353,69 @@ class Accuracy(Workflows):
                 self.stats_after["median"] + 3 * self.stats_after["nmad"],
             )
 
-            self.generate_plot(
-                dem=self.diff_before,
-                title="Elevation difference before coregistration",
-                filename="diff_elev_diff_coreg_map",
-                dem_right=self.diff_after,
-                title_dem_right="Elevation difference after coregistration",
-                vmin=vmin_diff,
-                vmax=vmax_diff,
-                cmap="RdBu",
-                cbar_title=f"Elevation differences ({self.diff_before.crs.linear_units})",
-            )
+            if self.level == 1:
+                self.generate_plot(
+                    dem=self.diff_before,
+                    title="Difference between To-be-aligned and Reference elevation\n(before coregistration)",
+                    filename="diff_elev_diff_coreg_map",
+                    dem_right=self.diff_after,
+                    title_dem_right="Difference between Aligned and Reference elevation\n(after coregistration)",
+                    vmin=vmin_diff,
+                    vmax=vmax_diff,
+                    cmap="RdBu",
+                )
+            else:
+                self.generate_plot_with_profiles(
+                    dem=self.diff_before,
+                    title="Difference between To-be-aligned and Reference elevation\n(before coregistration)",
+                    filename="diff_elev_before_coreg_map",
+                    vmin=vmin_diff,
+                    vmax=vmax_diff,
+                    cmap="RdBu",
+                )
 
+                self.generate_plot_with_profiles(
+                    dem=self.diff_after,
+                    title="Difference between Aligned and Reference elevation\n(after coregistration)",
+                    filename="diff_elev_after_coreg_map",
+                    vmin=vmin_diff,
+                    vmax=vmax_diff,
+                    cmap="RdBu",
+                )
+
+                self.diff_coreg_tba = aligned_elev.reproject(self.to_be_aligned_elev) - self.to_be_aligned_elev
+
+                self.generate_plot_with_profiles(
+                    dem=self.diff_coreg_tba,
+                    title="Difference between Aligned and To-be-aligned elevation\n(after coregistration)",
+                    filename="diff_elev_coreg_tba_map",
+                    cmap="RdBu",
+                )
         else:
-            self.diff = self.to_be_aligned_elev - ref_elev
+            self.diff = self.to_be_aligned_elev - self.reference_elev
             self.stats = self.diff.get_stats(stats_keys)
             vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
+            if self.level == 1:
+                self.generate_plot(
+                    self.diff,
+                    title="Difference between To-be-aligned and Reference elevation",
+                    filename="diff_elev_without_coreg_map",
+                    vmin=vmin,
+                    vmax=vmax,
+                    cmap="RdBu",
+                )
+            else:
+                self.generate_plot_with_profiles(
+                    dem=self.diff,
+                    title="Difference between To-be-aligned and Reference elevation",
+                    filename="diff_elev_without_coreg_map",
+                    vmin=vmin,
+                    vmax=vmax,
+                    cmap="RdBu",
+                )
             self.generate_plot(
                 self.diff,
-                title="Elevation difference without coregistration",
+                title="Difference between To-be-align and Reference elevation",
                 filename="diff_elev_without_coreg_map",
                 vmin=vmin,
                 vmax=vmax,
@@ -414,6 +470,7 @@ class Accuracy(Workflows):
             if self.level > 1:
                 self.diff_before.to_file(self.outputs_folder / "rasters" / "diff_elev_before_coreg_map.tif")
                 self.diff_after.to_file(self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
+                self.diff_coreg_tba.to_file(self.outputs_folder / "rasters" / "diff_elev_coreg_tba_map.tif")
         else:
             if self.level > 1:
                 self.diff.to_file(self.outputs_folder / "rasters" / "diff_elev_without_coreg_map.tif")
@@ -422,6 +479,7 @@ class Accuracy(Workflows):
         self.elapsed = t1 - t0
 
         self.create_html(self.dico_to_show)
+        self.generate_pdf()
 
         # Remove empty folder
         for folder in self.outputs_folder.rglob("*"):
@@ -481,6 +539,12 @@ class Accuracy(Workflows):
             div_html += "</div>\n"
             return div_html
 
+        def print_png(title: str, width: int = 100) -> str:
+            return (
+                f"<img src='plots/{title}.png' alt='Image PNG' style='width: {width}%; "
+                f"height: auto; justify-content: center'>\n"
+            )
+
         # Metadata: Inputs
         inputs_information = list_dict[0]
         html += print_dict(inputs_information[0], inputs_information[1])
@@ -488,16 +552,19 @@ class Accuracy(Workflows):
         # Plot preprocessed data if did
         if "sampling_grid" in self.config["inputs"] and self.config["inputs"]["sampling_grid"] is not None:
             if self.config["inputs"]["sampling_grid"] == "reference_elev":
-                preprocessed_data = "plots/preprocessed_to_be_aligned_elev_map.png"
+                preprocessed_data = "preprocessed_to_be_aligned_elev_map"
             else:
-                preprocessed_data = "plots/preprocessed_reference_elev_map.png"
+                preprocessed_data = "preprocessed_reference_elev_map"
 
             html += "<h2>Preprocessed elevation data</h2>\n"
-            html += "<img src='" + preprocessed_data + "' alt='Image PNG' style='width: 100%; height: auto;'>\n"
+            html += print_png(preprocessed_data)
 
         # Metadata: Inputs
         for title, dictionary in list_dict[1:]:  # type: ignore
             html += print_dict(title, dictionary)
+
+        if self.compute_coreg and self.level > 1:
+            html += print_png("diff_elev_coreg_tba_map")
 
         # Statistics table:
         if self.df_stats is not None:
@@ -514,16 +581,19 @@ class Accuracy(Workflows):
         # Coregistration: Add elevation difference plot and histograms before/after
         if self.compute_coreg:
             html += "<h2>Elevation differences</h2>\n"
-            html += "<img src='plots/diff_elev_diff_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
+            if self.level == 1:
+                html += print_png("diff_elev_diff_coreg_map")
+            else:
+                html += print_png("diff_elev_before_coreg_map")
+                html += print_png("diff_elev_after_coreg_map")
 
             html += "<h2>Differences histogram</h2>\n"
-            html += "<img src='plots/elev_diff_histo.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
+            html += print_png("elev_diff_histo")
 
         else:
             html += "<h2>Elevation differences</h2>\n"
-            html += (
-                "<img src='plots/diff_elev_without_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto'>\n"
-            )
+            html += print_png("diff_elev_without_coreg_map")
+
         html += """
          </body>
          </html>
@@ -531,3 +601,5 @@ class Accuracy(Workflows):
 
         with open(self.outputs_folder / "report.html", "w", encoding="utf-8") as f:
             f.write(html)
+
+        logging.info("Report generated in " + str(self.outputs_folder / "report.html"))

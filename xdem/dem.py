@@ -597,9 +597,9 @@ class DEM(Raster):  # type: ignore
         return terrain.rugosity(self, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
-    def fractal_roughness(self, window_size: int = 13, mp_config: MultiprocConfig | None = None) -> RasterType:
+    def fractal_roughness(self, window_size_fractal: int = 13, mp_config: MultiprocConfig | None = None) -> RasterType:
 
-        return terrain.fractal_roughness(self, window_size=window_size, mp_config=mp_config)
+        return terrain.fractal_roughness(self, window_size_fractal=window_size_fractal, mp_config=mp_config)
 
     @copy_doc(terrain, remove_dem_res_params=True)
     def texture_shading(

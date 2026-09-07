@@ -5,15 +5,15 @@ Blockwise coregistration
 Often, biases are spatially variable, and a "global" shift may not be enough to coregister a DEM properly.
 In the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example, we saw that the method improved the alignment significantly, but there were still possibly nonlinear artefacts in the result.
 Clearly, nonlinear coregistration approaches are needed.
-One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrarily small grid, and then "puppet warp" the DEM to fit the reference best.
+One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrary grid. Thanks to this tool, local errors are detected more effectively and memory usage is reduced.
+Indeed, the entire DEM does not need to be loaded into memory, the processes run for each block, also enabling multiprocessing.
 
-The ``BlockwiseCoreg`` class runs in five steps:
+The ``BlockwiseCoreg`` class runs in four steps:
 
 1. Generate a subdivision grid to divide the DEM in N blocks.
-2. Run the requested coregistration approach in each block.
-3. Extract each result as a source and destination X/Y/Z point.
-4. Interpolate the X/Y/Z point-shifts into three shift-rasters.
-5. Warp the DEM to apply the X/Y/Z shifts.
+2. Run the requested coregistration approach in each block and save the results.
+3. Based on these results, calculation of the overall offset.
+4. Apply to the entire DEM also by block, but this time with an overlap, this overlap corresponds to the maximum offset calculated in step 2.
 
 """
 
@@ -22,6 +22,7 @@ import geoutils as gu
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
 import numpy as np
+from geoutils.raster import ClusterGenerator
 from geoutils.raster.distributed_computing import MultiprocConfig
 
 import xdem
@@ -36,13 +37,6 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 # Create a stable ground mask (not glacierized) to mark "inlier data"
 inlier_mask = ~glacier_outlines.create_mask(reference_dem)
 
-plt_extent = [
-    reference_dem.bounds.left,
-    reference_dem.bounds.right,
-    reference_dem.bounds.bottom,
-    reference_dem.bounds.top,
-]
-
 # %%
 # The DEM to be aligned (a 1990 photogrammetry-derived DEM) has some vertical and horizontal biases that we want to avoid, as well as possible nonlinear distortions.
 # The product is a mosaic of multiple DEMs, so "seams" may exist in the data.
@@ -56,11 +50,14 @@ plt.show()
 # %%
 # Horizontal and vertical shifts can be estimated using :class:`xdem.coreg.NuthKaab`.
 # Let's prepare a coregistration class with a tiling configuration
-# BlockwiseCoreg is also available without mp_config but with parent_path parameters
+# BlockwiseCoreg is also available without ``mp_config`` by specifying the block size and the save directory.
 
-# Create a configuration without multiprocessing cluster (tasks will be processed sequentially)
-mp_config = MultiprocConfig(chunk_size=500, outfile="aligned_dem.tif", cluster=None)
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), mp_config=mp_config)
+# Create a configuration with two processing nodes
+mp_config = MultiprocConfig(chunk_size=500, outfile="aligned_dem.tif", cluster=ClusterGenerator("multi", nb_workers=2))
+# Currently, with mp_config, block_size_fit must be equal to chunk_size
+blockwise = xdem.coreg.BlockwiseCoreg(
+    xdem.coreg.NuthKaab(), mp_config=mp_config, block_size_fit=500, block_size_apply=1000
+)
 
 # %%
 # Coregistration is performed with the ``.fit()`` method.
@@ -69,7 +66,6 @@ blockwise.fit(reference_dem, dem_to_be_aligned, inlier_mask)
 blockwise.apply(dem_to_be_aligned)
 
 aligned_dem = xdem.DEM("aligned_dem.tif")
-
 
 # %%
 # The estimated shifts can be visualized by applying the coregistration to a completely flat surface.
@@ -118,7 +114,6 @@ plt.show()
 
 # %%
 # We can compare the NMAD to validate numerically that there was an improvement:
-
 
 print(f"Error before: {gu.stats.nmad(diff_before[inlier_mask]):.2f} m")
 print(f"Error after: {gu.stats.nmad(diff_after[inlier_mask]):.2f} m")
