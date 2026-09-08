@@ -26,6 +26,7 @@ from typing import Any, Literal
 
 import geopandas as gpd
 import numpy as np
+from geoutils import PointCloud
 from geoutils.multiproc import MultiprocConfig
 from geoutils.pointcloud.base import PointCloudBase
 from pyproj.crs import VerticalCRS
@@ -41,6 +42,16 @@ class EPCBase(PointCloudBase, _VerticalReference):  # type: ignore[misc]
     reuse the same VCRS metadata and manipulation without code duplication. ``vcrs`` exposes the vertical part,
     while the inherited ``crs`` property contains the complete 3D CRS.
     """
+
+    def _cast_pointcloud_output(self, pointcloud: Any) -> Any:
+        """Return EPC for native outputs and dataframes for accessor outputs."""
+
+        output = super()._cast_pointcloud_output(pointcloud)
+        if isinstance(output, PointCloud):
+            from xdem.epc.epc import EPC
+
+            return EPC(output)
+        return output
 
     def to_vcrs(
         self,
