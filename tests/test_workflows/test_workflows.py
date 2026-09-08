@@ -23,6 +23,7 @@ test for workflow class
 
 # mypy: disable-error-code=no-untyped-def
 import csv
+import re
 from pathlib import Path
 
 import geoutils as gu
@@ -115,8 +116,9 @@ def test_load_config(get_topo_inputs_config_list, tmp_path):
     assert workflows.load_config() == user_config
 
     # Fail
-    with pytest.raises(FileNotFoundError, match=f"{tmp_path}/tempconfig.yaml does not exist"):
-        _ = Topo(str(tmp_path / "tempconfig.yaml"))
+    missing_config = tmp_path / "tempconfig.yaml"
+    with pytest.raises(FileNotFoundError, match=re.escape(f"{missing_config} does not exist")):
+        _ = Topo(str(missing_config))
 
 
 def test_load_config_none(get_topo_inputs_config_list, get_accuracy_inputs_test, tmp_path):
