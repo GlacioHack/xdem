@@ -3,6 +3,7 @@
 # mypy: disable-error-code=no-untyped-def
 from __future__ import annotations
 
+import sys
 import warnings
 from pathlib import Path
 
@@ -204,6 +205,10 @@ class TestBlockwiseCoreg:
 
         assert np.nanpercentile(diff, 90) < 10
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Pending GeoUtils Windows cluster fix; remove after new GeoUtils release.",
+    )
     @pytest.mark.parametrize(
         "step_coreg",
         [
@@ -226,6 +231,10 @@ class TestBlockwiseCoreg:
         ):
             _ = xdem.coreg.BlockwiseCoreg(step=step_coreg, mp_config=config_mc, block_size_fit=block_size)
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Pending GeoUtils Windows cluster fix; remove after new GeoUtils release.",
+    )
     @pytest.mark.parametrize(
         "step_coreg",
         [
@@ -253,6 +262,10 @@ class TestBlockwiseCoreg:
         ):
             _ = xdem.coreg.BlockwiseCoreg(step=step_coreg, mp_config=config_mc, block_size_fit=block_size)
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Pending GeoUtils Windows cluster fix; remove after new GeoUtils release.",
+    )
     @pytest.mark.parametrize("block_size", [32])
     def test_blockwise_coreg_pipeline_with_multiprocessing(self, step, example_data, tmp_path, block_size):
         """Test end-to-end blockwise coregistration in multiprocessing and validate output."""
