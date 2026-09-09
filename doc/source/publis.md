@@ -8,18 +8,26 @@ Below, a list of publications making use of the xDEM package (that we are aware 
 
 ### Pre-prints
 
-- Bernat, M., Berthier, E., Dehecq, A., Hugonnet, R., Belart, J.M.C., Ochwat, N., Kuipers Munneke, P., Case, E., Scambos, T., Gauer, L.-M., Youssefi, D., 2026. **Mass changes of the Antarctic Peninsula ice sheet and peripheral glaciers, 2007–2021.** The Cryosphere 20, 3025–3049. https://doi.org/10.5194/tc-20-3025-2026
 - Charrier, L., Lioret, N., Brun, F., Dehecq, A., Millan, R., Togaibekov, A., Walpersdorf, A., Cusicanqui, D., Rabatel, A., (2026). **Seasonal biases in glacier surface flow velocities measured from optical remote sensing images.** EGUsphere 1–35. <https://doi.org/10.5194/egusphere-2026-946>
 - Kneib, M., Wagnon, P., Arnaud, L., Balmas, L., Laarman, O., Jourdain, B., Dehecq, A., Lemeur, E., Brun, F., Kneib-Walter, A., Santin, I., Charrier, L., Faug, T., Mazzotti, G., Rabatel, A., Six, D., Farinotti, D., (2026). **Substantial accumulation rates on a glacier avalanche cone from time-lapse photogrammetry and field measurements.** EGUsphere 1–30. <https://doi.org/10.5194/egusphere-2026-786>
 - Rolf, M., Grünberg, I., Hammar, J., Brauchle, J., Hauber, E., Boike, J., (2024). **Widespread and long-term permafrost thaw subsidence on the Brøgger peninsula, Svalbard.** ESS open Archive. https://doi.org/10.22541/essoar.173499211.11640525/v1
 
-
 ### 2026
 
+- Bellet, V., Hugonnet, R., Dehecq, A., de Bardonneche-Richard, A., Bouchet, M., Schaffner, V., Dubois, E., (2026). **Building a unified elevation data analysis tool in the frame of the CO3D mission.** The International Archives of the Photogrammetry, Remote Sensing and Spatial Information Sciences XLIX-B5-2026, 63–68. <https://doi.org/10.5194/isprs-archives-XLIX-B5-2026-63-2026>
+- Bernat, M., Berthier, E., Dehecq, A., Hugonnet, R., Belart, J.M.C., Ochwat, N., Kuipers Munneke, P., Case, E., Scambos, T., Gauer, L.-M., Youssefi, D., (2026). **Mass changes of the Antarctic Peninsula ice sheet and peripheral glaciers, 2007–2021.** The Cryosphere, 20, 3025–3049, <https://doi.org/10.5194/tc-20-3025-2026>
+- Carmi, G., (2025). **Costs and benefits of optimizing small rainwater harvesting systems for preventing land degradation.** EGU General Assembly 2025, Vienna, Austria, 27 Apr–2 May 2025, EGU25-131. <https://doi.org/10.5194/egusphere-egu25-131>
+- Conzelmann, S., Seiser, B., Lauria, M.V., Bertolotti, G., Stocker-Waldhuber, M., Fischer, A., Hartl, L., (2026). **Mapping vanishing glaciers in Vorarlberg, Austria.** Annals of Glaciology 67, e10. <https://doi.org/10.1017/aog.2026.10044>
 - Crompton, J., Menounos, B., Ednie, M., (2026). **Helm Glacier projected to vanish within a decade.** Annals of Glaciology 67, e13. <https://doi.org/10.1017/aog.2026.10043>
 - Cusicanqui, D., Loarte, E., Gómez, W., Villafane, H., Cook, K.L., Piton, G., Lehmann, B., Magnin, F., Racoviteanu, A.E., Zerathe, S., Filhol, S., Medina, K., Cruz, R., Concha, R., Torres-Lázaro, J.C., Lacroix, P., (2026). **Small event, big impact: insights from Vallunaraju cascade event on April 28, 2025.** npj Nat. Hazards 3, 51. <https://doi.org/10.1038/s44304-026-00229-0>
+- Dachauer, A., Rosier, S.H.R., Kneib-Walter, A., Box, J.E., Vieli, A., (2026). **Advance and thickening of the tidewater outlet glacier Eqalorutsit Kangilliit Sermiat surrounded by the thinning southern Greenland ice sheet.** Journal of Glaciology 72, e54. <https://doi.org/10.1017/jog.2026.10172>
+- Koo, Y., Xie, H., Belart, J.M.C., Thorsteinsson, T., Jóhannesson, T., Berthier, E., Guyez, A., (2026). **Seasonal mass balance of Hofsjökull ice cap, Iceland, estimated from repeat ICESat-2 satellite altimetry.** Remote Sensing of Environment 344, 115555. <https://doi.org/10.1016/j.rse.2026.115555>
+- Ioli, F., Cerina, L., Cina, A., Pinto, L., (2026). **Quantifying altimetric and volumetric changes of the Belvedere Glacier (2009–2023) using Pleiades and Pleiades Neo data.** The International Archives of the Photogrammetry, Remote Sensing and Spatial Information Sciences XLIX-B2-2026, 429–434. <https://doi.org/10.5194/isprs-archives-XLIX-B2-2026-429-2026>
+- Mattea, E., Bhattacharya, A., Ghuffar, S., Khatun, J., Barandun, M., Hoelzle, M., (2026). **Multi-Sensor Analysis of Predicted and Observed Glacier Instabilities in the Hissar–Alay of Central Asia.** Remote Sensing 18(5), 699. <https://doi.org/10.3390/rs18050699>
+- McCerery, R., Lovell, H., King, O., Davies, B.J., Małecki, J., Boston, C., Woodward, J., Carrivick, J.L., (2026). **Retreat and volume loss of two rapidly vanishing Svalbard glaciers since 1938: Elsabreen and Ferdinandbreen, Petuniabukta.** Annals of Glaciology 67. <https://doi.org/10.1017/aog.2025.10034>
 - Piermattei, L., McNabb, R., Elias, M., Ressl, C., Dehecq, A., Girod, L., Dewez, T., Eltner, A., (2026). **Unlocking the Past: A review of digital processing of historical aerial and satellite stereo analog imagery for geoscience applications.** IEEE Geoscience and Remote Sensing Magazine 2–33. <https://doi.org/10.1109/MGRS.2025.3645144>
 - Thota, V.K., Seehaus, T., Knuth, F., Dehecq, A., Salewski, C., Farías-Barahona, D., Braun, M.H., (2026). **Digital Elevation Models and Orthomosaics of 1989 aerial imagery of the Western Antarctic Peninsula and surrounding islands between 66–68°S**. Earth System Science Data 18, 597–615. <https://doi.org/10.5194/essd-18-597-2026>
+- Youssefi, D., Accadia, T., Colleu, E., Godet, A., Bellet, V., Lallement, D., Tanguy, Y., Lebegue, L., (2026). **3D Product Quality Control in the CO3D Mission: A Critical Role.** The International Archives of the Photogrammetry, Remote Sensing and Spatial Information Sciences XLIX-B1-2026, 547–552. <https://doi.org/10.5194/isprs-archives-XLIX-B1-2026-547-2026>
 
 ### 2025
 
@@ -38,7 +46,6 @@ Below, a list of publications making use of the xDEM package (that we are aware 
 - Xu, X., Wang, W., Ke, L., Zhou, P., (2025). **Weakening of regional contrasts in glacier changes around the Tarim Basin in the early 21st century.** npj Clim Atmos Sci 8, 289. <https://doi.org/10.1038/s41612-025-01173-y>
 - Zhou, M., Wang, Yetang, Hou, S., Zhai, Z., Li, Z., Sun, W., Wang, Yuzhe, (2025). **North Atlantic Ocean natural variability drives glacier mass loss over the Northeastern Tibetan Plateau.** Commun Earth Environ 6, 843. <https://doi.org/10.1038/s43247-025-02851-8> # codespell:ignore
 - Zhu, Y., Liu, S., Wei, J., Wu, K., Bolch, T., Xu, J., Guo, W., Jiang, Z., Xie, F., Yi, Y., Shangguan, D., Yao, X., Zhang, Z., (2025). **Glacier-level and gridded mass change in river sources in the eastern Tibetan Plateau region (ETPR) from the 1970s to 2000.** Earth System Science Data 17, 1851–1871. <https://doi.org/10.5194/essd-17-1851-2025>
-
 
 ### 2024
 
