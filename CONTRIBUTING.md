@@ -22,7 +22,7 @@ These steps are detailed in sections further below!
 
 ## AI-assisted contribution policy
 
-“AI” herein refers to generative AI tools like large language models (LLMs) that can generate, edit, 
+“AI” herein refers to generative AI tools like large language models (LLMs) that can generate, edit,
 and review software code, create and manipulate images, or generate text for communication.
 
 We welcome AI-assisted contributions under the following conditions:
