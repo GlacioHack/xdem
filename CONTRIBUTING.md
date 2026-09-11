@@ -18,7 +18,12 @@ The technical steps to contributing to xDEM are:
 9. Push to your fork,
 10. Open a pull request from GitHub to discuss and eventually merge.
 
+These steps are detailed in sections further below!
+
 ## AI-assisted contribution policy
+
+“AI” herein refers to generative AI tools like large language models (LLMs) that can generate, edit, 
+and review software code, create and manipulate images, or generate text for communication.
 
 We welcome AI-assisted contributions under the following conditions:
 
@@ -36,13 +41,13 @@ We welcome AI-assisted contributions under the following conditions:
   without identifying their sources. For major features or conceptual changes to methods, algorithms, or
   design, make a reasonable search for relevant literature and existing implementations. Verify and cite relevant
   sources, and check for potential code reuse. Ensure that any reused or adapted material has a compatible license
-  with [xDEM's LICENSE](./LICENSE), and flag it to maintainers.
+  with [xDEM's LICENSE](./LICENSE), and flag such material explicitly to maintainers.
 
 Maintainers may decline PRs whose descriptions appear predominantly AI-generated, or that do not demonstrate sufficient
 human understanding and validation, or attention to copyright and source.
 
-This AI policy was inspired from that of [NumPy](https://numpy.org/devdocs/dev/ai_policy.html) and [SciPy](https://docs.scipy.org/doc/scipy/dev/conduct/ai_policy.html) as of Sept 2026,
-which was itself inspired by that of [SymPy](https://www.sympy.org/en/index.html).
+This AI policy was inspired from that of [NumPy](https://numpy.org/devdocs/dev/ai_policy.html) and [SciPy](https://docs.scipy.org/doc/scipy/dev/conduct/ai_policy.html) as of September 2026,
+which were themselves inspired by that of [SymPy]([https://www.sympy.org/en/index.html](https://docs.sympy.org/dev/contributing/ai-generated-code-policy.html)).
 
 ## Development environment
 
