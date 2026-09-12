@@ -50,7 +50,7 @@ def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
     # Different equality check based on input: number, callable, array, dataframe
     if input1 is None:
         return input2 is None
-    if not isinstance(input1, type(input2)):
+    elif not isinstance(input1, type(input2)):
         return False
     elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, list)) or callable(input1):
         return input1 == input2

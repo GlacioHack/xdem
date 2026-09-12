@@ -11,6 +11,7 @@ import pytest
 from sklearn.metrics import mean_squared_error, median_absolute_error
 
 import xdem
+from xdem.fit import design_matrix_polynomial_2d, polynomial_2d
 
 
 class TestRobustFitting:
@@ -197,3 +198,82 @@ class TestRobustFitting:
                 np.abs(2 * np.pi - (coefs[3 * i + 2] - true_coefs[3 * i + 2])),
             )
             assert error_phase < 0.2
+
+
+class TestDesignMatrices:
+    """Tests for OLS design matrix builders."""
+
+    def test_design_matrix_polynomial_2d_shape(self) -> None:
+        """Design matrix has the correct shape for each polynomial order."""
+        rng = np.random.default_rng(42)
+        N = 500
+        x = rng.uniform(0, 100, N)
+        y = rng.uniform(0, 100, N)
+        xdata = np.vstack([x, y])
+
+        for order in [1, 2, 3, 4]:
+            dm = design_matrix_polynomial_2d(order)
+            X = dm(xdata)
+            assert X.shape == (N, (order + 1) ** 2)
+
+    def test_design_matrix_polynomial_2d_reproduces_polynomial_2d(self) -> None:
+        """The design matrix spans the same polynomial space as polynomial_2d.
+
+        Fits a noise-free polynomial_2d surface with OLS and checks that the
+        predictions via unnormalized coefficients match the original values.
+        Uses a small coordinate range so the Vandermonde system is well-conditioned.
+        """
+        rng = np.random.default_rng(42)
+        N = 500
+
+        for order in [1, 2, 3, 4]:
+            # Keep coordinates small so x_scale/y_scale don't explode the condition number
+            x = rng.uniform(0, 10, N)
+            y = rng.uniform(0, 10, N)
+            xdata = np.vstack([x, y])
+            true_params = rng.normal(size=(order + 1) ** 2)
+            z = polynomial_2d((x, y), *true_params)
+
+            dm = design_matrix_polynomial_2d(order)
+            X = dm(xdata)
+            coeffs_norm = np.linalg.lstsq(X, z, rcond=None)[0]
+            coeffs_orig = dm.unnormalize_coeffs(coeffs_norm)
+
+            pred = polynomial_2d((x, y), *coeffs_orig)
+            assert np.allclose(pred, z, rtol=1e-6), f"Prediction mismatch at order={order}"
+
+    def test_design_matrix_polynomial_2d_roundtrip(self) -> None:
+        """OLS via the design matrix recovers known coefficients (small coordinate range)."""
+        rng = np.random.default_rng(0)
+        N = 1000
+        # Small range keeps the Vandermonde system well-conditioned for all tested orders
+        x = rng.uniform(0, 10, N)
+        y = rng.uniform(0, 10, N)
+        xdata = np.vstack([x, y])
+
+        for order in [1, 2, 3, 4]:
+            true_params = rng.normal(size=(order + 1) ** 2)
+            z = polynomial_2d((x, y), *true_params)
+
+            dm = design_matrix_polynomial_2d(order)
+            X = dm(xdata)
+            coeffs_norm = np.linalg.lstsq(X, z, rcond=None)[0]
+            recovered = dm.unnormalize_coeffs(coeffs_norm)
+
+            assert np.allclose(recovered, true_params, atol=1e-4), f"Failed roundtrip at order={order}"
+
+    def test_design_matrix_polynomial_2d_unnormalize_identity_at_unit_scale(self) -> None:
+        """unnormalize_coeffs is a no-op when coordinates are already in [-1, 1]."""
+        rng = np.random.default_rng(7)
+        N = 100
+        x = rng.uniform(-1, 1, N)
+        y = rng.uniform(-1, 1, N)
+        xdata = np.vstack([x, y])
+        order = 2
+
+        dm = design_matrix_polynomial_2d(order)
+        dm(xdata)  # sets x_scale = y_scale = 1 internally
+        coeffs = rng.normal(size=(order + 1) ** 2)
+
+        # With unit scale, unnormalize_coeffs should return the same values
+        assert np.allclose(dm.unnormalize_coeffs(coeffs), coeffs)

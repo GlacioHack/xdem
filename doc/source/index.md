@@ -149,6 +149,7 @@ release_notes
 :maxdepth: 2
 
 publis
+contributing
 credits
 ```
 
