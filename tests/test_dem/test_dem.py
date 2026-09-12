@@ -362,7 +362,7 @@ class TestDEM:
                 assert raster_infos_arrays[line] == dem_infos_array[line]
 
             # Verify Coordinate system value
-            assert complete_line[len(crs_key) :].strip() == "['EPSG:25833']"
+            assert complete_line[len(crs_key) :].strip() == "['ETRS89 / UTM zone 33N']"
 
         # Verify new VCRS value with this 2D CRS DEM
         dem.set_vcrs(new_vcrs="EGM96")
