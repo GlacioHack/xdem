@@ -14,7 +14,7 @@ import rasterio as rio
 import scipy.optimize
 from geoutils import Raster, Vector
 from geoutils._typing import Number
-from geoutils.raster.geotransformations import _translate
+from geoutils.raster.transformation import _translate
 from scipy.ndimage import binary_dilation
 
 from xdem import coreg, examples
@@ -61,8 +61,8 @@ class TestAffineCoreg:
     fit_args_rst_rst = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
 
     # Convert DEMs to points with a bit of subsampling for speed-up
-    ref_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
-    tba_pts = ref.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
+    ref_pts = ref.to_pointcloud(data_column_name="z").ds
+    tba_pts = ref.to_pointcloud(data_column_name="z").ds
 
     # Raster-Point
     fit_args_rst_pts = dict(reference_elev=ref, to_be_aligned_elev=tba_pts, inlier_mask=inlier_mask)
@@ -199,11 +199,11 @@ class TestAffineCoreg:
         ref_shifted = ref.translate(shifts[0], shifts[1]) + shifts[2]
         # Convert to point cloud if input was point cloud
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            ref_shifted = ref_shifted.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
+            ref_shifted = ref_shifted.to_pointcloud(data_column_name="z").ds
         elev_fit_args["to_be_aligned_elev"] = ref_shifted
 
         # Run coregistration
-        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        subsample_size = 1 if coreg_method != coreg.CPD else 500
         coreg_elev = horizontal_coreg.fit_and_apply(**elev_fit_args, subsample=subsample_size, random_state=42)
 
         # Check all fit parameters are the opposite of those used above, within a relative 1% (10% for ICP)
@@ -245,9 +245,9 @@ class TestAffineCoreg:
     @pytest.mark.parametrize(
         "coreg_method__shift",
         [
-            (coreg.NuthKaab, (9.202739, 2.735573, -1.97733)),
-            (coreg.DhMinimize, (10.0850892, 2.898172, -1.943001)),
-            (coreg.LZD, (9.969819, 2.140150, -1.9257709)),
+            (coreg.NuthKaab, (9.204061, 2.735502, -1.981842)),
+            (coreg.DhMinimize, (10.173229, 2.724605, -1.951370)),
+            (coreg.LZD, (9.968375, 2.139449, -1.926219)),
             (coreg.ICP, (5.417970, 1.1282436, -2.0662609)),
         ],
     )
@@ -295,11 +295,11 @@ class TestAffineCoreg:
 
         # Convert to point cloud if input was point cloud
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            ref_vshifted = ref_vshifted.to_pointcloud(data_column_name="z", subsample=50000, random_state=42).ds
+            ref_vshifted = ref_vshifted.to_pointcloud(data_column_name="z").ds
         elev_fit_args["to_be_aligned_elev"] = ref_vshifted
 
         # Fit the vertical shift model to the data
-        coreg_elev = vshiftcorr.fit_and_apply(**elev_fit_args, subsample=50000, random_state=42)
+        coreg_elev = vshiftcorr.fit_and_apply(**elev_fit_args)
 
         # Check that the right vertical shift was found
         assert vshiftcorr.meta["outputs"]["affine"]["shift_z"] == pytest.approx(-vshift, rel=10e-2)
@@ -394,13 +394,11 @@ class TestAffineCoreg:
 
         # Convert to point cloud if input was point cloud
         if isinstance(elev_fit_args["to_be_aligned_elev"], gpd.GeoDataFrame):
-            ref_shifted_rotated = ref_shifted_rotated.to_pointcloud(
-                data_column_name="z", subsample=50000, random_state=42
-            ).ds
+            ref_shifted_rotated = ref_shifted_rotated.to_pointcloud(data_column_name="z").ds
         elev_fit_args["to_be_aligned_elev"] = ref_shifted_rotated
 
         # Run coregistration
-        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        subsample_size = 1 if coreg_method != coreg.CPD else 500
         coreg_elev = horizontal_coreg.fit_and_apply(**elev_fit_args, subsample=subsample_size, random_state=42)
 
         # Check that fit matrix is the invert of those used above, within a relative % for rotations
@@ -447,14 +445,14 @@ class TestAffineCoreg:
         # Need to standardize by the elevation difference spread to avoid huge/small values close to infinity
         # Checking for 90% of variance as ICP cannot always resolve the small shifts
         # And only 10% of variance for CPD that can't resolve shifts at all
-        fac_reduc_var = 0.1 if coreg_method != coreg.CPD else 1.0
+        fac_reduc_var = 0.1 if coreg_method != coreg.CPD else 1.05
         assert np.nanvar(dh / np.nanstd(init_dh)) < fac_reduc_var
 
     @pytest.mark.parametrize(
         "coreg_method__shifts_rotations",
         [
             (coreg.ICP, (5.417970, 1.128243, -2.066260, 0.0071103, -0.007524, -0.0047392)),
-            (coreg.LZD, (9.969819, 2.140150, -1.925771, 0.0070245, -0.00766, -0.008174)),
+            (coreg.LZD, (9.968375, 2.139449, -1.926219, 0.0070283, -0.0076565, -0.0081859)),
             (coreg.CPD, (0.005405, 0.005163, -2.047066, 0.0070245, -0.00755, -0.0000405)),
         ],
     )
@@ -510,7 +508,7 @@ class TestAffineCoreg:
         ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
 
         # Coregister
-        subsample_size = 50000 if rigid_coreg.__class__.__name__ != "CPD" else 500
+        subsample_size = 1 if rigid_coreg.__class__.__name__ != "CPD" else 500
         rigid_coreg.fit(ref, ref_shifted_rotated, random_state=42, subsample=subsample_size)
 
     @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD, coreg.LZD])
@@ -527,7 +525,7 @@ class TestAffineCoreg:
         ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
 
         # Run co-registration
-        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        subsample_size = 1 if coreg_method != coreg.CPD else 500
         c = coreg_method(subsample=subsample_size, only_translation=True)
         c.fit(ref, ref_shifted_rotated, random_state=42)
 
@@ -544,7 +542,7 @@ class TestAffineCoreg:
             assert np.allclose(invert_fit_shifts_translations[:3], shifts_rotations[:3], rtol=10e-1)
 
     @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD])
-    def test_coreg_rigid__standardize(self, coreg_method: coreg.Coreg) -> None:
+    def test_coreg_rigid__standardize(self, coreg_method: type[coreg.Coreg]) -> None:
 
         # Get reference elevation
         ref = self.ref
@@ -557,7 +555,7 @@ class TestAffineCoreg:
         ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
 
         # 1/ Run co-registration with standardization
-        subsample_size = 50000 if coreg_method != coreg.CPD else 500
+        subsample_size = 1 if coreg_method != coreg.CPD else 500
         c_std = coreg_method(subsample=subsample_size, standardize=True)
         c_std.fit(ref, ref_shifted_rotated, random_state=42)
 

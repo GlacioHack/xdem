@@ -51,9 +51,8 @@ class TestBinning:
         """Check that the nd_binning function works adequately and save dataframes to files for later tests"""
 
         # Subsampler
-        indices = gu.stats.sampling.subsample_array(
-            self.diff.data.flatten(), subsample=10000, return_indices=True, random_state=42
-        )
+        sample_rows, sample_cols = self.diff.subsample(subsample=1, return_indices=True, random_state=42)
+        indices = np.ravel_multi_index((sample_rows, sample_cols), self.diff.shape)
 
         # 1D binning, by default will create 10 bins
         df = xdem.spatialstats.nd_binning(

@@ -35,7 +35,7 @@ import pandas as pd
 import scipy.ndimage
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
-from geoutils.stats.sampling import subsample_array
+from geoutils.sampling.subsampling import _subsample_numpy
 from geoutils.vector.vector import Vector, VectorType
 from numpy.typing import ArrayLike
 from packaging.version import Version
@@ -868,7 +868,8 @@ def infer_heteroscedasticity_from_stable(
 
     # Use the standardization function to get the error array for the entire input array (not only stable)
     list_var_arr = [get_array_and_mask(var)[0] if isinstance(var, Raster) else var for var in list_var]
-    error = fun(tuple(list_var_arr))
+    # Evaluate flattened coordinates so a single explanatory variable also accepts a 2D raster grid
+    error = fun(tuple(var.ravel() for var in list_var_arr)).reshape(list_var_arr[0].shape)
 
     # Return the right type, depending on dvalues input
     if isinstance(dvalues, Raster):
@@ -975,7 +976,7 @@ def _subsample_wrapper(
         values_sp = values
         coords_sp = coords
 
-    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=random_state)
+    index = _subsample_numpy(values_sp, subsample=subsample, return_indices=True, random_state=random_state)
     values_sub = values_sp[index[0]]
     coords_sub = coords_sp[index[0], :]
 
@@ -1373,7 +1374,9 @@ def sample_empirical_variogram(
     values = values.squeeze()
 
     # Then, check if the logic between values, coords and gsd is respected
-    if (gsd is not None or subsample_method in ["cdist_equidistant", "pdist_disk", "pdist_ring"]) and values.ndim == 1:
+    if (
+        (gsd is not None and coords is None) or subsample_method in ["cdist_equidistant", "pdist_disk", "pdist_ring"]
+    ) and values.ndim == 1:
         raise ValueError(
             'Values array must be 2D when using any of the "cdist_equidistant", "pdist_disk" and '
             '"pdist_ring" methods, or providing a ground sampling distance instead of coordinates.'

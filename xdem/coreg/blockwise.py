@@ -33,14 +33,14 @@ import geoutils as gu
 import numpy as np
 import rasterio as rio
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.raster import Raster, RasterType
-from geoutils.raster.array import get_array_and_mask
-from geoutils.raster.distributed_computing import (
+from geoutils.multiproc import (
     MultiprocConfig,
+    compute_tiling,
     map_multiproc_collect,
     map_overlap_multiproc_save,
 )
-from geoutils.raster.tiling import compute_tiling
+from geoutils.raster import Raster, RasterType
+from geoutils.raster.array import get_array_and_mask
 
 from xdem._misc import import_optional
 from xdem._typing import MArrayf, NDArrayf
@@ -104,7 +104,7 @@ class BlockwiseCoreg:
             self.mp_config = mp_config
             self.parent_path = Path(mp_config.outfile).parent
         else:
-            self.mp_config = MultiprocConfig(chunk_size=self.block_size_fit, outfile="aligned_dem.tif")
+            self.mp_config = MultiprocConfig(chunks=self.block_size_fit, outfile="aligned_dem.tif")
             self.parent_path = Path(parent_path)  # type: ignore
 
         os.makedirs(self.parent_path, exist_ok=True)
@@ -387,7 +387,7 @@ class BlockwiseCoreg:
         else:
             coeff_z = (0, 0, 0)
 
-        self.mp_config.chunk_size = self.block_size_apply
+        self.mp_config.chunks = self.block_size_apply
         # be careful with depth value if Out of Memory
         depth = max(np.abs(self.shifts_x).max(), np.abs(self.shifts_y).max())
         if np.isnan(depth):

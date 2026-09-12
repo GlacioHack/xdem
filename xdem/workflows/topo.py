@@ -30,9 +30,11 @@ from typing import Any, Dict
 
 from geoutils.raster import Raster
 from pyproj import CRS
+from rasterio.warp import calculate_default_transform
 
 import xdem
 from xdem._misc import import_optional
+from xdem.vcrs import vertical_unit_symbol
 from xdem.workflows.schemas import TOPO_SCHEMA
 from xdem.workflows.workflows import _ALIAS, Workflows
 
@@ -78,11 +80,12 @@ class Topo(Workflows):
         """
 
         self.dem, self.inlier_mask, path_to_mask = self.load_dem(input)
+        vunit = vertical_unit_symbol(self.dem.crs)
         self.generate_plot(
             self.dem,
             filename="elev_map",
             title="Elevation",
-            cbar_title=f"Elevation ({self.dem.crs.linear_units})",
+            cbar_title=f"Elevation ({vunit})" if vunit is not None else "Elevation",
         )
 
         if self.inlier_mask is not None:
@@ -92,7 +95,7 @@ class Topo(Workflows):
                 self.dem,
                 title="Masked elevation",
                 filename="masked_elev_map",
-                cbar_title=f"Elevation ({self.dem.crs.linear_units})",
+                cbar_title=f"Elevation ({vunit})" if vunit is not None else "Elevation",
             )
 
     def generate_terrain_attributes_png(self, attributes: list[Raster]) -> None:
@@ -103,8 +106,7 @@ class Topo(Workflows):
         n = len(attributes)
         ncols = 3 if n > 6 else 2
         nrows = math.ceil(n / ncols)
-        unit = self.dem.crs.linear_units
-
+        unit = vertical_unit_symbol(self.dem.crs)
         attribute_params: dict[str, dict[str, Any]] = {
             "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (0, 255)},
             "texture_shading": {"label": "Texture shading", "cmap": "Greys_r", "vlim": (-20, 20)},
@@ -123,7 +125,7 @@ class Topo(Workflows):
                 "cmap": "Spectral",
                 "vlim": (None, None),
             },
-            "roughness": {"label": f"Roughness ({self.dem.crs.linear_units})", "cmap": "Oranges", "vlim": (None, None)},
+            "roughness": {"label": f"Roughness ({unit})", "cmap": "Oranges", "vlim": (None, None)},
             "fractal_roughness": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
         }
 
@@ -172,7 +174,6 @@ class Topo(Workflows):
                 or self.config["reproject"]["crs"] is True
             ):
                 proj_crs = self.dem.get_metric_crs()
-                print("A")
 
                 logging.info(f"Reprojection in default projected CRS ({proj_crs})")
 
@@ -195,9 +196,16 @@ class Topo(Workflows):
                     )
 
         if proj_crs is not None:
-            self.dem = self.dem.reproject(crs=proj_crs)
+            # Terrain derivatives require square pixels; request GDAL's suggested spacing explicitly
+            target_transform, _, _ = calculate_default_transform(
+                self.dem.crs, proj_crs, self.dem.width, self.dem.height, *self.dem.bounds
+            )
+            self.dem = self.dem.reproject(crs=proj_crs, res=abs(target_transform.a))
             if self.level > 1:
                 self.dem.to_file(self.outputs_folder / "rasters" / "elev_reprojected.tif")
+        elif self.dem.res[0] != self.dem.res[1]:
+            # Retain the chosen CRS while regularizing a rectangular grid at its finer pixel spacing
+            self.dem = self.dem.reproject(res=min(self.dem.res))
 
         attribute_extra = {}
         from_str_to_fun = {
@@ -271,8 +279,7 @@ class Topo(Workflows):
             # Global information
             dem_informations = {
                 "Driver": self.dem.driver,
-                "Filename": self.dem.filename,
-                "Grid size": self.dem.vcrs_grid,
+                "Filename": self.dem.name,
                 "Number of band": self.dem.bands,
                 "Data types": self.dem.dtype,
                 "Nodata Value": self.dem.nodata,

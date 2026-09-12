@@ -3,13 +3,16 @@ from __future__ import annotations
 import os.path
 import re
 import warnings
-from typing import Any, Callable
+from pathlib import Path
+from typing import Any, Callable, Literal
 
 import geoutils as gu
 import numpy as np
 import pytest
 import rasterio as rio
-from geoutils.raster.distributed_computing import MultiprocConfig
+import xarray as xr
+from affine import Affine
+from geoutils.multiproc import MultiprocConfig
 from pyproj import CRS
 
 import xdem
@@ -302,14 +305,10 @@ class TestTerrainAttribute:
         # Fractal roughness with tested window sizes of less than 13 will expectedly raise a warning
         warnings.filterwarnings("ignore", category=UserWarning, message="Fractal roughness results.*")
 
-        # Attributes based on frequency will not match exactly
-        if attribute == "texture_shading":
-            return
-
         # Define multiproc config
         outfile = "tmp_mp_output.tif"
         mp_config = MultiprocConfig(
-            chunk_size=50,
+            chunks=50,
             outfile=outfile,
         )
 
@@ -334,8 +333,8 @@ class TestTerrainAttribute:
 
         # Check equality
         assert attr_mp.georeferenced_grid_equal(attr_nomp)
-        assert np.allclose(attr_mp.data.filled(), attr_nomp.data.filled())
-        assert np.array_equal(attr_mp.data.mask, attr_nomp.data.mask)
+        np.testing.assert_array_equal(attr_mp.get_nanarray(), attr_nomp.get_nanarray())
+        np.testing.assert_array_equal(np.ma.getmaskarray(attr_mp.data), np.ma.getmaskarray(attr_nomp.data))
 
         # Clean up outfile
         os.remove(outfile)
@@ -356,7 +355,7 @@ class TestTerrainAttribute:
         ]
 
         mp_config = MultiprocConfig(
-            chunk_size=200,
+            chunks=200,
             outfile=outfile,
         )
 
@@ -519,3 +518,161 @@ class TestTerrainAttribute:
         assert self.dem.dtype != out_dtype
         assert np.dtype(slope.dtype) == out_dtype
         assert np.dtype(tpi.dtype) == out_dtype
+
+
+class TestTerrainAttributeChunked:
+    """
+    Test terrain attributes across eager, Dask and multiprocessing backends.
+
+    This class tests:
+    - ``get_terrain_attribute`` for exact backend equality with uneven and empty chunks,
+    - Window overlap when calculation windows are larger than chunks,
+    - Requested attribute order, dimensions, chunk sizes and output dtypes,
+    - Errors for incompatible Dask and multiprocessing inputs.
+    """
+
+    @pytest.mark.parametrize("engine", ["scipy", "numba"])
+    @pytest.mark.parametrize("chunks", [(4, 5), (11, 13)])
+    @pytest.mark.parametrize(
+        "surface_fit, window_size, window_size_fractal", [("Florinsky", 7, 13), ("ZevenbergThorne", 9, 15)]
+    )
+    def test_get_terrain_attribute__overlap_and_order(
+        self,
+        tmp_path: Path,
+        engine: Literal["scipy", "numba"],
+        chunks: tuple[int, int],
+        surface_fit: Literal["Florinsky", "ZevenbergThorne"],
+        window_size: int,
+        window_size_fractal: int,
+    ) -> None:
+        """
+        Checks that every terrain family matches eager results at chunk edges, including windows larger than tiles.
+        """
+
+        da = pytest.importorskip("dask.array")
+        if engine == "numba":
+            pytest.importorskip("numba")
+        from dask.callbacks import Callback
+
+        # 1/ Create a surface with missing data, then open it with Dask and multiprocessing
+        # The wide missing area makes some chunks fully empty; the corner gap checks calculations at the raster edge
+        rows, cols = np.indices((31, 37), dtype=np.float32)
+        values = 900 + rows**2 / 8 + 2 * cols + 3 * np.sin(cols / 3)
+        values[6:23, 8:27] = np.nan
+        values[:2, :3] = np.nan
+        reference = gu.Raster.from_array(values, Affine(20, 0, 500000, 0, -20, 8600000), 32633, nodata=-9999)
+        path = tmp_path / "terrain.tif"
+        reference.to_file(path)
+        source = gu.open_raster(path, chunks={"y": chunks[0], "x": chunks[1]})
+        source_array = source.data
+        native = gu.Raster(path)
+        config = MultiprocConfig(chunks=(chunks[1], chunks[0]), outfile=str(tmp_path / "attributes.tif"))
+        original_chunks, original_outfile = config.chunks, config.outfile
+
+        # Request every attribute in mixed order, with repeats, to check that outputs follow the requested order
+        attributes = ["texture_shading", "roughness"] + xdem.terrain.available_attributes + ["curvature", "slope"]
+        options: dict[str, Any] = {
+            "surface_fit": surface_fit,
+            "window_size": window_size,
+            "window_size_fractal": window_size_fractal,
+            "engine": engine,
+            "texture_alpha": 1.2,
+            "degrees": False,
+            "tri_method": "Wilson",
+        }
+
+        # 2/ Create Dask, multiprocessing and in-memory results without loading either file-backed source
+        # The callback records every executed Dask task, so the list must remain empty until compute is called
+        tasks: list[Any] = []
+        with Callback(pretask=lambda *args: tasks.append(args[0])):
+            lazy_outputs = xdem.terrain.get_terrain_attribute(source, attributes, **options)
+        assert tasks == []
+        parallel_outputs = xdem.terrain.get_terrain_attribute(native, attributes, mp_config=config, **options)
+        expected_outputs = xdem.terrain.get_terrain_attribute(reference, attributes, **options)
+        assert not source._in_memory and not native.is_loaded
+        assert (config.chunks, config.outfile) == (original_chunks, original_outfile)
+
+        # 3/ Compare every pixel, including chunk boundaries, missing areas and raster edges
+        assert len(lazy_outputs) == len(parallel_outputs) == len(expected_outputs) == len(attributes)
+        for name, lazy, parallel, expected in zip(attributes, lazy_outputs, parallel_outputs, expected_outputs):
+            assert isinstance(lazy, xr.DataArray) and isinstance(lazy.data, da.Array)
+            assert type(parallel) is gu.Raster and not parallel.is_loaded
+            assert lazy.dtype == parallel.dtype == expected.dtype
+            assert expected.raster_equal(lazy.compute(), strict_masked=False, warn_failure_reason=True)
+            assert expected.raster_equal(parallel, strict_masked=False, warn_failure_reason=True)
+            # Texture shading uses the full image at once, but its Dask result must still use the source chunk sizes
+            if name == "texture_shading":
+                assert lazy.data.chunks == source_array.chunks
+
+        # 4/ Check that computing the results did not load or replace either file-backed source
+        assert source.data is source_array and not source._in_memory
+        assert not native.is_loaded
+
+    @pytest.mark.parametrize("dtype", [np.int16, np.float32, np.float64])
+    @pytest.mark.parametrize("out_dtype", [None, np.float32, np.float64])
+    @pytest.mark.parametrize("with_band", [False, True])
+    def test_get_terrain_attribute__chunked_dimensions_and_dtype(
+        self,
+        dtype: Any,
+        out_dtype: Any,
+        with_band: bool,
+    ) -> None:
+        """Checks that chunked terrain arrays preserve spatial dimensions and the requested floating precision."""
+
+        da = pytest.importorskip("dask.array")
+        from dask.callbacks import Callback
+
+        # 1/ Create the same whole-number surface as NumPy and Dask arrays, with or without a band dimension
+        rows, cols = np.indices((19, 23))
+        values = (300 + rows**2 + cols**2).astype(dtype)
+        if with_band:
+            values = values[None, ...]
+        source = da.from_array(values, chunks=(1, 4, 5) if with_band else (4, 5))
+        graph = source.__dask_graph__()
+        attributes = ["texture_shading", "slope", "curvature", "texture_shading"]
+        options: dict[str, Any] = {"resolution": 20, "texture_alpha": 1.2, "out_dtype": out_dtype}
+
+        # 2/ Create the Dask outputs without running any calculations
+        # The callback records every executed Dask task, including work needed by texture shading
+        tasks: list[Any] = []
+        with Callback(pretask=lambda *args: tasks.append(args[0])):
+            outputs = xdem.terrain.get_terrain_attribute(source, attributes, **options)
+        assert tasks == []
+        expected = xdem.terrain.get_terrain_attribute(values, attributes, **options)
+        # Integer inputs default to float32 results; out_dtype selects a different result type when provided
+        default_dtype = np.float32 if dtype is np.int16 else dtype
+        expected_dtype = np.dtype(default_dtype if out_dtype is None else out_dtype)
+
+        # 3/ Compare values, shapes and types, then check the chunk sizes used by texture shading
+        for name, output, reference in zip(attributes, outputs, expected):
+            assert isinstance(output, da.Array)
+            assert output.shape == reference.shape == values.shape
+            assert output.dtype == reference.dtype == expected_dtype
+            np.testing.assert_array_equal(output.compute(), reference)
+            if name == "texture_shading":
+                assert output.chunks == source.chunks
+        assert source.__dask_graph__() is graph
+
+    def test_get_terrain_attribute__chunked_backend_errors(self) -> None:
+        """Checks that incompatible chunked backends fail before executing Dask tasks."""
+
+        da = pytest.importorskip("dask.array")
+        from dask.callbacks import Callback
+
+        # 1/ Prepare matching NumPy and Dask arrays plus multiprocessing options that cannot be used with them
+        values = np.arange(99, dtype=float).reshape(9, 11)
+        source = da.from_array(values, chunks=(4, 5))
+        graph = source.__dask_graph__()
+        config = MultiprocConfig(chunks=3)
+        tasks: list[Any] = []
+
+        # 2/ Reject Dask with multiprocessing, and reject multiprocessing for a plain NumPy array
+        with Callback(pretask=lambda *args: tasks.append(args[0])):
+            with pytest.raises(ValueError, match="simultaneously"):
+                xdem.terrain.get_terrain_attribute(source, "roughness", mp_config=config)
+        with pytest.raises(TypeError, match="must be a Raster"):
+            xdem.terrain.get_terrain_attribute(values, "roughness", mp_config=config)
+
+        # 3/ Check that validation did not run or replace the Dask source
+        assert tasks == []
+        assert source.__dask_graph__() is graph

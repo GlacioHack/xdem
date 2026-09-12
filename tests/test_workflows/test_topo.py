@@ -195,7 +195,6 @@ def test_run_dico_to_show(get_topo_inputs_config_list, nb_inputs, tmp_path):
                 "Data types": "float32",
                 "Driver": "GTiff",
                 "Filename": get_topo_inputs_config_list[k]["path_to_elev"],
-                "Grid size": None,
                 "Height": 54,
                 "Nodata Value": -9999.0,
                 "Number of band": (1,),
