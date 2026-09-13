@@ -10,10 +10,9 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
-from pandas.testing import assert_frame_equal
-
 from geoutils import Raster, Vector
 from geoutils.raster import MultiprocConfig
+from pandas.testing import assert_frame_equal
 from pyproj import CRS
 
 from xdem import DEM, EPC, coreg, examples, open_dem
@@ -24,7 +23,6 @@ from xdem.vcrs import _VerticalReference
 
 def assert_output_equal(output1: Any, output2: Any, use_allclose: bool = False, strict_masked: bool = True) -> None:
     """Return equality of different output types."""
-
 
     # For two vectors
     if isinstance(output1, Vector) and isinstance(output2, Vector):
@@ -210,8 +208,7 @@ class TestClassVsAccessorConsistencyInherited:
     ]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])
-    @pytest.mark.parametrize("method, kwargs",
-                             [(f, k) for f, k in inherited_methods_loading_and_kwargs])
+    @pytest.mark.parametrize("method, kwargs", [(f, k) for f, k in inherited_methods_loading_and_kwargs])
     def test_methods__loading(self, path_dem: str, method: str, kwargs: dict[str, Any]) -> None:
         """
         Test that a minimal subset of inherited RasterBase methods preserve the expected loading behaviour
@@ -249,8 +246,7 @@ class TestClassVsAccessorConsistencyInherited:
     ]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
-    @pytest.mark.parametrize("method, kwargs",
-                             [(f, k) for f, k in inherited_chunked_methods_and_args])  # type: ignore
+    @pytest.mark.parametrize("method, kwargs", [(f, k) for f, k in inherited_chunked_methods_and_args])  # type: ignore
     def test_chunked_methods__loading_laziness(self, path_dem: str, method: str, kwargs: dict[str, Any]) -> None:
         """
         Test that a minimal subset of inherited chunked methods preserve loading and laziness.
@@ -381,7 +377,7 @@ class TestClassVsAccessorConsistencyDEMBase:
     methods_output_noload_allowed_args: dict[str, Any] = {}
 
     # Methods whose richer inputs and multiple outputs are covered by TestDEMEagerAnalysis below
-    methods_tested_separately = ["coregister_3d", "estimate_uncertainty"]
+    methods_tested_separately = ["coregister_3d", "estimate_error_structure", "estimate_uncertainty"]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
     @pytest.mark.parametrize("prop", properties)  # type: ignore
@@ -437,7 +433,7 @@ class TestClassVsAccessorConsistencyDEMBase:
         ("get_terrain_attribute", {"attribute": ["slope", "aspect"]}),
         ("to_pointcloud", {}),
         # 2. Inplace, will not load
-        ("set_vcrs", {"new_vcrs": "EGM96"})
+        ("set_vcrs", {"new_vcrs": "EGM96"}),
     ]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
@@ -909,9 +905,7 @@ class TestDEMEagerAnalysis:
         assert lazy.data is graph and not lazy._in_memory
 
     @pytest.mark.parametrize("operation", ["coregister_3d", "estimate_uncertainty"])
-    def test_methods__dask_analysis_is_explicitly_unsupported(
-        self, accessor_dem_path: Path, operation: str
-    ) -> None:
+    def test_methods__dask_analysis_is_explicitly_unsupported(self, accessor_dem_path: Path, operation: str) -> None:
         """Checks that deferred analysis features reject Dask inputs without computing or replacing them."""
 
         pytest.importorskip("dask.array")

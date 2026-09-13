@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Callable, Literal, TypeVar, Union
 
 import geopandas as gpd
@@ -38,16 +39,10 @@ from pyproj.crs import VerticalCRS
 
 import xdem
 from xdem import coreg, terrain
-from xdem._misc import copy_doc
+from xdem._misc import copy_doc, deprecate
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg import Coreg
 from xdem.coreg.base import _as_eager_elevation
-from xdem.spatialstats import (
-    _estimate_model_heteroscedasticity,
-    _preprocess_values_with_mask_to_array,
-    infer_heteroscedasticity_from_stable,
-    infer_spatial_correlation_from_stable,
-)
 from xdem.vcrs import (
     _to_vcrs_2d,
     _VerticalReference,
@@ -365,9 +360,55 @@ class DEMBase(RasterBase, _VerticalReference):  # type: ignore[misc]
 
         return self._cast_raster_output(aligned_dem)
 
-    def estimate_uncertainty(
+    def estimate_error_structure(
         self,
         other_elev: DEMLike | gpd.GeoDataFrame | xdem.EPC,
+        *,
+        stable_terrain: Raster | gu.Vector | NDArrayb | gpd.GeoDataFrame | None = None,
+        predictors: Mapping[str, Any] | tuple[Any, ...] | None = None,
+        components: Mapping[str, Mapping[str, Any]] | None = None,
+        other_error: Literal["negligible", "same"] = "negligible",
+        z_name: str = "z",
+        random_state: int | np.random.Generator | None = None,
+        **kwargs: Any,
+    ) -> xdem.ErrorStructure:
+        """Estimate named error components from another elevation dataset on stable terrain.
+
+        The default model combines predictor dependent short range errors with a constant long range component.
+        Terrain slope and maximum curvature are used as predictors unless ``predictors`` is given explicitly.
+
+        :param other_elev: Comparison DEM or elevation point cloud.
+        :param stable_terrain: Spatial or Boolean mask where elevation differences represent error.
+        :param predictors: Named magnitude predictors or an ordered tuple using terrain attribute names where possible.
+        :param components: Ordered component specifications defining magnitude and correlation forms.
+        :param other_error: Whether comparison errors are negligible or have the same structure as this DEM.
+        :param z_name: Elevation column selected from a plain GeoDataFrame.
+        :param random_state: Random generator or seed used throughout estimation.
+        :param kwargs: Additional options passed to :meth:`xdem.ErrorStructure.estimate`.
+        :returns: Fitted error structure with compact grouped and variogram diagnostics.
+        """
+
+        return xdem.uncertainty.estimate_error_structure(
+            self,
+            other_elev,
+            stable_terrain=stable_terrain,
+            predictors=predictors,
+            components=components,
+            other_error=other_error,
+            z_name=z_name,
+            random_state=random_state,
+            **kwargs,
+        )
+
+    @deprecate(
+        details=(
+            "Use DEM.estimate_error_structure. "
+            "Migration: https://xdem.readthedocs.io/en/stable/uncertainty_migration.html"
+        )
+    )
+    def estimate_uncertainty(
+        self,
+        other_elev: DEMLike | gpd.GeoDataFrame,
         stable_terrain: Raster | NDArrayb = None,
         approach: Literal["H2022", "R2009", "Basic"] = "H2022",
         precision_of_other: Literal["finer"] | Literal["same"] = "finer",
@@ -410,125 +451,52 @@ class DEMBase(RasterBase, _VerticalReference):  # type: ignore[misc]
             a sum of models. Uses three by default for a method allowing multiple correlation range, otherwise one.
         :param random_state: State or seed to use for randomization.
 
-        :return: Uncertainty raster, Variogram of uncertainty correlation.
+        :return: Raster of spread of random errors (1-sigma), Spatial variogram of error correlation.
         """
 
-        # Normalize eager accessors and reject unsupported Dask inputs before computing any statistics
-        source = _as_eager_elevation(self)
-        other_elev = _as_eager_elevation(other_elev)
-        stable_terrain = _as_eager_elevation(stable_terrain)
-        list_vars = tuple(_as_eager_elevation(var) for var in list_vars)
-        dem = xdem.DEM(source) if self._is_xr else self
-        if isinstance(other_elev, gu.PointCloud):
-            z_name = other_elev.data_column
-            other_elev = other_elev.ds
-
         # Summarize approach steps
-        approach_dict = {
-            "H2022": {"heterosc": True, "multi_range": True},
-            "R2009": {"heterosc": False, "multi_range": True},
-            "Basic": {"heterosc": False, "multi_range": False},
-        }
-        if approach not in approach_dict:
-            raise ValueError("Approach must be one of 'H2022', 'R2009' or 'Basic'.")
-        if precision_of_other not in ("finer", "same"):
-            raise ValueError("Precision of other elevation must be 'finer' or 'same'.")
+        from xdem.uncertainty import estimate_error_structure
 
-        # Elevation change with the other DEM or elevation point cloud
-        points = None
-        correlation_options: dict[str, Any] = {}
-        if isinstance(other_elev, Raster):
-            dh = other_elev.reproject(dem, silent=True) - dem
-        elif isinstance(other_elev, gpd.GeoDataFrame):
-            other_elev = other_elev.to_crs(dem.crs)
-            points = (other_elev.geometry.x.values, other_elev.geometry.y.values)
-            dh = other_elev[z_name].values - dem.interp_points(points, as_array=True)
-
-            # Sample a raster mask at the reference points; a point mask can already follow their row order
-            if isinstance(stable_terrain, np.ndarray) and stable_terrain.shape == dem.shape:
-                stable_terrain = dem.copy(new_array=stable_terrain.astype(np.float32))
-            if isinstance(stable_terrain, Raster):
-                stable_raster = stable_terrain.reproject(dem, resampling="nearest", silent=True)
-                stable_terrain = stable_raster.interp_points(points, method="nearest", as_array=True) == 1
-            correlation_options = {
-                "coords": np.column_stack(points),
-                "gsd": dem.res[0],
-                "subsample_method": "cdist_point",
+        # Translate the published approach shorthand into explicit error components
+        if approach not in {"H2022", "R2009", "Basic"}:
+            raise ValueError("approach must be 'H2022', 'R2009' or 'Basic'.")
+        models = [list_vario_models] if isinstance(list_vario_models, str) else list(list_vario_models)
+        if approach == "Basic":
+            models = models[:1]
+        variables = (
+            {
+                var if isinstance(var, str) else f"var{i + 1}": (
+                    getattr(terrain, var)(self) if isinstance(var, str) else var
+                )
+                for i, var in enumerate(list_vars)
             }
-        else:
-            raise TypeError("Other elevation should be a DEM or elevation point cloud object.")
-
-        # If the precision of the other DEM is the same, divide the dh values by sqrt(2)
-        # See Equation 7 and 8 of Hugonnet et al. (2022)
-        if precision_of_other == "same":
-            dh /= np.sqrt(2)
-
-        # If the approach allows heteroscedasticity, derive a map of errors
-        if approach_dict[approach]["heterosc"]:
-            # Derive terrain attributes of DEM if string is passed in the list of variables
-            list_var_rast = []
-            for var in list_vars:
-                if isinstance(var, str):
-                    list_var_rast.append(getattr(terrain, var)(dem))
-                else:
-                    list_var_rast.append(var.reproject(dem, silent=True))
-
-            if points is None:
-                # Fit and evaluate on the same raster grid for two DEMs
-                sig_dh = infer_heteroscedasticity_from_stable(
-                    dvalues=dh,
-                    list_var=list_var_rast,
-                    spread_statistic=spread_estimator,
-                    stable_mask=stable_terrain,
-                )[0]
-                correlation_errors = sig_dh
-            else:
-                # Fit at the point coordinates, then evaluate the error model over the complete DEM grid
-                sampled_vars = [var.interp_points(points, as_array=True) for var in list_var_rast]
-                stable_values, _ = _preprocess_values_with_mask_to_array(
-                    [dh] + sampled_vars, include_mask=stable_terrain, gsd=dem.res[0], preserve_shape=False
-                )
-                _, error_model = _estimate_model_heteroscedasticity(
-                    dvalues=stable_values[0],
-                    list_var=stable_values[1:],
-                    list_var_names=["var" + str(i + 1) for i in range(len(sampled_vars))],
-                    spread_statistic=spread_estimator,
-                )
-                grid_vars = tuple(var.get_nanarray().ravel() for var in list_var_rast)
-                sig_dh = dem.copy(new_array=error_model(grid_vars).reshape(dem.shape))
-                correlation_errors = error_model(tuple(sampled_vars))
-        # Otherwise, return a constant error raster
-        else:
-            # The shared mask preparation also handles the default of using all finite terrain
-            stable_values, _ = _preprocess_values_with_mask_to_array(
-                dh, include_mask=stable_terrain, gsd=dem.res[0], preserve_shape=False
-            )
-            spread = spread_estimator(stable_values)
-            sig_dh = dem.copy(new_array=spread * np.ones(dem.shape))
-            correlation_errors = sig_dh if points is None else np.full(dh.shape, spread)
-
-        # If the approach does not allow multiple ranges of spatial correlation
-        if not approach_dict[approach]["multi_range"]:
-            if not isinstance(list_vario_models, str) and len(list_vario_models) > 1:
-                warnings.warn(
-                    "Several variogram models passed but this approach uses a single range,"
-                    "keeping only the first model.",
-                    category=UserWarning,
-                )
-                list_vario_models = list_vario_models[0]
-
-        # Otherwise keep all ranges
-        corr_sig = infer_spatial_correlation_from_stable(
-            dvalues=dh,
-            list_models=[list_vario_models] if isinstance(list_vario_models, str) else list(list_vario_models),
-            stable_mask=stable_terrain,
-            errors=correlation_errors,
-            estimator=variogram_estimator,
+            if approach == "H2022"
+            else {}
+        )
+        components = {
+            f"component_{i + 1}": {
+                "magnitude": "heteroscedastic" if i == 0 and variables else "constant",
+                "correlation": model,
+            }
+            for i, model in enumerate(models)
+        }
+        if precision_of_other not in {"finer", "same"}:
+            raise ValueError("precision_of_other must be 'finer' or 'same'.")
+        structure = estimate_error_structure(
+            self,
+            other_elev,
+            stable_terrain=stable_terrain,
+            predictors=variables,
+            components=components,
+            other_error="negligible" if precision_of_other == "finer" else "same",
+            z_name=z_name,
+            spread_estimator=spread_estimator,
+            variogram_estimator=variogram_estimator,
             random_state=random_state,
-            **correlation_options,
-        )[2]
-
-        return self._cast_raster_output(sig_dh), corr_sig
+        )
+        return structure.predict_magnitude(variables, like=self), lambda distance: np.asarray(
+            structure.predict_correlation(distance)
+        )
 
     def _cast_pointcloud_output(self, pointcloud: Any) -> Any:
         """Preserve EPC behavior for point outputs from DEMs and their accessors."""

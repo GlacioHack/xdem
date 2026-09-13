@@ -41,8 +41,8 @@ class TestBiasCorr:
     fit_args_rst_rst = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
 
     # Convert DEMs to points with a bit of subsampling for speed-up
-    tba_pts = tba.to_pointcloud(data_column_name="z")
-    ref_pts = ref.to_pointcloud(data_column_name="z")
+    tba_pts = tba.to_pointcloud(data_column_name="z", subsample=3000, random_state=42)
+    ref_pts = ref.to_pointcloud(data_column_name="z", subsample=3000, random_state=42)
 
     # Raster-Point
     fit_args_rst_pts = dict(reference_elev=ref, to_be_aligned_elev=tba_pts, inlier_mask=inlier_mask)
@@ -263,7 +263,7 @@ class TestBiasCorr:
         elev_fit_args.update({"bias_vars": bias_vars_dict})
 
         # Run with input parameter, and using only 100 subsamples for speed
-        # Passing p0 defines the number of parameters to solve for
+        # Passing x0 defines the number of parameters to solve for
         bcorr.fit(**elev_fit_args, subsample=100, p0=[0, 0, 0, 0], random_state=42)
 
         # Check that variable names are defined during fit
@@ -357,9 +357,9 @@ class TestBiasCorr:
         elev_fit_args.update({"bias_vars": bias_vars_dict})
 
         # To speed up the tests, pass niter to basinhopping through "nfreq_sumsin"
-        # Also fix random state for basinhopping
+        # Keep one frequency here; model order selection is covered in test_fit
         if fit_func == "nfreq_sumsin":
-            elev_fit_args.update({"niter": 1})
+            elev_fit_args.update({"niter": 1, "max_nb_frequency": 1})
 
         # Run with input parameter, and using only 100 subsamples for speed
         bcorr.fit(**elev_fit_args, subsample=1000, random_state=42)
@@ -404,7 +404,7 @@ class TestBiasCorr:
         elev_fit_args.update({"bias_vars": bias_vars_dict})
 
         # Run with input parameter, and using only 100 subsamples for speed
-        # Passing p0 defines the number of parameters to solve for
+        # Passing x0 defines the number of parameters to solve for
         bcorr.fit(**elev_fit_args, subsample=1000, p0=[0, 0, 0, 0], random_state=42)
 
         # Check that variable names are defined during fit
@@ -457,11 +457,11 @@ class TestBiasCorr:
             plt.show()
 
             dirbias = biascorr.DirectionalBias(angle=angle, fit_or_bin="bin", bin_sizes=10000)
-            dirbias.fit(reference_elev=self.ref, to_be_aligned_elev=bias_dem)
-            xdem.spatialstats.plot_1d_binning(
-                df=dirbias.meta["outputs"]["fitorbin"]["bin_dataframe"],
-                var_name="angle",
-                statistic_name="nanmedian",
+            dirbias.fit(reference_elev=self.ref, to_be_aligned_elev=bias_dem, subsample=10000, random_state=42)
+            gu.stats.plot_grouped_stats(
+                table=dirbias.meta["outputs"]["fitorbin"]["bin_dataframe"],
+                value="bias",
+                statistic="nanmedian",
                 min_count=0,
             )
             plt.show()
@@ -636,8 +636,12 @@ class TestBiasCorr:
 
         # Check high-order parameters are the same within 10%
         bin_df = tb.meta["outputs"]["fitorbin"]["bin_dataframe"]
-        assert [interval.left for interval in bin_df["max_curvature"].values] == pytest.approx(list(bin_edges[:-1]))
-        assert [interval.right for interval in bin_df["max_curvature"].values] == pytest.approx(list(bin_edges[1:]))
+        assert [interval.left for interval in bin_df.index.get_level_values("max_curvature")] == pytest.approx(
+            list(bin_edges[:-1])
+        )
+        assert [interval.right for interval in bin_df.index.get_level_values("max_curvature")] == pytest.approx(
+            list(bin_edges[1:])
+        )
         # assert np.allclose(bin_df["nanmedian"], bias_per_bin, rtol=0.1)
 
         # Run apply and check that 99% of the variance was corrected

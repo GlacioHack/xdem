@@ -60,7 +60,7 @@ class TestEPCInheritance:
         and not getattr(member, "__isabstractmethod__", False)
     ]
     properties_tested = ["vcrs"]
-    methods_tested_separately = ["set_vcrs", "to_vcrs", "coregister_3d"]
+    methods_tested_separately = ["set_vcrs", "to_vcrs", "coregister_3d", "estimate_error_structure"]
 
     def test_shared_method_ownership(self) -> None:
         """

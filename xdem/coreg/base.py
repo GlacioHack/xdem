@@ -24,13 +24,13 @@ import copy
 import inspect
 import logging
 import warnings
+from collections.abc import Mapping
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
-    Generator,
     Iterable,
     Literal,
-    Mapping,
     TypedDict,
     TypeVar,
     overload,
@@ -55,7 +55,6 @@ from geoutils.raster import Raster, RasterType, raster
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.referencing import _cast_pixel_interpretation, _coords
 from geoutils.raster.transformation import _resampling_method_from_str, _translate
-from geoutils.sampling.subsampling import _subsample_numpy
 
 import xdem
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
@@ -65,7 +64,9 @@ from xdem.fit import (
     robust_norder_polynomial_fit,
     sumsin_1d,
 )
-from xdem.spatialstats import nd_binning
+
+if TYPE_CHECKING:
+    from xdem.coreg.pipeline import CoregPipeline
 
 # Map each workflow name to a function and optimizer
 fit_workflows = {
@@ -92,9 +93,16 @@ dict_key_to_str = {
     "fit_perr": "Error on optimized function parameters",
     "bin_dataframe": "Binning output dataframe",
     "max_iterations": "Maximum number of iterations",
-    "tolerance": "Tolerance to reach (pixel size)",
+    "tolerance_translation": "Tolerance in translation (georeferenced unit)",
+    "tolerance_rotation": "Tolerance in rotation (degrees)",
+    "tolerance_objective_func": "Tolerance in objective function",
+    "trim_residuals": "Residuals are trimmed for outliers",
+    "trim_central_statistic": "Central statistic for trimming",
+    "trim_spread_statistic": "Spread statistic for trimming",
+    "trim_spread_coverage": "Spread coverage for trimming",
+    "trim_iterative": "Trimming statistics are updated iteratively until no more value is excluded",
     "last_iteration": "Iteration at which algorithm stopped",
-    "all_tolerances": "Tolerances at each iteration",
+    "iteration_stats": "Statistics compared to tolerances at each iteration",
     "terrain_attribute": "Terrain attribute used for correction",
     "angle": "Angle of directional correction",
     "poly_order": "Polynomial order",
@@ -111,8 +119,13 @@ dict_key_to_str = {
     "only_translation": "Only translations are considered",
     "standardize": "Input data was standardized",
     "icp_method": "Type of ICP method",
-    "icp_picky": "Picky closest pair selection",
+    "icp_picky": "Picky ICP variant keeping only closest pairs",
+    "linearized": "Rotation linearized during optimization",
+    "anisotropic": "Weights axis distances separately",
+    "sampling_strategy": "Sampling strategy for point-point registration",
     "cpd_weight": "Weight of CPD outlier removal",
+    "cpd_lsg": "CPD variant LSG using normals",
+    "cpd_estep_knearest": "Number of nearest neighbours used by CPD",
 }
 
 
@@ -167,7 +180,8 @@ def _preprocess_coreg_fit_raster_raster(
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
-) -> tuple[NDArrayf, NDArrayf, NDArrayb, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
+    reproj_same_grid: bool = True,
+) -> tuple[NDArrayf, NDArrayf, NDArrayb, affine.Affine, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit() for two raster input."""
 
     # Validate that both inputs are valid array-like (or Raster) types.
@@ -176,6 +190,23 @@ def _preprocess_coreg_fit_raster_raster(
             "Both DEMs need to be array-like (implement a numpy array interface)."
             f"'reference_dem': {reference_dem}, 'dem_to_be_aligned': {dem_to_be_aligned}"
         )
+
+    ref_transform: rio.transform.Affine | None = None
+    tba_transform: rio.transform.Affine | None = None
+    ref_crs: rio.crs.CRS | None = None
+    tba_crs: rio.crs.CRS | None = None
+    ref_aop: Literal["Area", "Point"] | None = None
+    tba_aop: Literal["Area", "Point"] | None = None
+
+    # If raster objects are provided, they define their own grid/CRS/pixel interpretation.
+    if isinstance(reference_dem, gu.Raster):
+        ref_transform = reference_dem.transform
+        ref_crs = reference_dem.crs
+        ref_aop = reference_dem.area_or_point
+    if isinstance(dem_to_be_aligned, gu.Raster):
+        tba_transform = dem_to_be_aligned.transform
+        tba_crs = dem_to_be_aligned.crs
+        tba_aop = dem_to_be_aligned.area_or_point
 
     if inlier_mask is not None:
         # If inlier_mask has not the same shape of the input dem, reproject it
@@ -192,7 +223,19 @@ def _preprocess_coreg_fit_raster_raster(
 
     # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
     if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
-        dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True)
+        # Only reproject to the same grid if required, otherwise simply reproject to the same CRS
+        if reproj_same_grid:
+            dem_to_be_aligned = dem_to_be_aligned.reproject(reference_dem, silent=True)
+            # TBA now lies on the reference grid
+            tba_transform = reference_dem.transform
+            tba_crs = reference_dem.crs
+            tba_aop = reference_dem.area_or_point
+        else:
+            dem_to_be_aligned = dem_to_be_aligned.reproject(crs=reference_dem.crs, silent=True)
+            # TBA keeps its own grid but CRS matches reference
+            tba_transform = dem_to_be_aligned.transform
+            tba_crs = dem_to_be_aligned.crs
+            tba_aop = dem_to_be_aligned.area_or_point
 
     # If both inputs are raster, cast their pixel interpretation and override any individual interpretation
     indiv_check = True
@@ -204,46 +247,61 @@ def _preprocess_coreg_fit_raster_raster(
             warnings.warn("Pixel interpretation cast from the two input rasters overrides the given 'area_or_point'.")
         indiv_check = False
 
-    # If any input is a Raster, use its transform if 'transform is None'.
-    # If 'transform' was given and any input is a Raster, trigger a warning.
-    # Finally, extract only the data of the raster.
-    new_transform = None
-    new_crs = None
+    # If any input is a Raster, use its transform if 'transform is None'
+    # If 'transform' was given and any input is a Raster, trigger a warning
+    # Finally, extract only the data of the raster
+
+    # For array-like inputs, we assume the provided 'transform/crs/area_or_point' apply to BOTH inputs
+    # If you need two different grids for two array-like DEMs, pass them as Raster objects instead
     for name, dem in [("reference_dem", reference_dem), ("dem_to_be_aligned", dem_to_be_aligned)]:
         if isinstance(dem, gu.Raster):
-            # If a raster was passed, override the transform, reference raster has priority to set new_transform.
-            if transform is None:
-                new_transform = dem.transform
-            elif transform is not None and new_transform is None:
-                new_transform = dem.transform
+            # If a raster was passed and the user provided 'transform', warn that the raster overrides it
+            if transform is not None:
                 warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'transform'")
-            # Same for crs
-            if crs is None:
-                new_crs = dem.crs
-            elif crs is not None and new_crs is None:
-                new_crs = dem.crs
+            if crs is not None:
                 warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'crs'")
             # Same for pixel interpretation, only if both inputs aren't rasters (which requires casting, see above)
-            if indiv_check:
-                if area_or_point is None:
-                    new_aop = dem.area_or_point
-                elif crs is not None and new_aop is None:
-                    new_aop = dem.area_or_point
-                    warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'area_or_point'")
+            if indiv_check and area_or_point is not None:
+                warnings.warn(f"'{name}' of type {type(dem)} overrides the given 'area_or_point'")
 
-    # Override transform, CRS and pixel interpretation
-    if new_transform is not None:
-        transform = new_transform
-    if new_crs is not None:
-        crs = new_crs
+    # Resolve array-like metadata
+    if not isinstance(reference_dem, gu.Raster) or not isinstance(dem_to_be_aligned, gu.Raster):
+        # At least one input is array-like => require transform/crs
+        if transform is None:
+            raise ValueError("'transform' must be given if any DEM is array-like.")
+        if crs is None:
+            raise ValueError("'crs' must be given if any DEM is array-like.")
+
+        # NEW: for array-like inputs, we cannot represent two distinct grids with this signature,
+        # so we assume both array-like DEMs share the provided transform/crs/aop.
+        if not isinstance(reference_dem, gu.Raster):
+            ref_transform = transform
+            ref_crs = crs
+            if indiv_check and area_or_point is not None:
+                ref_aop = area_or_point
+        if not isinstance(dem_to_be_aligned, gu.Raster):
+            tba_transform = transform
+            tba_crs = crs
+            if indiv_check and area_or_point is not None:
+                tba_aop = area_or_point
+
+    # Override CRS and pixel interpretation
+    # CRS: coreg assumes both inputs are in the same CRS after reprojection (if any).
+    final_crs = ref_crs if ref_crs is not None else tba_crs
+    if final_crs is None:
+        raise ValueError("'crs' must be given if both DEMs are array-like.")
+
     if new_aop is not None:
         area_or_point = new_aop
+    else:
+        # If not cast above, set from reference if available, otherwise from tba, otherwise keep user input
+        if area_or_point is None:
+            area_or_point = ref_aop if ref_aop is not None else tba_aop
 
-    if transform is None:
-        raise ValueError("'transform' must be given if both DEMs are array-like.")
-
-    if crs is None:
-        raise ValueError("'crs' must be given if both DEMs are array-like.")
+    if ref_transform is None:
+        raise ValueError("'transform' must be given if 'reference_dem' is array-like.")
+    if tba_transform is None:
+        raise ValueError("'transform' must be given if 'dem_to_be_aligned' is array-like.")
 
     # Get a NaN array covering nodatas from the raster, masked array or integer-type array
     with warnings.catch_warnings():
@@ -275,7 +333,7 @@ def _preprocess_coreg_fit_raster_raster(
     if np.all(invalid_mask):
         raise ValueError("All values of the inlier mask are NaNs in either 'reference_dem' or 'dem_to_be_aligned'.")
 
-    return ref_dem, tba_dem, inlier_mask, transform, crs, area_or_point
+    return ref_dem, tba_dem, inlier_mask, ref_transform, tba_transform, final_crs, area_or_point
 
 
 def _preprocess_coreg_fit_raster_point(
@@ -285,6 +343,7 @@ def _preprocess_coreg_fit_raster_point(
     transform: rio.transform.Affine | None = None,
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
+    z_name: str | None = None,
 ) -> tuple[NDArrayf, gpd.GeoDataFrame, NDArrayb, affine.Affine, rio.crs.CRS, Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit for raster-point input."""
 
@@ -321,6 +380,14 @@ def _preprocess_coreg_fit_raster_point(
     if crs is None:
         raise ValueError("'crs' must be given if both DEMs are array-like.")
 
+    if z_name is None:
+        raise ValueError(f"'z_name' must be given if an elevation point cloud is used as elevation input.")
+
+    if z_name not in point_elev.columns:
+        raise ValueError(
+            f"'z_name' {z_name} is not a column of the elevation point cloud dataframe; those are {point_elev.columns}."
+        )
+
     # Make sure that the mask has an expected format.
     if inlier_mask is not None:
         if isinstance(inlier_mask, Raster):
@@ -342,9 +409,20 @@ def _preprocess_coreg_fit_raster_point(
 
 
 def _preprocess_coreg_fit_point_point(
-    reference_elev: gpd.GeoDataFrame, to_be_aligned_elev: gpd.GeoDataFrame
+    reference_elev: gpd.GeoDataFrame,
+    to_be_aligned_elev: gpd.GeoDataFrame,
+    z_name: str | None = None,
 ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """Pre-processing and checks of fit for point-point input."""
+
+    if z_name is None:
+        raise ValueError(f"'z_name' must be given if an elevation point cloud is used as elevation input.")
+
+    if z_name not in reference_elev.columns:
+        raise ValueError(f"'z_name' {z_name} is not a column of the reference elevation point cloud geodataframe.")
+
+    if z_name not in to_be_aligned_elev.columns:
+        raise ValueError(f"'z_name' {z_name} is not a column of the to-be-aligned elevation point cloud geodataframe.")
 
     ref_elev = reference_elev
     tba_elev = to_be_aligned_elev.to_crs(crs=reference_elev.crs)
@@ -360,15 +438,8 @@ def _preprocess_coreg_fit(
     crs: rio.crs.CRS | None = None,
     area_or_point: Literal["Area", "Point"] | None = None,
     z_name: str | None = None,
-) -> tuple[
-    NDArrayf | gpd.GeoDataFrame,
-    NDArrayf | gpd.GeoDataFrame,
-    NDArrayb | None,
-    affine.Affine | None,
-    rio.crs.CRS | None,
-    Literal["Area", "Point"] | None,
-    str | None,
-]:
+    reproj_same_grid: bool = True,
+) -> dict[str, NDArrayf | gpd.GeoDataFrame | affine.Affine | rio.crs.CRS | Literal["Area", "Point"] | None]:
     """Pre-processing and checks of fit for any input."""
 
     for elev in (reference_elev, to_be_aligned_elev):
@@ -379,16 +450,30 @@ def _preprocess_coreg_fit(
 
     # If both inputs are raster or arrays, reprojection on the same grid is needed for raster-raster methods
     if all(isinstance(elev, (np.ndarray, gu.Raster)) for elev in (reference_elev, to_be_aligned_elev)):
-        ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit_raster_raster(
-            reference_dem=reference_elev,
-            dem_to_be_aligned=to_be_aligned_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
+        ref_elev, tba_elev, inlier_mask, ref_transform, tba_transform, crs, area_or_point = (
+            _preprocess_coreg_fit_raster_raster(
+                reference_dem=reference_elev,
+                dem_to_be_aligned=to_be_aligned_elev,
+                inlier_mask=inlier_mask,
+                transform=transform,
+                crs=crs,
+                area_or_point=area_or_point,
+                reproj_same_grid=reproj_same_grid,
+            )
         )
 
-    # If one input is raster, and the other is point, we reproject the point data to the same CRS and extract arrays
+        # Arguments required for _fit_rst_rst from outputs of this function
+        main_args = {
+            "ref_elev": ref_elev,
+            "tba_elev": tba_elev,
+            "inlier_mask": inlier_mask,
+            "ref_transform": ref_transform,
+            "tba_transform": tba_transform,
+            "crs": crs,
+            "area_or_point": area_or_point,
+        }
+
+    # If one input is raster, and the other is point, we reproject the point data to the same CRS
     elif any(isinstance(dem, (np.ndarray, gu.Raster)) for dem in (reference_elev, to_be_aligned_elev)):
         if isinstance(reference_elev, (np.ndarray, gu.Raster)):
             raster_elev = reference_elev
@@ -416,6 +501,7 @@ def _preprocess_coreg_fit(
             transform=transform,
             crs=crs,
             area_or_point=area_or_point,
+            z_name=z_name,
         )
 
         if ref == "raster":
@@ -424,6 +510,17 @@ def _preprocess_coreg_fit(
         else:
             ref_elev = point_elev
             tba_elev = raster_elev
+
+        # Arguments required for _fit_rst_pts from outputs of this function
+        main_args = {
+            "ref_elev": ref_elev,
+            "tba_elev": tba_elev,
+            "inlier_mask": inlier_mask,
+            "transform": transform,
+            "crs": crs,
+            "area_or_point": area_or_point,
+            "z_name": z_name,
+        }
 
     # If both inputs are points, simply reproject to the same CRS
     else:
@@ -438,9 +535,19 @@ def _preprocess_coreg_fit(
             if isinstance(to_be_aligned_elev, gpd.GeoDataFrame)
             else to_be_aligned_elev.data_column  # type: ignore
         )
-        ref_elev, tba_elev = _preprocess_coreg_fit_point_point(reference_elev=ref_elev, to_be_aligned_elev=tba_elev)
+        ref_elev, tba_elev = _preprocess_coreg_fit_point_point(
+            reference_elev=ref_elev, to_be_aligned_elev=tba_elev, z_name=z_name
+        )
+        # Arguments required for _fit_pts_pts from outputs of this function
+        main_args = {
+            "ref_elev": ref_elev,
+            "tba_elev": tba_elev,
+            "inlier_mask": inlier_mask,
+            "crs": ref_elev.crs,
+            "z_name": z_name,
+        }
 
-    return ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point, z_name
+    return main_args
 
 
 def _preprocess_coreg_apply(
@@ -537,7 +644,6 @@ def _postprocess_coreg_apply_rst(
 
     # Resample the array on the original grid
     if resample:
-
         # TODO: Use this function for a translation only, for consistency with the rest of Coreg?
         #  (would require checking transform difference is only a translation)
         # applied_elev = _reproject_horizontal_shift_samecrs(raster_arr=applied_elev, src_transform=out_transform,
@@ -605,310 +711,6 @@ def _postprocess_coreg_apply(
         applied_elev = _postprocess_coreg_apply_pts(elev=elev, applied_elev=applied_elev)
 
     return applied_elev, out_transform
-
-
-###############################################
-# Statistical functions (to be moved in future)
-###############################################
-
-
-def _get_subsample_on_valid_mask(params_random: InRandomDict, valid_mask: NDArrayb) -> NDArrayb:
-    """
-    Get mask of values to subsample on valid mask (works for both 1D or 2D arrays).
-
-    :param valid_mask: Raster of valid values (inlier and not nodata).
-    """
-
-    # This should never happen
-    if params_random["subsample"] is None:
-        raise ValueError("Subsample should have been defined in metadata before reaching this class method.")
-
-    # If valid mask is empty
-    if np.count_nonzero(valid_mask) == 0:
-        raise ValueError(
-            "There is no valid points common to the input and auxiliary data (bias variables, or "
-            "derivatives required for this method, for example slope, aspect, etc)."
-        )
-
-    # If subsample is not equal to one, subsampling should be performed.
-    elif params_random["subsample"] != 1.0:
-
-        # Build a low memory masked array with invalid values masked to pass to subsampling
-        ma_valid = np.ma.masked_array(data=np.ones(np.shape(valid_mask), dtype=bool), mask=~valid_mask)
-        # Take a subsample within the valid values
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=UserWarning)
-            indices = _subsample_numpy(
-                ma_valid,
-                subsample=params_random["subsample"],
-                return_indices=True,
-                random_state=params_random["random_state"],
-            )
-
-        # We return a boolean mask of the subsample within valid values
-        subsample_mask = np.zeros(np.shape(valid_mask), dtype=bool)
-        if len(indices) == 2:
-            subsample_mask[indices[0], indices[1]] = True
-        else:
-            subsample_mask[indices[0]] = True
-    else:
-        # If no subsample is taken, use all valid values
-        subsample_mask = valid_mask
-
-    logging.debug(
-        "Using a subsample of %d among %d valid values.", np.count_nonzero(subsample_mask), np.count_nonzero(valid_mask)
-    )
-
-    return subsample_mask
-
-
-def _get_subsample_mask_pts_rst(
-    params_random: InRandomDict,
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb,
-    transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
-    z_name: str,
-    area_or_point: Literal["Area", "Point"] | None,
-    aux_vars: None | dict[str, NDArrayf] = None,
-) -> NDArrayb:
-    """
-    Get subsample mask for raster-raster or point-raster datasets on valid points of all inputs (including
-    potential auxiliary variables).
-
-    Returns a boolean array to use for subsampling (2D for raster-raster, 1D for point-raster to be used on point).
-    """
-
-    # TODO: Return more detailed error message for no valid points (which variable was full of NaNs?)
-
-    if isinstance(ref_elev, gpd.GeoDataFrame) and isinstance(tba_elev, gpd.GeoDataFrame):
-        raise TypeError(
-            "This pre-processing function is only intended for raster-point or raster-raster methods, "
-            "not point-point methods."
-        )
-
-    # For two rasters
-    if isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
-
-        # Compute mask of valid data
-        if aux_vars is not None:
-            valid_mask = np.logical_and.reduce(
-                (
-                    inlier_mask,
-                    np.isfinite(ref_elev),
-                    np.isfinite(tba_elev),
-                    *(np.isfinite(var) for var in aux_vars.values()),
-                )
-            )
-        else:
-            valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(ref_elev), np.isfinite(tba_elev)))
-
-        # Raise errors if all values are NaN after introducing masks from the variables
-        # (Others are already checked in pre-processing of Coreg.fit())
-
-        # Perform subsampling
-        sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask)
-
-    # For one raster and one point cloud
-    else:
-
-        # Interpolate inlier mask and bias vars at point coordinates
-        pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-        rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-
-        # Remove non-finite values from point dataset
-        pts_elev = pts_elev[np.isfinite(pts_elev[z_name].values)]
-
-        # Get coordinates
-        pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
-
-        # Get valid mask ahead of subsampling to have the exact number of requested subsamples
-        if aux_vars is not None:
-            valid_mask = np.logical_and.reduce(
-                (inlier_mask, np.isfinite(rst_elev), *(np.isfinite(var) for var in aux_vars.values()))
-            )
-        else:
-            valid_mask = np.logical_and.reduce((inlier_mask, np.isfinite(rst_elev)))
-
-        # Convert inlier mask to points to be able to determine subsample later
-        # The location needs to be surrounded by inliers, use floor to get 0 for at least one outlier
-        # Interpolates boolean mask as integers
-        # TODO: Create a function in GeoUtils that can compute the valid boolean mask of an interpolation without
-        #  having to convert data to float32
-        valid_mask = valid_mask.astype(np.float32)
-        valid_mask[valid_mask == 0] = np.nan
-        valid_mask = np.isfinite(
-            _interp_points_base(array=valid_mask, transform=transform, points=pts, area_or_point=area_or_point)
-        )
-
-        # If there is a subsample, it needs to be done now on the point dataset to reduce later calculations
-        sub_mask = _get_subsample_on_valid_mask(params_random=params_random, valid_mask=valid_mask)
-
-    return sub_mask
-
-
-def _subsample_on_mask(
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    aux_vars: None | dict[str, NDArrayf],
-    sub_mask: NDArrayb,
-    transform: rio.transform.Affine,
-    area_or_point: Literal["Area", "Point"] | None,
-    z_name: str,
-    return_coords: bool = False,
-) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], None | tuple[NDArrayf, NDArrayf]]:
-    """
-    Perform subsampling on mask for raster-raster or point-raster datasets on valid points of all inputs (including
-    potential auxiliary variables).
-
-    Returns 1D arrays of subsampled inputs: reference elevation, to-be-aligned elevation and auxiliary variables
-    (in dictionary), and (optionally) tuple of X/Y coordinates.
-    """
-
-    # For two rasters
-    if isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
-
-        # Subsample all datasets with the mask
-        sub_ref = ref_elev[sub_mask]
-        sub_tba = tba_elev[sub_mask]
-        if aux_vars is not None:
-            sub_bias_vars = {}
-            for var in aux_vars.keys():
-                sub_bias_vars[var] = aux_vars[var][sub_mask]
-        else:
-            sub_bias_vars = None
-
-        # Return coordinates if required
-        if return_coords:
-            coords = _coords(transform=transform, shape=ref_elev.shape, area_or_point=area_or_point)
-            sub_coords = (coords[0][sub_mask], coords[1][sub_mask])
-        else:
-            sub_coords = None
-
-    # For one raster and one point cloud
-    else:
-
-        # Identify which dataset is point or raster
-        pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-        rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-
-        # Remove invalid points
-        pts_elev = pts_elev[np.isfinite(pts_elev[z_name].values)]
-
-        # Subsample point coordinates
-        pts = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
-        pts = (pts[0][sub_mask], pts[1][sub_mask])
-
-        # Interpolate raster array to the subsample point coordinates
-        # Convert ref or tba depending on which is the point dataset
-        sub_rst = _interp_points_base(array=rst_elev, transform=transform, points=pts, area_or_point=area_or_point)
-        sub_pts = pts_elev[z_name].values[sub_mask]
-
-        # Assign arrays depending on which one is the reference
-        if isinstance(ref_elev, gpd.GeoDataFrame):
-            sub_ref = sub_pts
-            sub_tba = sub_rst
-        else:
-            sub_ref = sub_rst
-            sub_tba = sub_pts
-
-        # Interpolate arrays of bias variables to the subsample point coordinates
-        if aux_vars is not None:
-            sub_bias_vars = {}
-            for var in aux_vars.keys():
-                sub_bias_vars[var] = _interp_points_base(
-                    array=aux_vars[var], transform=transform, points=pts, area_or_point=area_or_point
-                )
-        else:
-            sub_bias_vars = None
-
-        # Return coordinates if required
-        if return_coords:
-            sub_coords = pts
-        else:
-            sub_coords = None
-
-    return sub_ref, sub_tba, sub_bias_vars, sub_coords
-
-
-@overload
-def _preprocess_pts_rst_subsample(
-    params_random: InRandomDict,
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb,
-    transform: rio.transform.Affine,
-    crs: rio.crs.CRS,
-    area_or_point: Literal["Area", "Point"] | None,
-    z_name: str,
-    aux_vars: None | dict[str, NDArrayf] = None,
-    *,
-    return_coords: Literal[False] = False,
-) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], None]: ...
-
-
-@overload
-def _preprocess_pts_rst_subsample(
-    params_random: InRandomDict,
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb,
-    transform: rio.transform.Affine,
-    crs: rio.crs.CRS,
-    area_or_point: Literal["Area", "Point"] | None,
-    z_name: str,
-    aux_vars: None | dict[str, NDArrayf] = None,
-    *,
-    return_coords: Literal[True],
-) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], tuple[NDArrayf, NDArrayf]]: ...
-
-
-def _preprocess_pts_rst_subsample(
-    params_random: InRandomDict,
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb,
-    transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
-    crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
-    area_or_point: Literal["Area", "Point"] | None,
-    z_name: str,
-    aux_vars: None | dict[str, NDArrayf] = None,
-    return_coords: bool = False,
-) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf], None | tuple[NDArrayf, NDArrayf]]:
-    """
-    Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
-    (and interpolated in the case of point-raster input).
-
-    Return 1D arrays of reference elevation, to-be-aligned elevation and dictionary of 1D arrays of auxiliary variables
-    at subsampled points.
-    """
-
-    # Get subsample mask (a 2D array for raster-raster, a 1D array of length the point data for point-raster)
-    sub_mask = _get_subsample_mask_pts_rst(
-        params_random=params_random,
-        ref_elev=ref_elev,
-        tba_elev=tba_elev,
-        inlier_mask=inlier_mask,
-        transform=transform,
-        area_or_point=area_or_point,
-        z_name=z_name,
-        aux_vars=aux_vars,
-    )
-
-    # Perform subsampling on mask for all inputs
-    sub_ref, sub_tba, sub_bias_vars, sub_coords = _subsample_on_mask(
-        ref_elev=ref_elev,
-        tba_elev=tba_elev,
-        aux_vars=aux_vars,
-        sub_mask=sub_mask,
-        transform=transform,
-        area_or_point=area_or_point,
-        z_name=z_name,
-        return_coords=return_coords,
-    )
-
-    # Return 1D arrays of subsampled points at the same location
-    return sub_ref, sub_tba, sub_bias_vars, sub_coords
 
 
 def _ols_fit(
@@ -1072,9 +874,7 @@ def _bin_or_and_fit_nd(
         if isinstance(params_fit_or_bin["bin_sizes"], dict):
             var_order = list(bias_vars.keys())
             # Declare type to write integer or tuple to the variable
-            bin_sizes: int | tuple[int, ...] | tuple[NDArrayf, ...] = tuple(
-                np.array(params_fit_or_bin["bin_sizes"][var]) for var in var_order
-            )
+            bin_sizes: Any = tuple(params_fit_or_bin["bin_sizes"][var] for var in var_order)
         # Otherwise, write integer directly
         else:
             bin_sizes = params_fit_or_bin["bin_sizes"]
@@ -1109,12 +909,16 @@ def _bin_or_and_fit_nd(
             params_fit_or_bin["bin_statistic"].__name__,
         )
 
-        df = nd_binning(
-            values=values,
-            list_var=list(bias_vars.values()),
-            list_var_names=list(bias_vars.keys()),
-            list_var_bins=bin_sizes,
+        df = gu.stats.grouped_stats(
+            values={"bias": values},
+            by=bias_vars,
+            bins=(
+                dict.fromkeys(bias_vars, bin_sizes)
+                if isinstance(bin_sizes, (int, np.integer))
+                else dict(zip(bias_vars, bin_sizes))
+            ),
             statistics=(params_fit_or_bin["bin_statistic"], "count"),
+            observed=False,
         )
         results = None
 
@@ -1127,21 +931,22 @@ def _bin_or_and_fit_nd(
             params_fit_or_bin["fit_func"].__name__,
         )
 
-        df = nd_binning(
-            values=values,
-            list_var=list(bias_vars.values()),
-            list_var_names=list(bias_vars.keys()),
-            list_var_bins=bin_sizes,
+        df = gu.stats.grouped_stats(
+            values={"bias": values},
+            by=bias_vars,
+            bins=(
+                dict.fromkeys(bias_vars, bin_sizes)
+                if isinstance(bin_sizes, (int, np.integer))
+                else dict(zip(bias_vars, bin_sizes))
+            ),
             statistics=(params_fit_or_bin["bin_statistic"], "count"),
+            observed=False,
         )
 
         # Now, we need to pass this new data to the fitting function and optimizer
-        # We use only the N-D binning estimates (maximum dimension, equal to length of variable list)
-        df_nd = df[df.nd == len(bias_vars)]
-
-        # We get the middle of bin values for variable, and statistic for the diff
-        new_vars = [pd.IntervalIndex(df_nd[var_name]).mid.values for var_name in bias_vars.keys()]
-        new_diff = df_nd[params_fit_or_bin["bin_statistic"].__name__].values
+        # Read the predictor centres and bias statistic from GeoUtils labelled groups
+        new_vars = [pd.IntervalIndex(df.index.get_level_values(name)).mid.values for name in bias_vars]
+        new_diff = df[("bias", params_fit_or_bin["bin_statistic"].__name__)].values
         # TODO: pass a new sigma based on "count" and original sigma (and correlation?)?
         #  sigma values would have to be binned above also
 
@@ -1573,9 +1378,7 @@ def _iterate_affine_regrid_small_rotations(
     res_x = dem_rst.res[0]  # Resolution in X
     res_y = dem_rst.res[1]  # Resolution in Y
     niter = 1  # Starting iteration
-
     while niter < max_niter:
-
         # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
         tx, ty = _apply_matrix_pts_arr(x=x, y=y, z=new_z, matrix=matrix, invert=True, centroid=centroid)[:2]
 
@@ -1587,7 +1390,6 @@ def _iterate_affine_regrid_small_rotations(
 
         # Only check residuals after first iteration (to remove NaNs) then every 5 iterations to reduce computing time
         if niter == 1 or niter == niter_check:
-
             # Compute difference between exact grid coordinates and current coordinates, and stop if tolerance reached
             diff_x = x0 - x
             diff_y = y0 - y
@@ -1854,7 +1656,6 @@ def apply_matrix(
         return _apply_matrix_pts(epc=elev, matrix=matrix, invert=invert, centroid=centroid, z_name=z_name)
     # Or apply matrix to raster (often requires re-gridding)
     else:
-
         # First, we apply the affine matrix for the array/transform
         if isinstance(elev, gu.Raster):
             transform = elev.transform
@@ -1928,7 +1729,6 @@ class InFitOrBinDict(TypedDict, total=False):
     fit_func: Callable[..., NDArrayf]
     fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"]
 
-    # TODO: Solve redundancy between optimizer and minimizer (curve_fit or minimize as default?)
     # For a minimization problem
     fit_minimizer: Callable[..., tuple[NDArrayf, Any]]
     fit_loss_func: Callable[[NDArrayf], np.floating[Any]]
@@ -1940,6 +1740,15 @@ class InFitOrBinDict(TypedDict, total=False):
     # Name of variables, and number of dimensions
     bias_var_names: list[str]
     nd: int | None
+
+    # Whether to trim residuals, and related parameters
+    trim_residuals: bool
+    # Trimming statistics and coverage (always symmetric)
+    trim_central_statistic: Callable[[NDArrayf], np.floating[Any]]
+    trim_spread_statistic: Callable[[NDArrayf], np.floating[Any]]
+    trim_spread_coverage: float
+    # Whether to trim the residuals iteratively until trimming is over
+    trim_iterative: bool
 
 
 class OutFitOrBinDict(TypedDict, total=False):
@@ -1958,7 +1767,9 @@ class InIterativeDict(TypedDict, total=False):
     # Maximum number of iterations
     max_iterations: int
     # Tolerance at which to stop algorithm (unit specified in method)
-    tolerance: float
+    tolerance_translation: float | None
+    tolerance_rotation: float | None
+    tolerance_objective_func: float | None
 
 
 class OutIterativeDict(TypedDict, total=False):
@@ -1966,8 +1777,8 @@ class OutIterativeDict(TypedDict, total=False):
 
     # Iteration at which the algorithm stopped
     last_iteration: int
-    # Tolerances of each iteration until threshold
-    all_tolerances: list[float]
+    # Statistics (often offsets) compared to tolerances at each iteration
+    iteration_stats: pd.DataFrame
 
 
 class InSpecificDict(TypedDict, total=False):
@@ -1979,6 +1790,7 @@ class InSpecificDict(TypedDict, total=False):
     angle: float
     # (Using Deramp) Polynomial order selected for deramping
     poly_order: int
+
     # (Using ICP) Method type to compute 3D distances
     icp_method: Literal["point-to-point", "point-to-plane"]
     # (Using ICP) Picky selection of closest pairs
@@ -1986,6 +1798,13 @@ class InSpecificDict(TypedDict, total=False):
 
     # (Using CPD) Weight for outlier removal
     cpd_weight: float
+    # (Using CPD) Use local surface geometry method
+    cpd_lsg: bool
+    # (Using CPD) Use kNN to speed up E-step
+    cpd_estep_knearest: int
+
+    # (Using ICP or CPD or other point-point registration)
+    sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"]
 
 
 class OutSpecificDict(TypedDict, total=False):
@@ -2010,6 +1829,10 @@ class InAffineDict(TypedDict, total=False):
     only_translation: bool
     # Standardize input data for numerics
     standardize: bool
+    # Linearize the rotation during optimization (if available)
+    linearized: bool
+    # Assign anisotropic weights based on X/Y/Z axis to account for unit differences
+    anisotropic: Literal["xy_vs_z", "per_axis"] | None
 
 
 class OutAffineDict(TypedDict, total=False):
@@ -2138,6 +1961,11 @@ class Coreg:
 
     def __add__(self, other: CoregType) -> CoregPipeline:
         """Return a pipeline consisting of self and the other processing function."""
+
+        from xdem.coreg.pipeline import (
+            CoregPipeline,  # Local import to avoid circularity
+        )
+
         if not isinstance(other, Coreg):
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
 
@@ -2159,7 +1987,6 @@ class Coreg:
 
     @property
     def is_translation(self) -> bool | None:
-
         # If matrix exists in keys, or can be derived from to_matrix(), we conclude
         if "matrix" in self._meta["outputs"]["affine"].keys():
             matrix = self._meta["outputs"]["affine"]["matrix"]
@@ -2300,78 +2127,6 @@ class Coreg:
             print("".join(final_str))
             return None
 
-    def _get_subsample_on_valid_mask(self, valid_mask: NDArrayb) -> NDArrayb:
-        """
-        Get mask of values to subsample on valid mask.
-
-        :param valid_mask: Raster of valid values (inlier and not nodata).
-        """
-
-        # Get random parameters
-        params_random = self._meta["inputs"]["random"]
-
-        # Derive subsampling mask
-        sub_mask = _get_subsample_on_valid_mask(
-            params_random=params_random,
-            valid_mask=valid_mask,
-        )
-
-        # Write final subsample to class
-        self._meta["outputs"]["random"] = {"subsample_final": int(np.count_nonzero(sub_mask))}
-
-        return sub_mask
-
-    def _preprocess_rst_pts_subsample(
-        self,
-        ref_elev: NDArrayf | gpd.GeoDataFrame,
-        tba_elev: NDArrayf | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb,
-        aux_vars: dict[str, NDArrayf] | None = None,
-        weights: NDArrayf | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-        z_name: str = "z",
-    ) -> tuple[NDArrayf, NDArrayf, None | dict[str, NDArrayf]]:
-        """
-        Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
-        (and interpolated in the case of point-raster input).
-
-        Return 1D arrays of reference elevation, to-be-aligned elevation and dictionary of 1D arrays of auxiliary
-        variables at subsampled points.
-        """
-
-        # Get random parameters
-        params_random: InRandomDict = self._meta["inputs"]["random"]
-
-        # Get subsample mask (a 2D array for raster-raster, a 1D array of length the point data for point-raster)
-        sub_mask = _get_subsample_mask_pts_rst(
-            params_random=params_random,
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            inlier_mask=inlier_mask,
-            transform=transform,
-            area_or_point=area_or_point,
-            z_name=z_name,
-            aux_vars=aux_vars,
-        )
-
-        # Perform subsampling on mask for all inputs
-        sub_ref, sub_tba, sub_bias_vars, _ = _subsample_on_mask(
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            aux_vars=aux_vars,
-            sub_mask=sub_mask,
-            transform=transform,
-            area_or_point=area_or_point,
-            z_name=z_name,
-        )
-
-        # Write final subsample to class
-        self._meta["outputs"]["random"] = {"subsample_final": int(np.count_nonzero(sub_mask))}
-
-        return sub_ref, sub_tba, sub_bias_vars
-
     def fit(
         self: CoregType,
         reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
@@ -2408,7 +2163,6 @@ class Coreg:
 
         # Override subsample argument of instantiation if passed to fit
         if subsample is not None:
-
             # Check if subsample argument was also defined at instantiation (not default value), and raise warning
             argspec = inspect.getfullargspec(self.__class__)
             sub_meta = self._meta["inputs"]["random"]["subsample"]
@@ -2426,8 +2180,9 @@ class Coreg:
             self._meta["inputs"]["random"]["subsample"] = subsample
 
         # Save random_state if a subsample is used
-        if self._meta["inputs"]["random"]["subsample"] != 1:
-            self._meta["inputs"]["random"]["random_state"] = random_state
+        # TODO: Always save a random state?
+        # if self._meta["inputs"]["random"]["subsample"] != 1:
+        self._meta["inputs"]["random"]["random_state"] = random_state
 
         # Apply the shift to the source dem if given
         initial_shift_apply = False
@@ -2444,7 +2199,15 @@ class Coreg:
                 initial_shift_apply = True
 
         # Pre-process the inputs, by reprojecting and converting to arrays
-        ref_elev, tba_elev, inlier_mask, transform, crs, area_or_point, z_name = _preprocess_coreg_fit(
+        # For an affine alignment, overlap is not necessary, so rasters are not reprojected to the same grid
+        if self._is_affine:
+            # TODO: CHANGE THIS TO FALSE AND ADAPT
+            reproj_same_grid = False
+        else:
+            reproj_same_grid = True
+
+        # Get main arguments
+        main_args = _preprocess_coreg_fit(
             reference_elev=reference_elev,
             to_be_aligned_elev=to_be_aligned_elev,
             inlier_mask=inlier_mask,
@@ -2452,18 +2215,8 @@ class Coreg:
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
+            reproj_same_grid=reproj_same_grid,
         )
-
-        main_args = {
-            "ref_elev": ref_elev,
-            "tba_elev": tba_elev,
-            "inlier_mask": inlier_mask,
-            "transform": transform,
-            "crs": crs,
-            "area_or_point": area_or_point,
-            "z_name": z_name,
-            "weights": weights,
-        }
 
         # If bias_vars are defined, update dictionary content to array
         if bias_vars is not None:
@@ -2748,81 +2501,94 @@ class Coreg:
         Needs to be _fit_func of the main class to simplify calls from CoregPipeline and BlockwiseCoreg.
         """
 
-        # Determine if input is raster-raster, raster-point or point-point
         if all(isinstance(dem, np.ndarray) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
-            rop = "r-r"
+            self._fit_rst_rst(**kwargs)
         elif all(isinstance(dem, gpd.GeoDataFrame) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
-            rop = "p-p"
+            self._fit_pts_pts(**kwargs)
         else:
-            rop = "r-p"
+            self._fit_rst_pts(**kwargs)
 
-        # Fallback logic is always the same: 1/ raster-raster, 2/ raster-point, 3/ point-point
-        try_rp = False
-        try_pp = False
+        # OLD FALLBACK LOGIC: NOT USEFUL RIGHT NOW SINCE POINT-RASTER IS DEALT WITHIN AFFINE METHODS...
+        # BUT KEEPING IN CASE IT'D BE A BETTER STRUCTURE FOR THAT RASTER-POINT SAMPLING MECHANISM IN THE FUTURE?
+        # (FOR EX, REMOVING _subsample() FROM INSIDE LZD/ICP/CPD?)
+        # FACTORS TO DECIDE THIS ARE:
+        # 1/ WOULD IT BE COMPATIBLE WITH OUT-OF-MEM OPS?
+        # 2/ WOULD IT BE COMPATIBLE WITH ITERATIVE RESAMPLING?
 
-        # For raster-raster
-        if rop == "r-r":
-            # Check if raster-raster function exists, if yes run it and stop
-            try:
-                self._fit_rst_rst(**kwargs)
-            # Otherwise, convert the tba raster to points and try raster-points
-            except NotImplementedCoregFit:
-                warnings.warn(
-                    f"No raster-raster method found for coregistration {self.__class__.__name__}, "
-                    f"trying raster-point method by converting to-be-aligned DEM to points.",
-                    UserWarning,
-                )
-                tba_elev_pts = (
-                    gu.Raster.from_array(data=kwargs["tba_elev"], transform=kwargs["transform"], crs=kwargs["crs"])
-                    .to_pointcloud()
-                    .ds
-                )
-                kwargs.update({"tba_elev": tba_elev_pts})
-                try_rp = True
+        # # Determine if input is raster-raster, raster-point or point-point
+        # if all(isinstance(dem, np.ndarray) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
+        #     rop = "r-r"
+        # elif all(isinstance(dem, gpd.GeoDataFrame) for dem in (kwargs["ref_elev"], kwargs["tba_elev"])):
+        #     rop = "p-p"
+        # else:
+        #     rop = "r-p"
 
-        # For raster-point
-        if rop == "r-p" or try_rp:
-            try:
-                self._fit_rst_pts(**kwargs)
-            except NotImplementedCoregFit:
-                warnings.warn(
-                    f"No raster-point method found for coregistration {self.__class__.__name__}, "
-                    f"trying point-point method by converting all elevation data to points.",
-                    UserWarning,
-                )
-                ref_elev_pts = (
-                    gu.Raster.from_array(data=kwargs["ref_elev"], transform=kwargs["transform"], crs=kwargs["crs"])
-                    .to_pointcloud()
-                    .ds
-                )
-                kwargs.update({"ref_elev": ref_elev_pts})
-                try_pp = True
+        # # Fallback logic is always the same: 1/ raster-raster, 2/ raster-point, 3/ point-point
+        # try_rp = False
+        # try_pp = False
 
-        # For point-point
-        if rop == "p-p" or try_pp:
-            try:
-                self._fit_pts_pts(**kwargs)
-            except NotImplementedCoregFit:
-                if try_pp and try_rp:
-                    raise NotImplementedCoregFit(
-                        f"No raster-raster, raster-point or point-point method found for "
-                        f"coregistration {self.__class__.__name__}."
-                    )
-                elif try_pp:
-                    raise NotImplementedCoregFit(
-                        f"No raster-point or point-point method found for coregistration {self.__class__.__name__}."
-                    )
-                else:
-                    raise NotImplementedCoregFit(
-                        f"No point-point method found for coregistration {self.__class__.__name__}."
-                    )
+        # # For raster-raster
+        # if rop == "r-r":
+        #     # Check if raster-raster function exists, if yes run it and stop
+        #     try:
+        #         self._fit_rst_rst(**kwargs)
+        #     # Otherwise, convert the tba raster to points and try raster-points
+        #     except NotImplementedCoregFit:
+        #         warnings.warn(
+        #             f"No raster-raster method found for coregistration {self.__class__.__name__}, "
+        #             f"trying raster-point method by converting to-be-aligned DEM to points.",
+        #             UserWarning,
+        #         )
+        #         tba_elev_pts = (
+        #             gu.Raster.from_array(data=kwargs["tba_elev"], transform=kwargs["tba_transform"], crs=kwargs["crs"])
+        #             .to_pointcloud()
+        #             .ds
+        #         )
+        #         kwargs.update({"tba_elev": tba_elev_pts})
+        #         try_rp = True
+
+        # # For raster-point
+        # if rop == "r-p" or try_rp:
+        #     try:
+        #         self._fit_rst_pts(**kwargs)
+        #     except NotImplementedCoregFit:
+        #         warnings.warn(
+        #             f"No raster-point method found for coregistration {self.__class__.__name__}, "
+        #             f"trying point-point method by converting all elevation data to points.",
+        #             UserWarning,
+        #         )
+        #         ref_elev_pts = (
+        #             gu.Raster.from_array(data=kwargs["ref_elev"], transform=kwargs["transform"], crs=kwargs["crs"])
+        #             .to_pointcloud()
+        #             .ds
+        #         )
+        #         kwargs.update({"ref_elev": ref_elev_pts})
+        #         try_pp = True
+
+        # # For point-point
+        # if rop == "p-p" or try_pp:
+        #     try:
+        #         self._fit_pts_pts(**kwargs)
+        #     except NotImplementedCoregFit:
+        #         if try_pp and try_rp:
+        #             raise NotImplementedCoregFit(
+        #                 f"No raster-raster, raster-point or point-point method found for "
+        #                 f"coregistration {self.__class__.__name__}."
+        #             )
+        #         elif try_pp:
+        #             raise NotImplementedCoregFit(
+        #                 f"No raster-point or point-point method found for coregistration {self.__class__.__name__}."
+        #             )
+        #         else:
+        #             raise NotImplementedCoregFit(
+        #                 f"No point-point method found for coregistration {self.__class__.__name__}."
+        #             )
 
     def _apply_func(self, **kwargs: Any) -> tuple[NDArrayf | gpd.GeoDataFrame, affine.Affine]:
         """Distribute to _apply_rst and _apply_pts based on input and method availability."""
 
         # If input is a raster
         if isinstance(kwargs["elev"], np.ndarray):
-
             # See if a _apply_rst exists
             try:
                 # Run the associated apply function
@@ -2912,7 +2678,6 @@ class Coreg:
 
         # Save results if fitting was performed
         if self._meta["inputs"]["fitorbin"]["fit_or_bin"] in ["fit", "bin_and_fit"] and results is not None:
-
             # Write the results to metadata in different ways depending on optimizer returns
             fit_optimizer = self._meta["inputs"]["fitorbin"]["fit_optimizer"]
             if callable(fit_optimizer) and fit_optimizer in (w["optimizer"] for w in fit_workflows.values()):
@@ -2943,10 +2708,10 @@ class Coreg:
         ref_elev: NDArrayf,
         tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -2975,7 +2740,6 @@ class Coreg:
         ref_elev: gpd.GeoDataFrame,
         tba_elev: gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         z_name: str,
         weights: NDArrayf | None = None,
@@ -2993,7 +2757,6 @@ class Coreg:
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> tuple[NDArrayf, rio.transform.Affine]:
-
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
         raise NotImplementedCoregApply("This should have been implemented by subclassing.")
 
@@ -3004,338 +2767,228 @@ class Coreg:
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
     ) -> gpd.GeoDataFrame:
-
         # FOR DEVELOPERS: This function needs to be implemented by subclassing.
         raise NotImplementedCoregApply("This should have been implemented by subclassing.")
 
 
-class CoregPipeline(Coreg):
-    """
-    A sequential set of co-registration processing steps.
-    """
+########################################
+# SAMPLING POLICY FOR COREGISTRATION
+########################################
 
-    def __init__(self, pipeline: list[Coreg]) -> None:
-        """
-        Instantiate a new processing pipeline.
 
-        :param: Processing steps to run in the sequence they are given.
-        """
+def _sample_coreg_inputs(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: Any,
+    ref_transform: Any,
+    tba_transform: Any,
+    crs: Any,
+    area_or_point: Any,
+    z_name: str | None,
+    subsample: int | float,
+    random_state: Any,
+    aux_vars: Mapping[str, Any] | None,
+    aux_tied_to: str,
+    independent: bool,
+) -> list[Any]:
+    """Apply coregistration's common or independent sampling policy through GeoUtils."""
 
-        def put_coreg_in_series(pipeline: list[Coreg]) -> list[Coreg]:
-            """
-            Translate all nested CoregPipeline in Coreg series
-
-            :param pipeline: Processing steps to run in the sequence they are given.
-            :return: list of simple Coreg(s).
-            """
-            list_coreg = []
-            for step in pipeline:
-                if not isinstance(step, CoregPipeline):
-                    list_coreg.append(step)
-                else:
-                    list_coreg = list_coreg + put_coreg_in_series(step)  # type: ignore
-            return list_coreg
-
-        self.pipeline = put_coreg_in_series(pipeline)
-
-        for i, step in enumerate(self.pipeline):
-            if i > 0 and "affine" in step.meta["inputs"] and "initial_shift" in step.meta["inputs"]["affine"]:
-                warnings.warn(
-                    message="No initial shift can be defined in a coregistration pipeline other than for the first "
-                    f"step. Overidding to initial_shift=None for step number {i}. Remove initial shift parameters"
-                    " outside of the first step to silence this warning.",
-                    category=UserWarning,
-                )
-                del step.meta["inputs"]["affine"]["initial_shift"]
-
-        super().__init__()
-
-    def __repr__(self) -> str:
-        return f"Pipeline: {self.pipeline}"
-
-    @overload
-    def info(self, as_str: Literal[False] = ...) -> None: ...
-
-    @overload
-    def info(self, as_str: Literal[True]) -> str: ...
-
-    def info(self, as_str: bool = False) -> None | str:
-        """Summarize information about this coregistration."""
-
-        # Get the pipeline information for each step as a string
-        final_str = []
-        for i, step in enumerate(self.pipeline):
-            final_str.append(f"Pipeline step {i}:\n" f"################\n")
-            step_str = step.info(as_str=True)
-            final_str.append(step_str)
-
-        # Return as string or print (default)
-        if as_str:
-            return "".join(final_str)
+    # Reattach the spatial metadata removed by Coreg.fit preprocessing
+    inputs = []
+    for values, transform in ((ref_elev, ref_transform), (tba_elev, tba_transform)):
+        if isinstance(values, gpd.GeoDataFrame):
+            inputs.append(PointCloud(values.reset_index(drop=True), data_column=z_name))
         else:
-            print("".join(final_str))
-            return None
-
-    def copy(self: CoregType) -> CoregType:
-        """Return an identical copy of the class."""
-        new_coreg = self.__new__(type(self))
-
-        new_coreg.__dict__ = {key: copy.deepcopy(value) for key, value in self.__dict__.items() if key != "pipeline"}
-        new_coreg.pipeline = [step.copy() for step in self.pipeline]
-
-        return new_coreg
-
-    def _parse_bias_vars(self, step: int, bias_vars: dict[str, NDArrayf] | None) -> dict[str, NDArrayf]:
-        """Parse bias variables for a pipeline step requiring them."""
-
-        # Get number of non-affine coregistration requiring bias variables to be passed
-        nb_needs_vars = sum(c._needs_vars for c in self.pipeline)
-
-        # Get step object
-        coreg = self.pipeline[step]
-
-        # Check that all variable names of this were passed
-        var_names = coreg._meta["inputs"]["fitorbin"]["bias_var_names"]
-
-        # Raise error if bias_vars is None
-        if bias_vars is None:
-            msg = f"No `bias_vars` passed to .fit() for bias correction step {coreg.__class__} of the pipeline."
-            if nb_needs_vars > 1:
-                msg += (
-                    " As you are using several bias correction steps requiring `bias_vars`, don't forget to "
-                    "explicitly define their `bias_var_names` during "
-                    "instantiation, e.g. {}(bias_var_names=['slope']).".format(coreg.__class__.__name__)
+            inputs.append(
+                Raster.from_array(
+                    np.ma.masked_invalid(values),
+                    transform=transform,
+                    crs=crs,
+                    area_or_point=area_or_point,
+                    nodata=np.nan if np.issubdtype(values.dtype, np.floating) else None,
                 )
-            raise ValueError(msg)
-
-        # Raise error if no variable were explicitly assigned and there is more than 1 step with bias_vars
-        if var_names is None and nb_needs_vars > 1:
-            raise ValueError(
-                "When using several bias correction steps requiring `bias_vars` in a pipeline,"
-                "the `bias_var_names` need to be explicitly defined at each step's "
-                "instantiation, e.g. {}(bias_var_names=['slope']).".format(coreg.__class__.__name__)
             )
 
-        # Raise error if the variables explicitly assigned don't match the ones passed in bias_vars
-        if not all(n in bias_vars.keys() for n in var_names):
-            raise ValueError(
-                "Not all keys of `bias_vars` in .fit() match the `bias_var_names` defined during "
-                "instantiation of the bias correction step {}: {}.".format(coreg.__class__, var_names)
-            )
-
-        # Add subset dict for this pipeline step to args of fit and apply
-        return {n: bias_vars[n] for n in var_names}
-
-    # Need to override base Coreg method to work on pipeline steps
-    def fit(
-        self: CoregType,
-        reference_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
-        to_be_aligned_elev: NDArrayf | MArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
-        inlier_mask: NDArrayb | Raster | None = None,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        weights: NDArrayf | None = None,
-        subsample: float | int | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-        z_name: str | None = None,
-        random_state: int | np.random.Generator | None = None,
-        **kwargs: Any,
-    ) -> CoregType:
-
-        # Check if subsample arguments are different from their default value for any of the coreg steps:
-        # get default value in argument spec and "subsample" stored in meta, and compare both are consistent
-        argspec = [inspect.getfullargspec(c.__class__) for c in self.pipeline]
-        sub_meta = [c.meta["inputs"]["random"]["subsample"] for c in self.pipeline]
-        sub_is_default = [
-            argspec[i].defaults[argspec[i].args.index("subsample") - 1] == sub_meta[i]  # type: ignore
-            for i in range(len(argspec))
-        ]
-        if subsample is not None and not all(sub_is_default):
-            warnings.warn(
-                "Subsample argument passed to fit() will override non-default subsample values defined for"
-                " individual steps of the pipeline. To silence this warning: only define 'subsample' in "
-                "either fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...)."
-            )
-            # Filter warnings of individual pipelines now that the one above was raised
-            warnings.filterwarnings("ignore", message="Subsample argument passed to*", category=UserWarning)
-
-        tba_dem_mod = to_be_aligned_elev.copy()
-
-        for i, coreg in enumerate(self.pipeline):
-            logging.debug("Running pipeline step: %d / %d", i + 1, len(self.pipeline))
-
-            main_args_fit = {
-                "reference_elev": reference_elev,
-                "to_be_aligned_elev": tba_dem_mod,
-                "transform": transform,
-                "inlier_mask": inlier_mask,
-                "crs": crs,
-                "z_name": z_name,
-                "weights": weights,
-                "subsample": subsample,
-                "random_state": random_state,
-            }
-
-            main_args_apply = {"elev": tba_dem_mod, "transform": transform, "crs": crs, "z_name": z_name}
-
-            # If non-affine method that expects a bias_vars argument
-            if coreg._needs_vars:
-                step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
-
-                main_args_fit.update({"bias_vars": step_bias_vars})
-                main_args_apply.update({"bias_vars": step_bias_vars})
-
-            # Perform the step fit
-            coreg.fit(**main_args_fit)
-
-            # Step apply: one output for a geodataframe, two outputs for array/transform
-            # We only run this step if it's not the last, otherwise it is unused!
-            if i != (len(self.pipeline) - 1):
-                if isinstance(tba_dem_mod, (Raster, gpd.GeoDataFrame, PointCloud)):
-                    tba_dem_mod = coreg.apply(**main_args_apply)
-                else:
-                    tba_dem_mod, transform = coreg.apply(**main_args_apply)
-
-        # Flag that the fitting function has been called.
-        self._fit_called = True
-
-        return self
-
-    @overload
-    def apply(
-        self,
-        elev: MArrayf,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        z_name: str | None = None,
-        **kwargs: Any,
-    ) -> tuple[MArrayf, rio.transform.Affine]: ...
-
-    @overload
-    def apply(
-        self,
-        elev: NDArrayf,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        z_name: str | None = None,
-        **kwargs: Any,
-    ) -> tuple[NDArrayf, rio.transform.Affine]: ...
-
-    @overload
-    def apply(
-        self,
-        elev: RasterType | gpd.GeoDataFrame | PointCloudType,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        z_name: str | None = None,
-        **kwargs: Any,
-    ) -> RasterType | gpd.GeoDataFrame | gu.PointCloud: ...
-
-    # Need to override base Coreg method to work on pipeline steps
-    def apply(
-        self,
-        elev: MArrayf | NDArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
-        bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
-        resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        z_name: str | None = None,
-        **kwargs: Any,
-    ) -> (
-        RasterType
-        | gpd.GeoDataFrame
-        | gu.PointCloud
-        | tuple[NDArrayf, rio.transform.Affine]
-        | tuple[MArrayf, rio.transform.Affine]
-    ):
-
-        # First step and preprocessing
-        if not self._fit_called and self._meta["outputs"]["affine"].get("matrix") is None:
-            raise AssertionError(".fit() does not seem to have been called yet")
-
-        elev_array, transform, crs, z_name = _preprocess_coreg_apply(
-            elev=elev, transform=transform, crs=crs, z_name=z_name
+    # Use an available raster grid to locate a plain inlier mask in mixed raster and point comparisons
+    first, second = inputs
+    raster = first if isinstance(first, Raster) else second if isinstance(second, Raster) else None
+    mask = None if np.all(inlier_mask) else inlier_mask
+    if isinstance(mask, np.ndarray) and mask.ndim == 2 and raster is not None:
+        mask = Raster.from_array(
+            mask.astype(bool), transform=raster.transform, crs=raster.crs, area_or_point=area_or_point
         )
 
-        elev_mod = elev_array.copy()
-        out_transform = copy.copy(transform)
+    # Bind array auxiliaries to their native grid before GeoUtils interpolates or masks them
+    owner = first if aux_tied_to == "ref" else second
+    auxiliary = {}
+    for name, values in (aux_vars or {}).items():
+        if np.ndim(values) == 2:
+            grid = owner if isinstance(owner, Raster) else raster
+            if grid is None:
+                raise ValueError("A raster auxiliary requires a raster input defining its grid.")
+            auxiliary[name] = Raster.from_array(
+                np.ma.masked_invalid(values),
+                transform=grid.transform,
+                crs=grid.crs,
+                area_or_point=area_or_point,
+                nodata=np.nan if np.issubdtype(values.dtype, np.floating) else None,
+            )
+        else:
+            auxiliary[name] = values
 
-        # Apply each step of the coregistration
-        for i, coreg in enumerate(self.pipeline):
-
-            main_args_apply = {
-                "elev": elev_mod,
-                "transform": out_transform,
-                "crs": crs,
-                "z_name": z_name,
-                "resample": resample,
-                "resampling": resampling,
-            }
-
-            # If non-affine method that expects a bias_vars argument
-            if coreg._needs_vars:
-                step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
-                main_args_apply.update({"bias_vars": step_bias_vars})
-
-            # Step apply: one return for a geodataframe, two returns for array/transform
-            if isinstance(elev_mod, gpd.GeoDataFrame):
-                elev_mod = coreg.apply(**main_args_apply, **kwargs)
-            else:
-                elev_mod, out_transform = coreg.apply(**main_args_apply, **kwargs)
-
-        # Post-process output depending on input type
-        applied_elev, out_transform = _postprocess_coreg_apply(
-            elev=elev,
-            applied_elev=elev_mod,
-            transform=transform,
-            out_transform=out_transform,
-            crs=crs,
-            resample=resample,
-            resampling=resampling,
+    # Retain the coregistration policy of silently capping oversized sample budgets
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Argument ``subsample``.*is larger than the number of valid pixels.*",
+            category=UserWarning,
         )
-
-        # Only return object if raster or geodataframe, also return transform if object was an array
-        if isinstance(applied_elev, (gu.Raster, gpd.GeoDataFrame, gu.PointCloud)):
-            return applied_elev
+        # Draw separately for algorithms such as ICP, preserving each dataset's own valid population
+        if independent:
+            samples = []
+            for index, value in enumerate(inputs):
+                tied = (index == 0 and aux_tied_to == "ref") or (index == 1 and aux_tied_to == "tba")
+                samples.append(
+                    value.cosample(
+                        value,
+                        auxiliary=auxiliary if tied else None,
+                        auxiliary_at="self",
+                        mask=mask,
+                        subsample=subsample,
+                        random_state=random_state,
+                        align="reproject",
+                        **({"strategy": "sequential"} if isinstance(value, Raster) else {}),
+                    )
+                )
         else:
-            return applied_elev, out_transform
+            samples = [
+                first.cosample(
+                    second,
+                    auxiliary=auxiliary,
+                    auxiliary_at="self" if aux_tied_to == "ref" else "other",
+                    mask=mask,
+                    subsample=subsample,
+                    random_state=random_state,
+                    align="reproject",
+                    **({"strategy": "sequential"} if isinstance(first, Raster) else {}),
+                )
+            ]
 
-    def __iter__(self) -> Generator[Coreg]:
-        """Iterate over the pipeline steps."""
-        yield from self.pipeline
+    return samples
 
-    def __add__(self, other: list[Coreg] | Coreg | CoregPipeline) -> CoregPipeline:
-        """Append a processing step or a pipeline to the pipeline."""
-        if not isinstance(other, Coreg):
-            other = list(other)
+
+def _subsample_rst_pts(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    ref_transform: Any,
+    tba_transform: Any,
+    crs: Any,
+    area_or_point: Any,
+    z_name: str | None,
+    subsample: int | float = 1,
+    random_state: Any = None,
+    sampling_strategy: str = "same_xy",
+    aux_vars: Mapping[str, Any] | None = None,
+    aux_tied_to: str = "ref",
+) -> tuple[NDArrayf, NDArrayf, dict[str, NDArrayf] | None]:
+    """Return the 3-by-N coordinate arrays required by coregistration optimizers."""
+
+    # Validate algorithm policy independently of the generic GeoUtils sampling API
+    if sampling_strategy not in {"same_xy", "independent"}:
+        raise ValueError("sampling_strategy must be 'same_xy' or 'independent'.")
+    if aux_tied_to not in {"ref", "tba"}:
+        raise ValueError("aux_tied_to must be 'ref' or 'tba'.")
+
+    # Delegate alignment, masks and pair selection to the shared GeoUtils sampling interface
+    samples = _sample_coreg_inputs(
+        ref_elev,
+        tba_elev,
+        inlier_mask,
+        ref_transform,
+        tba_transform,
+        crs,
+        area_or_point,
+        z_name,
+        subsample,
+        random_state,
+        aux_vars,
+        aux_tied_to,
+        sampling_strategy == "independent",
+    )
+
+    # Read native spatial outputs in grid or point order, as the original sampling masks did
+    primary_xyz = []
+    auxiliary_values = []
+    for sample in samples:
+        if isinstance(sample, Raster):
+            valid = ~np.ma.getmaskarray(sample.data[0])
+            coordinates = sample.ij2xy(*np.where(valid))
+            values = dict(zip(sample.tags["long_name"], sample.data[:, valid].data))
         else:
-            other = [other]
+            coordinates = (sample.ds.geometry.x.to_numpy(), sample.ds.geometry.y.to_numpy())
+            values = {name: sample.ds[name].to_numpy() for name in sample.ds if name != "geometry"}
 
-        pipelines = self.pipeline + other
+        # Keep the coordinate orientation consumed by the existing fitting algorithms
+        reference_xyz = np.vstack((*coordinates, values["self"]))
+        other_xyz = np.vstack((*coordinates, values["other"]))
+        primary_xyz.append((reference_xyz, other_xyz))
+        auxiliary_values.append({name: values[name] for name in values if name not in {"self", "other"}})
 
-        return CoregPipeline(pipelines)
+    # Use the same locations for paired fitting or each dataset's own sample for independent fitting
+    if sampling_strategy == "same_xy":
+        reference, aligned = primary_xyz[0]
+        auxiliary = auxiliary_values[0]
+    else:
+        reference, aligned = primary_xyz[0][0], primary_xyz[1][0]
+        owner = 0 if aux_tied_to == "ref" else 1
+        auxiliary = auxiliary_values[owner]
+    return reference, aligned, auxiliary if aux_vars is not None else None
 
-    def to_matrix(self) -> NDArrayf:
-        """Convert the transform to a 4x4 transformation matrix."""
-        return self._to_matrix_func()
 
-    def _to_matrix_func(self) -> NDArrayf:
-        """Try to join the coregistration steps to a single transformation matrix."""
+def _get_subsample_mask_pts_rst(
+    ref_elev: NDArrayf | gpd.GeoDataFrame,
+    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    inlier_mask: NDArrayb,
+    transform: Any,
+    z_name: str | None,
+    area_or_point: Any,
+    subsample: int | float = 1,
+    random_state: Any = None,
+    aux_vars: Mapping[str, Any] | None = None,
+) -> NDArrayb:
+    """Select locations for iterative interpolators using GeoUtils common sampling."""
 
-        total_transform = np.eye(4)
-        for coreg in self.pipeline:
-            new_matrix = coreg.to_matrix()
-            total_transform = new_matrix @ total_transform
+    # Match the finite point population used by the existing iterative interpolators
+    crs = None
+    if isinstance(ref_elev, gpd.GeoDataFrame):
+        ref_elev = ref_elev[np.isfinite(ref_elev[z_name])]
+        crs = ref_elev.crs
+    if isinstance(tba_elev, gpd.GeoDataFrame):
+        tba_elev = tba_elev[np.isfinite(tba_elev[z_name])]
+        crs = tba_elev.crs
 
-        return total_transform
+    # Select common valid observations after removing unusable elevation rows
+    sample = _sample_coreg_inputs(
+        ref_elev,
+        tba_elev,
+        inlier_mask,
+        transform,
+        transform,
+        crs,
+        area_or_point,
+        z_name,
+        subsample,
+        random_state,
+        aux_vars,
+        "ref",
+        False,
+    )[0]
+
+    # Read the common raster mask directly or place selected point rows in the original point population
+    if isinstance(sample, Raster):
+        return ~np.ma.getmaskarray(sample.data[0])
+    support = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
+    selected = np.zeros(len(support), dtype=bool)
+    selected[sample.ds.index.to_numpy()] = True
+    return selected

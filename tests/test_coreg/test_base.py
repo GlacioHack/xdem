@@ -139,32 +139,46 @@ class TestCoregClass:
         # Make sure these don't appear in the copy
         assert corr_copy.meta != corr.meta
 
-    @pytest.mark.parametrize("subsample", [10, 1000, 0.5, 1])
-    def test_get_subsample_on_valid_mask(self, subsample: float | int) -> None:
-        """Test the subsampling function called by all subclasses"""
+    @pytest.mark.parametrize("subsample", [10, 10000, 0.5, 1])
+    def test_coreg_cosampling_support(self, subsample: float | int) -> None:
+        """Checks that coregistration sampling preserves valid locations, observation order and auxiliary values."""
 
-        # Define a valid mask
-        width = height = 50
+        # Give each observation a unique value so sampled coordinates and auxiliaries can be checked together
         rng = np.random.default_rng(42)
-        valid_mask = rng.integers(low=0, high=2, size=(width, height), dtype=bool)
+        valid_mask = rng.integers(0, 2, size=(50, 50), dtype=bool)
+        values = np.arange(2500.0).reshape(valid_mask.shape)
+        options = dict(
+            ref_elev=values,
+            tba_elev=values + 2,
+            inlier_mask=valid_mask,
+            ref_transform=rio.transform.from_origin(0, 50, 1, 1),
+            tba_transform=rio.transform.from_origin(0, 50, 1, 1),
+            crs=rio.crs.CRS.from_epsg(32632),
+            area_or_point="Area",
+            z_name="z",
+            subsample=subsample,
+            random_state=42,
+            aux_vars={"quality": values * 2},
+        )
 
-        # Define a class with a subsample and random_state in the .metadata
-        coreg = Coreg(meta={"subsample": subsample, "random_state": 42})
-        subsample_mask = coreg._get_subsample_on_valid_mask(valid_mask=valid_mask)
+        # Draw the same sample twice to check reproducible correspondence between the datasets
+        reference, aligned, auxiliary = xdem.coreg.base._subsample_rst_pts(**options)
+        repeated = xdem.coreg.base._subsample_rst_pts(**options)[0]
 
-        # Check that it returns a same-shaped array that is boolean
-        assert np.shape(valid_mask) == np.shape(subsample_mask)
-        assert subsample_mask.dtype == bool
-        # Check that the subsampled values are all within valid values
-        assert all(valid_mask[subsample_mask])
-        # Check that the number of subsampled value is coherent, or the maximum possible
-        if subsample <= 1:
-            # If value lower than 1, fraction of valid pixels
-            subsample_val: float | int = int(subsample * np.count_nonzero(valid_mask))
-        else:
-            # Otherwise the number of pixels
-            subsample_val = subsample
-        assert np.count_nonzero(subsample_mask) == min(subsample_val, np.count_nonzero(valid_mask))
+        # Preserve the sample budget, common finite population and reproducible ordering
+        expected = int(subsample * np.count_nonzero(valid_mask)) if subsample <= 1 else int(subsample)
+        assert reference.shape == (3, min(expected, np.count_nonzero(valid_mask)))
+        assert valid_mask.ravel()[reference[2].astype(int)].all()
+        np.testing.assert_array_equal(reference, repeated)
+
+        # Check shared coordinates and the known two-unit difference between paired elevations
+        np.testing.assert_array_equal(reference[:2], aligned[:2])
+        np.testing.assert_array_equal(reference[2] + 2, aligned[2])
+        assert np.all(np.diff(reference[2]) > 0)
+
+        # Auxiliary values must follow the same selected observations and ordering
+        assert auxiliary is not None
+        np.testing.assert_array_equal(auxiliary["quality"], reference[2] * 2)
 
     all_coregs = [
         coreg.VerticalShift,
@@ -212,22 +226,6 @@ class TestCoregClass:
         assert coreg_sub.meta["inputs"]["random"]["subsample"] == self.tba.data.size // 10
         coreg_sub.fit(**self.fit_params, random_state=42, **fit_kwargs)
 
-    def test_subsample__pipeline(self) -> None:
-        """Test that the subsample argument works as intended for pipelines"""
-
-        # Check definition during instantiation
-        pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp(subsample=1000)
-
-        # Check the arguments are properly defined
-        assert pipe.pipeline[0].meta["inputs"]["random"]["subsample"] == 200
-        assert pipe.pipeline[1].meta["inputs"]["random"]["subsample"] == 1000
-
-        # Check definition during fit
-        pipe = coreg.VerticalShift() + coreg.Deramp()
-        pipe.fit(**self.fit_params, subsample=1000)
-        assert pipe.pipeline[0].meta["inputs"]["random"]["subsample"] == 1000
-        assert pipe.pipeline[1].meta["inputs"]["random"]["subsample"] == 1000
-
     def test_subsample__errors(self) -> None:
         """Check proper errors are raised when using the subsample argument"""
 
@@ -244,19 +242,6 @@ class TestCoregClass:
             ),
         ):
             vshift.fit(**self.fit_params, subsample=1000)
-
-        # Same for a pipeline
-        pipe = coreg.VerticalShift(subsample=200) + coreg.Deramp()
-        with pytest.warns(
-            UserWarning,
-            match=re.escape(
-                "Subsample argument passed to fit() will override non-default "
-                "subsample values defined for individual steps of the pipeline. "
-                "To silence this warning: only define 'subsample' in either "
-                "fit(subsample=...) or instantiation e.g., VerticalShift(subsample=...)."
-            ),
-        ):
-            pipe.fit(**self.fit_params, subsample=1000)
 
     def test_coreg_raster_and_ndarray_args(self) -> None:
 
@@ -407,36 +392,6 @@ class TestCoregClass:
                 for k in coreg_fit_and_apply.meta.keys()
             )
 
-    def test_fit_and_apply__pipeline(self) -> None:
-        """Check if it works for a pipeline"""
-
-        # Initiate two similar coregs
-        coreg_fit_then_apply = coreg.NuthKaab() + coreg.Deramp()
-        coreg_fit_and_apply = coreg.NuthKaab() + coreg.Deramp()
-
-        # Perform fit, then apply
-        coreg_fit_then_apply.fit(**self.fit_params)
-        aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
-
-        # Perform fit and apply
-        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params)
-
-        assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
-        assert list(coreg_fit_and_apply.pipeline[0].meta.keys()) == list(coreg_fit_then_apply.pipeline[0].meta.keys())
-        assert all(
-            assert_coreg_meta_equal(
-                coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k]  # type: ignore
-            )
-            for k in coreg_fit_and_apply.pipeline[0].meta.keys()
-        )
-        assert list(coreg_fit_and_apply.pipeline[1].meta.keys()) == list(coreg_fit_then_apply.pipeline[1].meta.keys())
-        assert all(
-            assert_coreg_meta_equal(
-                coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k]  # type: ignore
-            )
-            for k in coreg_fit_and_apply.pipeline[1].meta.keys()
-        )
-
     @pytest.mark.parametrize(
         "combination",
         [
@@ -542,7 +497,15 @@ class TestCoregClass:
                 "warns",
                 "'reference_dem' .* overrides the given *",
             ),
-            ("dem1.data", "dem2", "dem1.transform", "None", "fit", "warns", "'dem_to_be_aligned' .* overrides .*"),
+            (
+                "dem1.data",
+                "dem2",
+                "dem1.transform",
+                "dem1.crs",
+                "fit",
+                "warns",
+                "'dem_to_be_aligned' .* overrides .*",
+            ),
             (
                 "dem1.data",
                 "dem2.data",
@@ -550,7 +513,7 @@ class TestCoregClass:
                 "dem1.crs",
                 "fit",
                 "error",
-                "'transform' must be given if both DEMs are array-like.",
+                "'transform' must be given if any DEM is array-like.",
             ),
             (
                 "dem1.data",
@@ -559,7 +522,7 @@ class TestCoregClass:
                 "None",
                 "fit",
                 "error",
-                "'crs' must be given if both DEMs are array-like.",
+                "'crs' must be given if any DEM is array-like.",
             ),
             (
                 "dem1",
@@ -625,7 +588,10 @@ class TestCoregClass:
         vshiftcorr = xdem.coreg.VerticalShift()
 
         def fit_func() -> Coreg:
-            return vshiftcorr.fit(ref_dem, tba_dem, transform=transform, crs=crs)
+            # Supply complete metadata while fitting when this case checks apply() with an array
+            fit_transform = dem1.transform if testing_step == "apply" else transform
+            fit_crs = dem1.crs if testing_step == "apply" else crs
+            return vshiftcorr.fit(ref_dem, tba_dem, transform=fit_transform, crs=fit_crs)
 
         def apply_func() -> NDArrayf:
             return vshiftcorr.apply(tba_dem, transform=transform, crs=crs)
@@ -662,235 +628,6 @@ class TestCoregClass:
         )
 
         assert np.array_equal(dem_arr, dem_arr2_fixed)
-
-
-class TestCoregPipeline:
-
-    ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
-    inlier_mask = ~outlines.create_mask(ref)
-
-    fit_params = dict(
-        reference_elev=ref.data,
-        to_be_aligned_elev=tba.data,
-        inlier_mask=inlier_mask,
-        transform=ref.transform,
-        crs=ref.crs,
-    )
-    # Create some 3D coordinates with Z coordinates being 0 to try the apply functions.
-    points_arr = np.array([[1, 2, 3, 4], [1, 2, 3, 4], [0, 0, 0, 0]], dtype="float64").T
-    points = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(x=points_arr[:, 0], y=points_arr[:, 1], crs=ref.crs), data={"z": points_arr[:, 2]}
-    )
-
-    @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])
-    def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
-
-        # Create a pipeline, add some .metadata, and copy it
-        pipeline = coreg_class() + coreg_class()
-        pipeline.pipeline[0]._meta["outputs"]["affine"] = {"shift_z": 1}
-
-        pipeline_copy = pipeline.copy()
-
-        # Add some more .metadata after copying (this should not be transferred)
-        pipeline_copy.pipeline[0]._meta["outputs"]["affine"].update({"shift_y": 0.5 * 30})
-
-        assert pipeline.pipeline[0].meta != pipeline_copy.pipeline[0].meta
-        assert pipeline_copy.pipeline[0]._meta["outputs"]["affine"]["shift_z"]
-
-    def test_pipeline(self) -> None:
-
-        # Create a pipeline from two coreg methods.
-        pipeline = coreg.CoregPipeline([coreg.VerticalShift(), coreg.NuthKaab()])
-        pipeline.fit(**self.fit_params)
-
-        aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
-
-        assert aligned_dem.shape == self.ref.data.squeeze().shape
-
-        # Make a new pipeline with two vertical shift correction approaches.
-        pipeline2 = coreg.CoregPipeline([coreg.VerticalShift(), coreg.VerticalShift()])
-        # Set both "estimated" vertical shifts to be 1
-        pipeline2.pipeline[0].meta["outputs"]["affine"] = {"shift_z": 1}
-        pipeline2.pipeline[1].meta["outputs"]["affine"] = {"shift_z": 1}
-
-        # Assert that the combined vertical shift is 2
-        assert pipeline2.to_matrix()[2, 3] == 2.0
-
-    # TODO: Figure out why DirectionalBias + DirectionalBias pipeline fails with Scipy error
-    #  on bounds constraints on Mac only?
-    all_coregs = [
-        coreg.VerticalShift,
-        coreg.NuthKaab,
-        coreg.ICP,
-        coreg.Deramp,
-        coreg.TerrainBias,
-        # coreg.DirectionalBias,
-    ]
-
-    @pytest.mark.parametrize("coreg1", all_coregs)
-    @pytest.mark.parametrize("coreg2", all_coregs)
-    def test_pipeline_combinations__nobiasvar(self, coreg1: Callable[[], Coreg], coreg2: Callable[[], Coreg]) -> None:
-        """Test pipelines with all combinations of coregistration subclasses (without bias variables)"""
-
-        # Create a pipeline from one affine and one biascorr methods.
-        pipeline = coreg.CoregPipeline([coreg1(), coreg2()])
-        pipeline.fit(**self.fit_params)
-
-        aligned_dem, _ = pipeline.apply(self.tba.data, transform=self.ref.transform, crs=self.ref.crs)
-        assert aligned_dem.shape == self.ref.data.squeeze().shape
-
-    @pytest.mark.parametrize("coreg1", all_coregs)
-    @pytest.mark.parametrize(
-        "coreg2_init_kwargs",
-        [
-            dict(bias_var_names=["slope"], fit_or_bin="bin"),
-            dict(bias_var_names=["slope", "aspect"], fit_or_bin="bin"),
-        ],
-    )
-    def test_pipeline_combinations__biasvar(
-        self, coreg1: Callable[[], Coreg], coreg2_init_kwargs: dict[str, str]
-    ) -> None:
-        """Test pipelines with all combinations of coregistration subclasses with bias variables"""
-
-        # Create a pipeline from one affine and one biascorr methods
-        pipeline = coreg.CoregPipeline([coreg1(), coreg.BiasCorr(**coreg2_init_kwargs)])  # type: ignore
-        bias_vars = {"slope": xdem.terrain.slope(self.ref), "aspect": xdem.terrain.aspect(self.ref)}
-        pipeline.fit(**self.fit_params, bias_vars=bias_vars)
-
-        aligned_dem, _ = pipeline.apply(
-            self.tba.data, transform=self.ref.transform, crs=self.ref.crs, bias_vars=bias_vars
-        )
-        assert aligned_dem.shape == self.ref.data.squeeze().shape
-
-    def test_pipeline__errors(self) -> None:
-        """Test pipeline raises proper errors."""
-
-        pipeline = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr()])
-        with pytest.raises(
-            ValueError,
-            match=re.escape(
-                "No `bias_vars` passed to .fit() for bias correction step "
-                "<class 'xdem.coreg.biascorr.BiasCorr'> of the pipeline."
-            ),
-        ):
-            pipeline.fit(**self.fit_params)
-
-        pipeline2 = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr(), coreg.BiasCorr()])
-        with pytest.raises(
-            ValueError,
-            match=re.escape(
-                "No `bias_vars` passed to .fit() for bias correction step <class 'xdem.coreg.biascorr.BiasCorr'> "
-                "of the pipeline. As you are using several bias correction steps requiring"
-                " `bias_vars`, don't forget to explicitly define their `bias_var_names` "
-                "during instantiation, e.g. BiasCorr(bias_var_names=['slope'])."
-            ),
-        ):
-            pipeline2.fit(**self.fit_params)
-
-        with pytest.raises(
-            ValueError,
-            match=re.escape(
-                "When using several bias correction steps requiring `bias_vars` in a pipeline,"
-                "the `bias_var_names` need to be explicitly defined at each step's "
-                "instantiation, e.g. BiasCorr(bias_var_names=['slope'])."
-            ),
-        ):
-            pipeline2.fit(**self.fit_params, bias_vars={"slope": xdem.terrain.slope(self.ref)})
-
-        pipeline3 = coreg.CoregPipeline([coreg.NuthKaab(), coreg.BiasCorr(bias_var_names=["slope"])])
-        with pytest.raises(
-            ValueError,
-            match=re.escape(
-                "Not all keys of `bias_vars` in .fit() match the `bias_var_names` defined during "
-                "instantiation of the bias correction step <class 'xdem.coreg.biascorr.BiasCorr'>: ['slope']."
-            ),
-        ):
-            pipeline3.fit(**self.fit_params, bias_vars={"ncc": xdem.terrain.slope(self.ref)})
-
-    def test_pipeline_pts(self) -> None:
-
-        pipeline = coreg.NuthKaab() + coreg.DhMinimize()
-        ref_points = self.ref.to_pointcloud()
-
-        # Check that this runs without error
-        pipeline.fit(reference_elev=ref_points, to_be_aligned_elev=self.tba)
-
-        for part in pipeline.pipeline:
-            assert np.abs(part.meta["outputs"]["affine"]["shift_x"]) > 0
-
-        assert (
-            pipeline.pipeline[0].meta["outputs"]["affine"]["shift_x"]
-            != pipeline.pipeline[1].meta["outputs"]["affine"]["shift_x"]
-        )
-
-    def test_coreg_add(self) -> None:
-
-        # Test with a vertical shift of 4
-        vshift = 4
-
-        vshift1 = coreg.VerticalShift()
-        vshift2 = coreg.VerticalShift()
-
-        # Set the vertical shift attribute
-        for vshift_corr in (vshift1, vshift2):
-            vshift_corr.meta["outputs"]["affine"] = {"shift_z": vshift}
-
-        # Add the two coregs and check that the resulting vertical shift is 2* vertical shift
-        vshift3 = vshift1 + vshift2
-        assert vshift3.to_matrix()[2, 3] == vshift * 2
-
-        # Make sure the correct exception is raised on incorrect additions
-        with pytest.raises(ValueError, match="Incompatible add type"):
-            vshift1 + 1  # type: ignore
-
-        # Try to add a Coreg step to an already existing CoregPipeline
-        vshift4 = vshift3 + vshift1
-        assert vshift4.to_matrix()[2, 3] == vshift * 3
-
-        # Try to add two CoregPipelines
-        vshift5 = vshift3 + vshift3
-        assert vshift5.to_matrix()[2, 3] == vshift * 4
-
-    def test_pipeline_consistency(self) -> None:
-        """Check that pipelines properties are respected: reflectivity, fusion of same coreg"""
-
-        ref, tba, _ = load_examples_full()
-
-        # Test 1: Fusion of same coreg
-        # Many vertical shifts
-        many_vshifts = coreg.VerticalShift() + coreg.VerticalShift() + coreg.VerticalShift()
-        many_vshifts.fit(**self.fit_params, random_state=42)
-        aligned_dem, _ = many_vshifts.apply(tba.data, transform=ref.transform, crs=ref.crs)
-
-        # The last steps should have shifts of EXACTLY zero
-        assert many_vshifts.pipeline[1].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=10e-5)
-        assert many_vshifts.pipeline[2].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=10e-5)
-
-        # Many horizontal + vertical shifts
-        many_nks = coreg.LZD() + coreg.LZD() + coreg.LZD()
-        many_nks.fit(**self.fit_params, random_state=42)
-        aligned_dem, _ = many_nks.apply(tba.data, transform=ref.transform, crs=ref.crs)
-
-        # The last steps should have shifts of NEARLY zero, like 0.1 pixel
-        abs_trans = 0.1 * self.ref.res[0]
-        assert many_nks.pipeline[1].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=abs_trans)
-        assert many_nks.pipeline[1].meta["outputs"]["affine"]["shift_x"] == pytest.approx(0, abs=abs_trans)
-        assert many_nks.pipeline[1].meta["outputs"]["affine"]["shift_y"] == pytest.approx(0, abs=abs_trans)
-        assert many_nks.pipeline[2].meta["outputs"]["affine"]["shift_z"] == pytest.approx(0, abs=abs_trans)
-        assert many_nks.pipeline[2].meta["outputs"]["affine"]["shift_x"] == pytest.approx(0, abs=abs_trans)
-        assert many_nks.pipeline[2].meta["outputs"]["affine"]["shift_y"] == pytest.approx(0, abs=abs_trans)
-
-        # Test 2: Reflectivity
-        # Those two pipelines should give almost the same result
-        nk_vshift = coreg.NuthKaab() + coreg.VerticalShift()
-        vshift_nk = coreg.VerticalShift() + coreg.NuthKaab()
-
-        nk_vshift.fit(**self.fit_params, random_state=42)
-        aligned_dem, _ = nk_vshift.apply(tba.data, transform=self.ref.transform, crs=self.ref.crs)
-        vshift_nk.fit(**self.fit_params, random_state=42)
-        aligned_dem, _ = vshift_nk.apply(tba.data, transform=self.ref.transform, crs=self.ref.crs)
-
-        assert np.allclose(nk_vshift.to_matrix(), vshift_nk.to_matrix(), atol=20)
 
 
 class TestAffineManipulation:
