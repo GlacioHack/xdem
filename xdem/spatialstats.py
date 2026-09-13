@@ -39,7 +39,7 @@ import pandas as pd
 import scipy.ndimage
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
-from geoutils.sampling.subsampling import _subsample_numpy as subsample_array
+from geoutils.sampling.subsampling import _subsample_numpy
 from geoutils.vector.vector import Vector, VectorType
 from numpy.typing import ArrayLike
 from packaging.version import Version
@@ -907,7 +907,8 @@ def infer_heteroscedasticity_from_stable(
 
     # Use the standardization function to get the error array for the entire input array (not only stable)
     list_var_arr = [get_array_and_mask(var)[0] if isinstance(var, Raster) else var for var in list_var]
-    error = fun(tuple(list_var_arr))
+    # Evaluate flattened coordinates so a single explanatory variable also accepts a 2D raster grid
+    error = fun(tuple(var.ravel() for var in list_var_arr)).reshape(list_var_arr[0].shape)
 
     # Return the right type, depending on dvalues input
     if isinstance(dvalues, Raster):
@@ -1014,7 +1015,7 @@ def _subsample_wrapper(
         values_sp = values
         coords_sp = coords
 
-    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=random_state)
+    index = _subsample_numpy(values_sp, subsample=subsample, return_indices=True, random_state=random_state)
     values_sub = values_sp[index[0]]
     coords_sub = coords_sp[index[0], :]
 
@@ -1417,7 +1418,9 @@ def sample_empirical_variogram(
     values = values.squeeze()
 
     # Then, check if the logic between values, coords and gsd is respected
-    if (gsd is not None or subsample_method in ["cdist_equidistant", "pdist_disk", "pdist_ring"]) and values.ndim == 1:
+    if (
+        (gsd is not None and coords is None) or subsample_method in ["cdist_equidistant", "pdist_disk", "pdist_ring"]
+    ) and values.ndim == 1:
         raise ValueError(
             'Values array must be 2D when using any of the "cdist_equidistant", "pdist_disk" and '
             '"pdist_ring" methods, or providing a ground sampling distance instead of coordinates.'
@@ -1543,7 +1546,10 @@ def sample_empirical_variogram(
     else:
         logging.info("Using " + str(n_jobs) + " cores...")
 
-        pool = mp.Pool(n_jobs, maxtasksperchild=1)
+        # Forking a multi-threaded parent is deprecated and can deadlock the
+        # child, so fork from a clean process where that method exists.
+        start_method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
+        pool = mp.get_context(start_method).Pool(n_jobs, maxtasksperchild=1)
         list_argdict = [
             {"i": i, "imax": n_variograms, "random_state": list_random_state[i], **args, **kwargs}  # type: ignore
             for i in range(n_variograms)
@@ -1761,8 +1767,7 @@ def fit_sum_model_variogram(
         lower, sill upper).
     :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
     :param maxfev: Maximum number of function evaluations before the termination, passed to scipy.optimize.curve_fit().
-        Convergence problems can sometimes be fixed by changing this value (default None: automatically determine the
-        number).
+        Convergence problems can sometimes be fixed by changing this value (default 10000).
 
     :return: Function of sum of variogram, Dataframe of optimized coefficients.
     """
@@ -1818,30 +1823,50 @@ def fit_sum_model_variogram(
 
     final_bounds = np.transpose(np.array(bounds))
 
+    # Ensure sufficient evaluations for convergence; scipy's trf default (100*n_params) is often too low
+    if maxfev is None:
+        maxfev = 10000
+
+    # Build curve_fit kwargs shared by both branches
+    _fit_kwargs: dict[str, Any] = dict(method="trf", bounds=final_bounds, maxfev=maxfev)
+
+    # Generate a sequence of p0 candidates to try: original, then perturbed versions.
+    # This handles multi-modal landscapes (e.g. swapping Gaussian/Spherical roles gives
+    # equal fit quality, causing TRF to stall near saddle points).
+    _p0_candidates = [
+        p0,
+        [v * 0.5 for v in p0],
+        [v * 2.0 for v in p0],
+        [(lo + hi) / 2 for (lo, hi) in zip(final_bounds[0], final_bounds[1])],
+    ]
+
+    def _try_curve_fit(extra_kwargs: dict[str, Any]) -> tuple[NDArrayf, NDArrayf]:
+        last_err = None
+        for p0_try in _p0_candidates:
+            try:
+                return curve_fit(variogram_sum, p0=p0_try, **extra_kwargs, **_fit_kwargs)
+            except RuntimeError as e:
+                last_err = e
+        raise last_err  # type: ignore[misc]
+
     # If the error provided is all NaNs (single variogram run), or all zeros (two variogram runs), run without weights
     if np.all(np.isnan(empirical_variogram.err_exp.values)) or np.all(empirical_variogram.err_exp.values == 0):
-        cof, cov = curve_fit(
-            variogram_sum,
-            empirical_variogram.lags.values,
-            empirical_variogram.exp.values,
-            method="trf",
-            p0=p0,
-            bounds=final_bounds,
-            maxfev=maxfev,
+        cof, cov = _try_curve_fit(
+            dict(
+                xdata=empirical_variogram.lags.values,
+                ydata=empirical_variogram.exp.values,
+            )
         )
     # Otherwise, use a weighted fit
     else:
         # We need to filter for possible no data in the error
         valid = np.isfinite(empirical_variogram.err_exp.values)
-        cof, cov = curve_fit(
-            variogram_sum,
-            empirical_variogram.lags.values[valid],
-            empirical_variogram.exp.values[valid],
-            method="trf",
-            p0=p0,
-            bounds=final_bounds,
-            sigma=empirical_variogram.err_exp.values[valid],
-            maxfev=maxfev,
+        cof, cov = _try_curve_fit(
+            dict(
+                xdata=empirical_variogram.lags.values[valid],
+                ydata=empirical_variogram.exp.values[valid],
+                sigma=empirical_variogram.err_exp.values[valid],
+            )
         )
 
     # Store optimized parameters
@@ -3685,7 +3710,7 @@ def plot_2d_binning(
     cb = []
     cb_val = np.linspace(0, 1, len(col_bounds))
     for j in range(len(cb_val)):
-        cb.append(matplotlib.cm.get_cmap(cmap)(cb_val[j]))
+        cb.append(matplotlib.pyplot.get_cmap(cmap)(cb_val[j]))
     cmap_cus = matplotlib.colors.LinearSegmentedColormap.from_list(
         "my_cb", list(zip((col_bounds - min(col_bounds)) / (max(col_bounds - min(col_bounds))), cb)), N=1000
     )

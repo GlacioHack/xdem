@@ -33,7 +33,7 @@ import rasterio as rio
 import scipy.optimize
 import scipy.spatial
 from geoutils._typing import Number
-from geoutils.interface.interpolation import _interp_points_base as _interp_points
+from geoutils.interface.interpolation import _interp_points_base
 from geoutils.raster.referencing import _coords, _res
 from geoutils.stats import nmad
 from scipy.spatial import cKDTree
@@ -69,7 +69,7 @@ from xdem.fit import index_trimmed
 
 def _check_inputs_bin_before_fit(
     bin_before_fit: bool,
-    fit_minimizer: Callable[..., tuple[NDArrayf, Any]],
+    fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"] | None,
     bin_sizes: int | dict[str, int | Iterable[float]],
     bin_statistic: Callable[[NDArrayf], np.floating[Any]],
 ) -> None:
@@ -77,14 +77,16 @@ def _check_inputs_bin_before_fit(
     Check input types of fit or bin_and_fit affine functions.
 
     :param bin_before_fit: Whether to bin data before fitting the coregistration function.
-    :param fit_minimizer: Minimizer for the coregistration.
+    :param fit_optimizer: Optimizer for the coregistration.
     :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
     :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
     """
 
-    if not callable(fit_minimizer):
+    is_ols = isinstance(fit_optimizer, str) and fit_optimizer == "ols"
+    if fit_optimizer is not None and not is_ols and not callable(fit_optimizer):
         raise TypeError(
-            "Argument `fit_minimizer` must be a function (callable), " "got {}.".format(type(fit_minimizer))
+            "Argument `fit_optimizer` must be a function (callable), 'ols' or None, "
+            "got {}.".format(type(fit_optimizer))
         )
 
     if bin_before_fit:
@@ -241,7 +243,7 @@ def _subsample_on_mask_interpolator(
 
         # Interpolate raster array to the subsample point coordinates
         # Convert ref or tba depending on which is the point dataset
-        rst_elev_interpolator = _interp_points(
+        rst_elev_interpolator = _interp_points_base(
             array=rst_elev,
             transform=transform,
             area_or_point=area_or_point,
@@ -269,7 +271,7 @@ def _subsample_on_mask_interpolator(
         if aux_vars is not None:
             sub_bias_vars = {}
             for var in aux_vars.keys():
-                sub_bias_vars[var] = _interp_points(
+                sub_bias_vars[var] = _interp_points_base(
                     array=aux_vars[var], transform=transform, points=sub_coords, area_or_point=area_or_point
                 )
         else:
@@ -625,6 +627,21 @@ def _nuth_kaab_fit_func(xx: NDArrayf, *params: tuple[float, float, float]) -> ND
     return params[0] * np.cos(params[1] - xx) + params[2]
 
 
+def _design_matrix_nuth_kaab(xdata: NDArrayf) -> NDArrayf:
+    """
+    Build the OLS design matrix for the linearized Nuth and Kääb (2011) fit.
+
+    The original model a*cos(b-x)+c is rewritten as A*cos(x) + B*sin(x) + c via the cosine
+    subtraction identity, where A=a*cos(b) and B=a*sin(b). The design matrix columns are
+    [cos(aspect), sin(aspect), 1].
+
+    :param xdata: 1D array of aspect values in radians.
+
+    :returns: Design matrix of shape (N, 3).
+    """
+    return np.column_stack([np.cos(xdata), np.sin(xdata), np.ones(len(xdata))])
+
+
 def _nuth_kaab_bin_fit(
     dh: NDArrayf,
     slope_tan: NDArrayf,
@@ -635,7 +652,8 @@ def _nuth_kaab_bin_fit(
     Optimize the Nuth and Kääb (2011) function based on observed values of elevation differences, slope tangent and
     aspect at the same locations, using either fitting or binning + fitting.
 
-    Called at each iteration step.
+    The default optimizer uses the linearized formulation a*cos(b-x)+c = A*cos(x) + B*sin(x) + c, where
+    A=a*cos(b) and B=a*sin(b). A user-provided optimizer instead receives the original non-linear function.
 
     :param dh: 1D array of elevation differences (in georeferenced unit, typically meters).
     :param slope_tan: 1D array of slope tangent (unitless).
@@ -668,33 +686,40 @@ def _nuth_kaab_bin_fit(
         y = y[~ind]
         aspect = aspect[~ind]
 
-    # Make an initial guess of the a, b, and c parameters
-    x0 = (1, 1, float(np.nanmedian(y)))
+    # Prepare an initial estimate for optimizers that use the original non-linear model
+    p0 = (3 * np.nanstd(y) / (2**0.5), 0.0, np.nanmean(y))
 
     # For this type of method, the procedure can only be fit, or bin + fit (binning alone does not estimate parameters)
     if params_fit_or_bin["fit_or_bin"] not in ["fit", "bin_and_fit"]:
         raise ValueError("Nuth and Kääb method only supports 'fit' or 'bin_and_fit'.")
 
-    # Define fit and bin parameters
+    # Define the fixed Nuth and Kääb model inputs
     params_fit_or_bin["fit_func"] = _nuth_kaab_fit_func
+
     params_fit_or_bin["nd"] = 1
     params_fit_or_bin["bias_var_names"] = ["aspect"]
 
-    # Run bin and fit, returning dataframe of binning and parameters of fitting
+    # Run bin and/or fit; if design_matrix_func is set and "ols" is optimizer, it runs _ols_fit internally
     _, results = _bin_or_and_fit_nd(
         fit_or_bin=params_fit_or_bin["fit_or_bin"],
         params_fit_or_bin=params_fit_or_bin,
         values=y,
         bias_vars={"aspect": aspect},
-        x0=x0,
+        design_matrix_func=_design_matrix_nuth_kaab,
+        p0=p0,
     )
-    # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert results is not None
-    easting_offset = results[0] * np.sin(results[1])
-    northing_offset = results[0] * np.cos(results[1])
-    vertical_offset = results[2] * np.nanmedian(slope_tan)
 
-    return easting_offset, northing_offset, vertical_offset
+    # OLS fits A*cos(x) + B*sin(x) + c, so it returns Cartesian coefficients rather than the amplitude and phase
+    # returned by optimizers fitting a*cos(b-x) + c
+    if params_fit_or_bin["fit_optimizer"] == "ols":
+        northing_offset, easting_offset, vertical_offset = results[0]
+    else:
+        amplitude, phase, vertical_offset = results[0]
+        easting_offset = amplitude * np.sin(phase)
+        northing_offset = amplitude * np.cos(phase)
+
+    return float(easting_offset), float(northing_offset), float(vertical_offset)
 
 
 def _nuth_kaab_aux_vars_grad(
@@ -3945,10 +3970,24 @@ class AffineCoreg(Coreg):
         # Define subsample size
         meta.update({"subsample": subsample})
 
-        # Define initial shift
+        # Define initial shift and test its consistency
         if initial_shift is not None:
-            meta.update({"initial_shift": initial_shift})
+            if not (
+                isinstance(initial_shift, tuple)
+                and (len(initial_shift) == 2 or len(initial_shift) == 3)
+                and all(isinstance(val, (float, int)) for val in initial_shift)
+            ):
+                raise ValueError("Argument `initial_shift` must be a tuple of exactly two or three numerical values.")
 
+            if len(initial_shift) == 2:
+                initial_shift += (0,)
+            elif initial_shift[2] != 0:  # initial z shift is not taken into account
+                initial_shift = (*initial_shift[:2], 0)
+                warnings.warn(
+                    "Initial shift in altitude is currently work in progress.",
+                    category=UserWarning,
+                )
+            meta.update({"initial_shift": initial_shift})
         super().__init__(meta=meta)
 
         if matrix is not None:
@@ -4240,7 +4279,10 @@ class VerticalShift(AffineCoreg):
     """
 
     def __init__(
-        self, vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]] = np.median, subsample: float | int = 1.0
+        self,
+        vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]] = np.median,
+        subsample: float | int = 1.0,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:  # pylint:
         # disable=super-init-not-called
         """
@@ -4249,10 +4291,14 @@ class VerticalShift(AffineCoreg):
         :param vshift_reduc_func: Reductor function to estimate the central tendency of the vertical shift.
             Defaults to the median.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+            These shifts are applied before the fit() part.
         """
         self._meta: CoregDict = {}  # All __init__ functions should instantiate an empty dict.
 
-        super().__init__(meta={"vshift_reduc_func": vshift_reduc_func}, subsample=subsample)
+        super().__init__(
+            meta={"vshift_reduc_func": vshift_reduc_func}, subsample=subsample, initial_shift=initial_shift
+        )
 
     def _fit_any_rst_pts(
         self,
@@ -4349,6 +4395,7 @@ class ICP(AffineCoreg):
         trim_spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
         trim_spread_coverage: float = 3,
         trim_iterative: bool = False,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:
         """
         Instantiate an ICP coregistration object.
@@ -4371,6 +4418,8 @@ class ICP(AffineCoreg):
         :param standardize: Whether to standardize input point clouds to the unit sphere for numerical convergence
             (tolerance is also standardized by the same factor).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+            These shifts are applied before the fit() part.
         """
 
         if tolerance_rotation is None and tolerance_translation is None:
@@ -4400,7 +4449,7 @@ class ICP(AffineCoreg):
             }
             meta.update(meta_input_filtering)
 
-        super().__init__(subsample=subsample, meta=meta)
+        super().__init__(subsample=subsample, meta=meta, initial_shift=initial_shift)
 
     def _fit_any_rst_pts(
         self,
@@ -4490,6 +4539,7 @@ class CPD(AffineCoreg):
         sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
         standardize: bool = True,
         subsample: int | float = 5e3,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ):
         """
         Instantiate a CPD coregistration object.
@@ -4511,6 +4561,8 @@ class CPD(AffineCoreg):
         :param standardize: Whether to standardize input point clouds to the unit sphere for numerical convergence
             (tolerance is also standardized by the same factor).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+            These shifts are applied before the fit() part.
         """
 
         if tolerance_objective_func is None and tolerance_rotation is None and tolerance_translation is None:
@@ -4532,7 +4584,7 @@ class CPD(AffineCoreg):
             "cpd_estep_knearest": estep_knearest,
         }
 
-        super().__init__(subsample=subsample, meta=meta_cpd)  # type: ignore
+        super().__init__(subsample=subsample, meta=meta_cpd, initial_shift=initial_shift)  # type: ignore
 
     def _fit_any_rst_pts(
         self,
@@ -4602,13 +4654,14 @@ class NuthKaab(AffineCoreg):
     vertical shift), as well as in the "matrix" transform.
     """
 
+    _fit_linear = True
+
     def __init__(
         self,
         max_iterations: int = 20,
         tolerance_translation: float = 0.001,
         bin_before_fit: bool = True,
-        fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
-        fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 72,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         subsample: int | float = 5e5,
@@ -4628,8 +4681,8 @@ class NuthKaab(AffineCoreg):
             iterations.
         :param bin_before_fit: Whether to bin data before fitting the coregistration function. For the Nuth and Kääb
             (2011) algorithm, this corresponds to bins of aspect to compute statistics on dh/tan(slope).
-        :param fit_minimizer: Minimizer for the coregistration function.
-        :param fit_loss_func: Loss function for the minimization of residuals.
+        :param fit_optimizer: Optimizer to minimize the coregistration function. If None, use ordinary least squares
+            on the linearized Nuth and Kääb model.
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
@@ -4642,7 +4695,7 @@ class NuthKaab(AffineCoreg):
 
         # Input checks
         _check_inputs_bin_before_fit(
-            bin_before_fit=bin_before_fit, bin_sizes=bin_sizes, bin_statistic=bin_statistic, fit_minimizer=fit_minimizer
+            bin_before_fit=bin_before_fit, fit_optimizer=fit_optimizer, bin_sizes=bin_sizes, bin_statistic=bin_statistic
         )
 
         # Define iterative parameters and vertical shift
@@ -4661,32 +4714,13 @@ class NuthKaab(AffineCoreg):
             }
             meta_input_iterative.update(meta_input_filtering)
 
-        # Test consistency of the estimated initial shift given if provided
-        if initial_shift:
-            if not (
-                isinstance(initial_shift, tuple)
-                and (len(initial_shift) == 2 or len(initial_shift) == 3)
-                and all(isinstance(val, (float, int)) for val in initial_shift)
-            ):
-                raise ValueError("Argument `initial_shift` must be a tuple of exactly two or three numerical values.")
-
-            if len(initial_shift) == 2:
-                initial_shift += (0,)
-            elif initial_shift[2] != 0:  # initial z shift is not taken into account
-                initial_shift = (*initial_shift[:2], 0)
-                warnings.warn(
-                    "Initial shift in altitude is currently work in progress.",
-                    category=UserWarning,
-                )
-
         # Define parameters exactly as in BiasCorr, but with only "fit" or "bin_and_fit" as option, so a bin_before_fit
         # boolean, no bin apply option, and fit_func is predefined
         if not bin_before_fit:
             meta_fit = {
                 "fit_or_bin": "fit",
                 "fit_func": _nuth_kaab_fit_func,
-                "fit_minimizer": fit_minimizer,
-                "fit_loss_func": fit_loss_func,
+                "fit_optimizer": fit_optimizer,
             }
             meta_fit.update(meta_input_iterative)
             super().__init__(subsample=subsample, meta=meta_fit, initial_shift=initial_shift)  # type: ignore
@@ -4694,8 +4728,7 @@ class NuthKaab(AffineCoreg):
             meta_bin_and_fit = {
                 "fit_or_bin": "bin_and_fit",
                 "fit_func": _nuth_kaab_fit_func,
-                "fit_minimizer": fit_minimizer,
-                "fit_loss_func": fit_loss_func,
+                "fit_optimizer": fit_optimizer,
                 "bin_sizes": bin_sizes,
                 "bin_statistic": bin_statistic,
             }
@@ -4791,6 +4824,7 @@ class LZD(AffineCoreg):
         trim_spread_statistic: Callable[[NDArrayf], np.floating[Any]] = nmad,
         trim_spread_coverage: float = 3,
         trim_iterative: bool = False,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ):
         """
          Instantiate an LZD coregistration object.
@@ -4805,6 +4839,8 @@ class LZD(AffineCoreg):
         :param tolerance_rotation: Magnitude of iteration rotation (in degrees) at which to stop the iterations (once
             other tolerances are also reached, if any).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+            These shifts are applied before the fit() part.
         """
 
         if tolerance_rotation is None and tolerance_translation is None:
@@ -4828,7 +4864,7 @@ class LZD(AffineCoreg):
                 "trim_iterative": trim_iterative,
             }
             meta.update(meta_input_filtering)
-        super().__init__(subsample=subsample, meta=meta)
+        super().__init__(subsample=subsample, meta=meta, initial_shift=initial_shift)
 
     def _fit_any_rst_pts(
         self,
@@ -4908,6 +4944,7 @@ class DhMinimize(AffineCoreg):
         fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.minimize,
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] = nmad,
         subsample: int | float = 5e5,
+        initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:
         """
         Instantiate dh minimization object.
@@ -4915,6 +4952,8 @@ class DhMinimize(AffineCoreg):
         :param fit_minimizer: Minimizer for the coregistration function.
         :param fit_loss_func: Loss function for the minimization of residuals.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
+        :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
+            These shifts are applied before the fit() part.
         """
 
         warnings.warn(
@@ -4925,7 +4964,7 @@ class DhMinimize(AffineCoreg):
         )
 
         meta_fit = {"fit_or_bin": "fit", "fit_minimizer": fit_minimizer, "fit_loss_func": fit_loss_func}
-        super().__init__(subsample=subsample, meta=meta_fit)  # type: ignore
+        super().__init__(subsample=subsample, meta=meta_fit, initial_shift=initial_shift)  # type: ignore
 
     def _fit_any_rst_pts(
         self,

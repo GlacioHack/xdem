@@ -22,9 +22,10 @@ from __future__ import annotations
 
 import copy
 import functools
-import sys
+import logging
+import re
 import warnings
-from typing import Any, Callable
+from typing import Any, Callable, Iterable, TypeVar
 
 from packaging.version import Version
 
@@ -42,14 +43,28 @@ def get_progress(iterable: Any | None = None, **kwargs: Any) -> Any:
     """
     try:
         from tqdm.auto import tqdm
-    except ImportError:
-        if iterable is None:
-            return lambda x: x
-        return iterable
 
-    if iterable is None:
-        return tqdm
-    return tqdm(iterable, **kwargs)
+        if iterable is None:
+            return tqdm
+        return tqdm(iterable, **kwargs)
+
+    except ImportError:
+
+        class FalseTQDM:
+            def __init__(self, iterable: Iterable[TypeVar]) -> None:
+                self.iterable = iterable
+
+            def __iter__(self) -> Iterable[TypeVar]:
+                return iter(self.iterable)
+
+            def write(self, msg: str) -> None:
+                logging.info(msg)
+
+        if iterable is None:
+            # Same as tqdm constructor
+            return lambda x, **kw: FalseTQDM(x)
+
+        return FalseTQDM(iterable)
 
 
 def import_optional(import_name: str, package_name: str | None = None, extra_name: str = "opt") -> Any:
@@ -163,28 +178,8 @@ def copy_doc(
         # Replace argument description of dem and resolution (not used in the DEM class, only in terrain)
         if remove_dem_res_params:
 
-            # Get Python version (spaces of docstring are not handled the same way after Python 3.13)
-            pyv = Version(".".join(str(getattr(sys.version_info, v)) for v in ["major", "minor", "micro"]))
-
-            # Find and remove them if they exist
-            if ":param dem:" in other_doc:
-                if pyv >= Version("3.13"):
-                    dem_section = "\n:param dem:" + other_doc.split("\n:param dem:")[1].split("\n")[0]
-                else:
-                    dem_section = "\n    :param dem:" + other_doc.split("\n    :param dem:")[1].split("\n")[0]
-
-                other_doc = other_doc.replace(dem_section, "")
-            if ":param resolution:" in other_doc:
-                if pyv >= Version("3.13"):
-                    resolution_section = (
-                        "\n:param resolution:" + other_doc.split("\n:param resolution:")[1].split("\n")[0]
-                    )
-                else:
-                    resolution_section = (
-                        "\n    :param resolution:" + other_doc.split("\n    :param resolution:")[1].split("\n")[0]
-                    )
-
-                other_doc = other_doc.replace(resolution_section, "")
+            # Accept either raw or dedented docstrings, including strings produced by decorators
+            other_doc = re.sub(r"\n[ \t]*:param (?:dem|resolution):[^\n]*", "", other_doc)
 
         # Remove docstring examples
         other_doc = other_doc.split(":examples:")[0]

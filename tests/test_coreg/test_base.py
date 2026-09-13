@@ -48,7 +48,9 @@ def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
     """Short test function to check equality of coreg dictionary values."""
 
     # Different equality check based on input: number, callable, array, dataframe
-    if not isinstance(input1, type(input2)):
+    if input1 is None:
+        return input2 is None
+    elif not isinstance(input1, type(input2)):
         return False
     elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, list)) or callable(input1):
         return input1 == input2
@@ -206,8 +208,8 @@ class TestCoregClass:
             fit_kwargs = {}
 
         # But can be overridden during fit
-        coreg_full.fit(**self.fit_params, subsample=10000, random_state=42, **fit_kwargs)
-        assert coreg_full.meta["inputs"]["random"]["subsample"] == 10000
+        coreg_full.fit(**self.fit_params, subsample=1000, random_state=42, **fit_kwargs)
+        assert coreg_full.meta["inputs"]["random"]["subsample"] == 1000
         # Check that the random state is properly set when subsampling explicitly or implicitly
         assert coreg_full.meta["inputs"]["random"]["random_state"] == 42
 
@@ -372,13 +374,11 @@ class TestCoregClass:
             fit_kwargs = {}
 
         # Perform fit, then apply
-        coreg_fit_then_apply.fit(**self.fit_params, subsample=10000, random_state=42, **fit_kwargs)
+        coreg_fit_then_apply.fit(**self.fit_params, **fit_kwargs)
         aligned_then = coreg_fit_then_apply.apply(elev=self.fit_params["to_be_aligned_elev"])
 
         # Perform fit and apply
-        aligned_and = coreg_fit_and_apply.fit_and_apply(
-            **self.fit_params, subsample=10000, random_state=42, fit_kwargs=fit_kwargs
-        )
+        aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, fit_kwargs=fit_kwargs)
 
         # Check outputs are the same: aligned raster, and metadata keys and values
 
@@ -497,7 +497,15 @@ class TestCoregClass:
                 "warns",
                 "'reference_dem' .* overrides the given *",
             ),
-            ("dem1.data", "dem2", "dem1.transform", "None", "fit", "warns", "'dem_to_be_aligned' .* overrides .*"),
+            (
+                "dem1.data",
+                "dem2",
+                "dem1.transform",
+                "dem1.crs",
+                "fit",
+                "warns",
+                "'dem_to_be_aligned' .* overrides .*",
+            ),
             (
                 "dem1.data",
                 "dem2.data",
@@ -505,7 +513,7 @@ class TestCoregClass:
                 "dem1.crs",
                 "fit",
                 "error",
-                "'transform' must be given if both DEMs are array-like.",
+                "'transform' must be given if any DEM is array-like.",
             ),
             (
                 "dem1.data",
@@ -514,7 +522,7 @@ class TestCoregClass:
                 "None",
                 "fit",
                 "error",
-                "'crs' must be given if both DEMs are array-like.",
+                "'crs' must be given if any DEM is array-like.",
             ),
             (
                 "dem1",
@@ -580,7 +588,10 @@ class TestCoregClass:
         vshiftcorr = xdem.coreg.VerticalShift()
 
         def fit_func() -> Coreg:
-            return vshiftcorr.fit(ref_dem, tba_dem, transform=transform, crs=crs)
+            # Supply complete metadata while fitting when this case checks apply() with an array
+            fit_transform = dem1.transform if testing_step == "apply" else transform
+            fit_crs = dem1.crs if testing_step == "apply" else crs
+            return vshiftcorr.fit(ref_dem, tba_dem, transform=fit_transform, crs=fit_crs)
 
         def apply_func() -> NDArrayf:
             return vshiftcorr.apply(tba_dem, transform=transform, crs=crs)
@@ -707,9 +718,14 @@ class TestAffineManipulation:
         # Interpolate transformed DEM at coordinates of the transformed point cloud
         # Because the raster created as a constant slope (plan-like), the interpolated values should be very close
         z_points = trans_dem.interp_points(
-            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values),
+            as_array=True,
+            nodata_propagation="propagate",
         )
-        valids = np.isfinite(z_points)
+        # Exclude partial interpolation windows, where edge clamping cannot reproduce an inclined plane
+        cols, rows = ~trans_dem.transform * (trans_epc.geometry.x.values, trans_epc.geometry.y.values)
+        interior = (cols >= 1) & (cols <= trans_dem.width - 2) & (rows >= 1) & (rows <= trans_dem.height - 2)
+        valids = np.isfinite(z_points) & interior
         assert np.count_nonzero(valids) > 0
         assert np.allclose(z_points[valids], trans_epc.z.values[valids], rtol=10e-5)
 
@@ -769,10 +785,14 @@ class TestAffineManipulation:
 
         # Interpolate transformed DEM at coordinates of the transformed point cloud, and check values are very close
         z_points_it = trans_dem_it.interp_points(
-            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values),
+            as_array=True,
+            nodata_propagation="propagate",
         )
         z_points_gd = trans_dem_gd.interp_points(
-            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values), as_array=True
+            points=(trans_epc.geometry.x.values, trans_epc.geometry.y.values),
+            as_array=True,
+            nodata_propagation="propagate",
         )
 
         valids = np.logical_and(np.isfinite(z_points_it), np.isfinite(z_points_gd))

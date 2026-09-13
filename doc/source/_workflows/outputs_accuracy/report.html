@@ -2,20 +2,21 @@
 <head><meta charset='UTF-8'><title>Qualify elevation results</title></head>
 <body>
 <h1>Accuracy assessment report — xDEM</h1>
-<p>xDEM version: 0.1.dev729</p><p>Date: 13/01/2026 15:02:39</p><p>Computing time: 23.89 seconds</p><h2>Elevation datasets</h2>
-<div style='display: flex; gap: 10px;'>
-  <img src='plots/reference_elev_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
-  <img src='plots/to_be_aligned_elev_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
-</div>
+<p>xDEM version: 0.2.4.dev10</p><p>Date: 23/07/2026 13:53:20</p><p>Computing time: 14.25 seconds</p><h2>Elevation inputs</h2>
+<img src='plots/inputs.png' alt='Image PNG' style='width: 100%; height: auto;'>
+<h2>Masked elevation data</h2>
+<img src='plots/masked_elev_map.png' alt='Image PNG' style='width: 100%; height: auto;'>
 <div style='clear: both; margin-bottom: 30px;'>
 <h2>Information about inputs</h2>
 <table border='1' cellspacing='0' cellpadding='5'>
 <tr><th>Information</th><th>Value</th></tr>
-<tr><td>reference_elev</td><td>{'path_to_elev': '../../../xdem/example_data/Longyearbyen/data/DEM_2009_ref.tif', 'from_vcrs': 'None', 'to_vcrs': 'None', 'downsample': '1'}</td></tr>
-<tr><td>to_be_aligned_elev</td><td>{'path_to_elev': '../../../xdem/example_data/Longyearbyen/data/DEM_1990.tif', 'path_to_mask': '../../../xdem/example_data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp', 'from_vcrs': 'None', 'to_vcrs': 'None', 'downsample': '1'}</td></tr>
+<tr><td>reference_elev</td><td>{'path_to_elev': '../../../xdem/example_data/Longyearbyen/data/DEM_2009_ref.tif', 'downsample': '1'}</td></tr>
+<tr><td>to_be_aligned_elev</td><td>{'path_to_elev': '../../../xdem/example_data/Longyearbyen/data/DEM_1990.tif', 'path_to_mask': '../../../xdem/example_data/Longyearbyen/data/glacier_mask/CryoClim_GAO_SJ_1990.shp', 'downsample': '1'}</td></tr>
 <tr><td>sampling_grid</td><td>reference_elev</td></tr>
 </table>
 </div>
+<h2>Preprocessed elevation data</h2>
+<img src='plots/preprocessed_to_be_aligned_elev_map.png' alt='Image PNG' style='width: 100%; height: auto; justify-content: center'>
 <div style='clear: both; margin-bottom: 30px;'>
 <h2>Coregistration user configuration</h2>
 <table border='1' cellspacing='0' cellpadding='5'>
@@ -44,43 +45,16 @@
 </table>
 </div>
 <h2>Statistics</h2>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th>Data</th>
-      <th>Median</th>
-      <th>NMAD</th>
-      <th>Valid count</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>Aligned elevation</td>
-      <td>363.338928</td>
-      <td>291.801208</td>
-      <td>1309704</td>
-    </tr>
-    <tr>
-      <td>Difference before coreg</td>
-      <td>2.766407</td>
-      <td>3.805830</td>
-      <td>1312020</td>
-    </tr>
-    <tr>
-      <td>Difference after coreg</td>
-      <td>0.254444</td>
-      <td>2.403943</td>
-      <td>1309704</td>
-    </tr>
-  </tbody>
-</table><h2>Elevation differences</h2>
-<div style='display: flex; gap: 10px;'>
-  <img src='plots/diff_elev_before_coreg_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
-  <img src='plots/diff_elev_after_coreg_map.png' alt='Image PNG' style='max-width: 50%; height: auto; width: 50%;'>
-</div>
+<table border='1' cellspacing='0' cellpadding='5'>
+<tr><td style="font-weight:bold">Data</td><td style="font-weight:bold">Aligned elevation</td><td style="font-weight:bold">Difference before coreg</td><td style="font-weight:bold">Difference after coreg</td></tr>
+<tr><td>Median</td><td>316.330</td><td>2.334</td><td>-0.048</td></tr>
+<tr><td>NMAD</td><td>277.103</td><td>3.417</td><td>2.050</td></tr>
+<tr><td>Valid count</td><td>1133607</td><td>1145221</td><td>1133607</td></tr>
+</table>
+<h2>Elevation differences</h2>
+<img src='plots/diff_elev_diff_coreg_map.png' alt='Image PNG' style='width: 100%; height: auto; justify-content: center'>
 <h2>Differences histogram</h2>
-<img src='plots/elev_diff_histo.png' alt='Image PNG' style='max-width: 100%; height: auto;'>
+<img src='plots/elev_diff_histo.png' alt='Image PNG' style='width: 100%; height: auto; justify-content: center'>
 
-             </div>
          </body>
          </html>

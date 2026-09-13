@@ -17,7 +17,7 @@
 # limitations under the License.
 
 """
-Elevation point cloud class and functions.
+Elevation point cloud class and accessor.
 """
 
 from xdem.epc.epc import EPC  # noqa

@@ -172,7 +172,7 @@ class TestTerrainAttribute:
 
         attrs_vectorized = xdem.terrain.window._get_windowed_indexes(
             dem=dem,
-            window_size=3,
+            window_size=5,
             resolution=1,
             windowed_indexes=[attribute],
             tri_method=tri_method,
@@ -181,7 +181,7 @@ class TestTerrainAttribute:
         )
         attrs_generic = xdem.terrain.window._get_windowed_indexes(
             dem=dem,
-            window_size=3,
+            window_size=5,
             resolution=1,
             windowed_indexes=[attribute],
             tri_method=tri_method,

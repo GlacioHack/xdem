@@ -36,11 +36,18 @@ import geoutils as gu
 import numpy as np
 import rasterio as rio
 import rasterio.warp
-from geoutils.pointcloud.pointcloud import PointCloudType
+from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
 from geoutils.raster import Raster, RasterType, raster
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
-from xdem.coreg.base import Coreg, CoregType, _preprocess_coreg_fit, _preprocess_coreg_apply, _postprocess_coreg_apply
+from xdem.coreg.base import (
+    Coreg,
+    CoregType,
+    _postprocess_coreg_apply,
+    _preprocess_coreg_apply,
+    _preprocess_coreg_fit,
+)
+
 
 class CoregPipeline(Coreg):
     """
@@ -53,7 +60,30 @@ class CoregPipeline(Coreg):
 
         :param: Processing steps to run in the sequence they are given.
         """
-        self.pipeline = pipeline
+
+        def put_coreg_in_series(pipeline: list[Coreg]) -> list[Coreg]:
+            """Flatten nested pipelines while keeping the processing order."""
+
+            list_coreg = []
+            for step in pipeline:
+                if not isinstance(step, CoregPipeline):
+                    list_coreg.append(step)
+                else:
+                    list_coreg += put_coreg_in_series(step)
+            return list_coreg
+
+        self.pipeline = put_coreg_in_series(pipeline)
+
+        # Only the first step can use an initial shift because later steps receive an already aligned input
+        for i, step in enumerate(self.pipeline):
+            if i > 0 and "affine" in step.meta["inputs"] and "initial_shift" in step.meta["inputs"]["affine"]:
+                warnings.warn(
+                    message="No initial shift can be defined in a coregistration pipeline other than for the first "
+                    f"step. Overriding to initial_shift=None for step number {i}. Remove initial shift parameters"
+                    " outside of the first step to silence this warning.",
+                    category=UserWarning,
+                )
+                del step.meta["inputs"]["affine"]["initial_shift"]
 
         super().__init__()
 
@@ -167,40 +197,24 @@ class CoregPipeline(Coreg):
             # Filter warnings of individual pipelines now that the one above was raised
             warnings.filterwarnings("ignore", message="Subsample argument passed to*", category=UserWarning)
 
-        # TODO: Temporary fix while we decide for final API of fit/apply
-        # If transform is not None, we rebuild the objects, to avoid needing ref_transform + tba_transform
-        # to be redefined throughout Coreg.fit() and apply()
-        if transform is not None and crs is not None:
-            if isinstance(reference_elev, np.ndarray):
-                reference_elev = Raster.from_array(reference_elev, transform=transform, crs=crs, nodata=-9999)
-            if isinstance(to_be_aligned_elev, np.ndarray):
-                to_be_aligned_elev = Raster.from_array(to_be_aligned_elev, transform=transform, crs=crs, nodata=-9999)
-            transform = None
-            crs = None
-
-        # Pre-process the inputs, by reprojecting and subsampling, without any subsampling (done in each step)
-        main_args_fit = {
-            "reference_elev": reference_elev,
-            "to_be_aligned_elev": None,
-            "inlier_mask": inlier_mask,
-            "transform": transform,
-            "crs": crs,
-            "z_name": z_name,
-            "weights": weights,
-            "subsample": subsample,
-            "random_state": random_state,
-        }
-
-        # Initialize to-be-aligned DEM
-        tba_elev_mod = to_be_aligned_elev
+        tba_elev_mod = to_be_aligned_elev.copy()
 
         for i, coreg in enumerate(self.pipeline):
             logging.debug("Running pipeline step: %d / %d", i + 1, len(self.pipeline))
 
-            main_args_fit.update({"to_be_aligned_elev": tba_elev_mod})
+            main_args_fit = {
+                "reference_elev": reference_elev,
+                "to_be_aligned_elev": tba_elev_mod,
+                "transform": transform,
+                "inlier_mask": inlier_mask,
+                "crs": crs,
+                "z_name": z_name,
+                "weights": weights,
+                "subsample": subsample,
+                "random_state": random_state,
+            }
 
-            main_args_apply = {"elev": tba_elev_mod, "crs": main_args_fit["crs"],
-                               "z_name": main_args_fit.get("z_name", None)}
+            main_args_apply = {"elev": tba_elev_mod, "transform": transform, "crs": crs, "z_name": z_name}
 
             # If non-affine method that expects a bias_vars argument
             if coreg._needs_vars:
@@ -215,10 +229,10 @@ class CoregPipeline(Coreg):
             # Step apply: one output for a geodataframe, two outputs for array/transform
             # We only run this step if it's not the last, otherwise it is unused!
             if i != (len(self.pipeline) - 1):
-                if isinstance(tba_elev_mod, gpd.GeoDataFrame):
+                if isinstance(tba_elev_mod, (Raster, gpd.GeoDataFrame, PointCloud)):
                     tba_elev_mod = coreg.apply(**main_args_apply)
                 else:
-                    tba_elev_mod = coreg.apply(**main_args_apply)
+                    tba_elev_mod, transform = coreg.apply(**main_args_apply)
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -346,12 +360,6 @@ class CoregPipeline(Coreg):
             other = [other]
 
         pipelines = self.pipeline + other
-
-        # Cancel possible initial shift(s) in CoregPipeline case
-        for method in pipelines:
-            if "affine" in method.meta["inputs"] and "initial_shift" in method.meta["inputs"]["affine"]:
-                del method.meta["inputs"]["affine"]["initial_shift"]
-
         return CoregPipeline(pipelines)
 
     def to_matrix(self) -> NDArrayf:

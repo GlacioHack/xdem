@@ -10,8 +10,8 @@ jobs:
   doc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
       # Pip does not install the graphviz binary, only bindings
@@ -22,6 +22,11 @@ jobs:
             sudo apt-get install -y graphviz
       - name: Install project with documentation dependencies
         run: python -m pip install -e .[doc,opt]
+
+      # Comment this temporary override after the GeoUtils accessor release
+      - name: Install latest GeoUtils main
+        run: python -m pip install --upgrade --force-reinstall --no-deps "geoutils @ git+https://github.com/GlacioHack/geoutils.git@main"
+
       - name: Sphinx build with full traceback
         run: |
           cd doc

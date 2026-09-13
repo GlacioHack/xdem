@@ -49,7 +49,7 @@ import scipy.ndimage
 import scipy.optimize
 from geoutils import profiler
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.interface.interpolation import _interp_points_base as _interp_points
+from geoutils.interface.interpolation import _interp_points_base
 from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
 from geoutils.raster import Raster, RasterType, raster
 from geoutils.raster.array import get_array_and_mask
@@ -81,6 +81,7 @@ dict_key_to_str = {
     "subsample_final": "Subsample size drawn from valid values",
     "fit_or_bin": "Fit, bin or bin+fit",
     "fit_func": "Function to fit",
+    "fit_optimizer": "Optimizer for fitting",
     "fit_minimizer": "Minimizer of method",
     "fit_loss_func": "Loss function of method",
     "bin_statistic": "Binning statistic",
@@ -124,12 +125,52 @@ dict_key_to_str = {
     "sampling_strategy": "Sampling strategy for point-point registration",
     "cpd_weight": "Weight of CPD outlier removal",
     "cpd_lsg": "CPD variant LSG using normals",
+    "cpd_estep_knearest": "Number of nearest neighbours used by CPD",
 }
 
 
 #####################################
 # Generic functions for preprocessing
 ###########################################
+
+
+def _as_eager_elevation(elev: Any) -> Any:
+    """Normalize eager elevation accessors for coregistration and uncertainty without computing Dask inputs."""
+
+    import xarray as xr
+    from geoutils._dispatch import is_dask_array, is_dask_dataframe
+    from geoutils.pointcloud.base import PointCloudBase
+    from geoutils.raster.base import RasterBase
+
+    # Inspect metadata first so unsupported lazy data are rejected before any computation
+    if isinstance(elev, xr.DataArray):
+        elev = elev.rst
+    if isinstance(elev, RasterBase):
+        if elev._chunks is not None:
+            raise NotImplementedError("Dask coregistration and uncertainty analysis are not supported yet.")
+        return elev.to_geoutils() if elev._is_xr else elev
+    if isinstance(elev, PointCloudBase):
+        if elev._is_dask:
+            raise NotImplementedError("Dask coregistration and uncertainty analysis are not supported yet.")
+        source = elev.to_geoutils() if elev._is_pd else elev
+        if source.data_column is None:
+            # Coregistration works with 2D geometry and an elevation column, including for native 3D points
+            frame = source.ds.copy()
+            column = "_xdem_elevation"
+            while column in frame.columns:
+                column += "_"
+            frame[column] = source.data
+            frame.geometry = gpd.points_from_xy(frame.geometry.x, frame.geometry.y, crs=frame.crs)
+            source = PointCloud(frame, data_column=column)
+        return source
+    if is_dask_array(elev) or is_dask_dataframe(elev):
+        raise NotImplementedError("Dask coregistration and uncertainty analysis are not supported yet.")
+
+    # Preserve an accessor's selected elevation column when a raw dataframe is supplied as reference
+    if isinstance(elev, gpd.GeoDataFrame):
+        if elev.attrs.get("data_column") is not None or (elev.geom_type.eq("Point").all() and elev.has_z.all()):
+            return _as_eager_elevation(PointCloud(elev, data_column=elev.attrs.get("data_column")))
+    return elev
 
 
 def _preprocess_coreg_fit_raster_raster(
@@ -672,6 +713,68 @@ def _postprocess_coreg_apply(
     return applied_elev, out_transform
 
 
+def _ols_fit(
+    design_matrix_func: Callable[[NDArrayf], NDArrayf],
+    xdata: NDArrayf,
+    ydata: NDArrayf,
+    sigma: NDArrayf | None,
+) -> tuple[NDArrayf, None]:
+    """
+    Solve a linear model with direct OLS via np.linalg.lstsq.
+
+    A design matrix builder can normalize predictor coordinates before constructing poorly scaled columns. If the
+    builder defines ``unnormalize_coeffs``, the fitted coefficients are converted back to the original coordinates.
+
+    :param design_matrix_func: Callable that takes xdata and returns the design matrix (N, P).
+    :param xdata: Predictor data passed to design_matrix_func.
+    :param ydata: Observations to fit (N,).
+    :param sigma: Optional per-observation standard deviations; used for weighted OLS.
+
+    :returns: Tuple of (coefficients, None), mimicking the (popt, pcov) return of curve_fit.
+    """
+    # Build the linear system and apply optional inverse-standard-deviation weights
+    design_matrix = design_matrix_func(xdata)
+    if sigma is not None:
+        inverse_sigma = 1.0 / sigma
+        design_matrix = design_matrix * inverse_sigma[:, np.newaxis]
+        ydata = ydata * inverse_sigma
+
+    # Solve the system and restore coefficients from any internal coordinate normalization
+    coeffs = np.linalg.lstsq(design_matrix, ydata, rcond=None)[0]
+    if hasattr(design_matrix_func, "unnormalize_coeffs"):
+        coeffs = design_matrix_func.unnormalize_coeffs(coeffs)
+    return coeffs, None
+
+
+def _call_fit_optimizer(
+    params_fit_or_bin: InFitOrBinDict,
+    design_matrix_func: Callable[[NDArrayf], NDArrayf] | None,
+    xdata: NDArrayf,
+    ydata: NDArrayf,
+    sigma: NDArrayf | None,
+    **kwargs: Any,
+) -> tuple[NDArrayf, Any]:
+    """Fit observations with the optimizer selected when the coregistration was initialized."""
+
+    fit_optimizer = params_fit_or_bin["fit_optimizer"]
+
+    # Use the dedicated design matrix for a linear model
+    if fit_optimizer == "ols":
+        if design_matrix_func is None:
+            raise ValueError("The 'ols' fit optimizer requires a design matrix function.")
+        return _ols_fit(design_matrix_func, xdata, ydata, sigma)
+
+    # Call user optimizers through the established curve_fit-compatible interface
+    return fit_optimizer(
+        f=params_fit_or_bin["fit_func"],
+        xdata=xdata,
+        ydata=ydata,
+        sigma=sigma,
+        absolute_sigma=True,
+        **kwargs,
+    )
+
+
 @overload
 def _bin_or_and_fit_nd(
     fit_or_bin: Literal["fit"],
@@ -679,6 +782,7 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
+    design_matrix_func: Callable[[NDArrayf], NDArrayf] | None = None,
     **kwargs: Any,
 ) -> tuple[None, tuple[NDArrayf, Any]]: ...
 
@@ -690,6 +794,7 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
+    design_matrix_func: Callable[[NDArrayf], NDArrayf] | None = None,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame, None]: ...
 
@@ -701,6 +806,7 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
+    design_matrix_func: Callable[[NDArrayf], NDArrayf] | None = None,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame, tuple[NDArrayf, Any]]: ...
 
@@ -711,6 +817,7 @@ def _bin_or_and_fit_nd(
     values: NDArrayf,
     bias_vars: None | dict[str, NDArrayf] = None,
     weights: None | NDArrayf = None,
+    design_matrix_func: Callable[[NDArrayf], NDArrayf] | None = None,
     **kwargs: Any,
 ) -> tuple[pd.DataFrame | None, tuple[NDArrayf, Any] | None]:
     """
@@ -723,6 +830,7 @@ def _bin_or_and_fit_nd(
     :param values: Valid values to bin or fit.
     :param bias_vars: Auxiliary variables for certain bias correction classes, as raster or arrays.
     :param weights: Array of weights for the coregistration.
+    :param design_matrix_func: Function that builds the design matrix when the selected optimizer is "ols".
     """
 
     if fit_or_bin is None:
@@ -751,11 +859,15 @@ def _bin_or_and_fit_nd(
     # Get number of variables
     nd = len(bias_vars)
 
-    # Remove random state for keyword argument if its value is not in the optimizer function
+    # Remove random_state if the selected optimizer does not accept it
     if fit_or_bin in ["fit", "bin_and_fit"]:
-        fit_func_args = inspect.getfullargspec(params_fit_or_bin["fit_minimizer"]).args
-        if "random_state" not in fit_func_args and "random_state" in kwargs:
-            kwargs.pop("random_state")
+        fit_optimizer = params_fit_or_bin["fit_optimizer"]
+        if fit_optimizer == "ols":
+            kwargs.pop("random_state", None)
+        else:
+            fit_func_args = inspect.getfullargspec(fit_optimizer).args
+            if "random_state" not in fit_func_args:
+                kwargs.pop("random_state", None)
 
     # We need to sort the bin sizes in the same order as the bias variables if a dict is passed for bin_sizes
     if fit_or_bin in ["bin", "bin_and_fit"]:
@@ -767,20 +879,6 @@ def _bin_or_and_fit_nd(
         else:
             bin_sizes = params_fit_or_bin["bin_sizes"]
 
-    # If fit minimizer is default least_squares, and x0 not passed, set initial vector to ones (like in curve_fit)
-    if (
-        "fit_minimizer" in params_fit_or_bin
-        and params_fit_or_bin["fit_minimizer"] == scipy.optimize.least_squares
-        and "x0" not in kwargs
-    ):
-        sig = inspect.signature(params_fit_or_bin["fit_func"])
-        nb_params = len(sig.parameters) - 1
-        x0 = np.ones(nb_params)
-        kwargs.update({"x0": x0})
-
-    # Custom optimizers that trigger slightly different behaviour below
-    custom_minimizer = [v["optimizer"] for v in fit_workflows.values()]
-
     # Option 1: Run fit and save optimized function parameters
     if fit_or_bin == "fit":
         logging.debug(
@@ -789,29 +887,18 @@ def _bin_or_and_fit_nd(
             params_fit_or_bin["fit_func"].__name__,
         )
 
-        # Convert to residual function for minimization
-        # (equivalent of extra step in scipy.optimize.curve_fit compared to scipy.optimize.least_squares)
         xdata = np.array([var.flatten() for var in bias_vars.values()]).squeeze()
         ydata = values.flatten()
+        sigma = weights.flatten() if weights is not None else None
 
-        # If custom fits are passed, such as "robust_norder_polynomial_fit"
-        if params_fit_or_bin["fit_minimizer"] in custom_minimizer:
-            results = params_fit_or_bin["fit_minimizer"](xdata, ydata, **kwargs)
-
-        # If other minimizers are passed
-        else:
-
-            def func_wrapped(params):
-                return params_fit_or_bin["fit_func"](xdata, *params) - ydata
-
-            # Add loss argument if it is supported
-            sig = inspect.getfullargspec(params_fit_or_bin["fit_minimizer"])
-            if "loss" in sig.args:
-                kwargs.update({"loss": params_fit_or_bin["fit_loss_func"]})
-            results = params_fit_or_bin["fit_minimizer"](
-                func_wrapped,
-                **kwargs,
-            ).x
+        results = _call_fit_optimizer(
+            params_fit_or_bin=params_fit_or_bin,
+            design_matrix_func=design_matrix_func,
+            xdata=xdata,
+            ydata=ydata,
+            sigma=sigma,
+            **kwargs,
+        )
         df = None
 
     # Option 2: Run binning and save dataframe of result
@@ -869,29 +956,18 @@ def _bin_or_and_fit_nd(
         if np.all(~ind_valid):
             raise ValueError("Only NaN values after binning, did you pass the right bin edges?")
 
-        # Convert to residual function for minimization (equivalent of steps in scipy.optimize.curve_fit)
-        xdata = np.array([var[ind_valid].flatten() for var in new_vars]).squeeze()
-        ydata = new_diff[ind_valid].flatten()
+        xdata_bin = np.array([var[ind_valid].flatten() for var in new_vars]).squeeze()
+        ydata_bin = new_diff[ind_valid].flatten()
+        sigma_bin = weights[ind_valid].flatten() if weights is not None else None
 
-        # If custom fits are passed, such as "robust_norder_polynomial_fit"
-        if params_fit_or_bin["fit_minimizer"] in custom_minimizer:
-            results = params_fit_or_bin["fit_minimizer"](xdata, ydata, **kwargs)
-
-        # For generic minimizer (including default)
-        else:
-
-            def func_wrapped(params):
-                return params_fit_or_bin["fit_func"](xdata, *params) - ydata
-
-            # Add loss argument if it is supported
-            sig = inspect.getfullargspec(params_fit_or_bin["fit_minimizer"])
-            if "loss" in sig.args:
-                kwargs.update({"loss": params_fit_or_bin["fit_loss_func"]})
-
-            results = params_fit_or_bin["fit_minimizer"](
-                func_wrapped,
-                **kwargs,
-            ).x
+        results = _call_fit_optimizer(
+            params_fit_or_bin=params_fit_or_bin,
+            design_matrix_func=design_matrix_func,
+            xdata=xdata_bin,
+            ydata=ydata_bin,
+            sigma=sigma_bin,
+            **kwargs,
+        )
     logging.debug("%dD bias estimated.", nd)
 
     return df, results
@@ -1226,11 +1302,10 @@ def _apply_matrix_pts(
         invert=invert,
     )
 
-    # Finally, transform back to a new GeoDataFrame
-    transformed_epc = gpd.GeoDataFrame(
-        geometry=gpd.points_from_xy(x=tx, y=ty, crs=epc.crs),
-        data={z_name: tz},
-    )
+    # Preserve auxiliary columns and the row index while updating only geometry and elevation
+    transformed_epc = epc.copy()
+    transformed_epc[z_name] = tz
+    transformed_epc.geometry = gpd.points_from_xy(x=tx, y=ty, crs=epc.crs)
 
     return transformed_epc
 
@@ -1485,7 +1560,7 @@ def _reproject_horizontal_shift_samecrs(
     else:
         coords_dst = None
 
-    output = _interp_points(
+    output = _interp_points_base(
         array=raster_arr,
         area_or_point="Area",
         transform=src_transform,
@@ -1652,6 +1727,7 @@ class InFitOrBinDict(TypedDict, total=False):
 
     # Fit parameters: function to fit and optimizer
     fit_func: Callable[..., NDArrayf]
+    fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"]
 
     # For a minimization problem
     fit_minimizer: Callable[..., tuple[NDArrayf, Any]]
@@ -1823,6 +1899,8 @@ class Coreg:
     _is_affine: bool | None = None
     _is_translation: bool | None = None
     _needs_vars: bool = False
+    _fit_linear: bool = False
+    _design_matrix_func: Callable[[NDArrayf], NDArrayf] | None = None
     _meta: CoregDict
 
     def __init__(self, meta: dict[str, Any] | None = None) -> None:
@@ -1832,6 +1910,16 @@ class Coreg:
         # above which make up the CoregDict altogether
         dict_meta = CoregDict(inputs={}, outputs={})
         if meta is not None:
+            meta = meta.copy()
+
+            # Resolve the default once so metadata and info() expose the optimizer that will run
+            if (
+                meta.get("fit_or_bin") in ["fit", "bin_and_fit"]
+                and "fit_optimizer" in meta
+                and meta["fit_optimizer"] is None
+            ):
+                meta["fit_optimizer"] = "ols" if self._fit_linear else scipy.optimize.curve_fit
+
             # First, we get the typed dictionary keys ("random", "fitorbin", etc),
             # this is a typing class so requires to get its keys in __annotations__
             list_input_levels = list(InputCoregDict.__annotations__.keys())
@@ -1880,12 +1968,6 @@ class Coreg:
 
         if not isinstance(other, Coreg):
             raise ValueError(f"Incompatible add type: {type(other)}. Expected 'Coreg' subclass")
-
-        # Cancel possible initial shift(s) in CoregPipeline case
-        if "affine" in self.meta["inputs"] and "initial_shift" in self.meta["inputs"]["affine"]:
-            del self.meta["inputs"]["affine"]["initial_shift"]
-        if "affine" in other.meta["inputs"] and "initial_shift" in other.meta["inputs"]["affine"]:
-            del other.meta["inputs"]["affine"]["initial_shift"]
 
         return CoregPipeline([self, other])
 
@@ -2107,9 +2189,14 @@ class Coreg:
         if self._meta["inputs"]["affine"].get("initial_shift") is not None:
             shift_x = self._meta["inputs"]["affine"]["initial_shift"][0]  # type: ignore
             shift_y = self._meta["inputs"]["affine"]["initial_shift"][1]  # type: ignore
+
             # shift_z is currently always equal to zero
-            reference_elev = reference_elev.translate(-shift_x, -shift_y)  # type: ignore
-            initial_shift_apply = True
+            if isinstance(reference_elev, (gu.Raster, gpd.GeoDataFrame, gu.PointCloud)):
+                reference_elev = reference_elev.translate(-shift_x, -shift_y)  # type: ignore
+                initial_shift_apply = True
+            else:
+                transform = _translate(transform, xoff=-shift_x, yoff=-shift_y)
+                initial_shift_apply = True
 
         # Pre-process the inputs, by reprojecting and converting to arrays
         # For an affine alignment, overlap is not necessary, so rasters are not reprojected to the same grid
@@ -2582,6 +2669,7 @@ class Coreg:
             values=values,
             bias_vars=bias_vars,
             weights=weights,
+            design_matrix_func=self._design_matrix_func,
             **kwargs,
         )
 
@@ -2591,20 +2679,21 @@ class Coreg:
         # Save results if fitting was performed
         if self._meta["inputs"]["fitorbin"]["fit_or_bin"] in ["fit", "bin_and_fit"] and results is not None:
             # Write the results to metadata in different ways depending on optimizer returns
-            if self._meta["inputs"]["fitorbin"]["fit_minimizer"] in (w["optimizer"] for w in fit_workflows.values()):
+            fit_optimizer = self._meta["inputs"]["fitorbin"]["fit_optimizer"]
+            if callable(fit_optimizer) and fit_optimizer in (w["optimizer"] for w in fit_workflows.values()):
                 params = results[0]
                 order_or_freq = results[1]
-                if self._meta["inputs"]["fitorbin"]["fit_minimizer"] == robust_norder_polynomial_fit:
+                if fit_optimizer == robust_norder_polynomial_fit:
                     self._meta["outputs"]["specific"] = {"best_poly_order": order_or_freq}
                 else:
                     self._meta["outputs"]["specific"] = {"best_nb_sin_freq": order_or_freq}
 
-            elif self._meta["inputs"]["fitorbin"]["fit_minimizer"] == scipy.optimize.least_squares:
-                params = results
-                # TODO: Get structure to get this output again (as with old curve_fit implementation)?
-                # Calculation to get the error on parameters (see description of scipy.optimize.curve_fit)
-                # perr = np.sqrt(np.diag(results[1]))
-                # self._meta["outputs"]["fitorbin"].update({"fit_perr": perr})
+            elif fit_optimizer == scipy.optimize.curve_fit:
+                params = results[0]
+                # Calculate parameter errors from the covariance returned by scipy.optimize.curve_fit
+                perr = np.sqrt(np.diag(results[1]))
+                self._meta["outputs"]["fitorbin"].update({"fit_perr": perr})
+
             else:
                 params = results[0]
 
@@ -2750,7 +2839,9 @@ def _sample_coreg_inputs(
     # Retain the coregistration policy of silently capping oversized sample budgets
     with warnings.catch_warnings():
         warnings.filterwarnings(
-            "ignore", message="Subsample value of .* is larger than the number of valid pixels", category=UserWarning
+            "ignore",
+            message=r"Argument ``subsample``.*is larger than the number of valid pixels.*",
+            category=UserWarning,
         )
         # Draw separately for algorithms such as ICP, preserving each dataset's own valid population
         if independent:
