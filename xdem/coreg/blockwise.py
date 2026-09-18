@@ -27,6 +27,10 @@ import math
 import os
 import warnings
 from pathlib import Path
+from typing import (
+    Literal,
+    overload,
+)
 
 import geopandas as gpd
 import geoutils as gu
@@ -111,7 +115,8 @@ class BlockwiseCoreg:
 
         self.output_path_aligned = self.parent_path / self.mp_config.outfile
 
-        self.meta = {"inputs": {}, "outputs": {}}
+        blockwise_dict = {"block_size_fit": self.block_size_fit, "block_size_apply": self.block_size_apply}
+        self.meta = {"inputs": {"blockwise": blockwise_dict}, "outputs": {}}
         self.shape_tiling_grid = (0, 0, 0)
 
     @staticmethod
@@ -168,9 +173,8 @@ class BlockwiseCoreg:
         :param inlier_mask: Optional boolean mask indicating valid data points to use in the fitting.
         :return: None. Updates internal model parameters.
         """
-
-        self.meta["inputs"] = self.procstep.meta["inputs"]  # type: ignore
-
+        self.meta["inputs"].update(self.procstep.meta["inputs"])  # type: ignore
+        self.meta["inputs"]["blockwise"]["blocks"] = {}  # type: ignore
         outputs_coreg = map_multiproc_collect(
             self._coreg_wrapper,
             reference_elev,
@@ -185,6 +189,9 @@ class BlockwiseCoreg:
             self.block_size_fit, reference_elev.shape, to_be_aligned_elev.shape
         ).shape
 
+        print(self.shape_tiling_grid)
+        print(outputs_coreg)
+
         rows_cols = list(itertools.product(range(self.shape_tiling_grid[0]), range(self.shape_tiling_grid[1])))
 
         self.x_coords = []  # type: ignore
@@ -194,6 +201,8 @@ class BlockwiseCoreg:
         self.shifts_z = []  # type: ignore
 
         for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
+            print("idx", idx, ")")
+            print("coreg.meta[outputs]", coreg.meta["outputs"])
 
             shift_x = coreg.meta["outputs"]["affine"].get("shift_x", np.nan)
             shift_y = coreg.meta["outputs"]["affine"].get("shift_y", np.nan)
@@ -212,15 +221,23 @@ class BlockwiseCoreg:
             self.shifts_z.append(shift_z)
 
             tile_str = f"{rows_cols[idx][0]}_{rows_cols[idx][1]}"
-            self.meta["outputs"][tile_str] = {  # type: ignore
-                "shift_x": shift_x,
-                "shift_y": shift_y,
-                "shift_z": shift_z,
+
+            self.meta["inputs"]["blockwise"]["blocks"][tile_str] = {  # type: ignore
+                "start_x": tile_coords[0],
+                "end_x": tile_coords[1],
+                "start_y": tile_coords[2],
+                "end_y": tile_coords[3],
             }
 
+            self.procstep._meta["outputs"][tile_str] = coreg.meta["outputs"]  # type: ignore
+            print(tile_str, ":", coreg.meta["outputs"])
+            print()
         self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z = map(  # type: ignore
             np.array, (self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z)
         )
+        print("self.procstep._meta[outputs]", self.procstep._meta["outputs"])
+        # Flag that the fitting function has been called.
+        self.procstep._fit_called = True
 
     @staticmethod
     def _ransac(
@@ -405,3 +422,49 @@ class BlockwiseCoreg:
         )
 
         return aligned_dem
+
+    @overload
+    def info(self, as_str: Literal[False] = ...) -> None: ...
+
+    @overload
+    def info(self, as_str: Literal[True]) -> str: ...
+
+    def info(self, as_str: bool = False) -> None | str:
+        """Summarize information about this blockwise."""
+
+        header_str = [
+            "Blockwise information \n",
+            f"  Block size fit:       {self.block_size_fit} \n",
+            f"  Block size apply:     {self.block_size_apply} \n",
+            "  Blocks repartition:    \n",
+        ]
+
+        print(self.meta["inputs"]["blockwise"])
+        if "blocks" in self.meta["inputs"]["blockwise"]:
+            blocks = []
+            for b, data in self.meta["inputs"]["blockwise"]["blocks"].items():
+                start_x = data["start_x"]
+                end_x = data["end_x"]
+                start_y = data["start_y"]
+                end_y = data["end_y"]
+
+                blocks.append(
+                    [
+                        f"{b} :",
+                        f"X:{start_x}-{end_x}",
+                        f"Y:{start_y}-{end_y}",
+                    ]
+                )
+            tab_coords = [max(len(str(col[j])) for col in blocks) + 4 for j in range(len(blocks[0]))]
+
+            for block in blocks:
+                header_str += "    " + "".join(str(v).rjust(tab_coords[b]) for b, v in enumerate(block)) + "\n"
+
+        step_str_tab = self.procstep.info(as_str=True).split("\n")
+
+        # Return as string or print (default)
+        if as_str:
+            return "".join(header_str) + "\n".join(step_str_tab)
+        else:
+            print("".join(header_str) + "\n".join(step_str_tab))
+            return None
