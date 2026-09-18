@@ -64,6 +64,8 @@ class TestEPC:
         # 3/ For a multiple column point cloud from a Geopackage file
         epc3 = EPC(self.fn_epc, data_column="h_li")
         assert epc3.data_column == "h_li"
+        assert epc3.crs == CRS.from_epsg(7912)
+        assert epc3.vcrs == "Ellipsoid"
         assert all(
             epc3.ds.columns
             == [

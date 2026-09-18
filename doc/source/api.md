@@ -193,332 +193,42 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 
 ### Uncertainty analysis
 
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    DEM.estimate_uncertainty
-```
-
-
-## EPC
-
-```{important}
-An {class}`~xdem.EPC` inherits all point cloud methods and attributes from the {class}`~geoutils.PointCloud` object of GeoUtils.
-Below, we only repeat some core attributes and methods of GeoUtils, see
-[the PointCloud API in GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#point-cloud) for the full list.
-```
-
-### Opening or saving
+### Error structures and public workflows
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    EPC
-    EPC.to_file
+    ErrorMagnitude
+    ErrorComponent
+    ErrorStructure
+    uncertainty.PropagationResult
+    uncertainty.estimate_error_structure
+    uncertainty.propagate_uncertainty
+    uncertainty.propagate_uncertainty_coreg
+    uncertainty.number_effective_samples
+    uncertainty.spatial_error_propagation
+    uncertainty.patches_method
 ```
 
-### Plotting or summarize info
+### Shared fitting and analytical calculations
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    EPC.info
-    EPC.plot
+    fit.interp_binning
+    fit.get_perbin_binning
+    uncertainty.estimation.two_step_standardization
+    uncertainty.analytical.neff_exact
+    uncertainty.analytical.neff_hugonnet_approx
+    uncertainty.analytical.neff_circular_approx_theoretical
+    uncertainty.analytical.neff_circular_approx_numerical
 ```
 
-### Create from arrays or tuples
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    EPC.from_xyz
-    EPC.from_tuples
-    EPC.from_array
-```
-
-### Unique attributes
-
-#### Inherited from {class}`~geoutils.PointCloud`
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    EPC.ds
-    EPC.data_column
-```
-
-#### Specific to {class}`~xdem.EPC`
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    EPC.vcrs
-```
-
-### Other attributes
-
-#### Inherited from {class}`~geoutils.PointCloud`
-
-See the full list in [the PointCloud API of GeoUtils](https://geoutils.readthedocs.io/en/latest/api.html#point-cloud).
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    EPC.point_count
-    EPC.bounds
-    EPC.crs
-```
-
-### Georeferencing
-
-#### Inherited from {class}`~geoutils.PointCloud`
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    EPC.info
-    EPC.reproject
-    EPC.crop
-    EPC.subsample
-```
-
-#### Vertical referencing for {class}`~xdem.DEM`
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    EPC.set_vcrs
-    EPC.to_vcrs
-```
-
-### Interface with rasters and vectors
-
-```{note}
-See the full list of vector methods in [GeoUtils' documentation](https://geoutils.readthedocs.io/en/latest/api.html#vector).
-```
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    EPC.grid
-    EPC.rasterize
-```
-
-### Statistics
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    EPC.get_stats
-```
-
-### Coregistration and bias corrections
-
-```{tip}
-To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d`, see the API of {ref}`api-geo-handle`.
-```
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    EPC.coregister_3d
-```
-
-(api-geo-handle)=
-
-## Coreg
-
-**Overview of co-registration class structure**:
-
-```{eval-rst}
-.. inheritance-diagram:: xdem.coreg.base.Coreg xdem.coreg.affine xdem.coreg.biascorr
-        :top-classes: xdem.coreg.Coreg
-```
-
-### Coregistration, pipeline and blockwise
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.Coreg
-    coreg.CoregPipeline
-    coreg.BlockwiseCoreg
-```
-
-#### Fitting and applying transforms
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.Coreg.fit_and_apply
-    coreg.Coreg.fit
-    coreg.Coreg.apply
-```
-
-#### Extracting metadata
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.Coreg.info
-    coreg.Coreg.meta
-```
-
-### Affine coregistration
-
-#### Parent object (to define custom methods)
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.AffineCoreg
-```
-
-#### Coregistration methods
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.VerticalShift
-    coreg.NuthKaab
-    coreg.DhMinimize
-    coreg.LZD
-    coreg.ICP
-    coreg.CPD
-```
-
-#### Manipulating affine transforms
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.apply_matrix
-    coreg.invert_matrix
-    coreg.matrix_from_translations_rotations
-    coreg.translations_rotations_from_matrix
-```
-
-### Bias-correction
-
-#### Parent object (to define custom methods)
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.BiasCorr
-```
-
-#### Bias-correction methods
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.Deramp
-    coreg.DirectionalBias
-    coreg.TerrainBias
-```
-
-## Uncertainty analysis
-
-```{important}
-Several uncertainty functionalities of xDEM are being implemented directly in SciKit-GStat for spatial statistics
-(e.g., fitting a sum of variogram models, pairwise subsampling for grid data). This will allow to simplify several
-function inputs and outputs, by relying on a single {func}`~skgstat.Variogram` object.
-
-This will trigger API changes in future package versions.
-```
-
-### Core routines for heteroscedasticity, spatial correlations, error propagation
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    spatialstats.infer_heteroscedasticity_from_stable
-    spatialstats.infer_spatial_correlation_from_stable
-    spatialstats.spatial_error_propagation
-```
-
-### Sub-routines for heteroscedasticity
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    spatialstats.nd_binning
-    spatialstats.interp_nd_binning
-    spatialstats.two_step_standardization
-```
-
-### Sub-routines for spatial correlations
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    spatialstats.sample_empirical_variogram
-    spatialstats.fit_sum_model_variogram
-    spatialstats.correlation_from_variogram
-```
-
-### Sub-routines for error propagation
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    spatialstats.number_effective_samples
-```
-
-### Empirical validation
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    spatialstats.patches_method
-```
-
-### Plotting for uncertainty analysis
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    spatialstats.plot_variogram
-    spatialstats.plot_1d_binning
-    spatialstats.plot_2d_binning
-```
-
-## Stand-alone functions (moved)
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    spatialstats.nmad
-```
-
+Generic grouping, cosampling, pair sampling, variogram fitting and their plots are provided by GeoUtils.
+The entire `xdem.spatialstats` module and `DEM.estimate_uncertainty()` are deprecated; see
+the [uncertainty migration guide](uncertainty_migration.md) for replacements and changes to inputs and outputs.
 
 ## Development classes (removal or re-factoring)
 

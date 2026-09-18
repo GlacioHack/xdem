@@ -10,10 +10,9 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
-from pandas.testing import assert_frame_equal
-
 from geoutils import Raster, Vector
 from geoutils.raster import MultiprocConfig
+from pandas.testing import assert_frame_equal
 from pyproj import CRS
 
 from xdem import DEM, EPC, coreg, examples, open_dem
@@ -24,7 +23,6 @@ from xdem.vcrs import _VerticalReference
 
 def assert_output_equal(output1: Any, output2: Any, use_allclose: bool = False, strict_masked: bool = True) -> None:
     """Return equality of different output types."""
-
 
     # For two vectors
     if isinstance(output1, Vector) and isinstance(output2, Vector):
@@ -210,8 +208,7 @@ class TestClassVsAccessorConsistencyInherited:
     ]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])
-    @pytest.mark.parametrize("method, kwargs",
-                             [(f, k) for f, k in inherited_methods_loading_and_kwargs])
+    @pytest.mark.parametrize("method, kwargs", [(f, k) for f, k in inherited_methods_loading_and_kwargs])
     def test_methods__loading(self, path_dem: str, method: str, kwargs: dict[str, Any]) -> None:
         """
         Test that a minimal subset of inherited RasterBase methods preserve the expected loading behaviour
@@ -249,8 +246,7 @@ class TestClassVsAccessorConsistencyInherited:
     ]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
-    @pytest.mark.parametrize("method, kwargs",
-                             [(f, k) for f, k in inherited_chunked_methods_and_args])  # type: ignore
+    @pytest.mark.parametrize("method, kwargs", [(f, k) for f, k in inherited_chunked_methods_and_args])  # type: ignore
     def test_chunked_methods__loading_laziness(self, path_dem: str, method: str, kwargs: dict[str, Any]) -> None:
         """
         Test that a minimal subset of inherited chunked methods preserve loading and laziness.
@@ -381,7 +377,7 @@ class TestClassVsAccessorConsistencyDEMBase:
     methods_output_noload_allowed_args: dict[str, Any] = {}
 
     # Methods whose richer inputs and multiple outputs are covered by TestDEMEagerAnalysis below
-    methods_tested_separately = ["coregister_3d", "estimate_uncertainty"]
+    methods_tested_separately = ["coregister_3d", "estimate_error_structure", "estimate_uncertainty"]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
     @pytest.mark.parametrize("prop", properties)  # type: ignore
@@ -437,7 +433,7 @@ class TestClassVsAccessorConsistencyDEMBase:
         ("get_terrain_attribute", {"attribute": ["slope", "aspect"]}),
         ("to_pointcloud", {}),
         # 2. Inplace, will not load
-        ("set_vcrs", {"new_vcrs": "EGM96"})
+        ("set_vcrs", {"new_vcrs": "EGM96"}),
     ]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
@@ -695,12 +691,11 @@ class TestClassVsAccessorConsistencyDEMBase:
 
 class TestDEMEagerAnalysis:
     """
-    Test coregistration and uncertainty through DEM and its Xarray accessor.
+    Test module for eager coregistration and uncertainty through DEM and its Xarray accessor.
 
     This class tests:
     - ``coregister_3d`` with raster and point references, masks and bias variables,
-    - ``estimate_uncertainty`` with raster and point references, masks and all approaches,
-    - Clear rejection of lazy analysis inputs without computing or replacing them.
+    - ``estimate_uncertainty`` with raster and point references, masks and all approaches.
     """
 
     def test_coregister_3d__bias_variables_and_mask(self, accessor_dem_path: Path) -> None:
@@ -769,14 +764,14 @@ class TestDEMEagerAnalysis:
             "dem": reference,
             "dataarray": reference_ds,
             "accessor": reference_ds.dem,
-            "epc": reference.to_pointcloud(data_column_name="height"),
+            "epc": reference.to_pointcloud(data_column_name="height", subsample=1000, random_state=42),
         }
         references["dataframe"] = references["epc"].ds.copy()
         references["dataframe"].attrs["data_column"] = "height"
 
         # 2/ Run DEM and Xarray calls with the same reference type and random seed
-        expected = source.coregister_3d(references[reference_kind], method(), random_state=42)
-        actual = ds.dem.coregister_3d(references[reference_kind], method(), random_state=42)
+        expected = source.coregister_3d(references[reference_kind], method(), subsample=5000, random_state=42)
+        actual = ds.dem.coregister_3d(references[reference_kind], method(), subsample=5000, random_state=42)
         assert isinstance(expected, DEM)
         assert isinstance(actual, xr.DataArray)
         assert_output_equal(expected, actual)
@@ -872,9 +867,13 @@ class TestDEMEagerAnalysis:
         np.testing.assert_array_equal(expected_corr(distances), actual_corr(distances))
         np.testing.assert_array_equal(native.data, frame.height)
 
+
+class TestDEMAnalysisErrors:
+    """Test module for rejecting unsupported lazy DEM analysis without executing Dask graphs."""
+
     @pytest.mark.parametrize("operation", ["coregister_3d", "estimate_uncertainty"])
     @pytest.mark.parametrize("lazy_argument", ["reference", "mask", "variable"])
-    def test_methods__lazy_analysis_arguments_rejected(
+    def test_methods__error_lazy_analysis_arguments(
         self, accessor_dem_path: Path, operation: str, lazy_argument: str
     ) -> None:
         """Checks that lazy references, masks and bias variables are rejected without executing their graphs."""
@@ -909,9 +908,7 @@ class TestDEMEagerAnalysis:
         assert lazy.data is graph and not lazy._in_memory
 
     @pytest.mark.parametrize("operation", ["coregister_3d", "estimate_uncertainty"])
-    def test_methods__dask_analysis_is_explicitly_unsupported(
-        self, accessor_dem_path: Path, operation: str
-    ) -> None:
+    def test_methods__error_dask_analysis_unsupported(self, accessor_dem_path: Path, operation: str) -> None:
         """Checks that deferred analysis features reject Dask inputs without computing or replacing them."""
 
         pytest.importorskip("dask.array")

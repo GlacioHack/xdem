@@ -15,7 +15,7 @@ from geoutils.multiproc import MultiprocConfig
 from geoutils.pointcloud.base import PointCloudBase
 from geoutils.pointcloud.pd_accessor import PointCloudAccessor
 from pandas.testing import assert_frame_equal
-from pyproj import Transformer
+from pyproj import CRS, Transformer
 
 from xdem import DEM, EPC, coreg, open_epc
 from xdem.dem.xr_accessor import DEMAccessor
@@ -60,7 +60,7 @@ class TestEPCInheritance:
         and not getattr(member, "__isabstractmethod__", False)
     ]
     properties_tested = ["vcrs"]
-    methods_tested_separately = ["set_vcrs", "to_vcrs", "coregister_3d"]
+    methods_tested_separately = ["reproject", "set_vcrs", "to_vcrs", "coregister_3d", "estimate_error_structure"]
 
     def test_shared_method_ownership(self) -> None:
         """
@@ -127,6 +127,37 @@ class TestEPCInheritance:
             assert expected == actual
         else:
             np.testing.assert_array_equal(expected, actual)
+
+    @pytest.mark.parametrize(
+        "source_crs",
+        [CRS.from_epsg(32633).to_3d(), CRS.from_user_input("EPSG:32633+5703")],
+    )
+    def test_reproject__preserves_vcrs_with_2d_target(self, epc_frame: gpd.GeoDataFrame, source_crs: CRS) -> None:
+        """Checks that horizontal reprojection rebuilds a 3D CRS with the source vertical reference."""
+
+        # Create native and accessor EPC inputs with an ellipsoidal or orthometric vertical reference
+        source_frame = epc_frame.set_crs(source_crs, allow_override=True)
+        native = EPC(source_frame, data_column="height")
+        source_vcrs = native.vcrs
+        source_heights = source_frame.height.to_numpy().copy()
+        target_horizontal_crs = 32632
+
+        # Reproject both interfaces using only a two-dimensional horizontal target
+        native_output = native.reproject(crs=target_horizontal_crs)
+        accessor_output = source_frame.epc.reproject(crs=target_horizontal_crs)
+
+        # Check that both outputs use the new horizontal CRS and keep the unchanged height reference and values
+        assert isinstance(native_output, EPC) and isinstance(accessor_output, gpd.GeoDataFrame)
+        for output in (native_output, accessor_output.epc):
+            assert len(output.crs.axis_info) == 3
+            horizontal_crs = output.crs.sub_crs_list[0] if output.crs.is_compound else output.crs.to_2d()
+            assert horizontal_crs == CRS.from_epsg(target_horizontal_crs)
+            assert output.vcrs == source_vcrs
+            np.testing.assert_array_equal(output.data, source_heights)
+
+        # Check that horizontal reprojection leaves both source objects unchanged
+        assert native.crs == source_crs
+        assert source_frame.epc.crs == source_crs
 
     def test_methods__test_coverage(self) -> None:
         """Checks that every public EPC elevation property and method remains assigned to an explicit test."""
@@ -315,12 +346,11 @@ class TestEPCVerticalTransform:
 
 class TestEPCCoregistration:
     """
-    Test eager coregistration through EPC and its Pandas accessor.
+    Test module for eager coregistration through EPC and its Pandas accessor.
 
     This class tests:
     - ``coregister_3d`` with elevations in a column or in 3D point geometry,
-    - Raster references supplied as DEM objects or Xarray accessors,
-    - Clear rejection of Dask inputs without running or changing the lazy input.
+    - Raster references supplied as DEM objects or Xarray accessors.
     """
 
     @pytest.mark.parametrize("use_z", [False, True])
@@ -362,7 +392,11 @@ class TestEPCCoregistration:
         np.testing.assert_array_equal(actual.index, frame.index)
         np.testing.assert_array_equal(frame.epc.data, shifted.data)
 
-    def test_coregister_3d__dask_rejected(self, epc_frame: gpd.GeoDataFrame) -> None:
+
+class TestEPCCoregistrationErrors:
+    """Test module for rejecting unsupported Dask EPC coregistration without executing its graph."""
+
+    def test_coregister_3d__error_dask_unsupported(self, epc_frame: gpd.GeoDataFrame) -> None:
         """Checks that Dask EPC coregistration fails explicitly without executing the point graph."""
 
         dgpd = pytest.importorskip("dask_geopandas")

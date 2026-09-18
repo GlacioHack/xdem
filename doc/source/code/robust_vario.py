@@ -1,10 +1,10 @@
 """Plot example of Dowd variogram as robust estimator for guide page."""
 
+import geoutils as gu
 import matplotlib.pyplot as plt
 import numpy as np
+from affine import Affine
 from skgstat import OrdinaryKriging, Variogram
-
-import xdem
 
 # Inspired by test_variogram in skgstat
 # Generate some random but spatially correlated data with a range of ~20
@@ -25,25 +25,20 @@ dh = dh.reshape((60, 60))
 dh_outliers = dh.copy()
 dh_outliers[0:6, 0:6] = -20
 
-# Derive empirical variogram for Dowd and Matheron
-df_inl_matheron = xdem.spatialstats.sample_empirical_variogram(
-    dh, estimator="matheron", gsd=1, random_state=42, subsample=2000
-)
-df_inl_dowd = xdem.spatialstats.sample_empirical_variogram(dh, estimator="dowd", gsd=1, random_state=42, subsample=2000)
-
-df_all_matheron = xdem.spatialstats.sample_empirical_variogram(
-    dh_outliers, estimator="matheron", gsd=1, random_state=42, subsample=2000
-)
-df_all_dowd = xdem.spatialstats.sample_empirical_variogram(
-    dh_outliers, estimator="dowd", gsd=1, random_state=42, subsample=2000
-)
+# Derive empirical variograms directly through GeoUtils
+proxy = gu.Raster.from_array(np.ma.masked_invalid(dh), Affine(1, 0, 0, 0, -1, 60), crs=None)
+contaminated = proxy.copy(new_array=np.ma.masked_invalid(dh_outliers))
+df_inl_matheron = proxy.variogram(estimator="matheron", n_pairs=100_000, random_state=42)
+df_inl_dowd = proxy.variogram(estimator="dowd", n_pairs=100_000, random_state=42)
+df_all_matheron = contaminated.variogram(estimator="matheron", n_pairs=100_000, random_state=42)
+df_all_dowd = contaminated.variogram(estimator="dowd", n_pairs=100_000, random_state=42)
 
 fig, ax = plt.subplots()
 
-ax.plot(df_inl_matheron.lags, df_inl_matheron.exp, color="black", marker="x")
-ax.plot(df_inl_dowd.lags, df_inl_dowd.exp, color="black", linestyle="dashed", marker="x")
-ax.plot(df_all_matheron.lags, df_all_matheron.exp, color="red", marker="x")
-ax.plot(df_all_dowd.lags, df_all_dowd.exp, color="red", linestyle="dashed", marker="x")
+ax.plot(df_inl_matheron.lags, df_inl_matheron.semivariance, color="black", marker="x")
+ax.plot(df_inl_dowd.lags, df_inl_dowd.semivariance, color="black", linestyle="dashed", marker="x")
+ax.plot(df_all_matheron.lags, df_all_matheron.semivariance, color="red", marker="x")
+ax.plot(df_all_dowd.lags, df_all_dowd.semivariance, color="red", linestyle="dashed", marker="x")
 
 
 p1 = plt.plot([], [], color="darkgrey", label="Matheron", marker="x")
