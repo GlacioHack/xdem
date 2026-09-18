@@ -20,10 +20,13 @@
 
 from __future__ import annotations
 
+import collections.abc
 import copy
 import inspect
 import logging
+import sys
 import warnings
+from types import UnionType
 from typing import (
     Any,
     Callable,
@@ -33,6 +36,10 @@ from typing import (
     Mapping,
     TypedDict,
     TypeVar,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
     overload,
 )
 
@@ -1930,15 +1937,17 @@ class InFitOrBinDict(TypedDict, total=False):
 
     # TODO: Solve redundancy between optimizer and minimizer (curve_fit or minimize as default?)
     # For a minimization problem
-    fit_minimizer: Callable[..., tuple[NDArrayf, Any]]
-    fit_loss_func: Callable[[NDArrayf], np.floating[Any]]
+    fit_minimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["lsq_approx"]
+    fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str
 
     # Bin parameters: bin sizes, statistic and apply method
-    bin_sizes: int | dict[str, int | Iterable[float]]
+    bin_sizes: (
+        int | dict[str, int | float | Iterable[int | float] | NDArrayf | tuple[NDArrayf, Any] | list[int | float]]
+    )
     bin_statistic: Callable[[NDArrayf], np.floating[Any]]
     bin_apply_method: Literal["linear", "per_bin"]
     # Name of variables, and number of dimensions
-    bias_var_names: list[str]
+    bias_var_names: list[str] | None
     nd: int | None
 
 
@@ -1985,7 +1994,7 @@ class InSpecificDict(TypedDict, total=False):
     icp_picky: bool
 
     # (Using CPD) Weight for outlier removal
-    cpd_weight: float
+    cpd_weight: float | int
 
 
 class OutSpecificDict(TypedDict, total=False):
@@ -2001,7 +2010,7 @@ class InAffineDict(TypedDict, total=False):
     """Keys and types of inputs associated with affine methods."""
 
     # Estimated initial shift (z currently always equal to zero)
-    initial_shift: tuple[float, float, float] | None
+    initial_shift: tuple[float | int, float | int] | tuple[float | int, float | int, float | int] | None
     # Vertical shift reduction function for methods focusing on translation coregistration
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]]
     # Vertical shift activated
@@ -2060,6 +2069,174 @@ class CoregDict(TypedDict, total=False):
 
 
 CoregType = TypeVar("CoregType", bound="Coreg")
+
+PYTHON_TO_NUMPY = {
+    float: np.floating,
+    int: np.integer,
+    complex: np.complexfloating,
+    bool: np.bool_,
+}
+
+
+def validate_typed_dict(data: dict[Any, Any], typed_dict: type) -> bool:
+    """
+    Validate a dict data in comparison to a TypeDict typed_dict
+    :param data: dict to check
+    :param typed_dict: TypeDict to fit
+    :return: if the dict correspond to the typed_dict or not
+    """
+    # Get all inputs in the dict and their type
+    hints = get_type_hints(typed_dict)
+
+    # Checks the type for each input if it exists in data
+    for key, expected_type in hints.items():
+        if key in data:
+            # Stop the verification if type error
+            if not _check_type(data[key], expected_type):
+                raise TypeError(
+                    f"Argument '{key}' invalid, must be a {string_format_type(expected_type)}, "
+                    f"got {data[key]!r} ({type(data[key]).__name__})"
+                )
+    return True
+
+
+def _check_type(value: Any, expected_type: Any) -> bool:
+    """
+    Validate if a value correspond to an expected_type
+    :param value: value to check
+    :param expected_type: TypeDict to fit
+    :return: if the value correspond to the expected_type or not
+    """
+
+    # Any accepts everything
+    if expected_type is Any:
+        return True
+
+    origin_type = get_origin(expected_type) or expected_type
+    args = get_args(expected_type)
+
+    # Get type of expected_type
+    if origin_type in (Callable, collections.abc.Callable):
+        return callable(value)
+
+    # Expected type is a union of different types, iterate over them
+    if origin_type in (Union, UnionType):
+        return any(_check_type(value, arg) for arg in args)
+
+    # Expected type need to be a Literal
+    if origin_type is Literal:
+        return value in args
+
+    """def numpy_to_type(t):
+        mapping = {
+            np.floating: float,
+            np.integer: int,
+            np.complexfloating: complex,
+            np.bool_: bool,
+        }
+        return mapping.get(t, t)"""
+
+    import numpy as np
+
+    def get_corresponging_type(t: type) -> type:
+        if t in PYTHON_TO_NUMPY:
+            return PYTHON_TO_NUMPY.get(t, t)
+        else:
+            return {value: key for key, value in PYTHON_TO_NUMPY.items()}.get(t, t)
+
+    # Expected type need to be a list
+    if origin_type is list:
+        if isinstance(value, np.ndarray):
+            value = value.tolist()
+
+        if not isinstance(value, list):
+            return False
+
+        if not args:
+            return True
+
+        return all(_check_type(item, args[0]) for item in value)
+
+    if sys.version_info.minor >= 9:
+        from numpy.typing import NDArray
+
+        if origin_type is NDArray:
+            args = get_args(expected_type)
+            return isinstance(value, (list, np.ndarray)) and all(_check_type(v, get_origin(args[0])) for v in value)
+
+    # Expected type need to be a tuple
+    if origin_type is tuple:
+        if not args:
+            return True
+        return (
+            isinstance(value, tuple) and len(args) == len(value) and all(_check_type(v, t) for v, t in zip(value, args))
+        )
+
+    # Expected type need to be an Iterable
+    if origin_type is collections.abc.Iterable:
+        args = get_args(expected_type)
+        return isinstance(value, collections.abc.Iterator) and all(_check_type(v, args) for v in value)
+
+    # Expected type need to be another dict
+    if origin_type is dict:
+        if not isinstance(value, dict):
+            return False
+        if not args:
+            return True
+
+        key_type, val_type = args
+        return all(_check_type(k, key_type) and _check_type(v, val_type) for k, v in value.items())
+
+    # Expected type need to be another dict
+    if isinstance(expected_type, type) and hasattr(expected_type, "__annotations__") and isinstance(value, dict):
+        return validate_typed_dict(value, expected_type)
+
+    # Expected type need to be a ndarray
+    if origin_type is np.ndarray:
+        if not isinstance(value, (list, np.ndarray)):
+            return False
+        if not isinstance(value, np.ndarray):
+            value = np.array(value)
+        return np.issubdtype(value.dtype, np.integer) or np.issubdtype(value.dtype, np.floating)
+
+    return (
+        isinstance(value, expected_type)
+        or isinstance(value, get_corresponging_type(expected_type))
+        or type(value) is expected_type
+    )
+
+
+def string_format_type(expected_type: tuple[Any, ...]) -> str:
+    """
+    Return expected_type in a understable string format
+    :param expected_type: TypeDict to fit
+    :return: string
+    """
+    origin_type = get_origin(expected_type)
+
+    if origin_type in (Union, UnionType):
+        return " or ".join(string_format_type(t) for t in get_args(expected_type))
+
+    if origin_type is list:
+        return f"list of {string_format_type(get_args(expected_type)[0])}"
+
+    if origin_type is dict:
+        key_t, val_t = get_args(expected_type)
+        return f"dict[{string_format_type(key_t)}, {string_format_type(val_t)}]"
+
+    if origin_type is tuple:
+        return f"({', '.join(string_format_type(t) for t in get_args(expected_type))})"
+
+    if origin_type is Literal:
+        return f"one of these values {get_args(expected_type)}"
+
+    if origin_type in (Callable, collections.abc.Callable):
+        return "function (callable)"
+
+    if hasattr(expected_type, "__name__"):
+        return expected_type.__name__
+
+    return str(expected_type)
 
 
 class Coreg:
@@ -2124,6 +2301,8 @@ class Coreg:
                     if k in keys_per_level[i]:
                         dict_meta["inputs"][lv][k] = v  # type: ignore
                         continue
+
+        # validate_typed_dict(dict_meta, CoregDict)  # type: ignore
 
         self._meta: CoregDict = dict_meta
 
@@ -2892,7 +3071,7 @@ class Coreg:
         """
 
         # Store bias variable names from the dictionary if undefined
-        if self._meta["inputs"]["fitorbin"]["bias_var_names"] is None:
+        if self._meta["inputs"]["fitorbin"]["bias_var_names"] is None and bias_vars is not None:
             self._meta["inputs"]["fitorbin"]["bias_var_names"] = list(bias_vars.keys())
 
         # Run the fit or bin, passing the dictionary of parameters
@@ -3117,14 +3296,14 @@ class CoregPipeline(Coreg):
             )
 
         # Raise error if the variables explicitly assigned don't match the ones passed in bias_vars
-        if not all(n in bias_vars.keys() for n in var_names):
+        if not all(n in bias_vars.keys() for n in var_names):  # type: ignore
             raise ValueError(
                 "Not all keys of `bias_vars` in .fit() match the `bias_var_names` defined during "
                 "instantiation of the bias correction step {}: {}.".format(coreg.__class__, var_names)
             )
 
         # Add subset dict for this pipeline step to args of fit and apply
-        return {n: bias_vars[n] for n in var_names}
+        return {n: bias_vars[n] for n in var_names}  # type: ignore
 
     # Need to override base Coreg method to work on pipeline steps
     def fit(

@@ -246,7 +246,7 @@ class TestTerrainAttribute:
 
         res_gta = xdem.terrain.get_terrain_attribute(self.dem, attribute=attribute)
         res_fun = from_str_to_fun[attribute]()
-        assert res_gta == res_fun
+        assert res_gta.raster_equal(res_fun)
 
     @pytest.mark.parametrize("surfit_windowsizes", [("Florinsky", 3, 5), ("ZevenbergThorne", 7, 13)])
     def test_get_terrain_attribute__multiple_inputs(self, surfit_windowsizes: tuple[str, int, int]) -> None:
