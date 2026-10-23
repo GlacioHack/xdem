@@ -213,17 +213,18 @@ class TestCoregClass:
         # Check that the random state is properly set when subsampling explicitly or implicitly
         assert coreg_full.meta["inputs"]["random"]["random_state"] == 42
 
-        # Test subsampled vertical shift correction
-        coreg_sub = coreg_class(subsample=0.1)
-        assert coreg_sub.meta["inputs"]["random"]["subsample"] == 0.1
+        # Use a larger fraction for iterative NuthKaab fitting
+        fraction = 0.5 if coreg_class == coreg.NuthKaab else 0.1
+        coreg_sub = coreg_class(subsample=fraction)
+        assert coreg_sub.meta["inputs"]["random"]["subsample"] == fraction
 
-        # Fit the vertical shift using 10% of the unmasked data using a fraction
+        # Fit using a fraction of the unmasked data
         coreg_sub.fit(**self.fit_params, random_state=42, **fit_kwargs)
         # Do the same but specify the pixel count instead.
-        # They are not perfectly equal (np.count_nonzero(self.mask) // 2 would be exact)
-        # But this would just repeat the subsample code, so that makes little sense to test.
-        coreg_sub = coreg_class(subsample=self.tba.data.size // 10)
-        assert coreg_sub.meta["inputs"]["random"]["subsample"] == self.tba.data.size // 10
+        # A count from the full raster is not exactly the same as a fraction of valid cells
+        sample_count = int(self.tba.data.size * fraction)
+        coreg_sub = coreg_class(subsample=sample_count)
+        assert coreg_sub.meta["inputs"]["random"]["subsample"] == sample_count
         coreg_sub.fit(**self.fit_params, random_state=42, **fit_kwargs)
 
     def test_subsample__errors(self) -> None:
@@ -341,7 +342,7 @@ class TestCoregClass:
 
         if comp == "strict":
             # Both methods should yield the exact same output
-            assert dem_coreg_resample == dem_coreg_noresample
+            assert dem_coreg_resample.raster_equal(dem_coreg_noresample)
         elif comp == "approx":
             # The georef should be different
             assert dem_coreg_noresample.transform != dem_coreg_resample.transform

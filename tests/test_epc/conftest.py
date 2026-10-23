@@ -27,7 +27,7 @@ def epc_frame() -> gpd.GeoDataFrame:
         geometry=gpd.points_from_xy(500000 + cols.ravel() * 20, 8600000 - rows.ravel() * 20),
         crs="EPSG:32633+5703",
     )
-    frame.attrs["data_column"] = "height"
+    frame.attrs["data_name"] = "height"
     frame.attrs["geometry_type"] = "Point"
     frame.attrs["survey"] = "synthetic"
     return frame

@@ -487,7 +487,7 @@ class TestToVCRSChunked:
             crs="EPSG:32633+5703",
             index=coordinates * 3 + 7,
         )
-        frame.attrs["data_column"] = "height"
+        frame.attrs["data_name"] = "height"
         original = frame.copy()
 
         # Create EPC and Dask versions; the original GeoDataFrame is used for the Pandas accessor call below

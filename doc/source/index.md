@@ -113,7 +113,6 @@ coregistration
 biascorr
 gapfill
 uncertainty
-uncertainty_migration
 ```
 
 ```{toctree}

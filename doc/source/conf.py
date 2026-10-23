@@ -79,7 +79,7 @@ intersphinx_mapping = {
     "pyproj": ("https://pyproj4.github.io/pyproj/stable", None),
     "geopandas": ("https://geopandas.org/en/stable", None),
     "xarray": ("https://docs.xarray.dev/en/stable/", None),
-    "rioxarray": ("https://corteva.github.io/rioxarray/stable/", None),
+    "rioxarray": ("https://vylor.github.io/rioxarray/stable/", None),
 }
 
 sphinx_gallery_conf = {
@@ -105,6 +105,15 @@ sphinx_gallery_conf = {
         "sphinxext.reset_mpl",
     ),
     # To reset matplotlib for each gallery (and run custom function that fixes the default DPI)
+}
+
+# Resolve base classes imported only for annotations without introducing circular runtime imports
+autodoc_type_aliases = {
+    "RasterBase": "geoutils.raster.base.RasterBase",
+    "VectorBase": "geoutils.vector.base.VectorBase",
+    "PointCloudBase": "geoutils.pointcloud.base.PointCloudBase",
+    "DEMBase": "xdem.dem.base.DEMBase",
+    "EPCBase": "xdem.epc.base.EPCBase",
 }
 
 extlinks = {

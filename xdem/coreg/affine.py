@@ -33,7 +33,7 @@ import rasterio as rio
 import scipy.optimize
 import scipy.spatial
 from geoutils._typing import Number
-from geoutils.interface.interpolation import _interp_points_base
+from geoutils.interface.resampling import _interp_points_base
 from geoutils.raster.referencing import _coords, _res
 from geoutils.stats import nmad
 from scipy.spatial import cKDTree
@@ -54,13 +54,14 @@ from xdem.coreg.base import (
     _bin_or_and_fit_nd,
     _get_subsample_mask_pts_rst,
     _make_matrix_valid,
+    _ols_fit,
     _reproject_horizontal_shift_samecrs,
     _subsample_rst_pts,
     invert_matrix,
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
 )
-from xdem.fit import index_trimmed
+from xdem.fit import _check_fit_rank, index_trimmed
 
 _LzdInterpolator = Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]
 _CorrelationModel = tuple[Callable[..., NDArrayf], float]
@@ -117,6 +118,43 @@ def _check_inputs_bin_before_fit(
             )
 
 
+def _resolve_fit_minimizer(
+    fit_minimizer: Callable[..., Any] | Literal["ols"] | None,
+    fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str,
+    linearized: bool,
+) -> Callable[..., Any] | Literal["ols"]:
+    """Select direct OLS for a linear model and linear loss, or preserve the requested minimizer."""
+
+    # Preserve robust losses by using the iterative solver when no minimizer was explicitly selected
+    linear_loss = isinstance(fit_loss_func, str) and fit_loss_func == "linear"
+    if fit_minimizer is None:
+        if linearized and linear_loss:
+            return "ols"
+        return scipy.optimize.least_squares
+
+    # Require a callable minimizer or an OLS solve whose model and loss are both linear
+    if isinstance(fit_minimizer, str):
+        if fit_minimizer != "ols":
+            raise ValueError("fit_minimizer must be 'ols', a callable or None.")
+        if not linearized:
+            raise ValueError("fit_minimizer='ols' requires a linearized LZD or point-to-plane ICP model.")
+        if not linear_loss:
+            raise ValueError("fit_minimizer='ols' requires fit_loss_func='linear'.")
+    elif not callable(fit_minimizer):
+        raise TypeError("fit_minimizer must be 'ols', a callable or None.")
+    return fit_minimizer
+
+
+def _format_iteration_value(value: float | None) -> str:
+    """Format iteration statistics and tolerances with the precision used in workflow reports."""
+
+    if value is None:
+        return "None"
+    if 0 < abs(value) < 1e-3 or abs(value) > 1e5:
+        return np.format_float_scientific(value, precision=3)
+    return f"{value:.3f}"
+
+
 def _iterate_method(
     method: Callable[..., Any],
     iterating_input: Any,
@@ -140,6 +178,7 @@ def _iterate_method(
 
     # Initiate inputs
     new_inputs = iterating_input
+    converged = False
 
     # Initiate storage of iteration statistics
     list_df = []
@@ -173,21 +212,21 @@ def _iterate_method(
         # Print final results
         if logging.getLogger().getEffectiveLevel() <= logging.INFO:
             pbar.write(f"      Iteration #{i + 1:d}")
-            k = list(tolerances.keys())
-            for j in range(len(tolerances)):
-                pbar.write(f"   Last {k[j]} offset: {new_statistics[k[j]]}")
+            for name in tolerances:
+                pbar.write(f"   Last {name} offset: {_format_iteration_value(new_statistics[name])}")
 
         # Check that all statistics are below their respective tolerance
         if all(tolerances[k] is None or new_statistics[k] < tolerances[k] for k in tolerances):
+            converged = True
             if logging.getLogger().getEffectiveLevel() <= logging.INFO:
                 pbar.write("   The last offset(s) were all below the set tolerance(s) -> stopping")
-                all_tolerances = ";".join(f"{k}: {v}" for k, v in tolerances.items())
+                all_tolerances = "; ".join(f"{k}: {_format_iteration_value(v)}" for k, v in tolerances.items())
                 pbar.write(f"   Set tolerance(s) were: {all_tolerances}.")
 
             break
 
     df_all_it = pd.concat(list_df)
-    output_iterative = OutIterativeDict(last_iteration=i + 1, iteration_stats=df_all_it)
+    output_iterative = OutIterativeDict(last_iteration=i + 1, iteration_stats=df_all_it, converged=converged)
 
     return new_inputs, new_statistics, output_iterative, static_outputs
 
@@ -217,7 +256,7 @@ def _subsample_on_mask_interpolator(
         assert ref_transform is not None and tba_transform is not None
         coords = _coords(transform=ref_transform, shape=ref_elev.shape, area_or_point=area_or_point, grid=True)
         tba_elev_interpolator = _reproject_horizontal_shift_samecrs(
-            tba_elev, src_transform=tba_transform, return_interpolator=True
+            tba_elev, src_transform=tba_transform, return_interpolator=True, area_or_point=area_or_point
         )
 
         # Subsample coordinates
@@ -707,6 +746,9 @@ def _nuth_kaab_bin_fit(
         y = y[~ind]
         aspect = aspect[~ind]
 
+    # Require variation in aspect to distinguish a horizontal shift from the fitted constant
+    _check_fit_rank(_design_matrix_nuth_kaab(aspect), ("tx", "ty", "offset"), "NuthKaab")
+
     # Prepare an initial estimate for optimizers that use the original non-linear model
     p0 = (3 * np.nanstd(y) / (2**0.5), 0.0, np.nanmean(y))
 
@@ -910,21 +952,29 @@ def nuth_kaab(
         if not isinstance(ref_elev, np.ndarray):
             raise TypeError("NuthKaab requires a DEM raster as the continuous grid to derive slope/aspect.")
         sub_pts = sub_tba
-        sub_rst = _reproject_horizontal_shift_samecrs(ref_elev, src_transform=transform, return_interpolator=True)
+        sub_rst = _reproject_horizontal_shift_samecrs(
+            ref_elev, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
+        )
         grid_dem = ref_elev
         ref = "rst"
     else:
         if not isinstance(tba_elev, np.ndarray):
             raise TypeError("NuthKaab requires a DEM raster as the continuous grid to derive slope/aspect.")
         sub_pts = sub_ref
-        sub_rst = _reproject_horizontal_shift_samecrs(tba_elev, src_transform=transform, return_interpolator=True)
+        sub_rst = _reproject_horizontal_shift_samecrs(
+            tba_elev, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
+        )
         grid_dem = tba_elev
         ref = "pts"
 
     # Derive auxiliary variables on the continuous DEM grid (once), then build 2D interpolators (once)
     gradx, grady = _nuth_kaab_aux_vars_grad(elev=grid_dem)
-    sub_gradx = _reproject_horizontal_shift_samecrs(gradx, src_transform=transform, return_interpolator=True)
-    sub_grady = _reproject_horizontal_shift_samecrs(grady, src_transform=transform, return_interpolator=True)
+    sub_gradx = _reproject_horizontal_shift_samecrs(
+        gradx, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
+    )
+    sub_grady = _reproject_horizontal_shift_samecrs(
+        grady, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
+    )
 
     # Initialise east, north and vertical offset variables (these will be incremented up and down)
     initial_offset = (0.0, 0.0, 0.0)
@@ -989,6 +1039,8 @@ def _dh_minimize_fit(
     """
     # Define partial function
     loss_func = params_fit_or_bin["fit_loss_func"]
+    fit_minimizer = params_fit_or_bin["fit_minimizer"]
+    assert callable(fit_minimizer)
 
     def fit_func(coords_offsets: tuple[float, float]) -> np.floating[Any]:
         return loss_func(_dh_minimize_fit_func(coords_offsets=coords_offsets, dh_interpolator=dh_interpolator))
@@ -997,14 +1049,14 @@ def _dh_minimize_fit(
     init_offsets = (0, 0)
 
     # Default parameters depending on optimizer used
-    if params_fit_or_bin["fit_minimizer"] == scipy.optimize.minimize:
+    if fit_minimizer == scipy.optimize.minimize:
         if "method" not in kwargs.keys():
             kwargs.update({"method": "Nelder-Mead"})
             # This method has trouble when initialized with 0,0, so defaulting to 1,1
             # (tip from Simon Gascoin: https://github.com/GlacioHack/xdem/pull/595#issuecomment-2387104719)
             init_offsets = (1, 1)
 
-    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs)
+    results = fit_minimizer(fit_func, init_offsets, **kwargs)
 
     # Get final offsets with the right sign direction
     offset_east = -results.x[0]
@@ -1109,7 +1161,7 @@ def vertical_shift(
     logging.info("Vertical shift estimated")
 
     # Get final subsample size
-    subsample_final = len(sub_ref)
+    subsample_final = sub_ref.shape[1]
 
     return vshift, subsample_final
 
@@ -1315,6 +1367,24 @@ def _icp_fit(
     # Group inputs into a single array
     inputs = (ref, tba, norms)
 
+    # Point-to-plane distances cannot determine every translation on a flat or planar surface
+    if method == "point-to-plane":
+        assert norms is not None
+        design = norms.T
+        names: tuple[str, ...] = ("tx", "ty", "tz")
+        if not only_translation:
+            design = np.column_stack((design, np.cross(tba.T, norms.T)))
+            names = ("tx", "ty", "tz", "rx", "ry", "rz")
+        _check_fit_rank(design, names, "ICP")
+
+    # Solve the fixed point-to-plane correspondences directly when their residuals are linear
+    fit_minimizer = params_fit_or_bin["fit_minimizer"]
+    if isinstance(fit_minimizer, str):
+        assert method == "point-to-plane" and linearized and norms is not None
+        target = np.sum(norms * (ref - tba), axis=0)
+        beta, _ = _ols_fit(None, design, target, None)
+        return matrix_from_translations_rotations(*beta, use_degrees=False)  # type: ignore
+
     # Define loss function
     loss_func = params_fit_or_bin["fit_loss_func"]
 
@@ -1360,7 +1430,7 @@ def _icp_fit(
         # Initial offset near zero
         init_offsets = np.zeros(3)
 
-    results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, **kwargs, loss=loss_func)
+    results = fit_minimizer(fit_func, init_offsets, **kwargs, loss=loss_func)
     # Mypy: having results as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
     assert results is not None
     # Build matrix out of optimized parameters
@@ -1640,7 +1710,9 @@ def icp(
     # Over-write iterative output for iterative sampling
     if sampling_strategy == "iterative_same_xy":
         iteration_stats = pd.concat(list_iteration_stats)
-        output_iterative = OutIterativeDict(last_iteration=i + 1, iteration_stats=iteration_stats)
+        output_iterative = OutIterativeDict(
+            last_iteration=i + 1, iteration_stats=iteration_stats, converged=output_iterative["converged"]
+        )
 
     # Get subsample size
     # TODO: Support reporting different number of subsamples when independent?
@@ -1975,7 +2047,8 @@ def _cpd_mstep_classic_fit_minimizer(
     A = np.dot(A, Y_hat)
 
     # Optimization hook
-    fit_minimizer: Callable[..., Any] = params_fit_or_bin["fit_minimizer"]
+    fit_minimizer = params_fit_or_bin["fit_minimizer"]
+    assert callable(fit_minimizer)
     loss_func = params_fit_or_bin["fit_loss_func"]
 
     # Precompute pair indices once (constant shape each iteration)
@@ -2128,7 +2201,8 @@ def _cpd_mstep_classic_fit_minimizer_fast(
     A = np.dot(np.transpose(X_hat), np.transpose(P))
     A = np.dot(A, Y_hat)
 
-    fit_minimizer: Callable[..., Any] = params_fit_or_bin["fit_minimizer"]
+    fit_minimizer = params_fit_or_bin["fit_minimizer"]
+    assert callable(fit_minimizer)
     loss_func = params_fit_or_bin["fit_loss_func"]
 
     w_sqrt = np.sqrt(P1_safe)  # (M,)
@@ -2434,7 +2508,8 @@ def _cpd_mstep_lsg_least_squares(
 
     # Define loss function (same naming as ICP)
     loss_func = params_fit_or_bin["fit_loss_func"]
-    fit_minimizer: Callable[..., Any] = params_fit_or_bin["fit_minimizer"]
+    fit_minimizer = params_fit_or_bin["fit_minimizer"]
+    assert callable(fit_minimizer)
 
     # With rotation: optimize rotvec + translation
     if not only_translation:
@@ -2901,7 +2976,9 @@ def cpd(
     # Over-write iterative output for iterative sampling
     if sampling_strategy == "iterative_same_xy":
         iteration_stats = pd.concat(list_iteration_stats)
-        output_iterative = OutIterativeDict(last_iteration=i + 1, iteration_stats=iteration_stats)
+        output_iterative = OutIterativeDict(
+            last_iteration=i + 1, iteration_stats=iteration_stats, converged=output_iterative["converged"]
+        )
 
     # Get subsample size
     # TODO: Support reporting different number of subsamples when independent?
@@ -2917,6 +2994,33 @@ def cpd(
 #######################
 # 6/ Least Z-difference
 #######################
+
+
+def _check_lzd_rank(
+    x: NDArrayf,
+    y: NDArrayf,
+    z: NDArrayf,
+    gradx: NDArrayf,
+    grady: NDArrayf,
+    only_translation: bool,
+) -> NDArrayf:
+    """
+    Require enough terrain variation to distinguish the active LZD parameters.
+
+    Return the checked design matrix with three translation columns and, if requested, three rotation columns.
+    """
+
+    # Derive translation columns from the surface normal and rotation columns about the fit centroid
+    normals = np.column_stack((-gradx, -grady, np.ones_like(gradx)))
+    if only_translation:
+        design = normals
+        names: tuple[str, ...] = ("tx", "ty", "tz")
+    else:
+        centered = np.column_stack((x, y, z))
+        design = np.column_stack((normals, np.cross(centered, normals)))
+        names = ("tx", "ty", "tz", "rx", "ry", "rz")
+    _check_fit_rank(design, names, "LZD")
+    return design
 
 
 def _lzd_aux_vars(
@@ -3010,15 +3114,18 @@ def _lzd_fit_func_nonlinear(
     dh = sub_rst((y, x)) - z
     dh = np.asarray(dh).reshape(-1)
 
-    # Remove invalid values (created by interpolation)
-    return dh[np.isfinite(dh)]
+    # Exclude invalid samples from the objective without changing its residual dimensions during finite differences
+    valid = np.isfinite(dh)
+    if not np.any(valid):
+        raise ValueError("The subsample contains no more valid values during nonlinear LZD fitting.")
+    return np.where(valid, dh, 0.0)
 
 
 def _lzd_fit_nonlinear(
     sub_rst: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
     pts_epc: NDArrayf,
     centroid: tuple[float, float, float],
-    params_fit_or_bin: Any,  # InFitOrBinDict
+    params_fit_or_bin: InFitOrBinDict,
     only_translation: bool,
     **kwargs: Any,
 ) -> NDArrayf:
@@ -3041,49 +3148,26 @@ def _lzd_fit_nonlinear(
 
     inputs = (sub_rst, pts_epc, centroid)
 
-    fit_minimizer: Callable[..., Any] = params_fit_or_bin["fit_minimizer"]
+    fit_minimizer = params_fit_or_bin["fit_minimizer"]
+    assert callable(fit_minimizer)
     loss_func = params_fit_or_bin["fit_loss_func"]
 
-    # With rotation: 6 DOF
-    if not only_translation:
+    # Start from an identity step, fitting three translations and optionally three rotations
+    parameter_count = 3 if only_translation else 6
+    init_offsets = np.zeros(parameter_count, dtype=float)
 
-        def fit_func(offsets: NDArrayf) -> NDArrayf:
-            return _lzd_fit_func_nonlinear(
-                inputs=inputs,
-                t1=float(offsets[0]),
-                t2=float(offsets[1]),
-                t3=float(offsets[2]),
-                alpha1=float(offsets[3]),
-                alpha2=float(offsets[4]),
-                alpha3=float(offsets[5]),
-            )
+    def fit_func(offsets: NDArrayf) -> NDArrayf:
+        """Evaluate vertical residuals with zero rotations when fitting translations only."""
 
-        init_offsets = np.zeros(6, dtype=float)
-
-    # Translation only: 3 DOF
-    else:
-
-        def fit_func(offsets: NDArrayf) -> NDArrayf:
-            return _lzd_fit_func_nonlinear(
-                inputs=inputs,
-                t1=float(offsets[0]),
-                t2=float(offsets[1]),
-                t3=float(offsets[2]),
-                alpha1=0.0,
-                alpha2=0.0,
-                alpha3=0.0,
-            )
-
-        init_offsets = np.zeros(3, dtype=float)
+        parameters = np.zeros(6, dtype=float)
+        parameters[:parameter_count] = offsets
+        return _lzd_fit_func_nonlinear(inputs, *parameters)
 
     results = fit_minimizer(fit_func, init_offsets, loss=loss_func, **kwargs)
-    assert results is not None
 
-    # Build step matrix
-    if only_translation:
-        beta = np.array([results.x[0], results.x[1], results.x[2], 0.0, 0.0, 0.0], dtype=float)
-    else:
-        beta = np.asarray(results.x, dtype=float)
+    # Restore zero rotations for translation-only fits before constructing the step matrix
+    beta = np.zeros(6, dtype=float)
+    beta[:parameter_count] = results.x
 
     return matrix_from_translations_rotations(
         t1=float(beta[0]),
@@ -3248,10 +3332,14 @@ def _lzd_fit_error_propag(
     sig_h_grid: NDArrayf | None = None,
     corr_h_grid: _CorrelationModel | None = None,
     force_opti: Literal["gls", "tls"] | None = None,
+    only_translation: bool = False,
 ) -> tuple[NDArrayf, NDArrayf, NDArrayf]:
     """
     Error-aware LZD using either generalized least-squares (GLS) or total least-squares (TLS), depending on
     the error structure of the inputs.
+
+    Fit three translations when only_translation=True, otherwise also fit three rotations. Return parameter
+    estimates, standard errors and their covariance in the order tx, ty, tz, followed by rx, ry, rz when fitted.
     """
 
     # Test data
@@ -3285,7 +3373,10 @@ def _lzd_fit_error_propag(
 
     # Linear regression Y = β X
     # Independent variable
-    X = np.stack([-gx, -gy, y + gy * z, -x - gx * z, gx * y - gy * x])
+    if only_translation:
+        X = np.stack([-gx, -gy])
+    else:
+        X = np.stack([-gx, -gy, y + gy * z, -x - gx * z, gx * y - gy * x])
     # Dependent variable
     Y = dh
 
@@ -3295,12 +3386,10 @@ def _lzd_fit_error_propag(
 
         if force_opti == "gls":
             logging.info("Forcing method optimization method 'gls' for LZD.")
-        import statsmodels.api as sm
-
         logging.info("No error passed for gridded elevation, using GLS for LZD error propagation.")
 
-        # Add a constant to the independent variables for the intercept
-        X2 = sm.add_constant(X.T)
+        # Add the vertical translation as an intercept before the gradient and optional rotation columns
+        X2 = np.column_stack((np.ones_like(dh), X.T))
 
         # Known error covariance matrix accounting for autocorrelation and heteroscedasticity
         # pdists = squareform(pdist(np.stack([x, y]).T))
@@ -3409,8 +3498,8 @@ def _lzd_fit_error_propag(
         w_Y = 1 / cov_Y
 
         # 2/ Covariance of independent variable
-        # We need to build a (5, 5, N) covariance matrix describing the covariance between input variables
-        # The 6th term, the intercept constant (z translation), doesn't need to be defined yet for the covariance
+        # Build a (2, 2, N) or (5, 5, N) covariance for gradients and optional rotation variables
+        # The intercept constant (z translation) has no input error and is added by the multilinear model
 
         # Diagonals
         var_X = np.array(
@@ -3422,11 +3511,6 @@ def _lzd_fit_error_propag(
                 y**2 * var_gx + x**2 * var_gy + var_x * gy**2 + var_y * gx**2,
             ]
         )
-
-        ratio_X = np.mean(cov_Y) / np.var(Y)
-        logging.info(f"Y error/variance ratio: {ratio_X}")
-        ratio_X = np.mean(var_X, axis=1) / np.var(X, axis=1)
-        logging.info(f"X error/variance ratio: {ratio_X}")
 
         # For zeros
         zeros = np.zeros(len(z))
@@ -3458,6 +3542,16 @@ def _lzd_fit_error_propag(
         # Reactivate black formatting
         # fmt: on
 
+        # Translation fits use only gradient errors, excluding coordinate errors from the rotation variables
+        if only_translation:
+            var_X = var_X[:2]
+            cov_XX = cov_XX[:2, :2]
+
+        ratio_X = np.mean(cov_Y) / np.var(Y)
+        logging.info(f"Y error/variance ratio: {ratio_X}")
+        ratio_X = np.mean(var_X, axis=1) / np.var(X, axis=1)
+        logging.info(f"X error/variance ratio: {ratio_X}")
+
         # TODO: Move those to tests
         # ind_symmetric = [np.all(np.array_equal(cov_XX[:, :, i], cov_XX[:, :, i].T)) for i in range(cov_XX.shape[-1])]
         # ind_pos_semidef = np.array([np.all(np.linalg.eigvals(cov_XX[:, :, i]) > 0) for i in range(cov_XX.shape[-1])])
@@ -3472,7 +3566,7 @@ def _lzd_fit_error_propag(
         #     print(f"Y: {y[indices_wrong[i]]}")
         #     print(f"Z: {z[indices_wrong[i]]}")
 
-        # Convert to weight, inverting each 5x5 matrix for a given observation (as those are assumed uncorrelated)
+        # Invert each observation covariance to obtain weights (observations are assumed uncorrelated)
         w_XX = np.ones(cov_XX.shape)
         for i in range(cov_XX.shape[-1]):
             # Regularize diagonal with 10e-3 term to ensure semi-positiveness
@@ -3481,7 +3575,8 @@ def _lzd_fit_error_propag(
 
         # rd = RealData(x=X, y=Y, covx=cov_XX, covy=cov_Y)
         rd = Data(x=X, y=Y, we=w_Y, wd=w_XX)
-        odr = ODR(rd, multilinear, beta0=np.zeros(6))  # We define the 6th term here in the multilinear model and beta0
+        # Fit one coefficient per input variable and the vertical translation as an intercept
+        odr = ODR(rd, multilinear, beta0=np.zeros(X.shape[0] + 1))
 
         output = odr.run()
         # logging.info("TLS summary from scipy.odr:")
@@ -3495,10 +3590,11 @@ def _lzd_fit_error_propag(
     # logging.info(beta1)
     # logging.info(beta2)
 
-    # Re-order output to be t1, t2, t3, r1, r2, r3, given that t3 (constant) was added at the end
-    ind = np.array([1, 2, 0, 3, 4, 5])
+    # Move the intercept (vertical translation) after the two horizontal translations in every output
+    ind = np.array([1, 2, 0] if only_translation else [1, 2, 0, 3, 4, 5])
     beta = beta[ind]
     sd_beta = sd_beta[ind]
+    cov_beta = cov_beta[np.ix_(ind, ind)]
 
     return beta, sd_beta, cov_beta
 
@@ -3559,6 +3655,9 @@ def _lzd_fit_linearized(
     # Inputs that are not parameters to optimize
     inputs = (x, y, z, dh, gradx, grady)
 
+    # Refuse flat or planar samples before an arbitrary transform can be fitted
+    design = _check_lzd_rank(x, y, z, gradx, grady, only_translation)
+
     # Define loss function
     loss_func = params_fit_or_bin["fit_loss_func"]
 
@@ -3601,8 +3700,12 @@ def _lzd_fit_linearized(
 
         if force_opti == "ols":
             logging.info("Forcing method optimization method 'ols' for LZD.")
-        results = params_fit_or_bin["fit_minimizer"](fit_func, init_offsets, loss=loss_func, **kwargs)
-        beta = results.x
+        fit_minimizer = params_fit_or_bin["fit_minimizer"]
+        if isinstance(fit_minimizer, str):
+            beta, _ = _ols_fit(None, design, dh, None)
+        else:
+            results = fit_minimizer(fit_func, init_offsets, loss=loss_func, **kwargs)
+            beta = results.x
         err_beta = None
     else:
         assert errors is not None
@@ -3619,6 +3722,7 @@ def _lzd_fit_linearized(
             sig_h_grid=errors[2],
             corr_h_grid=errors[3],
             force_opti=force_opti,
+            only_translation=only_translation,
         )
 
     # Mypy: having beta as "None" is impossible, but not understood through overloading of _bin_or_and_fit_nd...
@@ -3675,6 +3779,19 @@ def _lzd_fit(
             # Nonlinear path currently ignores GLS/TLS error propagation
             logging.info("Nonlinear LZD does not use GLS/TLS error propagation; using residual+loss only.")
 
+        # Check the same terrain geometry as the linearized solve before nonlinear optimization
+        x, y, z = trans_pts_epc
+        gradx = sub_gradx((y, x))
+        grady = sub_grady((y, x))
+        valid = np.isfinite(gradx) & np.isfinite(grady) & np.isfinite(sub_rst((y, x))) & np.isfinite(z)
+        _check_lzd_rank(
+            x[valid] - centroid[0],
+            y[valid] - centroid[1],
+            z[valid] - centroid[2],
+            gradx[valid],
+            grady[valid],
+            only_translation,
+        )
         step_matrix = _lzd_fit_nonlinear(
             sub_rst=sub_rst,
             pts_epc=trans_pts_epc,
@@ -3770,6 +3887,7 @@ def _lzd_iteration_step(
     sub_errors: _LzdErrorInterpolators | None,
     pixel_size: float,
     force_opti: Literal["ols", "gls", "tls"] | None = None,
+    fit_kwargs: dict[str, Any] | None = None,
 ) -> tuple[NDArrayf, dict[str, float], NDArrayf | None]:
     """
     Iteration step of Least Z-difference coregistration from Rosenholm and Torlegård (1988).
@@ -3791,6 +3909,7 @@ def _lzd_iteration_step(
         rotation as default.
     :param sub_errors: Input errors.
     :param pixel_size: Pixel size in meters.
+    :param fit_kwargs: Additional arguments for the fit minimizer.
 
     :return Affine matrix, Iteration statistics to compare to tolerances, Error outputs.
     """
@@ -3813,6 +3932,7 @@ def _lzd_iteration_step(
         pixel_size=pixel_size,
         force_opti=force_opti,
         linearized=linearized,
+        **(fit_kwargs or {}),
     )
 
     # Increment transformation matrix by step
@@ -3851,6 +3971,7 @@ def lzd(
     corr_ref: _CorrelationModel | None = None,
     corr_tba: _CorrelationModel | None = None,
     force_opti: Literal["ols", "gls", "tls"] | None = None,
+    **kwargs: Any,
 ) -> tuple[NDArrayf, tuple[float, float, float], int, OutIterativeDict, NDArrayf | None]:
     """
     Least Z-differences coregistration.
@@ -3909,26 +4030,34 @@ def lzd(
     if not isinstance(ref_elev, gpd.GeoDataFrame):
         ref = "rst"
         sub_pts = sub_tba
-        sub_rst = _reproject_horizontal_shift_samecrs(ref_elev, src_transform=transform, return_interpolator=True)
+        sub_rst = _reproject_horizontal_shift_samecrs(
+            ref_elev, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
+        )
     else:
         ref = "pts"
         sub_pts = sub_ref
-        sub_rst = _reproject_horizontal_shift_samecrs(tba_elev, src_transform=transform, return_interpolator=True)
+        sub_rst = _reproject_horizontal_shift_samecrs(
+            tba_elev, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
+        )
     # We use interpolators of gradx and grady in any case
-    sub_gradx = _reproject_horizontal_shift_samecrs(gradx, src_transform=transform, return_interpolator=True)
-    sub_grady = _reproject_horizontal_shift_samecrs(grady, src_transform=transform, return_interpolator=True)
+    sub_gradx = _reproject_horizontal_shift_samecrs(
+        gradx, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
+    )
+    sub_grady = _reproject_horizontal_shift_samecrs(
+        grady, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
+    )
 
     # If input errors were defined
     if any(x is not None for x in [sig_ref, sig_tba, corr_ref, corr_tba]):
         if sig_ref is not None:
             sub_sig_ref = _reproject_horizontal_shift_samecrs(
-                sig_ref, src_transform=transform, return_interpolator=True
+                sig_ref, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
             )
         else:
             sub_sig_ref = None
         if sig_tba is not None:
             sub_sig_tba = _reproject_horizontal_shift_samecrs(
-                sig_tba, src_transform=transform, return_interpolator=True
+                sig_tba, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
             )
         else:
             sub_sig_tba = None
@@ -3957,6 +4086,7 @@ def lzd(
         sub_errors,
         pixel_size,
         force_opti,
+        kwargs,
     )
     final_matrix, _, output_iterative, err_beta = _iterate_method(
         method=_lzd_iteration_step,
@@ -4423,7 +4553,7 @@ class ICP(AffineCoreg):
         linearized: bool = True,
         only_translation: bool = False,
         anisotropic: Literal["xy_vs_z", "per_axis"] | None = "xy_vs_z",
-        fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
+        fit_minimizer: Callable[..., Any] | Literal["ols"] | None = None,
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
         max_iterations: int = 20,
         tolerance_translation: float | None = 0.01,
@@ -4449,7 +4579,9 @@ class ICP(AffineCoreg):
             "point-to-plane").
         :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
             rotation as default.
-        :param fit_minimizer: Minimizer for the coregistration function.
+        :param fit_minimizer: Minimizer for the coregistration function. If None, use direct OLS for linearized
+            point-to-plane fits with a linear loss, and scipy.optimize.least_squares otherwise. Pass "ols" to select
+            the direct solve explicitly, or a callable to use a different minimizer.
         :param fit_loss_func: Loss function for the minimization of residuals.
         :param max_iterations: Maximum allowed iterations before stopping.
         :param tolerance_translation: Magnitude of iteration translation (in georeferenced unit) at which to stop the
@@ -4465,6 +4597,10 @@ class ICP(AffineCoreg):
 
         if tolerance_rotation is None and tolerance_translation is None:
             raise ValueError("At least one tolerance must be defined.")
+
+        fit_minimizer = _resolve_fit_minimizer(
+            fit_minimizer, fit_loss_func, linearized=linearized and method == "point-to-plane"
+        )
 
         meta: dict[str, Any] = {
             "icp_method": method,
@@ -4844,6 +4980,9 @@ class LZD(AffineCoreg):
 
     Estimates a rigid transform (rotation + translation) between two elevation datasets.
 
+    By default, each step uses the linearized Rosenholm and Torlegård model. Set linearized=False to minimize
+    elevation residuals directly, including rotations, with scipy.optimize.least_squares by default.
+
     The estimated transform is stored in the `self.meta["outputs"]["affine"]` key "matrix", with rotation centered
     on the coordinates in the key "centroid". The translation parameters are also stored individually in the
     keys "shift_x", "shift_y" and "shift_z" (in georeferenced units for horizontal shifts, and unit of the
@@ -4854,7 +4993,7 @@ class LZD(AffineCoreg):
         self,
         only_translation: bool = False,
         linearized: bool = True,
-        fit_minimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.least_squares,
+        fit_minimizer: Callable[..., Any] | Literal["ols"] | None = None,
         fit_loss_func: Callable[[NDArrayf], np.floating[Any]] | str = "linear",
         max_iterations: int = 20,
         tolerance_translation: float | None = 0.01,
@@ -4868,12 +5007,17 @@ class LZD(AffineCoreg):
         initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
     ) -> None:
         """
-         Instantiate an LZD coregistration object.
+        Instantiate an LZD coregistration object.
 
         :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
             rotation as default.
-        :param fit_minimizer: Minimizer for the coregistration function.
-        :param fit_loss_func: Loss function for the minimization of residuals.
+        :param linearized: Use the linearized surface model. If False, evaluate elevation residuals after an exact
+            rigid transform, allowing larger rotations.
+        :param fit_minimizer: Minimizer accepting a residual function, initial parameters, and a loss keyword,
+            and returning an object with optimized parameters in its x attribute. Extra minimizer arguments can
+            be passed to fit(). If None, use direct OLS for a linearized model with a linear loss, and
+            scipy.optimize.least_squares otherwise. Pass "ols" to select the direct solve explicitly.
+        :param fit_loss_func: Loss accepted by the selected minimizer, passed as its loss keyword.
         :param max_iterations: Maximum allowed iterations before stopping.
         :param tolerance_translation: Magnitude of iteration translation (in georeferenced unit) at which to stop the
             iterations (once other tolerances are also reached, if any).
@@ -4886,6 +5030,8 @@ class LZD(AffineCoreg):
 
         if tolerance_rotation is None and tolerance_translation is None:
             raise ValueError("At least one tolerance must be defined.")
+
+        fit_minimizer = _resolve_fit_minimizer(fit_minimizer, fit_loss_func, linearized=linearized)
 
         meta: dict[str, Any] = {
             "fit_minimizer": fit_minimizer,
@@ -4943,11 +5089,7 @@ class LZD(AffineCoreg):
             tolerance_rotation=self._meta["inputs"]["iterative"]["tolerance_rotation"],
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
             linearized=self._meta["inputs"]["affine"]["linearized"],
-            sig_tba=kwargs.get("sig_tba"),
-            sig_ref=kwargs.get("sig_ref"),
-            corr_ref=kwargs.get("corr_ref"),
-            corr_tba=kwargs.get("corr_tba"),
-            force_opti=kwargs.get("force_opti"),
+            **kwargs,
         )
 
         # Write output to class
@@ -4968,12 +5110,17 @@ class LZD(AffineCoreg):
 
 class DhMinimize(AffineCoreg):
     """
-    (DEPRECATED: To replicate the same behaviour, use LZD with linearized=False, only_translation=True,
-    fit_minimizer=scipy.optimize.minimize and fit_loss_func=nmad)
-
     Elevation difference minimization coregistration.
 
     Estimates vertical and horizontal translations.
+
+    .. warning::
+
+        DhMinimize is deprecated. Use LZD with linearized=False and only_translation=True.
+        To reproduce its fitting strategy, supply a custom fit_minimizer wrapping scipy.optimize.minimize
+        with method="Nelder-Mead" and fit_loss_func=nmad. The wrapper must minimize NMAD over X/Y shifts
+        and estimate the Z shift separately from the median residual, because NMAD cannot determine a
+        constant vertical offset. See the :ref:`dh-minimize` guide for an example.
 
     The translation parameters are stored in the `self.meta["outputs"]["affine"]` keys "shift_x", "shift_y" and
     "shift_z" (in georeferenced units for horizontal shifts, and unit of the elevation dataset inputs for the
@@ -4998,10 +5145,12 @@ class DhMinimize(AffineCoreg):
         """
 
         warnings.warn(
-            message="DhMinimize is deprecated due to redundancy with LZD. To replicate "
-            "the old behaviour, use LZD with linearized=False, only_translation=True, "
-            "fit_optimizer=scipy.optimize.minimize and fit_loss_func=nmad",
+            message="DhMinimize is deprecated. Use LZD with linearized=False, only_translation=True. "
+            "To reproduce its fitting strategy, supply a custom fit_minimizer wrapping Nelder-Mead with "
+            "fit_loss_func=nmad and estimate the Z shift separately from the median residual. "
+            "See the DhMinimize documentation for an example.",
             category=DeprecationWarning,
+            stacklevel=2,
         )
 
         meta_fit = {"fit_or_bin": "fit", "fit_minimizer": fit_minimizer, "fit_loss_func": fit_loss_func}

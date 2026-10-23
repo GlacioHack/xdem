@@ -27,7 +27,8 @@ from typing import Any, Literal
 import geopandas as gpd
 import pandas as pd
 from geoutils.pointcloud.base import _get_dataframe_attrs, _set_dataframe_attrs
-from geoutils.pointcloud.pd_accessor import PointCloudAccessor, open_pointcloud
+from geoutils.pointcloud.loading import open_pointcloud
+from geoutils.pointcloud.pd_accessor import GeoDataFramePointCloudAccessor
 from pyproj import CRS
 from pyproj.crs import VerticalCRS
 
@@ -79,7 +80,14 @@ def open_epc(
     """
 
     # Reuse GeoUtils' readers and register Dask only for a partitioned result
-    ds = open_pointcloud(filename, data_column=data_column, columns=columns, chunks=chunks)
+    ds = open_pointcloud(
+        filename,
+        data_name=data_column,
+        columns=columns,
+        chunks=chunks,
+        as_object_type="geodataframe",
+        load=chunks is None,
+    )
     if chunks is not None:
         _register_dask_epc_accessor()
 
@@ -91,7 +99,7 @@ def open_epc(
 
 
 @pd.api.extensions.register_dataframe_accessor("epc")
-class EPCAccessor(EPCBase, PointCloudAccessor):  # type: ignore[misc]
+class EPCAccessor(EPCBase, GeoDataFramePointCloudAccessor):  # type: ignore[misc]
     """Expose EPC elevation methods alongside the GeoUtils ``pc`` Pandas accessor."""
 
     def _set_vcrs_crs(self, new_crs: CRS) -> None:
@@ -115,4 +123,4 @@ class EPCAccessor(EPCBase, PointCloudAccessor):  # type: ignore[misc]
 
         # Computing returns a separate dataframe and never replaces the source's partitions
         ds = self.load() if self._is_dask else self.ds.copy()
-        return EPC(ds, data_column=self.data_column)
+        return EPC(ds, data_column=self.data_name)

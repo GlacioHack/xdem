@@ -161,7 +161,7 @@ class TestClassVsAccessorConsistencyInherited:
     inherited_methods_and_kwargs = [
         ("coords", {"grid": True}),  # Metadata-only inherited method
         ("translate", {"xoff": 10.5, "yoff": 5}),  # Raster-returning inherited method
-        ("interp_points", {"points": "random"}),  # Array-returning inherited method
+        ("interp_points", {"points": "random", "as_array": True}),  # Array-returning inherited method
         ("reproject", {"crs": CRS.from_epsg(4326)}),  # Raster-returning loading method
         ("set_nodata", {"new_nodata": -10001, "update_array": False, "update_mask": False}),  # In-place method
     ]
@@ -377,7 +377,11 @@ class TestClassVsAccessorConsistencyDEMBase:
     methods_output_noload_allowed_args: dict[str, Any] = {}
 
     # Methods whose richer inputs and multiple outputs are covered by TestDEMEagerAnalysis below
-    methods_tested_separately = ["coregister_3d", "estimate_error_structure", "estimate_uncertainty"]
+    methods_tested_separately = [
+        "coregister_3d",
+        "estimate_error_structure",
+        "estimate_uncertainty",
+    ]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
     @pytest.mark.parametrize("prop", properties)  # type: ignore
@@ -767,7 +771,7 @@ class TestDEMEagerAnalysis:
             "epc": reference.to_pointcloud(data_column_name="height", subsample=1000, random_state=42),
         }
         references["dataframe"] = references["epc"].ds.copy()
-        references["dataframe"].attrs["data_column"] = "height"
+        references["dataframe"].attrs["data_name"] = "height"
 
         # 2/ Run DEM and Xarray calls with the same reference type and random seed
         expected = source.coregister_3d(references[reference_kind], method(), subsample=5000, random_state=42)
@@ -820,7 +824,9 @@ class TestDEMEagerAnalysis:
         np.testing.assert_array_equal(expected_corr(distances), actual_corr(distances))
 
     @pytest.mark.parametrize("approach", ["Basic", "R2009", "H2022"])
-    @pytest.mark.parametrize("reference_kind", ["epc", "accessor", "dataframe", "geometry_z"])
+    @pytest.mark.parametrize(
+        "reference_kind", ["epc", "accessor", "dataframe", "named_column", "legacy_column", "geometry_z"]
+    )
     def test_estimate_uncertainty__point_reference(
         self, accessor_dem_path: Path, approach: str, reference_kind: str
     ) -> None:
@@ -837,14 +843,22 @@ class TestDEMEagerAnalysis:
         points.data = points.data + errors
         frame = points.ds.copy()
         frame["intensity"] = np.arange(len(frame), dtype=np.uint16)
-        frame.attrs["data_column"] = "height"
+        frame.attrs["data_name"] = "height"
         native = EPC(frame, data_column="height")
         references: dict[str, Any] = {"epc": native, "accessor": frame.epc, "dataframe": frame}
+
+        # Select an explicit elevation column despite metadata naming the intensity column
+        references["named_column"] = frame.rename(columns={"height": "elevation"})
+        references["named_column"].attrs["data_name"] = "intensity"
+
+        # Use the legacy default elevation column when the dataframe has no active attribute
+        references["legacy_column"] = frame.rename(columns={"height": "z"})
+        references["legacy_column"].attrs.pop("data_name", None)
 
         # Also store the elevations in the point geometry to check that supported point representation
         geometry_frame = frame.drop(columns="height")
         geometry_frame.geometry = gpd.points_from_xy(frame.geometry.x, frame.geometry.y, z=frame.height, crs=frame.crs)
-        geometry_frame.attrs["data_column"] = None
+        geometry_frame.attrs["data_name"] = None
         references["geometry_z"] = geometry_frame
 
         # 2/ Run every point representation with the same mask, uncertainty model and random seed
@@ -855,6 +869,8 @@ class TestDEMEagerAnalysis:
             "list_vars": ("slope",),
             "stable_terrain": np.isfinite(dem.get_nanarray()),
         }
+        if reference_kind == "named_column":
+            options["z_name"] = "elevation"
         expected, expected_corr = dem.estimate_uncertainty(native, **options)
         ds = open_dem(accessor_dem_path)
         actual, actual_corr = ds.dem.estimate_uncertainty(references[reference_kind], **options)
@@ -871,12 +887,9 @@ class TestDEMEagerAnalysis:
 class TestDEMAnalysisErrors:
     """Test module for rejecting unsupported lazy DEM analysis without executing Dask graphs."""
 
-    @pytest.mark.parametrize("operation", ["coregister_3d", "estimate_uncertainty"])
     @pytest.mark.parametrize("lazy_argument", ["reference", "mask", "variable"])
-    def test_methods__error_lazy_analysis_arguments(
-        self, accessor_dem_path: Path, operation: str, lazy_argument: str
-    ) -> None:
-        """Checks that lazy references, masks and bias variables are rejected without executing their graphs."""
+    def test_coregister_3d__error_lazy_analysis_arguments(self, accessor_dem_path: Path, lazy_argument: str) -> None:
+        """Checks that coregistration rejects lazy references, masks and bias variables without executing graphs."""
 
         pytest.importorskip("dask.array")
         from dask.callbacks import Callback
@@ -887,29 +900,24 @@ class TestDEMAnalysisErrors:
         graph = lazy.data
         reference = lazy if lazy_argument == "reference" else DEM(accessor_dem_path)
 
-        # Pass the lazy object under the argument name expected by the selected method
-        options: dict[str, Any] = {"coreg_method": coreg.VerticalShift()} if operation == "coregister_3d" else {}
+        # Pass the lazy object under the argument name expected by coregistration
+        options: dict[str, Any] = {"coreg_method": coreg.VerticalShift()}
         if lazy_argument == "mask":
-            name = "inlier_mask" if operation == "coregister_3d" else "stable_terrain"
-            options[name] = lazy > 0
+            options["inlier_mask"] = lazy > 0
         if lazy_argument == "variable":
-            if operation == "coregister_3d":
-                options["bias_vars"] = {"elevation": lazy}
-            else:
-                options["list_vars"] = (lazy,)
+            options["bias_vars"] = {"elevation": lazy}
         tasks: list[Any] = []
 
         # 2/ Reject the call before Dask runs and leave the lazy input unchanged
         # The callback records every executed Dask task, so the list must remain empty
         with Callback(pretask=lambda *args: tasks.append(args[0])):
             with pytest.raises(NotImplementedError, match="Dask coregistration and uncertainty"):
-                getattr(source.dem, operation)(reference, **options)
+                source.dem.coregister_3d(reference, **options)
         assert tasks == []
         assert lazy.data is graph and not lazy._in_memory
 
-    @pytest.mark.parametrize("operation", ["coregister_3d", "estimate_uncertainty"])
-    def test_methods__error_dask_analysis_unsupported(self, accessor_dem_path: Path, operation: str) -> None:
-        """Checks that deferred analysis features reject Dask inputs without computing or replacing them."""
+    def test_coregister_3d__error_dask_analysis_unsupported(self, accessor_dem_path: Path) -> None:
+        """Checks that coregistration rejects a Dask DEM without computing or replacing its data."""
 
         pytest.importorskip("dask.array")
         from dask.callbacks import Callback
@@ -918,12 +926,12 @@ class TestDEMAnalysisErrors:
         ds = open_dem(accessor_dem_path, chunks=11)
         source_array = ds.data
         tasks: list[Any] = []
-        options = {"coreg_method": coreg.VerticalShift()} if operation == "coregister_3d" else {}
+        options = {"coreg_method": coreg.VerticalShift()}
 
         # 2/ Reject the call before reading elevations or changing the Dask source
         # The callback records every executed Dask task, so the list must remain empty
         with Callback(pretask=lambda *args: tasks.append(args[0])):
             with pytest.raises(NotImplementedError, match="Dask coregistration and uncertainty"):
-                getattr(ds.dem, operation)(DEM(accessor_dem_path), **options)
+                ds.dem.coregister_3d(DEM(accessor_dem_path), **options)
         assert tasks == []
         assert ds.data is source_array and not ds._in_memory

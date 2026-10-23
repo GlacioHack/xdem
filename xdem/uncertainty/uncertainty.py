@@ -16,35 +16,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module with parent functions for estimating and propagating elevation uncertainty."""
+"""Estimate elevation errors and propagate them through terrain, area, and coregistration calculations."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import ExitStack
 from typing import TYPE_CHECKING, Any, Literal
 
-import geopandas as gpd
+import geoutils as gu
 import numpy as np
-from geoutils import PointCloud, Raster
-from geoutils._dispatch import _is_pointcloud, _is_raster
+from geoutils._dispatch import (
+    _get_pointcloud_interface,
+    _get_raster_interface,
+    _is_raster,
+)
+from geoutils.uncertainty import PropagationSummary
 
 from xdem import terrain
-from xdem._typing import NDArrayb
+from xdem._typing import NDArrayb, NDArrayf
+from xdem.coreg.base import _as_eager_elevation
 from xdem.uncertainty.analytical import (
     number_effective_samples,
     spatial_error_propagation,
 )
+from xdem.uncertainty.coreg import propagate_uncertainty_coreg
 from xdem.uncertainty.error_structure import ErrorStructure
-from xdem.uncertainty.numerical import (
-    PropagationResult,
-    _propagate_uncertainty_coreg,
-    _propagate_uncertainty_spatial,
-    _propagate_uncertainty_terrain,
-    _run_simulations,
-    patches_method,
-)
+from xdem.uncertainty.numerical import patches_method
+from xdem.uncertainty.propagation import _propagate_areas, _select_outputs, _simulate
+from xdem.uncertainty.terrain import _propagate_terrain
 
 if TYPE_CHECKING:
+    from geoutils.multiproc import MultiprocConfig
     from geoutils.raster.base import RasterLike
     from geoutils.vector.base import VectorLike
 
@@ -66,274 +69,294 @@ __all__ = [
 ############################################
 
 
+def _estimation_input_family(values: Sequence[Any]) -> list[Any]:
+    """Convert mixed raster and point inputs to GeoUtils accessors while preserving lazy data."""
+
+    # Identify raster and point inputs; arrays and vector outlines need no conversion
+    interfaces = []
+    for value in values:
+        interface = _get_raster_interface(value)
+        if interface is None:
+            interface = _get_pointcloud_interface(value)
+        interfaces.append(interface)
+    use_accessors = any(getattr(item, "_is_xr", False) or getattr(item, "_is_pd", False) for item in interfaces)
+    if not use_accessors:
+        return list(values)
+
+    # Convert GeoUtils objects when another input uses an Xarray or GeoPandas accessor
+    result = []
+    for value, interface in zip(values, interfaces):
+        if interface is None or interface._is_xr or getattr(interface, "_is_pd", False):
+            result.append(value)
+        elif _is_raster(interface):
+            result.append(interface.to_xarray())
+        else:
+            frame = interface.gdf.copy()
+            frame.attrs["data_name"] = interface.data_name
+            result.append(frame)
+    return result
+
+
 def estimate_error_structure(
     source_elev: DEMLike | EPCLike,
-    other_elev: DEMLike | EPCLike,
+    other: DEMLike | EPCLike | NDArrayf,
     *,
-    stable_terrain: RasterLike | VectorLike | NDArrayb | None = None,
-    predictors: Mapping[str, Any] | tuple[Any, ...] | None = None,
-    components: Mapping[str, Mapping[str, Any]] | None = None,
-    other_error: Literal["negligible", "same"] = "negligible",
-    z_name: str = "z",
-    random_state: int | np.random.Generator | None = None,
+    predictors: Mapping[str, Any] | tuple[str, ...] | None = None,
+    mask: RasterLike | VectorLike | NDArrayb | None = None,
+    other_precision: Literal["negligible", "same"] = "negligible",
+    at: Literal["self", "other"] | None = None,
+    align: Literal["raise", "reproject"] = "reproject",
+    mp_config: MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> ErrorStructure:
-    """Estimate an error structure from two elevation datasets on stable terrain.
+    """
+    Estimate elevation error magnitudes and spatial correlation using terrain predictors.
 
-    Values are compared on their common support through GeoUtils cosampling. A raster grid is retained for two raster
-    inputs, while any point cloud defines the support for a mixed comparison. The resulting structure describes the
-    source dataset under the selected assumption about the other dataset.
+    Slope and maximum curvature are used as predictors from an input DEM by default.
+    Pass predictors={} for constant magnitudes.
 
     :param source_elev: Elevation dataset whose error structure is estimated.
-    :param other_elev: Comparison elevation dataset with negligible or equal errors.
-    :param stable_terrain: Spatial or Boolean mask where elevation differences represent error.
-    :param predictors: Named magnitude predictors or an ordered tuple using terrain attribute names where possible.
-    :param components: Ordered component specifications passed to :meth:`ErrorStructure.estimate`.
-    :param other_error: Whether comparison errors are negligible or have the same structure as the source.
-    :param z_name: Elevation column selected from plain GeoDataFrames.
-    :param random_state: Random generator or seed used throughout estimation.
-    :param kwargs: Additional options passed to :meth:`ErrorStructure.estimate`.
-    :returns: Fitted component based error structure.
+    :param other: Comparison elevation dataset, or an array matching the source pixels or point order.
+    :param predictors: Named predictors or a tuple of terrain attribute names. None uses terrain defaults when
+        possible.
+    :param mask: Spatial or Boolean mask selecting stable terrain where differences represent error.
+    :param other_precision: "negligible" assigns difference errors to the source. "same" assumes independent errors
+        with the same magnitude and correlation in both datasets; GeoUtils divides differences by the square root of
+        two.
+    :param at: Comparison locations: "self", "other", or None to prefer point locations when present.
+    :param align: "raise" reports mismatched grids or coordinate systems; "reproject" aligns them for comparison.
+    :param mp_config: Worker and tile settings for multiprocessing estimation.
+    :param kwargs: Additional options for GeoUtils ErrorStructure.estimate(), such as components, bins and
+        random_state.
+    :returns: The fitted GeoUtils error structure, with magnitudes in elevation units.
     """
 
-    # Convert eager accessors to native GeoUtils objects because cosample() requires one interface family
-    from xdem.coreg.base import _as_eager_elevation
-
-    source_elev = _as_eager_elevation(source_elev)
-    other_elev = _as_eager_elevation(other_elev)
-    stable_terrain = _as_eager_elevation(stable_terrain)
-    if isinstance(predictors, Mapping):
-        predictors = {name: _as_eager_elevation(value) for name, value in predictors.items()}
-    elif predictors is not None:
-        predictors = tuple(_as_eager_elevation(value) for value in predictors)
-
-    # Normalize plain point dataframes to the shared GeoUtils spatial interface
-    if isinstance(source_elev, gpd.GeoDataFrame):
-        source_elev = PointCloud(source_elev, data_column=z_name)
-    if isinstance(other_elev, gpd.GeoDataFrame):
-        other_elev = PointCloud(other_elev, data_column=z_name)
-
-    # Require the shared spatial sampling interface before choosing comparison locations
-    is_source_spatial = _is_raster(source_elev) or _is_pointcloud(source_elev)
-    is_other_spatial = _is_raster(other_elev) or _is_pointcloud(other_elev)
-    if not is_source_spatial or not is_other_spatial:
-        raise TypeError("source_elev and other_elev must be raster or point cloud objects.")
-
-    # Limit attribution to negligible or equal independent errors in the comparison dataset
-    if other_error not in {"negligible", "same"}:
-        raise ValueError("other_error must be 'negligible' or 'same'.")
-
-    # Prefer source terrain for derived variables and otherwise use the comparison raster
-    source_raster = source_elev if _is_raster(source_elev) else None
-    other_raster = other_elev if _is_raster(other_elev) else None
+    # Choose the DEM for slope/curv
+    source_raster = _get_raster_interface(source_elev)
+    other_raster = _get_raster_interface(other)
     terrain_source = source_raster if source_raster is not None else other_raster
-
-    # Name ordered predictor shorthand and use terrain defaults only when a raster can provide them
     if predictors is None:
-        predictor_specs: dict[str, Any] = (
-            {"slope": "slope", "max_curvature": "max_curvature"} if terrain_source is not None else {}
-        )
+        predictors = ("slope", "max_curvature") if terrain_source is not None else ()
+    predictor_specs = dict(predictors) if isinstance(predictors, Mapping) else {name: name for name in predictors}
+    terrain_names = []
+    for value in predictor_specs.values():
+        if isinstance(value, str) and terrain_source is not None and value in terrain.available_attributes:
+            if value not in terrain_names:
+                terrain_names.append(value)
 
-    # Keep explicit predictor names, or derive names for the ordered shorthand form
-    elif isinstance(predictors, Mapping):
-        predictor_specs = dict(predictors)
-    else:
-        predictor_specs = {
-            specification if isinstance(specification, str) else f"predictor_{index + 1}": specification
-            for index, specification in enumerate(predictors)
-        }
-
-    # Resolve derived variables and aligned source columns before the shared spatial sampling
-    resolved_predictors: dict[str, Any] = {}
-    auxiliary_at: dict[str, Literal["self", "other"]] = {}
-    for name, specification in predictor_specs.items():
-        if isinstance(specification, str) and terrain_source is not None and hasattr(terrain, specification):
-            resolved_predictors[name] = getattr(terrain, specification)(terrain_source)
-
-        # Read named point attributes in their native order and bind them to the source dataset
-        elif isinstance(specification, str) and hasattr(source_elev, "ds") and specification in source_elev.ds:
-            resolved_predictors[name] = source_elev.ds[specification].to_numpy()
-            auxiliary_at[name] = "self"
-        elif isinstance(specification, str):
-            raise ValueError(f"Cannot resolve magnitude predictor {specification!r} from the elevation inputs.")
-        else:
-            resolved_predictors[name] = specification
-            if not _is_raster(specification) and not _is_pointcloud(specification):
-                auxiliary_at[name] = "self"
-
-    # Wrap raster shaped masks so mixed point comparisons can evaluate them spatially
-    comparison_mask: Any = stable_terrain
-    if isinstance(stable_terrain, np.ndarray):
-        for raster_support in (source_raster, other_raster):
-            if raster_support is not None and stable_terrain.squeeze().shape == raster_support.shape:
-                comparison_mask = raster_support.copy(new_array=stable_terrain.squeeze().astype(bool))
+    # Preserve grid coordinates for boolean raster masks
+    if isinstance(mask, np.ndarray) and mask.ndim > 1:
+        for raster in (source_raster, other_raster):
+            if raster is not None and mask.squeeze().shape == raster.shape:
+                mask = raster.from_array(
+                    mask.squeeze(), raster.transform, raster.crs, area_or_point=raster.area_or_point
+                )
                 break
 
-    # Evaluate both elevations and predictors only at common stable finite locations
-    sample = source_elev.cosample(
-        other_elev,
-        auxiliary=resolved_predictors,
-        auxiliary_at=auxiliary_at or None,
-        at="self" if source_raster is not None and other_raster is not None else None,
-        mask=comparison_mask,
-        subsample=1,
-        random_state=random_state,
-        align="reproject",
-    )
+    # Leave multiprocessing files available until fitting finishes
+    with ExitStack() as temporary_files:
+        if terrain_names:
+            terrain_config = temporary_files.enter_context(mp_config.temporary()) if mp_config is not None else None
+            attributes = terrain.get_terrain_attribute(terrain_source, terrain_names, mp_config=terrain_config)
+            attributes = [attributes] if len(terrain_names) == 1 else attributes
+            terrain_predictors = dict(zip(terrain_names, attributes))
+            predictor_specs = {
+                name: terrain_predictors.get(value, value) if isinstance(value, str) else value
+                for name, value in predictor_specs.items()
+            }
 
-    # Equal independent errors each contribute half of the observed difference variance
-    scale = 1 / np.sqrt(2) if other_error == "same" else 1.0
-
-    # Read the common raster bands or point columns as an error proxy on their native support
-    if _is_raster(sample):
-        proxy_values = scale * (sample.data[0] - sample.data[1])
-        error_proxy = source_elev.copy(new_array=proxy_values)
-        fitted_predictors: Mapping[str, Any] = {
-            name: sample.data[index + 2] for index, name in enumerate(resolved_predictors)
-        }
-        support_kind = "raster"
-    else:
-        error_proxy = sample.copy(new_array=scale * (sample.ds["self"] - sample.ds["other"]).to_numpy())
-        fitted_predictors = {name: name for name in resolved_predictors}
-        support_kind = "pointcloud"
-
-    # Add source attribution metadata after estimating the statistical decomposition
-    structure = ErrorStructure.estimate(
-        error_proxy,
-        predictors=fitted_predictors,
-        components=components,
-        random_state=random_state,
-        **kwargs,
-    )
-
-    # Record the attribution assumption and comparison locations with the fitted components
-    return ErrorStructure(
-        structure.components,
-        empirical_variogram=structure.empirical_variogram,
-        fit_diagnostics=structure.fit_diagnostics,
-        metadata={
-            **structure.metadata,
-            "other_error": other_error,
-            "error_proxy_scale": scale,
-            "support": support_kind,
-        },
-    )
+        # Give GeoUtils compatible spatial inputs and return its fitted error structure
+        source_elev, other, mask, *predictor_values = _estimation_input_family(
+            [source_elev, other, mask, *predictor_specs.values()]
+        )
+        return ErrorStructure.estimate(
+            source_elev,
+            other=other,
+            other_precision=other_precision,
+            at=at,
+            align=align,
+            predictors=dict(zip(predictor_specs, predictor_values)),
+            mask=mask,
+            mp_config=mp_config,
+            **kwargs,
+        )
 
 
-######################################
-# 2/ NUMERICAL PROPAGATION WORKFLOWS
-######################################
+###################################
+# 2/ UNCERTAINTY PROPAGATION
+###################################
 
 
 def propagate_uncertainty(
-    elev: Raster | PointCloud,
-    operation: Callable[[Any], Any] | Literal["spatial", "terrain", "coreg"],
+    data: Any = None,
+    operation: Literal["terrain", "spatial", "coreg"] | Callable[..., Any] | None = None,
     *,
-    error_structure: ErrorStructure,
+    error_structure: gu.ErrorStructure,
     predictors: Mapping[str, Any] | None = None,
-    nsim: int = 100,
-    random_state: int | np.random.Generator | None = None,
-    return_samples: bool = False,
+    inputs: Mapping[str, Mapping[str, Any]] | None = None,
+    operation_options: Mapping[str, Any] | None = None,
+    method: Literal["analytical", "numerical"] = "numerical",
     **kwargs: Any,
-) -> PropagationResult:
-    """Propagate elevation uncertainty numerically through a calculation.
+) -> PropagationSummary:
+    """
+    Propagate elevation errors through one terrain, area or coregistration calculation.
 
-    Each realization adds a zero mean Gaussian field with the ErrorStructure's component covariances to the original
-    elevations. Predictors of error magnitude stay fixed while the operation is recomputed. Mean and standard
-    deviation are accumulated without retaining individual outputs unless requested.
+    Numerical propagation use random fields and simulation summaries directly through GeoUtils.
+    Analytical propagation use derivatives for terrain, LZD coregistration uses a GLS fit.
 
-    :param elev: Elevation raster or point cloud to perturb.
-    :param operation: Callable accepting one perturbed dataset, or a built-in spatial, terrain or coreg workflow.
-    :param error_structure: Fitted or manually defined elevation error structure.
-    :param predictors: Magnitude predictors evaluated on the elevation support.
-    :param nsim: Number of realizations, at least two.
-    :param random_state: Generator or seed for reproducible simulations.
-    :param return_samples: Whether to retain individual operation outputs.
-    :param kwargs: Simulation options circular_period and on_error; spatial options areas and weights; terrain
-        options attribute and terrain_kwargs; coreg options reference_elev, coreg_method, inlier_mask,
-        error_applied_to, precoreg and kwargs_coreg_fit.
-    :returns: Original estimate, ensemble summaries, valid counts and optional simulation outputs.
+    For example, propagate errors to a mean over all valid DEM pixels::
+
+        summary = xdem.uncertainty.propagate_uncertainty(
+            dem, "spatial", error_structure=errors, method="analytical",
+            inputs={"spatial": {"areas": {"whole_dem": None}}},
+        )
+        summary.std["whole_dem"]
+
+    :param data: Original raster, point cloud or supported elevation accessor.
+    :param operation: "terrain", "spatial", "coreg", a callable, or None to summarize the source errors.
+        A callable receives the perturbed elevation object and the supplied operation arguments.
+    :param error_structure: GeoUtils error model for the uncertain elevations.
+    :param predictors: Source magnitude predictors, including terrain attribute names for raster inputs.
+    :param inputs: Fixed inputs under the operation name (or "custom" for a callable). Terrain accepts its usual
+        arguments; spatial accepts an areas mapping and optional weights; coreg requires reference_elev.
+    :param operation_options: Operation arguments, such as attribute for terrain, statistic for area means or
+        integrals, and coreg_method for coregistration. Spatial integrals on point clouds require area weights.
+    :param method: "numerical" for repeated calculations or "analytical" for existing propagation formulas.
+    :param kwargs: GeoUtils propagation/simulation options, including n_samples, random_state, at,
+        return_samples, quantiles, max_sample_bytes and on_error. Spatial outputs require at to save draws.
+    :returns: GeoUtils PropagationSummary with the original result, propagated mean and standard deviation,
+        and any requested selected draws or quantiles.
     """
 
-    # Keep one set of simulation controls shared by custom and specialized calculations
-    options = dict(
+    # 1/ Validate the propagation options
+
+    if method not in {"analytical", "numerical"}:
+        raise ValueError("method must be 'analytical' or 'numerical'.")
+    if method == "analytical" and kwargs.get("return_samples", False):
+        raise ValueError("Analytical propagation cannot return simulation samples.")
+    if not isinstance(error_structure, gu.ErrorStructure):
+        raise TypeError("error_structure must be an ErrorStructure.")
+
+    # Fixed inputs for the selected operation override arguments in operation_options
+    name = operation if isinstance(operation, str) else "custom"
+    options = {**dict(operation_options or {}), **dict((inputs or {}).get(name, {}))}
+
+    # 2/ Delegate bound spatial methods to GeoUtils
+
+    # Bound GeoUtils operations already own their data, neighborhoods and uncertainty calculations
+    spatial_methods = {
+        "grid",
+        "reproject",
+        "krige",
+        "interp_points",
+        "interp_at_points",
+        "resample_at_points",
+        "reduce_points",
+        "reduce_at_points",
+    }
+    if (
+        callable(operation)
+        and getattr(operation, "__self__", None) is not None
+        and operation.__name__ in spatial_methods
+    ):
+        return gu.uncertainty.propagate(
+            operation,
+            error_structure=error_structure,
+            predictors=predictors,
+            operation_kwargs=options,
+            method=method,
+            **kwargs,
+        )
+
+    # 3/ Prepare the elevations and magnitude predictors
+
+    # Convert elevation accessors to the eager objects required by the xDEM workflows
+    source = _as_eager_elevation(data)
+    if not isinstance(source, (gu.Raster, gu.PointCloud)):
+        raise TypeError("Uncertainty propagation requires a raster or point cloud source.")
+
+    # Named terrain predictors are calculated once and remain fixed throughout the simulations
+    resolved = dict(predictors or {})
+    for key, value in resolved.items():
+        if isinstance(value, str) and isinstance(source, gu.Raster) and value in terrain.available_attributes:
+            resolved[key] = terrain.get_terrain_attribute(source, value)
+
+    # 4/ Run the named propagation workflow
+
+    # Separate the reference elevations and fitting method from the remaining coregistration options
+    if operation == "coreg":
+        reference = options.pop("reference_elev")
+        coreg_method = options.pop("coreg_method")
+        return propagate_uncertainty_coreg(
+            reference,
+            source,
+            coreg_method,
+            error_structure=error_structure,
+            predictors=resolved,
+            method=method,
+            **options,
+            **kwargs,
+        )
+
+    # Require a raster before propagating errors through a terrain attribute
+    if operation == "terrain":
+        if not isinstance(source, gu.Raster):
+            raise TypeError("Terrain uncertainty requires a raster source.")
+        attribute = options.pop("attribute", "slope")
+        return _propagate_terrain(
+            source,
+            attribute=attribute,
+            error_structure=error_structure,
+            predictors=resolved,
+            terrain_options=options,
+            method=method,
+            **kwargs,
+        )
+
+    # Use the supplied regions and weights for area means or integrals
+    if operation == "spatial":
+        return _propagate_areas(
+            source,
+            error_structure=error_structure,
+            predictors=resolved,
+            method=method,
+            **options,
+            **kwargs,
+        )
+
+    # 5/ Summarize source errors analytically
+
+    # Named workflows have returned, so only a callable or no operation is valid here
+    if operation is not None and not callable(operation):
+        raise ValueError("operation must be 'terrain', 'spatial', 'coreg', a callable or None.")
+
+    # Without an operation, the result is the source elevation and its pointwise error magnitude
+    if method == "analytical":
+        if operation is not None:
+            raise NotImplementedError("Analytical custom propagation requires a supported GeoUtils operator.")
+        std = error_structure.predict_magnitude(resolved, like=source)
+        return PropagationSummary(
+            estimate=source,
+            mean=source.copy(),
+            std=std,
+            error_structure=error_structure,
+            method="analytical",
+            selection=_select_outputs(source, kwargs.pop("at", None)),
+            metadata={"output_distribution": "normal"},
+        )
+
+    # 6/ Simulate source errors or a custom calculation
+
+    # Adapt the optional callable to a simulation callback with fixed operation arguments
+    def calculate(value: Any) -> Any:
+        """Run calculation on perturbed elevations."""
+        return value if operation is None else operation(value, **options)
+
+    # Draw elevation errors and summarize the repeated outputs with GeoUtils
+    return _simulate(
+        source,
+        calculate,
         error_structure=error_structure,
-        predictors=predictors,
-        nsim=nsim,
-        random_state=random_state,
-        return_samples=return_samples,
+        predictors=resolved,
         **kwargs,
     )
-
-    # Pass a custom calculation directly to the shared simulation workflow
-    if callable(operation):
-        return _run_simulations(elev, operation, **options)
-
-    # Resolve the named calculation to the adapter that prepares its fixed inputs
-    workflows: dict[str, Callable[..., PropagationResult]] = {
-        "spatial": _propagate_uncertainty_spatial,
-        "terrain": _propagate_uncertainty_terrain,
-        "coreg": _propagate_uncertainty_coreg,
-    }
-
-    # Reject unknown workflows before generating any error realizations
-    if operation not in workflows:
-        raise ValueError("operation must be callable, 'spatial', 'terrain' or 'coreg'.")
-    return workflows[operation](elev, **options)
-
-
-def propagate_uncertainty_coreg(
-    reference_elev: Raster | PointCloud,
-    to_be_aligned_elev: Raster | PointCloud,
-    coreg_method: Any,
-    *,
-    error_structure: ErrorStructure,
-    predictors: Mapping[str, Any] | None = None,
-    nsim: int = 30,
-    error_applied_to: Literal["ref", "tba"] = "tba",
-    inlier_mask: Any = None,
-    precoreg: bool = False,
-    random_state: int | np.random.Generator | None = None,
-    kwargs_coreg_fit: Mapping[str, Any] | None = None,
-) -> tuple[Any, Any, list[Any]]:
-    """Propagate uncertainty to fitted translations and rotations.
-
-    This convenience wrapper retains the coregistration summary table, simulation table and fitted objects. The
-    common workflow ``propagate_uncertainty(..., operation="coreg")`` instead returns a PropagationResult.
-
-    :param reference_elev: Reference elevations.
-    :param to_be_aligned_elev: Elevations to align to the reference.
-    :param coreg_method: Coregistration method copied independently for each fit.
-    :param error_structure: Error model of the dataset receiving simulated errors.
-    :param predictors: Magnitude predictors on that dataset's support.
-    :param nsim: Number of realizations, at least two.
-    :param error_applied_to: Whether reference or to-be-aligned elevations receive errors.
-    :param inlier_mask: Mask passed to each fit.
-    :param precoreg: Whether to align the inputs once before residual simulations.
-    :param random_state: Generator or seed used by field generation and fitting.
-    :param kwargs_coreg_fit: Additional options passed to Coreg.fit.
-    :returns: Mean/STD table, per-simulation metadata and fitted coregistration objects.
-    """
-
-    import pandas as pd
-
-    # Use the common propagation workflow so field generation and failure counts stay consistent
-    result = propagate_uncertainty(
-        to_be_aligned_elev,
-        "coreg",
-        reference_elev=reference_elev,
-        coreg_method=coreg_method,
-        error_structure=error_structure,
-        predictors=predictors,
-        nsim=nsim,
-        error_applied_to=error_applied_to,
-        inlier_mask=inlier_mask,
-        precoreg=precoreg,
-        random_state=random_state,
-        kwargs_coreg_fit=kwargs_coreg_fit,
-    )
-
-    # Format the six parameter summaries and retain the requested and successful simulation counts
-    summary = pd.DataFrame({"mean": result.mean, "std": result.std})
-    summary.attrs.update(nsim=result.nsim, n_success=result.n_success, frac_success=result.n_success / result.nsim)
-    return summary, result.metadata["simulation_table"], result.metadata["fitted_coregs"]

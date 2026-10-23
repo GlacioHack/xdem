@@ -229,9 +229,12 @@ class TestAccessor:
         if lazy:
             assert not ds._in_memory
 
+    @pytest.mark.parametrize("pointcloud_return_type", [None, "geodataframe", "dataarray", "dataset"])
     @pytest.mark.parametrize("as_array", [False, True])
     @pytest.mark.parametrize("lazy", [False, True])
-    def test_to_pointcloud__equality_and_laziness(self, accessor_dem_path: Path, as_array: bool, lazy: bool) -> None:
+    def test_to_pointcloud__equality_and_laziness(
+        self, accessor_dem_path: Path, as_array: bool, lazy: bool, pointcloud_return_type: str | None
+    ) -> None:
         """Checks that DEM point conversion preserves elevations, coordinates and the expected output interface."""
 
         # 1/ Open equivalent native and accessor sources with an explicit elevation-column name
@@ -246,7 +249,7 @@ class TestAccessor:
 
         # 2/ Convert both sources while keeping the accessor source and its output lazy when requested
         expected = native.to_pointcloud(**options)
-        result = ds.dem.to_pointcloud(**options)
+        result = ds.dem.to_pointcloud(**options, pointcloud_return_type=pointcloud_return_type)
         if lazy:
             assert not ds._in_memory
 
@@ -263,7 +266,17 @@ class TestAccessor:
             np.testing.assert_array_equal(expected[expected_order], computed_result[computed_order])
         else:
             assert isinstance(expected, EPC)
-            if lazy:
+            if pointcloud_return_type in ("dataarray", "dataset"):
+                expected_type = xr.DataArray if pointcloud_return_type == "dataarray" else xr.Dataset
+                assert isinstance(result, expected_type)
+                # Dataset metadata and loading describe each point variable through its DataArray accessor
+                points = result["height"] if isinstance(result, xr.Dataset) else result
+                assert points.pc.is_loaded is not lazy
+                assert points.pc.crs == native.crs
+                assert points.pc.data_name == "height"
+                computed_result = points.pc.to_geoutils().ds
+                assert points.pc.is_loaded is not lazy
+            elif lazy:
                 assert isinstance(result, dask_geopandas.GeoDataFrame)
                 assert not result.epc.is_loaded
                 computed_result = result.compute()
@@ -277,8 +290,9 @@ class TestAccessor:
             expected_frame = expected.ds.iloc[expected_order].reset_index(drop=True)
             computed_frame = computed_result.iloc[computed_order].reset_index(drop=True)
             assert_frame_equal(expected_frame, computed_frame, check_exact=True)
-            assert result.epc.vcrs == native.vcrs
-            assert result.epc.data_column == "height"
+            if pointcloud_return_type in (None, "geodataframe"):
+                assert result.epc.vcrs == native.vcrs
+                assert result.epc.data_name == "height"
         if lazy:
             assert not ds._in_memory
 

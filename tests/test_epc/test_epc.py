@@ -51,19 +51,19 @@ class TestEPC:
         epc = EPC(self.gdf1)
 
         # Assert that both the dataframe and data column name are equal
-        assert epc.data_column is None
+        assert epc.data_name is None
         assert_geodataframe_equal(epc.ds, self.gdf1)
 
         # 2/ For a single column point cloud with 2D points and a data column
         epc2 = EPC(self.gdf2, data_column="Z")
 
         # Assert that both the dataframe and data column name are equal
-        assert epc2.data_column == "Z"
+        assert epc2.data_name == "Z"
         assert_geodataframe_equal(epc2.ds, self.gdf2)
 
         # 3/ For a multiple column point cloud from a Geopackage file
         epc3 = EPC(self.fn_epc, data_column="h_li")
-        assert epc3.data_column == "h_li"
+        assert epc3.data_name == "h_li"
         assert epc3.crs == CRS.from_epsg(7912)
         assert epc3.vcrs == "Ellipsoid"
         assert all(

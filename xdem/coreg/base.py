@@ -49,7 +49,8 @@ import scipy.ndimage
 import scipy.optimize
 from geoutils import profiler
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.interface.interpolation import _interp_points_base
+from geoutils.interface.resampling import _interp_points_base
+from geoutils.operators.interpolator import _interpn_interpolator
 from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
 from geoutils.raster import Raster, RasterType, raster
 from geoutils.raster.array import get_array_and_mask
@@ -103,6 +104,7 @@ dict_key_to_str = {
     "trim_iterative": "Trimming statistics are updated iteratively until no more value is excluded",
     "last_iteration": "Iteration at which algorithm stopped",
     "iteration_stats": "Statistics compared to tolerances at each iteration",
+    "converged": "All stopping tolerances satisfied",
     "terrain_attribute": "Terrain attribute used for correction",
     "angle": "Angle of directional correction",
     "poly_order": "Polynomial order",
@@ -138,13 +140,21 @@ def _as_eager_elevation(elev: Any) -> Any:
     """Normalize eager elevation accessors for coregistration and uncertainty without computing Dask inputs."""
 
     import xarray as xr
-    from geoutils._dispatch import is_dask_array, is_dask_dataframe
+    from geoutils._dispatch import (
+        _get_pointcloud_interface,
+        _get_raster_interface,
+        is_dask_array,
+        is_dask_dataframe,
+    )
     from geoutils.pointcloud.base import PointCloudBase
     from geoutils.raster.base import RasterBase
 
     # Inspect metadata first so unsupported lazy data are rejected before any computation
+    if isinstance(elev, xr.Dataset):
+        raise TypeError("Select an elevation DataArray from the Dataset before coregistration or uncertainty analysis.")
     if isinstance(elev, xr.DataArray):
-        elev = elev.rst
+        raster = _get_raster_interface(elev)
+        elev = raster if raster is not None else _get_pointcloud_interface(elev)
     if isinstance(elev, RasterBase):
         if elev._chunks is not None:
             raise NotImplementedError("Dask coregistration and uncertainty analysis are not supported yet.")
@@ -152,8 +162,8 @@ def _as_eager_elevation(elev: Any) -> Any:
     if isinstance(elev, PointCloudBase):
         if elev._is_dask:
             raise NotImplementedError("Dask coregistration and uncertainty analysis are not supported yet.")
-        source = elev.to_geoutils() if elev._is_pd else elev
-        if source.data_column is None:
+        source = elev.to_geoutils() if elev._is_pd or elev._is_xr else elev
+        if source.data_name is None:
             # Coregistration works with 2D geometry and an elevation column, including for native 3D points
             frame = source.ds.copy()
             column = "_xdem_elevation"
@@ -168,8 +178,8 @@ def _as_eager_elevation(elev: Any) -> Any:
 
     # Preserve an accessor's selected elevation column when a raw dataframe is supplied as reference
     if isinstance(elev, gpd.GeoDataFrame):
-        if elev.attrs.get("data_column") is not None or (elev.geom_type.eq("Point").all() and elev.has_z.all()):
-            return _as_eager_elevation(PointCloud(elev, data_column=elev.attrs.get("data_column")))
+        if elev.attrs.get("data_name") is not None or (elev.geom_type.eq("Point").all() and elev.has_z.all()):
+            return _as_eager_elevation(PointCloud(elev, data_column=elev.attrs.get("data_name")))
     return elev
 
 
@@ -209,17 +219,15 @@ def _preprocess_coreg_fit_raster_raster(
         tba_aop = dem_to_be_aligned.area_or_point
 
     if inlier_mask is not None:
-        # If inlier_mask has not the same shape of the input dem, reproject it
-        if reference_dem.shape != inlier_mask.shape:
-            if isinstance(inlier_mask, gu.Raster):
-                if isinstance(reference_dem, gu.Raster):
-                    inlier_mask = inlier_mask.reproject(reference_dem, resampling=rio.warp.Resampling.nearest)
-                else:
-                    ref = Raster.from_array(data=reference_dem, transform=transform, crs=crs)
-                    inlier_mask = inlier_mask.reproject(ref, resampling=rio.warp.Resampling.nearest)
-            # in case of mask is a array
-            else:
-                raise ValueError("Input mask array can't be a different size array as input elevation.")
+        # Align spatial masks even when their shape matches a different grid
+        if isinstance(inlier_mask, gu.Raster):
+            ref = reference_dem
+            if not isinstance(ref, gu.Raster):
+                ref = Raster.from_array(data=reference_dem, transform=transform, crs=crs)
+            if not inlier_mask.georeferenced_grid_equal(ref):
+                inlier_mask = inlier_mask.reproject(ref, resampling=rio.warp.Resampling.nearest)
+        elif reference_dem.shape != inlier_mask.shape:
+            raise ValueError("Input mask array can't be a different size array as input elevation.")
 
     # If both DEMs are Rasters, validate that 'dem_to_be_aligned' is in the right grid. Then extract its data.
     if isinstance(dem_to_be_aligned, gu.Raster) and isinstance(reference_dem, gu.Raster):
@@ -328,7 +336,9 @@ def _preprocess_coreg_fit_raster_raster(
         raise ValueError("'dem_to_be_aligned' had only NaNs")
 
     # Isolate all invalid values
-    invalid_mask = np.logical_or.reduce((~inlier_mask, ref_mask, tba_mask))
+    invalid_mask = ~inlier_mask | ref_mask
+    if ref_transform == tba_transform and ref_dem.shape == tba_dem.shape:
+        invalid_mask |= tba_mask
 
     if np.all(invalid_mask):
         raise ValueError("All values of the inlier mask are NaNs in either 'reference_dem' or 'dem_to_be_aligned'.")
@@ -348,18 +358,15 @@ def _preprocess_coreg_fit_raster_point(
     """Pre-processing and checks of fit for raster-point input."""
 
     if inlier_mask is not None:
-        # If inlier_mask has not the same shape of the input dem, reproject it
-        if raster_elev.shape != inlier_mask.shape:
-            if isinstance(inlier_mask, gu.Raster):
-                if isinstance(raster_elev, gu.Raster):
-                    inlier_mask = inlier_mask.reproject(raster_elev, resampling=rio.warp.Resampling.nearest)
-                else:
-                    raster_rst = Raster.from_array(data=raster_elev, transform=transform, crs=crs)
-                    inlier_mask = inlier_mask.reproject(raster_rst, resampling=rio.warp.Resampling.nearest)
-
-            # If inlier_mask is an array, it is not possible to reproject it
-            else:
-                raise ValueError("Input mask array can't be a different size array as input elevation.")
+        # Align spatial masks even when their shape matches a different grid
+        if isinstance(inlier_mask, gu.Raster):
+            raster_rst = raster_elev
+            if not isinstance(raster_rst, gu.Raster):
+                raster_rst = Raster.from_array(data=raster_elev, transform=transform, crs=crs)
+            if not inlier_mask.georeferenced_grid_equal(raster_rst):
+                inlier_mask = inlier_mask.reproject(raster_rst, resampling=rio.warp.Resampling.nearest)
+        elif raster_elev.shape != inlier_mask.shape:
+            raise ValueError("Input mask array can't be a different size array as input elevation.")
 
     # TODO: Convert to point cloud once class is done
     # TODO: Raise warnings consistently with raster-raster function, see Amelie's Dask PR? #525
@@ -485,13 +492,13 @@ def _preprocess_coreg_fit(
             z_name = (
                 z_name
                 if isinstance(to_be_aligned_elev, gpd.GeoDataFrame)
-                else to_be_aligned_elev.data_column  # type: ignore
+                else to_be_aligned_elev.data_name  # type: ignore
             )
             ref = "raster"
         else:
             raster_elev = to_be_aligned_elev
             point_elev = reference_elev if isinstance(reference_elev, gpd.GeoDataFrame) else reference_elev.ds
-            z_name = z_name if isinstance(reference_elev, gpd.GeoDataFrame) else reference_elev.data_column
+            z_name = z_name if isinstance(reference_elev, gpd.GeoDataFrame) else reference_elev.data_name
             ref = "point"
 
         raster_elev, point_elev, inlier_mask, transform, crs, area_or_point = _preprocess_coreg_fit_raster_point(
@@ -531,9 +538,7 @@ def _preprocess_coreg_fit(
             else to_be_aligned_elev.ds  # type: ignore
         )
         z_name = (
-            z_name
-            if isinstance(to_be_aligned_elev, gpd.GeoDataFrame)
-            else to_be_aligned_elev.data_column  # type: ignore
+            z_name if isinstance(to_be_aligned_elev, gpd.GeoDataFrame) else to_be_aligned_elev.data_name  # type: ignore
         )
         ref_elev, tba_elev = _preprocess_coreg_fit_point_point(
             reference_elev=ref_elev, to_be_aligned_elev=tba_elev, z_name=z_name
@@ -567,7 +572,7 @@ def _preprocess_coreg_apply(
     if isinstance(elev, (gpd.GeoDataFrame, PointCloud)):
         if isinstance(elev, PointCloud):
             elev_out = elev.ds
-            z_name = elev.data_column
+            z_name = elev.data_name
         else:
             elev_out = elev
             z_name = z_name
@@ -610,7 +615,7 @@ def _postprocess_coreg_apply_pts(
     """Post-processing and checks of apply for point input."""
 
     if isinstance(elev, PointCloud):
-        applied_elev = xdem.EPC(applied_elev, data_column=elev.data_column)
+        applied_elev = xdem.EPC(applied_elev, data_column=elev.data_name)
     else:
         applied_elev = applied_elev
     # TODO: Convert CRS back if the CRS did not match the one of the fit?
@@ -643,6 +648,7 @@ def _postprocess_coreg_apply_rst(
         nodata = raster._default_nodata(elev.dtype)
 
     # Resample the array on the original grid
+    area_or_point = elev.area_or_point if isinstance(elev, gu.Raster) else None
     if resample:
         # TODO: Use this function for a translation only, for consistency with the rest of Coreg?
         #  (would require checking transform difference is only a translation)
@@ -650,7 +656,13 @@ def _postprocess_coreg_apply_rst(
         #                                                    dst_transform=transform)
 
         # Reproject the DEM from its out_transform onto the transform
-        applied_rst = gu.Raster.from_array(applied_elev, out_transform, crs=crs, nodata=nodata)
+        applied_rst = gu.Raster.from_array(
+            applied_elev,
+            out_transform,
+            crs=crs,
+            nodata=nodata,
+            area_or_point=area_or_point,
+        )
         if not isinstance(elev, gu.Raster):
             match_rst = gu.Raster.from_array(elev, transform, crs=crs, nodata=nodata)
         else:
@@ -671,7 +683,7 @@ def _postprocess_coreg_apply_rst(
 
     # If the input was a Raster, returns a Raster, else returns array and transform
     if isinstance(elev, gu.Raster):
-        out_dem = elev.from_array(applied_elev, out_transform, crs, nodata=elev.nodata)
+        out_dem = elev.from_array(applied_elev, out_transform, crs, nodata=elev.nodata, area_or_point=area_or_point)
         return out_dem, out_transform
     else:
         return applied_elev, out_transform
@@ -714,7 +726,7 @@ def _postprocess_coreg_apply(
 
 
 def _ols_fit(
-    design_matrix_func: Callable[[NDArrayf], NDArrayf],
+    design_matrix_func: Callable[[NDArrayf], NDArrayf] | None,
     xdata: NDArrayf,
     ydata: NDArrayf,
     sigma: NDArrayf | None,
@@ -725,6 +737,8 @@ def _ols_fit(
     A design matrix builder can normalize predictor coordinates before constructing poorly scaled columns. If the
     builder defines ``unnormalize_coeffs``, the fitted coefficients are converted back to the original coordinates.
 
+    If design_matrix_func is None, xdata already contains the design matrix of shape (N, P).
+
     :param design_matrix_func: Callable that takes xdata and returns the design matrix (N, P).
     :param xdata: Predictor data passed to design_matrix_func.
     :param ydata: Observations to fit (N,).
@@ -733,7 +747,7 @@ def _ols_fit(
     :returns: Tuple of (coefficients, None), mimicking the (popt, pcov) return of curve_fit.
     """
     # Build the linear system and apply optional inverse-standard-deviation weights
-    design_matrix = design_matrix_func(xdata)
+    design_matrix = xdata if design_matrix_func is None else design_matrix_func(xdata)
     if sigma is not None:
         inverse_sigma = 1.0 / sigma
         design_matrix = design_matrix * inverse_sigma[:, np.newaxis]
@@ -741,7 +755,7 @@ def _ols_fit(
 
     # Solve the system and restore coefficients from any internal coordinate normalization
     coeffs = np.linalg.lstsq(design_matrix, ydata, rcond=None)[0]
-    if hasattr(design_matrix_func, "unnormalize_coeffs"):
+    if design_matrix_func is not None and hasattr(design_matrix_func, "unnormalize_coeffs"):
         coeffs = design_matrix_func.unnormalize_coeffs(coeffs)
     return coeffs, None
 
@@ -1504,9 +1518,9 @@ def _apply_matrix_rst(
     epc = dem_rst.to_pointcloud(data_column_name="z").ds
     trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
 
-    new_dem = _grid_pointcloud(
-        trans_epc, grid_coords=dem_rst.coords(grid=False), data_column_name="z", resampling=resampling
-    )[0]
+    new_dem = _grid_pointcloud(trans_epc, grid_coords=dem_rst.coords(grid=False), data_name="z", resampling=resampling)[
+        0
+    ]
 
     return new_dem, transform
 
@@ -1519,6 +1533,7 @@ def _reproject_horizontal_shift_samecrs(
     *,
     return_interpolator: Literal[False] = False,
     resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+    area_or_point: Literal["Area", "Point"] | None = "Area",
 ) -> NDArrayf: ...
 
 
@@ -1530,6 +1545,7 @@ def _reproject_horizontal_shift_samecrs(
     *,
     return_interpolator: Literal[True],
     resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+    area_or_point: Literal["Area", "Point"] | None = "Area",
 ) -> Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]: ...
 
 
@@ -1539,6 +1555,7 @@ def _reproject_horizontal_shift_samecrs(
     dst_transform: rio.transform.Affine = None,
     return_interpolator: bool = False,
     resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
+    area_or_point: Literal["Area", "Point"] | None = "Area",
 ) -> NDArrayf | Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
     """
     Reproject a raster only for a horizontal shift (transform update) in the same CRS.
@@ -1550,10 +1567,15 @@ def _reproject_horizontal_shift_samecrs(
     Here we use SciPy interpolation instead, modified for nodata propagation in geoutils.interp_points().
     """
 
-    # We are reprojecting the raster array relative to itself without changing its pixel interpretation, so we can
-    # force any pixel interpretation (area_or_point) without it having any influence on the result, here "Area"
+    # Preserve the continuous linear interpolator used by iterative coregistration
+    if return_interpolator and resampling == "linear":
+        x, y = _coords(transform=src_transform, area_or_point=area_or_point, shape=raster_arr.shape, grid=False)
+        values = np.ma.filled(raster_arr, np.nan) if np.ma.isMaskedArray(raster_arr) else raster_arr
+        return _interpn_interpolator((np.flip(y), x), values, method="linear")
+
+    # Reproject the raster relative to itself using the same pixel interpretation
     if not return_interpolator:
-        coords_dst = _coords(transform=dst_transform, area_or_point="Area", shape=raster_arr.shape)
+        coords_dst = _coords(transform=dst_transform, area_or_point=area_or_point, shape=raster_arr.shape)
         # Flatten the arrays (only 1D supported in rowcol/xy after Rasterio 1.4)
         coords_dst = (coords_dst[0].ravel(), coords_dst[1].ravel())
     # If we just want the interpolator, we don't need to coordinates of destination points
@@ -1562,7 +1584,7 @@ def _reproject_horizontal_shift_samecrs(
 
     output = _interp_points_base(
         array=raster_arr,
-        area_or_point="Area",
+        area_or_point=area_or_point,
         transform=src_transform,
         points=coords_dst,
         method=resampling,
@@ -1681,7 +1703,13 @@ def apply_matrix(
 
         # We return a raster if input was a raster
         if isinstance(elev, gu.Raster):
-            applied_dem = gu.Raster.from_array(applied_dem, out_transform, elev.crs, elev.nodata)
+            applied_dem = gu.Raster.from_array(
+                applied_dem,
+                out_transform,
+                elev.crs,
+                elev.nodata,
+                area_or_point=elev.area_or_point,
+            )
             return applied_dem
         return applied_dem, out_transform
 
@@ -1730,7 +1758,7 @@ class InFitOrBinDict(TypedDict, total=False):
     fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"]
 
     # For a minimization problem
-    fit_minimizer: Callable[..., tuple[NDArrayf, Any]]
+    fit_minimizer: Callable[..., Any] | Literal["ols"]
     fit_loss_func: Callable[[NDArrayf], np.floating[Any]]
 
     # Bin parameters: bin sizes, statistic and apply method
@@ -1779,6 +1807,8 @@ class OutIterativeDict(TypedDict, total=False):
     last_iteration: int
     # Statistics (often offsets) compared to tolerances at each iteration
     iteration_stats: pd.DataFrame
+    # Whether the final iteration satisfied all stopping tolerances
+    converged: bool
 
 
 class InSpecificDict(TypedDict, total=False):

@@ -12,8 +12,8 @@ from affine import Affine
 from geopandas.testing import assert_geodataframe_equal
 from geoutils import PointCloud
 from geoutils.multiproc import MultiprocConfig
-from geoutils.pointcloud.base import PointCloudBase
-from geoutils.pointcloud.pd_accessor import PointCloudAccessor
+from geoutils.pointcloud.base import GeometryPointCloudBase
+from geoutils.pointcloud.pd_accessor import GeoDataFramePointCloudAccessor
 from pandas.testing import assert_frame_equal
 from pyproj import CRS, Transformer
 
@@ -60,7 +60,13 @@ class TestEPCInheritance:
         and not getattr(member, "__isabstractmethod__", False)
     ]
     properties_tested = ["vcrs"]
-    methods_tested_separately = ["reproject", "set_vcrs", "to_vcrs", "coregister_3d", "estimate_error_structure"]
+    methods_tested_separately = [
+        "reproject",
+        "set_vcrs",
+        "to_vcrs",
+        "coregister_3d",
+        "estimate_error_structure",
+    ]
 
     def test_shared_method_ownership(self) -> None:
         """
@@ -75,14 +81,14 @@ class TestEPCInheritance:
                     assert getattr(EPC, name) is getattr(EPCAccessor, name)
 
         # 2/ Check that copying, construction and LAS writing use the existing GeoUtils methods
-        assert EPC.copy is EPCAccessor.copy is PointCloudBase.copy
-        assert EPCAccessor.__init__ is PointCloudAccessor.__init__
-        assert EPCAccessor.to_las is PointCloudAccessor.to_las
+        assert EPC.copy is EPCAccessor.copy is GeometryPointCloudBase.copy
+        assert EPCAccessor.__init__ is GeoDataFramePointCloudAccessor.__init__
+        assert EPCAccessor.to_las is GeoDataFramePointCloudAccessor.to_las
         assert EPC.to_las is PointCloud.to_las
 
     @pytest.mark.parametrize(
         "property_name",
-        ["vcrs", "crs", "bounds", "point_count", "columns", "data_column"],
+        ["vcrs", "crs", "bounds", "point_count", "columns", "data_name"],
     )
     def test_properties__equality(self, epc_frame: gpd.GeoDataFrame, property_name: str) -> None:
         """Checks that native and Pandas EPC metadata describe exactly the same point cloud."""
@@ -122,7 +128,7 @@ class TestEPCInheritance:
             assert isinstance(expected, EPC) and isinstance(actual, gpd.GeoDataFrame)
             assert_geodataframe_equal(expected.ds, actual)
             assert_frame_equal(expected.ds, actual, check_exact=True)
-            assert actual.epc.data_column == expected.data_column
+            assert actual.epc.data_name == expected.data_name
         elif isinstance(expected, dict):
             assert expected == actual
         else:
@@ -213,7 +219,7 @@ class TestEPCVerticalTransform:
         if use_z:
             frame.geometry = gpd.points_from_xy(frame.geometry.x, frame.geometry.y, z=frame.height, crs=frame.crs)
             frame = frame.drop(columns="height")
-            frame.attrs["data_column"] = None
+            frame.attrs["data_name"] = None
         column = None if use_z else "height"
         native = EPC(frame, data_column=column)
         original = frame.copy()
@@ -370,13 +376,13 @@ class TestEPCCoregistration:
         frame = shifted.ds.copy()
         frame["intensity"] = epc_frame.intensity.to_numpy()
         frame.index = np.arange(len(frame)) * 3
-        frame.attrs["data_column"] = "height"
+        frame.attrs["data_name"] = "height"
 
         # Store elevations either in a height column or in the 3D point geometry
         if use_z:
             frame.geometry = gpd.points_from_xy(frame.geometry.x, frame.geometry.y, z=frame.height, crs=frame.crs)
             frame = frame.drop(columns="height")
-            frame.attrs["data_column"] = None
+            frame.attrs["data_name"] = None
         shifted = EPC(frame, data_column=None if use_z else "height")
         reference_ds = DEMAccessor.from_array(reference.data, reference.transform, reference.crs, nodata=-9999)
         ref = reference_ds.dem if reference_accessor else reference
@@ -394,7 +400,7 @@ class TestEPCCoregistration:
 
 
 class TestEPCCoregistrationErrors:
-    """Test module for rejecting unsupported Dask EPC coregistration without executing its graph."""
+    """Test module for rejecting unsupported Dask EPC analysis without executing its graph."""
 
     def test_coregister_3d__error_dask_unsupported(self, epc_frame: gpd.GeoDataFrame) -> None:
         """Checks that Dask EPC coregistration fails explicitly without executing the point graph."""

@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, Callable, Literal, TypeVar, Union
 
 import geopandas as gpd
@@ -30,6 +30,7 @@ import numpy as np
 import xarray as xr
 from geoutils import profiler
 from geoutils._dispatch import get_geo_attr
+from geoutils._misc import _deprecate_keyword
 from geoutils.multiproc import MultiprocConfig
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.base import RasterBase
@@ -365,43 +366,25 @@ class DEMBase(RasterBase, _VerticalReference):  # type: ignore[misc]
 
     def estimate_error_structure(
         self,
-        other_elev: DEMLike | EPCLike,
+        other: DEMLike | EPCLike | NDArrayf,
         *,
-        stable_terrain: Raster | gu.Vector | NDArrayb | gpd.GeoDataFrame | None = None,
-        predictors: Mapping[str, Any] | tuple[Any, ...] | None = None,
-        components: Mapping[str, Mapping[str, Any]] | None = None,
-        other_error: Literal["negligible", "same"] = "negligible",
-        z_name: str = "z",
-        random_state: int | np.random.Generator | None = None,
+        predictors: Mapping[str, Any] | tuple[str, ...] | None = None,
         **kwargs: Any,
     ) -> xdem.ErrorStructure:
-        """Estimate named error components from another elevation dataset on stable terrain.
+        """
+        Estimate elevation errors with terrain predictors and the GeoUtils error estimator.
 
-        The default model combines predictor dependent short range errors with a constant long range component.
-        Terrain slope and maximum curvature are used as predictors unless ``predictors`` is given explicitly.
+        Terrain slope and maximum curvature are used as predictors by default.
+        Pass predictors={} for constant magnitudes.
 
-        :param other_elev: Comparison DEM or elevation point cloud.
-        :param stable_terrain: Spatial or Boolean mask where elevation differences represent error.
-        :param predictors: Named magnitude predictors or an ordered tuple using terrain attribute names where possible.
-        :param components: Ordered component specifications defining magnitude and correlation forms.
-        :param other_error: Whether comparison errors are negligible or have the same structure as this DEM.
-        :param z_name: Elevation column selected from a plain GeoDataFrame.
-        :param random_state: Random generator or seed used throughout estimation.
-        :param kwargs: Additional options passed to :meth:`xdem.ErrorStructure.estimate`.
-        :returns: Fitted error structure with compact grouped and variogram diagnostics.
+        :param other: Comparison elevation dataset, or an array on this dataset's locations.
+        :param predictors: Named predictors or a tuple of terrain attribute names.
+        :param kwargs: Options for xdem.uncertainty.estimate_error_structure(), including mask, other_precision,
+            at, align, components, mp_config and random_state.
+        :returns: The fitted GeoUtils error structure.
         """
 
-        return xdem.uncertainty.estimate_error_structure(
-            self,
-            other_elev,
-            stable_terrain=stable_terrain,
-            predictors=predictors,
-            components=components,
-            other_error=other_error,
-            z_name=z_name,
-            random_state=random_state,
-            **kwargs,
-        )
+        return xdem.uncertainty.estimate_error_structure(self, other, predictors=predictors, **kwargs)
 
     @deprecate(
         details=(
@@ -486,15 +469,19 @@ class DEMBase(RasterBase, _VerticalReference):  # type: ignore[misc]
         if precision_of_other not in {"finer", "same"}:
             raise ValueError("precision_of_other must be 'finer' or 'same'.")
 
+        # Read the active point attribute unless a custom legacy column is supplied
+        if isinstance(other_elev, gpd.GeoDataFrame):
+            data_name = other_elev.attrs.get("data_name", z_name) if z_name == "z" else z_name
+            other_elev = gu.PointCloud(other_elev, data_name=data_name)
+
         # Keep the deprecated workflow close to its former 1,000-location variogram cost
         structure = estimate_error_structure(
             self,
-            other_elev,
-            stable_terrain=stable_terrain,
+            other=other_elev,
+            mask=stable_terrain,
             predictors=variables,
             components=components,
-            other_error="negligible" if precision_of_other == "finer" else "same",
-            z_name=z_name,
+            other_precision="negligible" if precision_of_other == "finer" else "same",
             spread_estimator=spread_estimator,
             variogram_estimator=variogram_estimator,
             n_pairs=100_000,
@@ -504,11 +491,77 @@ class DEMBase(RasterBase, _VerticalReference):  # type: ignore[misc]
             structure.predict_correlation(distance)
         )
 
-    def _cast_pointcloud_output(self, pointcloud: Any) -> Any:
+    @_deprecate_keyword("data_column_name", "data_name")
+    def to_pointcloud(
+        self,
+        data_name: str = "b1",
+        data_band: int = 1,
+        auxiliary_data_bands: Iterable[int] | None = None,
+        auxiliary_column_names: Iterable[str] | None = None,
+        subsample: float | int = 1,
+        skip_nodata: bool = True,
+        as_array: bool = False,
+        random_state: int | np.random.Generator | None = None,
+        force_pixel_offset: Literal["center", "ul", "ur", "ll", "lr"] = "ul",
+        mp_config: MultiprocConfig | None = None,
+        force_output_to_memory: bool = False,
+        pointcloud_return_type: Literal["dataarray", "dataset", "geodataframe"] | None = None,
+    ) -> Any:
+        """
+        Convert DEM cells to elevation points or an array of coordinates and elevations.
+
+        :param data_name: Name of the elevation column or variable.
+        :param data_band: Band containing elevations, counted from one.
+        :param auxiliary_data_bands: Additional bands to include; None selects every other band.
+        :param auxiliary_column_names: Names for the additional bands.
+        :param subsample: Fraction or maximum number of cells to select; one selects every eligible cell.
+        :param skip_nodata: Whether to exclude cells with missing elevations.
+        :param as_array: Return an N x (2 + band count) array of coordinates and values.
+        :param random_state: Seed or generator for reproducible subsampling.
+        :param force_pixel_offset: Position within each cell used for the point coordinates.
+        :param mp_config: Optional multiprocessing configuration for native DEM inputs.
+        :param force_output_to_memory: Whether to calculate the complete result in memory.
+        :param pointcloud_return_type: Explicit point representation. None returns an EPC for DEM inputs or a
+            GeoDataFrame with the epc accessor for Xarray inputs.
+        :returns: Elevation points in the requested representation, or a NumPy or lazy Dask array.
+        """
+
+        # EPC elevation methods are available through GeoDataFrames; numeric point outputs remain an explicit choice
+        output_type = pointcloud_return_type
+        if self._is_xr and output_type is None:
+            output_type = "geodataframe"
+
+        # Delegate cell selection, auxiliary bands and lazy execution to GeoUtils
+        output = super().to_pointcloud(
+            data_name=data_name,
+            data_band=data_band,
+            auxiliary_data_bands=auxiliary_data_bands,
+            auxiliary_column_names=auxiliary_column_names,
+            subsample=subsample,
+            skip_nodata=skip_nodata,
+            as_array=as_array,
+            random_state=random_state,
+            force_pixel_offset=force_pixel_offset,
+            mp_config=mp_config,
+            force_output_to_memory=force_output_to_memory,
+            pointcloud_return_type=output_type,
+        )
+
+        # Native conversion returns a GeoUtils PointCloud directly, so restore the elevation methods here
+        if isinstance(output, gu.PointCloud):
+            return xdem.EPC(output)
+        return output
+
+    def _cast_pointcloud_output(
+        self,
+        pointcloud: Any,
+        *,
+        pointcloud_return_type: Literal["dataarray", "dataset", "geodataframe"] | None = None,
+    ) -> Any:
         """Preserve EPC behavior for point outputs from DEMs and their accessors."""
 
         # GeoUtils chooses the native class or dataframe representation and attaches the data column
-        output = super()._cast_pointcloud_output(pointcloud)
+        output = super()._cast_pointcloud_output(pointcloud, pointcloud_return_type=pointcloud_return_type)
         if isinstance(output, gu.PointCloud):
             return xdem.EPC(output)
 

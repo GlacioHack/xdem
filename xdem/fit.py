@@ -43,6 +43,22 @@ if TYPE_CHECKING:
     from sklearn.preprocessing import PolynomialFeatures
 
 
+def _check_fit_rank(design: NDArrayf, parameter_names: tuple[str, ...], method: str) -> None:
+    """Require independent model columns after scaling out parameter units."""
+
+    # Normalize columns so rotations and translations share the same rank threshold
+    column_scale = np.linalg.norm(design, axis=0)
+    if design.shape[0] < design.shape[1] or np.any(column_scale == 0):
+        raise ValueError(
+            f"{method} cannot determine {', '.join(parameter_names)}: the surface may be too flat or planar."
+        )
+    singular_values = np.linalg.svd(design / column_scale, compute_uv=False)
+    if singular_values[-1] <= singular_values[0] * 1e-12:
+        raise ValueError(
+            f"{method} cannot determine {', '.join(parameter_names)}: the surface may be too flat or planar."
+        )
+
+
 def index_trimmed(
     res: NDArrayf,
     central_estimator: Callable[[NDArrayf], Any] = np.nanmedian,

@@ -202,7 +202,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     ErrorMagnitude
     ErrorComponent
     ErrorStructure
-    uncertainty.PropagationResult
+    uncertainty.PropagationSummary
     uncertainty.estimate_error_structure
     uncertainty.propagate_uncertainty
     uncertainty.propagate_uncertainty_coreg
@@ -219,7 +219,6 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 
     fit.interp_binning
     fit.get_perbin_binning
-    uncertainty.estimation.two_step_standardization
     uncertainty.analytical.neff_exact
     uncertainty.analytical.neff_hugonnet_approx
     uncertainty.analytical.neff_circular_approx_theoretical
@@ -227,8 +226,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 ```
 
 Generic grouping, cosampling, pair sampling, variogram fitting and their plots are provided by GeoUtils.
-The entire `xdem.spatialstats` module and `DEM.estimate_uncertainty()` are deprecated; see
-the [uncertainty migration guide](uncertainty_migration.md) for replacements and changes to inputs and outputs.
+The entire `xdem.spatialstats` module and `DEM.estimate_uncertainty()` are deprecated.
 
 ## Development classes (removal or re-factoring)
 

@@ -159,7 +159,7 @@ object (defaults to horizontal and vertical shifts).
 ```{code-cell} ipython3
 # Another DEM to-be-aligned to the first one
 filename_tba = xdem.examples.get_path("longyearbyen_tba_dem")
-dem_tba = xdem.DEM(filename_tba)
+dem_tba = xdem.DEM(filename_tba, vcrs=dem.vcrs)
 
 # Coregister (horizontal and vertical shifts)
 dem_tba_coreg = dem_tba.coregister_3d(dem, xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift())
@@ -175,14 +175,19 @@ For more details on building coregistration pipelines and accessing metadata, se
 
 ## Uncertainty analysis
 
-Estimation of DEM-related uncertainty can be performed with {func}`~xdem.DEM.estimate_uncertainty`, which estimates both
+Estimation of DEM-related uncertainty can be performed with {func}`~xdem.DEM.estimate_error_structure`, which estimates both
 **an error map** considering variable per-pixel errors and **the spatial correlation of errors**. The workflow relies
 on an independent elevation data object that is **assumed to have either much finer or similar precision**, and uses
 stable terrain as a proxy.
 
 ```{code-cell} ipython3
 # Estimate elevation uncertainty assuming both DEMs have similar precision
-sig_dem, rho_sig = dem.estimate_uncertainty(dem_tba_coreg, precision_of_other="same", random_state=42)
+predictors = {"slope": dem.slope(), "max_curvature": dem.max_curvature()}
+error_structure = dem.estimate_error_structure(
+    dem_tba_coreg, predictors=predictors, other_precision="same", n_pairs=100_000, random_state=42,
+)
+sig_dem = error_structure.predict_magnitude(predictors, like=dem)
+rho_sig = error_structure.predict_correlation
 
 # The error map variability is estimated from slope and curvature by default
 sig_dem.plot(cmap="Purples", cbar_title=r"Random error in elevation (1$\sigma$, m)")

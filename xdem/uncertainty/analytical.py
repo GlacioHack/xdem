@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Analytical propagation of component covariances to spatial averages."""
+"""Analytical uncertainty propagation tools."""
 
 from __future__ import annotations
 
@@ -27,14 +27,13 @@ from typing import Any
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
+from geoutils import ErrorMagnitude
 from numpy.typing import NDArray
 from scipy.integrate import quad
 from scipy.spatial.distance import cdist
 
-from xdem.uncertainty.error_structure import ErrorMagnitude, ErrorStructure
-
 ######################################
-# 1/ AREA INPUTS AND COVARIANCE SUMS
+# AREA INPUTS AND COVARIANCE SUMS
 ######################################
 
 
@@ -55,7 +54,7 @@ def _area_support(
     # Give point rows positional labels locally so duplicate user indexes cannot misalign averaging weights
     sampling_support = support
     if isinstance(support, gu.PointCloud):
-        sampling_support = gu.PointCloud(support.ds.reset_index(drop=True), data_column=support.data_column)
+        sampling_support = gu.PointCloud(support.gdf.reset_index(drop=True), data_column=support.data_name)
 
     # Sample the dataset against itself to keep one shared selection for values and predictors
     sampled = sampling_support.cosample(
@@ -69,7 +68,7 @@ def _area_support(
         values = {name: sampled.data[index + 2][mask].data for index, name in enumerate(predictors or {})}
     else:
         # Retain native point order when selecting weights from the original observation array
-        mask = np.zeros(len(support.ds), dtype=bool)
+        mask = np.zeros(len(support.gdf), dtype=bool)
         mask[sampled.ds.index.to_numpy()] = True
         coordinates = (sampled.ds.geometry.x.to_numpy(), sampled.ds.geometry.y.to_numpy())
         values = {name: sampled.ds[name].to_numpy() for name in predictors or {}}
@@ -78,7 +77,7 @@ def _area_support(
 
 def _mean_variance(
     coords: Any,
-    error_structure: ErrorStructure,
+    error_structure: gu.ErrorStructure,
     *,
     predictors: Mapping[str, Any] | None = None,
     weights: Any | None = None,
@@ -114,7 +113,7 @@ def _mean_variance(
 
     # Evaluate each component magnitude once; combining correlations first would lose endpoint information
     magnitudes = []
-    for component in error_structure.values():
+    for component in error_structure.components.values():
         magnitude = np.asarray(component.predict_magnitude(predictors), dtype=float)
         magnitude = np.broadcast_to(magnitude, (n,))
         if np.any(~np.isfinite(magnitude)):
@@ -130,7 +129,7 @@ def _mean_variance(
         covariance = np.zeros_like(distances)
 
         # Combine each component using its magnitude at both locations and its own distance correlation
-        for component, magnitude in zip(error_structure.values(), magnitudes):
+        for component, magnitude in zip(error_structure.components.values(), magnitudes):
             covariance += (
                 magnitude[start:stop, None] * magnitude[None, indices] * component.predict_correlation(distances)
             )
@@ -146,13 +145,13 @@ def _mean_variance(
 
 
 #####################################
-# 2/ DISCRETE EFFECTIVE SAMPLE SIZE
+# 3/ DISCRETE EFFECTIVE SAMPLE SIZE
 #####################################
 
 
 def neff_exact(
     coords: Any,
-    error_structure: ErrorStructure,
+    error_structure: gu.ErrorStructure,
     *,
     predictors: Mapping[str, Any] | None = None,
     weights: Any | None = None,
@@ -181,7 +180,7 @@ def neff_exact(
 
 def neff_hugonnet_approx(
     coords: Any,
-    error_structure: ErrorStructure,
+    error_structure: gu.ErrorStructure,
     *,
     predictors: Mapping[str, Any] | None = None,
     weights: Any | None = None,
@@ -219,11 +218,11 @@ def neff_hugonnet_approx(
 
 
 ###################################
-# 3/ CIRCULAR AREA APPROXIMATIONS
+# 4/ CIRCULAR AREA APPROXIMATIONS
 ###################################
 
 
-def _stationary_models(error_structure: ErrorStructure) -> list[tuple[Any, float]]:
+def _stationary_models(error_structure: gu.ErrorStructure) -> list[tuple[Any, float]]:
     """
     Extract constant component variances and correlation models for integration over a numeric area.
 
@@ -233,7 +232,7 @@ def _stationary_models(error_structure: ErrorStructure) -> list[tuple[Any, float
 
     # Require spatially constant magnitudes before integrating without observation coordinates
     models = []
-    for component in error_structure.values():
+    for component in error_structure.components.values():
         assert isinstance(component.magnitude, ErrorMagnitude)
         if component.magnitude.kind != "constant":
             raise ValueError(
@@ -260,7 +259,7 @@ def _stationary_models(error_structure: ErrorStructure) -> list[tuple[Any, float
     return models
 
 
-def neff_circular_approx_numerical(area: float, error_structure: ErrorStructure) -> float:
+def neff_circular_approx_numerical(area: float, error_structure: gu.ErrorStructure) -> float:
     """Integrate stationary covariance radially over an equivalent circular area.
 
     This retains the Rolstad-style approximation previously in spatialstats. Numerical quadrature evaluates an
@@ -293,7 +292,7 @@ def neff_circular_approx_numerical(area: float, error_structure: ErrorStructure)
     return total / variance
 
 
-def neff_circular_approx_theoretical(area: float, error_structure: ErrorStructure) -> float:
+def neff_circular_approx_theoretical(area: float, error_structure: gu.ErrorStructure) -> float:
     """Evaluate the closed circular formulas for spherical, exponential, Gaussian and cubic components.
 
     :param area: Positive area in squared coordinate units.
@@ -385,13 +384,13 @@ def neff_circular_approx_theoretical(area: float, error_structure: ErrorStructur
 
 
 #####################################
-# 4/ PROPAGATION OVER SPATIAL AREAS
+# 5/ PROPAGATION OVER SPATIAL AREAS
 #####################################
 
 
 def _area_variance(
     area: Any,
-    error_structure: ErrorStructure,
+    error_structure: gu.ErrorStructure,
     *,
     support: Any = None,
     predictors: Mapping[str, Any] | None = None,
@@ -449,7 +448,7 @@ def _area_variance(
 
 def number_effective_samples(
     area: Any,
-    error_structure: ErrorStructure,
+    error_structure: gu.ErrorStructure,
     *,
     support: Any = None,
     predictors: Mapping[str, Any] | None = None,
@@ -491,7 +490,7 @@ def number_effective_samples(
 
 def spatial_error_propagation(
     areas: list[Any],
-    error_structure: ErrorStructure,
+    error_structure: gu.ErrorStructure,
     *,
     support: Any = None,
     predictors: Mapping[str, Any] | None = None,

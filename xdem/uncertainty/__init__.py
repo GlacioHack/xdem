@@ -16,14 +16,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Error structures, estimation and uncertainty propagation workflows."""
+"""Estimate and propagate elevation uncertainty."""
 
+from xdem.uncertainty.coreg import PropagationSummary
 from xdem.uncertainty.error_structure import (
     ErrorComponent,
     ErrorMagnitude,
     ErrorStructure,
 )
-from xdem.uncertainty.numerical import PropagationResult
 from xdem.uncertainty.uncertainty import (
     estimate_error_structure,
     number_effective_samples,
@@ -37,7 +37,7 @@ __all__ = [
     "ErrorComponent",
     "ErrorMagnitude",
     "ErrorStructure",
-    "PropagationResult",
+    "PropagationSummary",
     "estimate_error_structure",
     "number_effective_samples",
     "patches_method",

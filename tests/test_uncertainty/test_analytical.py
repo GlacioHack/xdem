@@ -171,7 +171,11 @@ class TestSpatialErrorPropagation:
         # Combine the variable component with constant correlated and independent contributions
         structure = xdem.ErrorStructure(
             [
-                xdem.ErrorComponent("variable", xdem.ErrorMagnitude.grouped(table), VariogramModel("gaussian", 30, 1)),
+                xdem.ErrorComponent(
+                    "variable",
+                    xdem.ErrorMagnitude.variable_from_grouped_stats(table),
+                    VariogramModel("gaussian", 30, 1),
+                ),
                 xdem.ErrorComponent("fixed", 0.7, VariogramModel("spherical", 100, 1)),
                 xdem.ErrorComponent("independent", 0.3),
             ]
@@ -270,7 +274,13 @@ class TestSpatialErrorPropagationErrors:
         columns = pd.MultiIndex.from_tuples([("error", "nmad"), ("error", "count")])
         table = pd.DataFrame([[0.5, 100], [2, 100]], index=index, columns=columns)
         structure = xdem.ErrorStructure(
-            [xdem.ErrorComponent("variable", xdem.ErrorMagnitude.grouped(table), VariogramModel("gaussian", 30, 1))]
+            [
+                xdem.ErrorComponent(
+                    "variable",
+                    xdem.ErrorMagnitude.variable_from_grouped_stats(table),
+                    VariogramModel("gaussian", 30, 1),
+                )
+            ]
         )
 
         # Reject propagation because the numeric area supplies no predictor locations

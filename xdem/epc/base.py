@@ -34,7 +34,7 @@ from geoutils.vector.transformation import _get_reproject_crs
 from pyproj import CRS
 from pyproj.crs import VerticalCRS
 
-from xdem._typing import NDArrayb
+from xdem._typing import NDArrayf
 from xdem.coreg import Coreg
 from xdem.vcrs import (
     _combine_crs_and_vcrs,
@@ -247,52 +247,35 @@ class EPCBase(PointCloudBase, _VerticalReference):  # type: ignore[misc]
 
         # Restore 3D geometry when the source stored elevations in its point coordinates
         result = aligned.ds
-        if self.data_column is None:
+        if self.data_name is None:
             result = self.ds.copy()
             result.geometry = gpd.points_from_xy(
                 aligned.geometry.x, aligned.geometry.y, z=aligned.data, crs=aligned.crs
             )
-            result.attrs["data_column"] = None
+            result.attrs["data_name"] = None
         return self._cast_pointcloud_output(result)
 
     def estimate_error_structure(
         self,
-        other_elev: DEMLike | EPCLike,
+        other: DEMLike | EPCLike | NDArrayf,
         *,
-        stable_terrain: RasterLike | VectorLike | NDArrayb | None = None,
-        predictors: Mapping[str, Any] | tuple[Any, ...] | None = None,
-        components: Mapping[str, Mapping[str, Any]] | None = None,
-        other_error: Literal["negligible", "same"] = "negligible",
-        z_name: str = "z",
-        random_state: int | np.random.Generator | None = None,
+        predictors: Mapping[str, Any] | tuple[str, ...] | None = None,
         **kwargs: Any,
     ) -> ErrorStructure:
-        """Estimate named error components from another elevation dataset on stable terrain.
+        """
+        Estimate elevation errors with terrain predictors and the GeoUtils error estimator.
 
-        Point attributes can be passed by column name. When the comparison is a DEM, terrain attributes such as slope
-        and maximum curvature are derived from its grid by default and evaluated at this point support.
+        Point column names are passed to GeoUtils. When other is a raster, slope and maximum curvature are
+        derived from its grid by default.
+        Pass predictors={} for constant magnitudes.
 
-        :param other_elev: Comparison DEM or elevation point cloud.
-        :param stable_terrain: Spatial or Boolean mask where elevation differences represent error.
-        :param predictors: Named magnitude predictors or an ordered tuple using terrain attribute names where possible.
-        :param components: Ordered component specifications defining magnitude and correlation forms.
-        :param other_error: Whether comparison errors are negligible or have the same structure as this point cloud.
-        :param z_name: Elevation column selected from a plain GeoDataFrame.
-        :param random_state: Random generator or seed used throughout estimation.
-        :param kwargs: Additional options passed to ErrorStructure.estimate().
-        :returns: Fitted error structure with compact grouped and variogram diagnostics.
+        :param other: Comparison elevation dataset, or an array on this dataset's locations.
+        :param predictors: Named predictors or a tuple of terrain attribute names.
+        :param kwargs: Options for xdem.uncertainty.estimate_error_structure(), including mask, other_precision,
+            at, align, components, mp_config and random_state.
+        :returns: The fitted GeoUtils error structure.
         """
 
         from xdem.uncertainty import estimate_error_structure
 
-        return estimate_error_structure(
-            self,
-            other_elev,
-            stable_terrain=stable_terrain,
-            predictors=predictors,
-            components=components,
-            other_error=other_error,
-            z_name=z_name,
-            random_state=random_state,
-            **kwargs,
-        )
+        return estimate_error_structure(self, other, predictors=predictors, **kwargs)
