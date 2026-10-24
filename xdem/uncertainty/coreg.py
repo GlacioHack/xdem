@@ -38,33 +38,37 @@ from xdem.uncertainty.propagation import _select_outputs, _simulate
 @dataclass(frozen=True, kw_only=True)
 class PropagationSummary(GeoUtilsPropagationSummary):  # type: ignore[misc]
     """
-    Fitted coregistration parameters and their uncertainty, with the original transformation available as coreg.
+    Fitted coregistration parameters and their uncertainty, with optional Coregs from numerical simulations.
 
-    estimate, mean and std are Series indexed by tx, ty, tz, rx, ry and rz. Translations use coordinate units;
-    rotations are Euler angles in radians about coreg.centroid(). The fitted coreg also provides to_matrix()
-    and apply(). GeoUtils supplies the usual sample tables, quantiles and uncertainty intervals.
+    The summary includes estimate, mean and std as pandas Series indexed by tx, ty, tz, rx, ry and rz.
+    Translations use coordinate units, rotations are Euler angles in radians about the centroid in output.
+
+    With return_coregs=True, coregs stores the fitted Coreg objects and their fit metadata for each simulation
+    number.
 
     plot() displays translations and rotations on separate axes, with the original fit and mean +/- one
     standard deviation. For example::
 
         summary = xdem.uncertainty.propagate_uncertainty_coreg(
-            reference, moving, xdem.coreg.LZD(), error_structure=errors,
+            reference, moving, xdem.coreg.LZD(), error_structure=errors, return_coregs=True,
         )
         summary.plot()
-        aligned = summary.coreg.apply(moving)
+        for number, fitted in summary.coregs.items():
+            print(number, fitted.meta["outputs"])
 
-    :param coreg: Transformation fitted to the original elevations before drawing numerical errors.
+    :param coregs: Optional fitted Coreg objects indexed by simulation number, starting at 1.
     """
 
-    coreg: Coreg
+    coregs: Mapping[int, Coreg] | None = None
 
     def plot(self, axes: Sequence[Any] | None = None, **kwargs: Any) -> tuple[Any, Any]:
         """
         Plot parameter means with one standard deviation and mark the original fitted values.
 
-        :param axes: Two Matplotlib axes for translations and rotations; create them when omitted.
+        :param axes: Optional Matplotlib axes for translations and rotations.
         :param kwargs: Additional arguments for Matplotlib errorbar().
-        :returns: The translation and rotation axes.
+
+        :returns: Translation and rotation axes.
         """
 
         import_optional("matplotlib")
@@ -76,7 +80,7 @@ class PropagationSummary(GeoUtilsPropagationSummary):  # type: ignore[misc]
         units = (self.output.get("translation_units", "coordinate units"), "radian")
         kwargs = {"fmt": "o", "capsize": 3, "label": "Mean +/- 1 std", **kwargs}
 
-        # Separate the coordinate and angular units while comparing the original fit with propagated results
+        # Separate coordinate and angular units
         for axis, names, title, unit in zip(
             (translation_axis, rotation_axis),
             (("tx", "ty", "tz"), ("rx", "ry", "rz")),
@@ -106,15 +110,16 @@ def propagate_uncertainty_coreg(
     precoreg: bool = False,
     random_state: int | np.random.Generator | None = None,
     fit_kwargs: Mapping[str, Any] | None = None,
+    return_coregs: bool = False,
     **kwargs: Any,
 ) -> PropagationSummary:
     """
-    Summarize translations and Euler rotations from repeated fits or an existing GLS/TLS LZD fit.
+    Propagate and summarize uncertainties on translations and rotations from coregistration.
 
-    Numerical propagation adds source errors and repeats fit() with a fixed sampling seed. Translations use the
-    coordinate units and rotations use radians, about the original fit's centroid recorded in output.
-    Analytical propagation reads LZD's fit_perr directly: pass a fitted GLS/TLS LZD, or its sig_ref/sig_tba and
-    corr_ref/corr_tba fitting arguments in fit_kwargs. An OLS fit has no analytical uncertainty here.
+    Analytical propagation is currently only supported for LZD.
+
+    Numerical propagation adds source errors over many simulations, repeating fit() with a fixed sampling seed.
+    Analytical propagation reads LZD error output with GLS/TLS.
 
     :param reference_elev: Reference raster or point cloud.
     :param to_be_aligned_elev: Raster or point cloud to align.
@@ -129,16 +134,23 @@ def propagate_uncertainty_coreg(
     :param precoreg: Align the original moving dataset before repeating fits.
     :param random_state: Seed controlling error draws and the fixed fit sample.
     :param fit_kwargs: Additional arguments passed unchanged to fit().
+    :param return_coregs: Store each successful numerical fit as a Coreg, including its fit metadata.
     :param kwargs: GeoUtils simulation options, including n_samples, at, return_samples and quantiles.
-    :returns: A coregistration PropagationSummary with the fitted transformation and six labelled parameters.
+
+    :returns: A propagation summary with six labelled parameters and optional fitted Coregs.
     """
 
+    # 1/ Check inputs
     if method not in {"analytical", "numerical"}:
         raise ValueError("method must be 'analytical' or 'numerical'.")
     if method == "analytical" and kwargs.get("return_samples", False):
         raise ValueError("Analytical propagation cannot return simulation samples.")
+    if method == "analytical" and return_coregs:
+        raise ValueError("Analytical propagation cannot return simulated Coreg objects.")
     if error_applied_to not in {"ref", "tba"}:
         raise ValueError("error_applied_to must be 'ref' or 'tba'.")
+
+    # 2/ Prepare elevations and fitting options
     reference = _as_eager_elevation(reference_elev)
     aligned = _as_eager_elevation(to_be_aligned_elev)
     options = dict(fit_kwargs or {})
@@ -148,20 +160,23 @@ def propagate_uncertainty_coreg(
     operation_seed = int(np.random.default_rng(random_state).integers(0, 2**32))
 
     def fit(ref: Any, tba: Any) -> Coreg:
-        """Fit a copy using the same observation sample for every realization."""
+        """We fit a copy using the same observation sample for every realization."""
 
         return coreg_method.copy().fit(ref, tba, random_state=operation_seed, **options)
 
+    # 3/ Fit or reuse the original transformation
     original = coreg_method.copy() if method == "analytical" and coreg_method._fit_called else fit(reference, aligned)
     if precoreg:
         aligned = original.apply(aligned, resample=True)
         original = fit(reference, aligned)
+
+    # 4/ Extract transformation parameters and metadata
     centroid = getattr(original, "centroid", lambda: None)()
     center = np.zeros(3) if centroid is None else np.asarray(centroid)
     labels = pd.Index(["tx", "ty", "tz", "rx", "ry", "rz"])
 
     def parameters(fitted: Coreg) -> pd.Series:
-        """Read the native matrix parameters, expressing each fit about the original centroid."""
+        """Read matrix parameters, and correct to original centroid."""
 
         matrix = fitted.to_matrix().copy()
         fitted_centroid = getattr(fitted, "centroid", lambda: None)()
@@ -182,6 +197,8 @@ def propagate_uncertainty_coreg(
         "translation_units": translation_units,
         "rotation_units": "radian",
     }
+
+    # 5/ Return analytical uncertainty
     if method == "analytical":
         if not isinstance(original, LZD) or "fit_perr" not in original.meta["outputs"].get("fitorbin", {}):
             raise ValueError("Analytical coregistration uncertainty requires an LZD fit with GLS/TLS uncertainties.")
@@ -194,16 +211,23 @@ def propagate_uncertainty_coreg(
             std=pd.Series(standard_errors, index=labels),
             error_structure=error_structure,
             method="analytical",
-            coreg=original,
             output=output,
             selection=_select_outputs(estimate, kwargs.pop("at", None)),
         )
+
+    # 6/ Simulate numerical uncertainty
+    fitted_coregs: list[Coreg] | None = [] if return_coregs else None
 
     def calculate(value: Any) -> pd.Series:
         """Refit the perturbed dataset and extract the six native parameters."""
 
         fitted = fit(value, aligned) if error_applied_to == "ref" else fit(reference, value)
-        return parameters(fitted)
+        result = parameters(fitted)
+
+        # Save fits that GeoUtils includes in its parameter summaries
+        if fitted_coregs is not None and np.any(np.isfinite(result.to_numpy())):
+            fitted_coregs.append(fitted)
+        return result
 
     source = reference if error_applied_to == "ref" else aligned
     kwargs.setdefault("on_error", "warn")
@@ -217,4 +241,13 @@ def propagate_uncertainty_coreg(
         estimate=estimate,
         **kwargs,
     )
-    return PropagationSummary(**{item.name: getattr(summary, item.name) for item in fields(summary)}, coreg=original)
+
+    # Match saved fits to successful simulation numbers, including gaps after failed draws
+    stored_coregs = None
+    if fitted_coregs is not None:
+        assert summary.n_samples is not None
+        numbers = [number for number in range(1, summary.n_samples + 1) if number not in summary.failures]
+        stored_coregs = dict(zip(numbers, fitted_coregs, strict=True))
+    return PropagationSummary(
+        **{item.name: getattr(summary, item.name) for item in fields(summary)}, coregs=stored_coregs
+    )

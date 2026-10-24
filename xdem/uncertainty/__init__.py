@@ -18,18 +18,16 @@
 
 """Estimate and propagate elevation uncertainty."""
 
-from xdem.uncertainty.coreg import PropagationSummary
+from xdem.uncertainty.coreg import PropagationSummary, propagate_uncertainty_coreg
 from xdem.uncertainty.error_structure import (
     ErrorComponent,
     ErrorMagnitude,
     ErrorStructure,
 )
-from xdem.uncertainty.uncertainty import (
-    estimate_error_structure,
+from xdem.uncertainty.propagation import estimate_error_structure, propagate_uncertainty
+from xdem.uncertainty.spatial import (
     number_effective_samples,
     patches_method,
-    propagate_uncertainty,
-    propagate_uncertainty_coreg,
     spatial_error_propagation,
 )
 

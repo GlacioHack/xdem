@@ -1,4 +1,4 @@
-"""Tests for GeoUtils error models used by xDEM elevation recipes."""
+"""Tests that xDEM just links to GeoUtils error structure."""
 
 from __future__ import annotations
 
@@ -7,13 +7,12 @@ import geoutils as gu
 import xdem
 
 
-class TestErrorStructureRepresentations:
-    """Test module for source model classes shared with GeoUtils."""
+class TestErrorStructure:
+    """Test module to check link to GeoUtils error structure."""
 
-    def test_shared_classes__same_objects_in_both_packages(self) -> None:
-        """Checks that xDEM exports the GeoUtils source model classes directly."""
+    def test_shared_classes__identity(self) -> None:
+        """Checks that xDEM exports the GeoUtils error classes directly."""
 
-        # The same initial error model can enter either package's propagation call
         assert xdem.ErrorStructure is gu.ErrorStructure
         assert xdem.ErrorComponent is gu.ErrorComponent
         assert xdem.ErrorMagnitude is gu.ErrorMagnitude

@@ -118,7 +118,7 @@ def _propagate_terrain(
             sample_weights=derivative.ravel(),
         )
 
-    # GeoUtils computes each weighted covariance sum; only restore the original terrain grid afterward
+    # GeoUtils computes each weighted covariance sum
     aligned = _spatial_predictors(source, predictors, size=values.size)
     by_id = {name: dict(enumerate(value)) if np.ndim(value) else value for name, value in (aligned or {}).items()}
     operator = Sum()

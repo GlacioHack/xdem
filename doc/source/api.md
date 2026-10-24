@@ -219,10 +219,10 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
 
     fit.interp_binning
     fit.get_perbin_binning
-    uncertainty.analytical.neff_exact
-    uncertainty.analytical.neff_hugonnet_approx
-    uncertainty.analytical.neff_circular_approx_theoretical
-    uncertainty.analytical.neff_circular_approx_numerical
+    uncertainty.spatial.neff_exact
+    uncertainty.spatial.neff_hugonnet_approx
+    uncertainty.spatial.neff_circular_approx_theoretical
+    uncertainty.spatial.neff_circular_approx_numerical
 ```
 
 Generic grouping, cosampling, pair sampling, variogram fitting and their plots are provided by GeoUtils.
