@@ -99,7 +99,8 @@ ddem_idw = ddem.interpolate(method="idw")
 :  code_prompt_show: "Show plotting code"
 :  code_prompt_hide: "Hide plotting code"
 
-ddem_idw = ddem.copy(new_array=ddem_idw)
+# Mask cells that remain missing after interpolation
+ddem_idw = ddem.copy(new_array=np.ma.masked_invalid(ddem_idw))
 
 # Plot before and after
 f, ax = plt.subplots(1, 2)
@@ -129,7 +130,8 @@ ddem_localhyps = ddem.interpolate(method="local_hypsometric", reference_elevatio
 :  code_prompt_show: "Show plotting code"
 :  code_prompt_hide: "Hide plotting code"
 
-ddem_localhyps = ddem.copy(new_array=ddem_localhyps)
+# Mask cells that remain missing after interpolation
+ddem_localhyps = ddem.copy(new_array=np.ma.masked_invalid(ddem_localhyps))
 
 # Plot before and after
 f, ax = plt.subplots(1, 2)
@@ -192,7 +194,6 @@ plt.xlabel("Normalized area distribution (hypsometry)")
 plt.ylabel("Elevation (m a.s.l.)")
 
 plt.tight_layout()
-plt.show()
 ```
 
 *Caption: Hypsometric elevation change of Scott Turnerbreen on Svalbard from 1990--2009. The width of the bars indicate the standard deviation of the bin. The light blue background bars show the area distribution with elevation.*
@@ -266,6 +267,5 @@ plt.xlabel("Normalized area distribution (hypsometry)")
 plt.ylabel("Elevation (m a.s.l.)")
 
 plt.tight_layout()
-plt.show()
 ```
 *Caption: Regional hypsometric elevation change in central Svalbard from 1990--2009. The width of the bars indicate the standard deviation of the bin. The light blue background bars show the area distribution with elevation.*

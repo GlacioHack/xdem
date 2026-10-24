@@ -22,17 +22,37 @@ from __future__ import annotations
 
 import pathlib
 import warnings
-from typing import Any, Literal
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, Literal, Union, overload
 
 import geopandas as gpd
 import numpy as np
 from geoutils import PointCloud
 from geoutils.multiproc import MultiprocConfig
 from geoutils.pointcloud.base import PointCloudBase
+from geoutils.vector.transformation import _get_reproject_crs
+from pyproj import CRS
 from pyproj.crs import VerticalCRS
 
+from xdem._typing import NDArrayf
 from xdem.coreg import Coreg
-from xdem.vcrs import _to_vcrs_1d, _VerticalReference
+from xdem.vcrs import (
+    _combine_crs_and_vcrs,
+    _to_vcrs_1d,
+    _vcrs_from_crs,
+    _VerticalReference,
+)
+
+if TYPE_CHECKING:
+    from geoutils.raster.base import RasterLike
+    from geoutils.vector.base import VectorLike
+
+    from xdem.dem.base import DEMLike
+    from xdem.uncertainty.error_structure import ErrorStructure
+
+
+# For inputs, we also accept a GeoDataFrame
+EPCLike = Union["EPCBase", gpd.GeoDataFrame]
 
 
 class EPCBase(PointCloudBase, _VerticalReference):  # type: ignore[misc]
@@ -43,7 +63,7 @@ class EPCBase(PointCloudBase, _VerticalReference):  # type: ignore[misc]
     while the inherited ``crs`` property contains the complete 3D CRS.
     """
 
-    def _cast_pointcloud_output(self, pointcloud: Any) -> Any:
+    def _cast_pointcloud_output(self, pointcloud: Any) -> EPCLike:
         """Return EPC for native outputs and dataframes for accessor outputs."""
 
         output = super()._cast_pointcloud_output(pointcloud)
@@ -52,6 +72,99 @@ class EPCBase(PointCloudBase, _VerticalReference):  # type: ignore[misc]
 
             return EPC(output)
         return output
+
+    @overload
+    def reproject(
+        self,
+        ref: RasterLike | VectorLike | None = None,
+        crs: CRS | str | int | None = None,
+        *,
+        inplace: Literal[False] = False,
+        mp_config: MultiprocConfig | None = None,
+    ) -> EPCLike: ...
+
+    @overload
+    def reproject(
+        self,
+        ref: RasterLike | VectorLike | None = None,
+        crs: CRS | str | int | None = None,
+        *,
+        inplace: Literal[True],
+        mp_config: MultiprocConfig | None = None,
+    ) -> None: ...
+
+    @overload
+    def reproject(
+        self,
+        ref: RasterLike | VectorLike | None = None,
+        crs: CRS | str | int | None = None,
+        *,
+        inplace: bool = False,
+        mp_config: MultiprocConfig | None = None,
+    ) -> EPCLike | None: ...
+
+    def reproject(
+        self,
+        ref: RasterLike | VectorLike | None = None,
+        crs: CRS | str | int | None = None,
+        inplace: bool = False,
+        *,
+        mp_config: MultiprocConfig | None = None,
+    ) -> EPCLike | None:
+        """
+        Reproject point coordinates and keep the source vertical reference when the target CRS is 2D.
+
+        :param ref: Raster or vector whose CRS should be matched; mutually exclusive with ``crs``.
+        :param crs: Target coordinate reference system; mutually exclusive with ``ref``.
+        :param inplace: Update this object for eager execution.
+        :param mp_config: Optional configuration for reprojecting point partitions in workers.
+        :returns: Reprojected EPC or GeoDataFrame matching the input interface, or None when updating in place.
+        """
+
+        # Resolve references before rebuilding a two-dimensional target with the source vertical component
+        target_crs = _get_reproject_crs(ref=ref, crs=crs)
+        source_vcrs = self.vcrs
+        if source_vcrs is not None and _vcrs_from_crs(target_crs) is None:
+            target_crs = _combine_crs_and_vcrs(target_crs, source_vcrs)
+
+        # Reproject through GeoUtils with the complete target CRS so every output interface receives the same metadata
+        return super().reproject(crs=target_crs, inplace=inplace, mp_config=mp_config)
+
+    @overload
+    def to_vcrs(
+        self,
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
+        mp_config: MultiprocConfig | None = None,
+        *,
+        inplace: Literal[False] = False,
+    ) -> EPCLike: ...
+
+    @overload
+    def to_vcrs(
+        self,
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
+        mp_config: MultiprocConfig | None = None,
+        *,
+        inplace: Literal[True],
+    ) -> None: ...
+
+    @overload
+    def to_vcrs(
+        self,
+        vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int,
+        force_source_vcrs: (
+            Literal["Ellipsoid", "EGM08", "EGM96"] | str | pathlib.Path | VerticalCRS | int | None
+        ) = None,
+        mp_config: MultiprocConfig | None = None,
+        *,
+        inplace: bool = False,
+    ) -> EPCLike | None: ...
 
     def to_vcrs(
         self,
@@ -62,7 +175,7 @@ class EPCBase(PointCloudBase, _VerticalReference):  # type: ignore[misc]
         mp_config: MultiprocConfig | None = None,
         *,
         inplace: bool = False,
-    ) -> Any:
+    ) -> EPCLike | None:
         """
         Convert point elevations to another vertical coordinate reference system.
 
@@ -93,13 +206,13 @@ class EPCBase(PointCloudBase, _VerticalReference):  # type: ignore[misc]
 
     def coregister_3d(
         self,
-        reference_elev: Any,
+        reference_elev: DEMLike | EPCLike,
         coreg_method: Coreg,
         inlier_mask: Any = None,
         bias_vars: dict[str, Any] | None = None,
         random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
-    ) -> Any:
+    ) -> EPCLike:
         """
         Align an elevation point cloud to reference elevation data in three dimensions.
 
@@ -134,10 +247,35 @@ class EPCBase(PointCloudBase, _VerticalReference):  # type: ignore[misc]
 
         # Restore 3D geometry when the source stored elevations in its point coordinates
         result = aligned.ds
-        if self.data_column is None:
+        if self.data_name is None:
             result = self.ds.copy()
             result.geometry = gpd.points_from_xy(
                 aligned.geometry.x, aligned.geometry.y, z=aligned.data, crs=aligned.crs
             )
-            result.attrs["data_column"] = None
+            result.attrs["data_name"] = None
         return self._cast_pointcloud_output(result)
+
+    def estimate_error_structure(
+        self,
+        other: DEMLike | EPCLike | NDArrayf,
+        *,
+        predictors: Mapping[str, Any] | tuple[str, ...] | None = None,
+        **kwargs: Any,
+    ) -> ErrorStructure:
+        """
+        Estimate elevation errors with terrain predictors and the GeoUtils error estimator.
+
+        Point column names are passed to GeoUtils. When other is a raster, slope and maximum curvature are
+        derived from its grid by default.
+        Pass predictors={} for constant magnitudes.
+
+        :param other: Comparison elevation dataset, or an array on this dataset's locations.
+        :param predictors: Named predictors or a tuple of terrain attribute names.
+        :param kwargs: Options for xdem.uncertainty.estimate_error_structure(), including mask, other_precision,
+            at, align, components, mp_config and random_state.
+        :returns: The fitted GeoUtils error structure.
+        """
+
+        from xdem.uncertainty import estimate_error_structure
+
+        return estimate_error_structure(self, other, predictors=predictors, **kwargs)

@@ -4,6 +4,7 @@ import re
 from importlib.util import find_spec
 from typing import Literal
 
+import geoutils as gu
 import numpy as np
 import pytest
 from scipy.ndimage import binary_dilation
@@ -539,29 +540,29 @@ class TestConvolution:
 
         # Horn coefficients
         kern3d = np.stack(self.coef_arrs_h, axis=0)
-        coefs_h = xdem.spatialstats.convolution(
-            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        coefs_h = gu.filters.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, engine="scipy"
         ).squeeze()[:, 2, 2]
-        coefs_h_flat = xdem.spatialstats.convolution(
-            dem_flat.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        coefs_h_flat = gu.filters.convolution(
+            dem_flat.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, engine="scipy"
         ).squeeze()[:, 2, 2]
 
         # Zevenberg and Thorne coefficients
         kern3d = np.stack(self.coef_arrs_zt, axis=0)
-        coefs_zt = xdem.spatialstats.convolution(
-            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        coefs_zt = gu.filters.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, engine="scipy"
         ).squeeze()[:, 2, 2]
-        coefs_zt_flat = xdem.spatialstats.convolution(
-            dem_flat.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        coefs_zt_flat = gu.filters.convolution(
+            dem_flat.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, engine="scipy"
         ).squeeze()[:, 2, 2]
 
         # Florinsky coefficients
         kern3d = np.stack(self.coef_arrs_fl, axis=0)
-        coefs_fl = xdem.spatialstats.convolution(
-            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        coefs_fl = gu.filters.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, engine="scipy"
         ).squeeze()[:, 2, 2]
-        coefs_fl_flat = xdem.spatialstats.convolution(
-            dem_flat.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        coefs_fl_flat = gu.filters.convolution(
+            dem_flat.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, engine="scipy"
         ).squeeze()[:, 2, 2]
 
         # 1/ Check coefficient for flat DEM are all zero (except last of ZT that is identity)
@@ -609,8 +610,8 @@ class TestConvolution:
         kern3d = np.stack(coef_arrs, axis=0)
 
         # With SciPy
-        conv_scipy = xdem.spatialstats.convolution(
-            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, method="scipy"
+        conv_scipy = gu.filters.convolution(
+            dem.reshape((1, dem.shape[0], dem.shape[1])), filters=kern3d, engine="scipy"
         ).squeeze()[:, 3, 3]
 
         # With Numba

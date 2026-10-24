@@ -542,7 +542,9 @@ def get_terrain_attribute(
         arrays = _get_terrain_attribute_base(array, attribute=attribute, **options)
         if has_band_axis:
             arrays = [array[None, ...] for array in arrays]
-        outputs = [raster.copy(new_array=array) for array in arrays] if raster is not None else arrays
+        outputs = (
+            [raster.copy(new_array=np.ma.masked_invalid(array)) for array in arrays] if raster is not None else arrays
+        )
 
     # Return the sole attribute directly, preserving the requested order for multiple attributes
     return outputs[0] if len(outputs) == 1 else outputs

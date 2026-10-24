@@ -3,6 +3,7 @@ Test module for 'dem' Xarray accessor mirroring DEM API.
 Most function tests are actually located in "test_base", to check consistently for equality, loading and lazy behaviour
 across the entire API.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -228,32 +229,72 @@ class TestAccessor:
         if lazy:
             assert not ds._in_memory
 
+    @pytest.mark.parametrize("pointcloud_return_type", [None, "geodataframe", "dataarray", "dataset"])
     @pytest.mark.parametrize("as_array", [False, True])
     @pytest.mark.parametrize("lazy", [False, True])
-    def test_to_pointcloud__equality_and_laziness(self, accessor_dem_path: Path, as_array: bool, lazy: bool) -> None:
+    def test_to_pointcloud__equality_and_laziness(
+        self, accessor_dem_path: Path, as_array: bool, lazy: bool, pointcloud_return_type: str | None
+    ) -> None:
         """Checks that DEM point conversion preserves elevations, coordinates and the expected output interface."""
 
         # 1/ Open equivalent native and accessor sources with an explicit elevation-column name
+        dask_array: Any = None
+        dask_geopandas: Any = None
         if lazy:
-            pytest.importorskip("dask_geopandas")
+            dask_array = pytest.importorskip("dask.array")
+            dask_geopandas = pytest.importorskip("dask_geopandas")
         ds = open_dem(accessor_dem_path, vcrs=5703, **({"chunks": 13} if lazy else {}))
         native = DEM(accessor_dem_path, vcrs=5703)
         options = {"data_column_name": "height", "as_array": as_array, "force_pixel_offset": "center"}
 
-        # 2/ Compare arrays directly; otherwise check that DEM returns EPC and Xarray returns a GeoDataFrame
+        # 2/ Convert both sources while keeping the accessor source and its output lazy when requested
         expected = native.to_pointcloud(**options)
-        result = ds.dem.to_pointcloud(**options)
+        result = ds.dem.to_pointcloud(**options, pointcloud_return_type=pointcloud_return_type)
         if lazy:
             assert not ds._in_memory
+
+        # 3/ Compute lazy results only for comparison and check the output interface for each input type
         if as_array:
-            np.testing.assert_array_equal(expected, result)
+            if lazy:
+                assert isinstance(result, dask_array.Array)
+                computed_result = result.compute()
+            else:
+                assert isinstance(result, np.ndarray)
+                computed_result = result
+            expected_order = np.lexsort((expected[:, 0], expected[:, 1]))
+            computed_order = np.lexsort((computed_result[:, 0], computed_result[:, 1]))
+            np.testing.assert_array_equal(expected[expected_order], computed_result[computed_order])
         else:
             assert isinstance(expected, EPC)
-            assert isinstance(result, gpd.GeoDataFrame)
-            assert expected.pointcloud_equal(result)
-            assert_frame_equal(expected.ds, result, check_exact=True)
-            assert result.epc.vcrs == native.vcrs
-            assert result.epc.data_column == "height"
+            if pointcloud_return_type in ("dataarray", "dataset"):
+                expected_type = xr.DataArray if pointcloud_return_type == "dataarray" else xr.Dataset
+                assert isinstance(result, expected_type)
+                # Dataset metadata and loading describe each point variable through its DataArray accessor
+                points = result["height"] if isinstance(result, xr.Dataset) else result
+                assert points.pc.is_loaded is not lazy
+                assert points.pc.crs == native.crs
+                assert points.pc.data_name == "height"
+                computed_result = points.pc.to_geoutils().ds
+                assert points.pc.is_loaded is not lazy
+            elif lazy:
+                assert isinstance(result, dask_geopandas.GeoDataFrame)
+                assert not result.epc.is_loaded
+                computed_result = result.compute()
+                assert not result.epc.is_loaded
+            else:
+                assert isinstance(result, gpd.GeoDataFrame)
+                computed_result = result
+            # Dask conversion follows raster chunk order, so compare the same points after sorting by location
+            expected_order = np.lexsort((expected.geometry.x, expected.geometry.y))
+            computed_order = np.lexsort((computed_result.geometry.x, computed_result.geometry.y))
+            expected_frame = expected.ds.iloc[expected_order].reset_index(drop=True)
+            computed_frame = computed_result.iloc[computed_order].reset_index(drop=True)
+            assert_frame_equal(expected_frame, computed_frame, check_exact=True)
+            if pointcloud_return_type in (None, "geodataframe"):
+                assert result.epc.vcrs == native.vcrs
+                assert result.epc.data_name == "height"
+        if lazy:
+            assert not ds._in_memory
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])
     def test_open__loaded(self, path_dem: str) -> None:

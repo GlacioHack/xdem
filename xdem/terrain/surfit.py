@@ -1102,12 +1102,12 @@ def _get_surface_attributes_scipy(
 ) -> NDArrayf:
 
     # Perform convolution and squeeze output into 3D array
-    from xdem.spatialstats import convolution
+    from geoutils.filters import convolution
 
     coefs = convolution(
         imgs=dem.reshape((1, dem.shape[0], dem.shape[1])),
         filters=filters,
-        method="scipy",
+        engine="scipy",
     ).squeeze()
 
     # Convert coefficients to attributes

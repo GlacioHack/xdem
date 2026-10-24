@@ -65,7 +65,7 @@ import xdem
 # Instantiate a point cloud from a filename on disk, passing the relevant data column
 filename_epc = xdem.examples.get_path("longyearbyen_epc")
 # For this ICESat-2 file, the elevation column name is "h_li"
-epc = xdem.EPC(filename_epc, data_column="h_li")
+epc = xdem.EPC(filename_epc, data_name="h_li")
 epc
 ```
 
@@ -162,7 +162,7 @@ dense EPCs (like lidar point clouds) reach similar coregistration accuracy when 
 ```{code-cell} ipython3
 # A reference DEM to the elevation point cloud
 filename_ref = xdem.examples.get_path("longyearbyen_ref_dem")
-dem_ref = xdem.DEM(filename_ref)
+dem_ref = xdem.DEM(filename_ref, vcrs=epc.vcrs)
 epc = epc.reproject(dem_ref)
 
 # Coregister (horizontal and vertical shifts)
@@ -170,8 +170,8 @@ epc_aligned = epc.coregister_3d(dem_ref, xdem.coreg.LZD())
 
 # Plot the elevation change before/after coregistration over a hillshade
 hs = dem_ref.hillshade()
-dh_before = epc - dem_ref.interp_points(epc)
-dh_after = epc_aligned - dem_ref.interp_points(epc_aligned)
+dh_before = epc - dem_ref.interp_at_points(epc)
+dh_after = epc_aligned - dem_ref.interp_at_points(epc_aligned)
 
 # Remove outliers
 # dh_before[gu.stats.nmad(dh_before) < 3] = np.nan

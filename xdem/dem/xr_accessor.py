@@ -6,7 +6,7 @@ import pathlib
 from typing import Any, Literal
 
 import xarray as xr
-from geoutils.raster.xr_accessor import RasterAccessor, open_raster
+from geoutils.raster.xr_accessor import DataArrayRasterAccessor, open_raster
 from pyproj.crs import VerticalCRS
 
 from xdem.dem.base import DEMBase
@@ -42,12 +42,12 @@ def open_dem(
 
 
 @xr.register_dataarray_accessor("dem")
-class DEMAccessor(DEMBase, RasterAccessor):  # type: ignore[misc]
+class DEMAccessor(DEMBase, DataArrayRasterAccessor):  # type: ignore[misc]
     """
     Xarray accessor ``dem`` sharing elevation methods with DEM and raster methods with ``rst``.
 
     Only DataArray validation and conversion to the native DEM class live here. Calculation and metadata behavior
-    are inherited from DEMBase and RasterAccessor.
+    are inherited from DEMBase and DataArrayRasterAccessor.
     """
 
     def __init__(self, xarray_obj: xr.DataArray) -> None:

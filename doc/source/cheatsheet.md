@@ -160,6 +160,7 @@ geoid added on top of the ellipsoid.
 :mystnb:
 :  code_prompt_show: "Show code to simulate vertical referencing errors"
 :  code_prompt_hide: "Hide code to simulate vertical referencing errors"
+:  output_stderr: show
 
 # Set current vertical CRS as ellipsoid
 dem.set_vcrs("EGM96")
@@ -250,7 +251,7 @@ y = np.linspace(dem.bounds.top - 5000, dem.bounds.bottom + 5000, 100)
 # Interpolate DEM at these coordinates to build the point cloud
 # (to approximate the real elevation at these coordinates,
 # which has negligible impact compared to rasterization)
-z = dem.interp_points((x,y), as_array=True)
+z = dem.interp_at_points((x,y), as_array=True)
 epc = xdem.EPC.from_xyz(x, y, z, crs=dem.crs)
 
 # Rasterize point cloud back on the DEM grid

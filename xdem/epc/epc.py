@@ -25,6 +25,7 @@ from typing import Any, Literal
 
 import geopandas as gpd
 from geoutils import PointCloud
+from geoutils._misc import _deprecate_keyword
 from geoutils.multiproc import MultiprocConfig
 from pyproj import CRS
 from pyproj.crs import VerticalCRS
@@ -42,22 +43,23 @@ class EPC(EPCBase, PointCloud):  # type: ignore[misc]
     referencing. File opening reads metadata first; point values are loaded on demand through GeoUtils.
     """
 
+    @_deprecate_keyword("data_column", "data_name")
     def __init__(
         self,
         filename_or_dataset: str | pathlib.Path | gpd.GeoDataFrame | gpd.GeoSeries | BaseGeometry | PointCloud,
-        data_column: str | None = None,
+        data_name: str | None = None,
         vcrs: Literal["Ellipsoid", "EGM08", "EGM96"] | VerticalCRS | str | pathlib.Path | int | None = None,
     ) -> None:
         """
         Open elevation points or wrap an existing geospatial dataset.
 
         :param filename_or_dataset: File path, point cloud, GeoDataFrame, GeoSeries or point geometry.
-        :param data_column: Column containing elevations. LAS/LAZ defaults to ``Z``; 3D geometries need no column.
+        :param data_name: Column containing elevations. LAS/LAZ defaults to ``Z``; 3D geometries need no column.
         :param vcrs: Vertical CRS name, EPSG code, PyProj CRS or grid path, overriding file metadata when provided.
         """
 
         # Preserve GeoUtils' loading and optional LAS/LAZ dependency handling
-        super().__init__(filename_or_dataset=filename_or_dataset, data_column=data_column)
+        super().__init__(filename_or_dataset=filename_or_dataset, data_name=data_name)
         new_crs = _check_vcrs_input(vcrs, self.crs)
         if new_crs != self.crs:
             self._set_vcrs_crs(new_crs)

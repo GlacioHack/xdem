@@ -12,10 +12,10 @@ from affine import Affine
 from geopandas.testing import assert_geodataframe_equal
 from geoutils import PointCloud
 from geoutils.multiproc import MultiprocConfig
-from geoutils.pointcloud.base import PointCloudBase
-from geoutils.pointcloud.pd_accessor import PointCloudAccessor
+from geoutils.pointcloud.base import GeometryPointCloudBase
+from geoutils.pointcloud.pd_accessor import GeoDataFramePointCloudAccessor
 from pandas.testing import assert_frame_equal
-from pyproj import Transformer
+from pyproj import CRS, Transformer
 
 from xdem import DEM, EPC, coreg, open_epc
 from xdem.dem.xr_accessor import DEMAccessor
@@ -60,7 +60,13 @@ class TestEPCInheritance:
         and not getattr(member, "__isabstractmethod__", False)
     ]
     properties_tested = ["vcrs"]
-    methods_tested_separately = ["set_vcrs", "to_vcrs", "coregister_3d"]
+    methods_tested_separately = [
+        "reproject",
+        "set_vcrs",
+        "to_vcrs",
+        "coregister_3d",
+        "estimate_error_structure",
+    ]
 
     def test_shared_method_ownership(self) -> None:
         """
@@ -75,14 +81,14 @@ class TestEPCInheritance:
                     assert getattr(EPC, name) is getattr(EPCAccessor, name)
 
         # 2/ Check that copying, construction and LAS writing use the existing GeoUtils methods
-        assert EPC.copy is EPCAccessor.copy is PointCloudBase.copy
-        assert EPCAccessor.__init__ is PointCloudAccessor.__init__
-        assert EPCAccessor.to_las is PointCloudAccessor.to_las
+        assert EPC.copy is EPCAccessor.copy is GeometryPointCloudBase.copy
+        assert EPCAccessor.__init__ is GeoDataFramePointCloudAccessor.__init__
+        assert EPCAccessor.to_las is GeoDataFramePointCloudAccessor.to_las
         assert EPC.to_las is PointCloud.to_las
 
     @pytest.mark.parametrize(
         "property_name",
-        ["vcrs", "crs", "bounds", "point_count", "columns", "data_column"],
+        ["vcrs", "crs", "bounds", "point_count", "columns", "data_name"],
     )
     def test_properties__equality(self, epc_frame: gpd.GeoDataFrame, property_name: str) -> None:
         """Checks that native and Pandas EPC metadata describe exactly the same point cloud."""
@@ -122,11 +128,42 @@ class TestEPCInheritance:
             assert isinstance(expected, EPC) and isinstance(actual, gpd.GeoDataFrame)
             assert_geodataframe_equal(expected.ds, actual)
             assert_frame_equal(expected.ds, actual, check_exact=True)
-            assert actual.epc.data_column == expected.data_column
+            assert actual.epc.data_name == expected.data_name
         elif isinstance(expected, dict):
             assert expected == actual
         else:
             np.testing.assert_array_equal(expected, actual)
+
+    @pytest.mark.parametrize(
+        "source_crs",
+        [CRS.from_epsg(32633).to_3d(), CRS.from_user_input("EPSG:32633+5703")],
+    )
+    def test_reproject__preserves_vcrs_with_2d_target(self, epc_frame: gpd.GeoDataFrame, source_crs: CRS) -> None:
+        """Checks that horizontal reprojection rebuilds a 3D CRS with the source vertical reference."""
+
+        # Create native and accessor EPC inputs with an ellipsoidal or orthometric vertical reference
+        source_frame = epc_frame.set_crs(source_crs, allow_override=True)
+        native = EPC(source_frame, data_column="height")
+        source_vcrs = native.vcrs
+        source_heights = source_frame.height.to_numpy().copy()
+        target_horizontal_crs = 32632
+
+        # Reproject both interfaces using only a two-dimensional horizontal target
+        native_output = native.reproject(crs=target_horizontal_crs)
+        accessor_output = source_frame.epc.reproject(crs=target_horizontal_crs)
+
+        # Check that both outputs use the new horizontal CRS and keep the unchanged height reference and values
+        assert isinstance(native_output, EPC) and isinstance(accessor_output, gpd.GeoDataFrame)
+        for output in (native_output, accessor_output.epc):
+            assert len(output.crs.axis_info) == 3
+            horizontal_crs = output.crs.sub_crs_list[0] if output.crs.is_compound else output.crs.to_2d()
+            assert horizontal_crs == CRS.from_epsg(target_horizontal_crs)
+            assert output.vcrs == source_vcrs
+            np.testing.assert_array_equal(output.data, source_heights)
+
+        # Check that horizontal reprojection leaves both source objects unchanged
+        assert native.crs == source_crs
+        assert source_frame.epc.crs == source_crs
 
     def test_methods__test_coverage(self) -> None:
         """Checks that every public EPC elevation property and method remains assigned to an explicit test."""
@@ -182,7 +219,7 @@ class TestEPCVerticalTransform:
         if use_z:
             frame.geometry = gpd.points_from_xy(frame.geometry.x, frame.geometry.y, z=frame.height, crs=frame.crs)
             frame = frame.drop(columns="height")
-            frame.attrs["data_column"] = None
+            frame.attrs["data_name"] = None
         column = None if use_z else "height"
         native = EPC(frame, data_column=column)
         original = frame.copy()
@@ -315,12 +352,11 @@ class TestEPCVerticalTransform:
 
 class TestEPCCoregistration:
     """
-    Test eager coregistration through EPC and its Pandas accessor.
+    Test module for eager coregistration through EPC and its Pandas accessor.
 
     This class tests:
     - ``coregister_3d`` with elevations in a column or in 3D point geometry,
-    - Raster references supplied as DEM objects or Xarray accessors,
-    - Clear rejection of Dask inputs without running or changing the lazy input.
+    - Raster references supplied as DEM objects or Xarray accessors.
     """
 
     @pytest.mark.parametrize("use_z", [False, True])
@@ -340,13 +376,13 @@ class TestEPCCoregistration:
         frame = shifted.ds.copy()
         frame["intensity"] = epc_frame.intensity.to_numpy()
         frame.index = np.arange(len(frame)) * 3
-        frame.attrs["data_column"] = "height"
+        frame.attrs["data_name"] = "height"
 
         # Store elevations either in a height column or in the 3D point geometry
         if use_z:
             frame.geometry = gpd.points_from_xy(frame.geometry.x, frame.geometry.y, z=frame.height, crs=frame.crs)
             frame = frame.drop(columns="height")
-            frame.attrs["data_column"] = None
+            frame.attrs["data_name"] = None
         shifted = EPC(frame, data_column=None if use_z else "height")
         reference_ds = DEMAccessor.from_array(reference.data, reference.transform, reference.crs, nodata=-9999)
         ref = reference_ds.dem if reference_accessor else reference
@@ -362,7 +398,11 @@ class TestEPCCoregistration:
         np.testing.assert_array_equal(actual.index, frame.index)
         np.testing.assert_array_equal(frame.epc.data, shifted.data)
 
-    def test_coregister_3d__dask_rejected(self, epc_frame: gpd.GeoDataFrame) -> None:
+
+class TestEPCCoregistrationErrors:
+    """Test module for rejecting unsupported Dask EPC analysis without executing its graph."""
+
+    def test_coregister_3d__error_dask_unsupported(self, epc_frame: gpd.GeoDataFrame) -> None:
         """Checks that Dask EPC coregistration fails explicitly without executing the point graph."""
 
         dgpd = pytest.importorskip("dask_geopandas")

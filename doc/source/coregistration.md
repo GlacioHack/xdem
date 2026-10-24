@@ -228,6 +228,42 @@ plt.tight_layout()
 
 {class}`xdem.coreg.DhMinimize`
 
+````{warning}
+`DhMinimize` is deprecated, as it corresponds to a non-linearized version of `LZD`.
+Use `LZD(linearized=False, only_translation=True)` instead.
+
+Note that the minimizer defaults to `scipy.optimize.least_squares` with a linear loss.
+
+To reproduce DhMinimize's old default minimizer, provide a custom `fit_minimizer` that minimizes the NMAD
+of residuals with Nelder–Mead over the X/Y shifts, then estimates the Z shift from their median:
+```python
+import numpy as np
+from geoutils.stats import nmad
+from scipy.optimize import minimize
+
+
+def nelder_mead_nmad(residuals, x0, *, loss, **kwargs):
+
+    def horizontal_residuals(xy):
+        return residuals(np.array([xy[0], xy[1], x0[2]]))
+
+    # We initialize with (1, 1) to give Nelder–Mead a proper start-up
+    result = minimize(lambda xy: loss(horizontal_residuals(xy)), np.ones(2), method="Nelder-Mead", **kwargs)
+    z_shift = x0[2] + np.median(horizontal_residuals(result.x))
+    result.x = np.array([result.x[0], result.x[1], z_shift])
+    return result
+
+
+lzd = xdem.coreg.LZD(
+    linearized=False,
+    only_translation=True,
+    fit_minimizer=nelder_mead_nmad,
+    fit_loss_func=nmad,
+)
+aligned_dem = lzd.fit_and_apply(ref_dem, tba_dem_shifted)
+```
+````
+
 - **Performs:** Horizontal and vertical shifts.
 - **Supports weights:** Planned.
 - **Pros:** Can be used to perform both local and global registration by tuning the minimizer.
@@ -322,6 +358,10 @@ plt.tight_layout()
 - **Cons:** Sensitive to elevation outliers.
 
 Least Z-difference (LZD) coregistration is an iterative point-grid registration method from [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf).
+
+Linearized fits with a linear loss use direct ordinary least squares by default. Set `linearized=False`
+to evaluate elevation residuals after an exact rigid transform using `scipy.optimize.least_squares`.
+Both variants accept a custom `fit_minimizer`; see the {ref}`dh-minimize` warning for a Nelder–Mead example.
 
 ```{code-cell} ipython3
 :tags: [hide-cell]

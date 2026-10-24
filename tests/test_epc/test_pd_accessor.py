@@ -37,7 +37,7 @@ class TestEPCAccessor:
 
         # 1/ Accept a point GeoDataFrame and read its selected elevation column
         assert isinstance(epc_frame.epc, EPCAccessor)
-        assert epc_frame.epc.data_column == "height"
+        assert epc_frame.epc.data_name == "height"
         np.testing.assert_array_equal(epc_frame.epc.data, epc_frame.height)
 
         # 2/ Reject a table without geometry and a GeoDataFrame containing polygons
@@ -87,8 +87,8 @@ class TestEPCAccessor:
         # 2/ Convert the copy to EPC and check that the original still selects height
         converted = copied.epc.to_xdem()
         assert isinstance(converted, EPC)
-        assert converted.data_column == "intensity"
-        assert epc_frame.epc.data_column == "height"
+        assert converted.data_name == "intensity"
+        assert epc_frame.epc.data_name == "height"
         np.testing.assert_array_equal(converted.data, epc_frame.intensity)
         with pytest.raises(ValueError, match="not found"):
             copied.epc.set_data_column("missing")
@@ -107,7 +107,7 @@ class TestEPCAccessor:
         assert_geodataframe_equal(result, expected.ds)
         assert_frame_equal(result, expected.ds, check_exact=True)
         np.testing.assert_array_equal(result.intensity, epc_frame.intensity)
-        assert result.epc.data_column == "height"
+        assert result.epc.data_name == "height"
         assert result.epc.vcrs == epc_frame.epc.vcrs
 
 
@@ -150,7 +150,7 @@ class TestEPCLas:
 
         # 3/ Empty results still carry a usable elevation column and destination reference
         assert len(computed) == 0
-        assert computed.epc.data_column == "Z"
+        assert computed.epc.data_name == "Z"
         assert computed.epc.vcrs.to_epsg() == 6360
         assert computed.columns.equals(source.columns)
         assert source.epc.crs == native.crs
@@ -300,7 +300,7 @@ class TestEPCLazyMethods:
         result = getattr(source.epc, method)()
         assert type(result) is (EPC if method == "to_xdem" else PointCloud)
         assert result.is_loaded
-        assert result.data_column == "height"
+        assert result.data_name == "height"
         assert source.epc.is_loaded is not lazy
         if lazy:
             assert source.expr is graph
@@ -323,7 +323,7 @@ class TestEPCLazyMethods:
         assert isinstance(result, gpd.GeoDataFrame)
         assert source.is_loaded
         assert result.epc.crs == source.crs
-        assert result.epc.data_column == source.data_column
+        assert result.epc.data_name == source.data_name
 
         # 2/ An independent GeoUtils reader supplies the same requested LAS dimensions for exact comparison
         expected = PointCloud(epc_las_path)

@@ -16,9 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-DEM coregistration classes and functions, including affine methods, bias corrections (i.e. non-affine).
-"""
+"""DEM coregistration classes and functions, including affine methods and non-affine bias corrections."""
 
 from xdem.coreg.affine import (  # noqa
     CPD,
@@ -31,7 +29,6 @@ from xdem.coreg.affine import (  # noqa
 )
 from xdem.coreg.base import (  # noqa
     Coreg,
-    CoregPipeline,
     apply_matrix,
     invert_matrix,
     matrix_from_translations_rotations,
@@ -39,3 +36,4 @@ from xdem.coreg.base import (  # noqa
 )
 from xdem.coreg.biascorr import BiasCorr, Deramp, DirectionalBias, TerrainBias  # noqa
 from xdem.coreg.blockwise import BlockwiseCoreg  # noqa
+from xdem.coreg.pipeline import CoregPipeline  # noqa

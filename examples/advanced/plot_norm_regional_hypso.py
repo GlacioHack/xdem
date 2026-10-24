@@ -59,7 +59,7 @@ plt_extent = [
 # %%
 # To test the method, we can generate a random mask to assign nans to glacierized areas.
 # Let's remove 30% of the data.
-index_nans = dem_2009.subsample(subsample=0.3, return_indices=True)
+index_nans = dem_2009.subsample(subsample=0.3, as_array=True, return_indices=True)
 mask_nans = dem_2009.copy(new_array=np.ones(dem_2009.shape))
 mask_nans[index_nans] = 0
 

@@ -590,7 +590,7 @@ The resulting attribute is saved directly to disk under the filename specified i
 ```{code-cell} ipython3
 from geoutils.raster import MultiprocConfig
 
-mp_config = MultiprocConfig(chunk_size=200, outfile="hillshade.tif")
+mp_config = MultiprocConfig(chunks=200, outfile="hillshade.tif")
 hillshade = dem.hillshade(mp_config=mp_config)
 hillshade
 ```

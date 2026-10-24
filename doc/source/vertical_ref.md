@@ -279,6 +279,9 @@ The operation returns a new {class}`~xdem.DEM` by default, but can also be done 
 each pixel value by the transformation at their coordinates:
 
 ```{code-cell} ipython3
+:mystnb:
+:  output_stderr: show
+
 import numpy as np
 
 diff = trans_dem - dem

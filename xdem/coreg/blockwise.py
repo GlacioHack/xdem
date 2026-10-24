@@ -142,7 +142,7 @@ class BlockwiseCoreg:
             coreg_method.meta["outputs"] = {"affine": {"shift_z": np.nan}}
             return coreg_method
         else:
-            if inlier_mask:
+            if inlier_mask is not None:
                 inlier_mask = inlier_mask.crop(ref_dem_tiled)
             try:
                 return coreg_method.fit(ref_dem_tiled, tba_dem_tiled, inlier_mask)
@@ -341,7 +341,7 @@ class BlockwiseCoreg:
             new_dem = _grid_pointcloud(
                 trans_epc,
                 grid_coords=tba_dem_tile.coords(grid=False),
-                data_column_name="z",
+                data_name="z",
                 resampling=resampling,
             )[0]
 

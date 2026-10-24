@@ -33,8 +33,9 @@ jobs:
     - name: Initiate empty environment
       uses: conda-incubator/setup-miniconda@v4
       with:
-        miniforge-version: latest
-        auto-update-conda: true
+        # Pin Windows to the previous installer while investigating the Conda initialization failure
+        miniforge-version: ${{ runner.os == 'Windows' && '26.7.2-1' || 'latest' }}
+        auto-update-conda: ${{ runner.os != 'Windows' }}
         use-mamba: true
         channel-priority: strict
         activate-environment: xdem-dev
@@ -91,6 +92,9 @@ jobs:
       env:
         # Render plots without a GUI backend (avoid Tcl/Tk issues on Windows)
         MPLBACKEND: Agg
+        # Record compiled Numba lines when the test suite first compiles each function
+        NUMBA_JIT_COVERAGE: "1"
+        NUMBA_CACHE_DIR: ${{ runner.temp }}
       run: pytest -ra --cov=xdem/ --cov-report=lcov --durations=0
 
     - name: Upload coverage to Coveralls

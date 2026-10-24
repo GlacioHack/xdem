@@ -834,7 +834,7 @@ def _to_vcrs_1d_dataframe(ds: Any, data_column: str | None, src_crs: CRS, dst_cr
     else:
         result.geometry = gpd.points_from_xy(ds.geometry.x, ds.geometry.y, z=values, crs=ds.crs)
     result.set_crs(dst_crs, allow_override=True, inplace=True)
-    result.attrs["data_column"] = data_column
+    result.attrs["data_name"] = data_column
     return result
 
 
@@ -860,10 +860,10 @@ def _to_vcrs_1d(
     # Resolve any missing grid once before sending work to workers
     _build_vertical_transformer(src_crs, dst_crs)
     if epc._is_dask:
-        if epc.data_column is None:
+        if epc.data_name is None:
             raise ValueError("Dask-backed point clouds require an explicit data column.")
         meta = epc.ds._meta.set_crs(dst_crs, allow_override=True)
-        result = epc.ds.map_partitions(_to_vcrs_1d_dataframe, epc.data_column, src_crs, dst_crs, meta=meta)
+        result = epc.ds.map_partitions(_to_vcrs_1d_dataframe, epc.data_name, src_crs, dst_crs, meta=meta)
         attrs = _get_dataframe_attrs(epc.ds).copy()
         attrs["crs"] = dst_crs
         _set_dataframe_attrs(result, attrs)
@@ -882,18 +882,18 @@ def _to_vcrs_1d(
             mp_config.cluster.submit(
                 _to_vcrs_1d_dataframe,
                 source.ds.iloc[start : start + partition_size],
-                epc.data_column,
+                epc.data_name,
                 src_crs,
                 dst_crs,
             )
             for start in range(0, source.point_count, partition_size)
         ]
         parts = mp_config.cluster.gather(futures)
-        result = pd.concat(parts) if parts else _to_vcrs_1d_dataframe(source.ds, epc.data_column, src_crs, dst_crs)
+        result = pd.concat(parts) if parts else _to_vcrs_1d_dataframe(source.ds, epc.data_name, src_crs, dst_crs)
     else:
-        result = _to_vcrs_1d_dataframe(epc.ds, epc.data_column, src_crs, dst_crs)
+        result = _to_vcrs_1d_dataframe(epc.ds, epc.data_name, src_crs, dst_crs)
 
     # Reconstruct the runtime native class or return the dataframe directly for accessors
     if epc._is_pd:
         return result
-    return epc.__class__(result, data_column=epc.data_column)
+    return epc.__class__(result, data_column=epc.data_name)
