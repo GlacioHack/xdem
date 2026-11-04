@@ -99,9 +99,12 @@ slope, max_curvature = xdem.terrain.get_terrain_attribute(
 )
 
 # Estimate elevation change error from stable terrain as a function of slope and curvature
-dh_err = xdem.spatialstats.infer_heteroscedasticity_from_stable(
-    dh, list_var=[slope, max_curvature], unstable_mask=mask_gla
-)[0]
+predictors = {"slope": slope, "max_curvature": max_curvature}
+structure = xdem.ErrorStructure.estimate(
+    dh, predictors=predictors, mask=~mask_gla,
+    components={"measurement": {"magnitude": "heteroscedastic", "correlation": None}},
+)
+dh_err = structure.predict_magnitude(predictors, like=dh)
 
 # Plot dh, glacier outlines and its error map
 dh.plot(cmap="RdYlBu", cbar_title="Elevation change (m)")

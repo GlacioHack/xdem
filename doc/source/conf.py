@@ -72,14 +72,15 @@ html_allow_html = True  # To allow HTML embedding, to add "Workflows" HTML repor
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/", None),
-    "geoutils": ("https://geoutils.readthedocs.io/en/stable", None),
+    # Resolve against a local GeoUtils build when checking development branches together
+    "geoutils": (os.environ.get("GEOUTILS_DOCS_PATH") or "https://geoutils.readthedocs.io/en/stable", None),
     "rasterio": ("https://rasterio.readthedocs.io/en/stable", None),
     "numpy": ("https://numpy.org/doc/stable", None),
     "matplotlib": ("https://matplotlib.org/stable", None),
     "pyproj": ("https://pyproj4.github.io/pyproj/stable", None),
     "geopandas": ("https://geopandas.org/en/stable", None),
     "xarray": ("https://docs.xarray.dev/en/stable/", None),
-    "rioxarray": ("https://corteva.github.io/rioxarray/stable/", None),
+    "rioxarray": ("https://vylor.github.io/rioxarray/stable/", None),
 }
 
 sphinx_gallery_conf = {
@@ -105,6 +106,16 @@ sphinx_gallery_conf = {
         "sphinxext.reset_mpl",
     ),
     # To reset matplotlib for each gallery (and run custom function that fixes the default DPI)
+}
+
+# Resolve base classes imported only for annotations without introducing circular runtime imports
+autodoc_type_aliases = {
+    "RasterBase": "geoutils.raster.base.RasterBase",
+    "VectorBase": "geoutils.vector.base.VectorBase",
+    "PointCloudBase": "geoutils.pointcloud.base.PointCloudBase",
+    "DEMBase": "xdem.dem.base.DEMBase",
+    "EPCBase": "xdem.epc.base.EPCBase",
+    "ErrorStructure": "geoutils.ErrorStructure",
 }
 
 extlinks = {

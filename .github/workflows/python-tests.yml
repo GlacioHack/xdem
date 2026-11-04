@@ -33,8 +33,9 @@ jobs:
     - name: Initiate empty environment
       uses: conda-incubator/setup-miniconda@v4
       with:
-        miniforge-version: latest
-        auto-update-conda: true
+        # Pin Windows to the previous installer while investigating the Conda initialization failure
+        miniforge-version: ${{ runner.os == 'Windows' && '26.7.2-1' || 'latest' }}
+        auto-update-conda: ${{ runner.os != 'Windows' }}
         use-mamba: true
         channel-priority: strict
         activate-environment: xdem-dev
@@ -61,7 +62,7 @@ jobs:
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         mamba install pyyaml python=${{ matrix.python-version }}
-        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} "environment.yml"
+        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "${{ matrix.dep-level == 'opt' && 'pip,pytorch-cpu,gpytorch,linear_operator' || 'pip' }}" "environment.yml"
         mamba env update -n xdem-dev -f environment-ci-py${{ matrix.python-version }}.yml
 
     # If/else equivalent to install base environment, or base+optional
@@ -91,6 +92,9 @@ jobs:
       env:
         # Render plots without a GUI backend (avoid Tcl/Tk issues on Windows)
         MPLBACKEND: Agg
+        # Record compiled Numba lines when the test suite first compiles each function
+        NUMBA_JIT_COVERAGE: "1"
+        NUMBA_CACHE_DIR: ${{ runner.temp }}
       run: pytest -ra --cov=xdem/ --cov-report=lcov --durations=0
 
     - name: Upload coverage to Coveralls

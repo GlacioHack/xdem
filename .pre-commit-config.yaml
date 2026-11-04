@@ -60,6 +60,7 @@ repos:
                 - id: mypy
                   args: [
                         --strict,
+                        --explicit-package-bases,
                         --implicit-optional,
                         --ignore-missing-imports,  # Don't warn about stubs since pre-commit runs in a limited env
                         --allow-untyped-calls,  # Dynamic function/method calls are okay. Untyped function definitions are not okay.

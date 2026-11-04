@@ -52,7 +52,8 @@ plt.show()
 # BlockwiseCoreg is also available without ``mp_config`` by specifying the block size and the save directory.
 
 # Create a configuration with two processing nodes
-mp_config = MultiprocConfig(chunks=500, outfile="aligned_dem.tif", cluster=ClusterGenerator("multi", nb_workers=2))
+cluster = ClusterGenerator("multi", nb_workers=2)
+mp_config = MultiprocConfig(chunks=500, outfile="aligned_dem.tif", cluster=cluster)
 # Currently, with mp_config, block_size_fit must be equal to chunk_size
 blockwise = xdem.coreg.BlockwiseCoreg(
     xdem.coreg.NuthKaab(), mp_config=mp_config, block_size_fit=500, block_size_apply=1000
@@ -63,6 +64,9 @@ blockwise = xdem.coreg.BlockwiseCoreg(
 
 blockwise.fit(reference_dem, dem_to_be_aligned, inlier_mask)
 blockwise.apply(dem_to_be_aligned)
+
+# Close workers after fitting and applying the correction
+cluster.close()
 
 aligned_dem = xdem.DEM("aligned_dem.tif")
 

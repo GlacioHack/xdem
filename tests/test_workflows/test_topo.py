@@ -344,7 +344,6 @@ def test_reprojection(input_utm, reproject_warnings_newraster, get_topo_inputs_c
         dem = xdem.DEM(input_dem_path).reproject(crs=4326)
         dem.to_file(Path(tmp_path / "dem.tif"))
         user_config["inputs"]["path_to_elev"] = str(Path(tmp_path / "dem.tif"))
-        dem.to_file("lat_lon.tif")
     user_config["terrain_attributes"] = ["slope"]
     if reproject_dict is not None:
         user_config.update(reproject_dict)

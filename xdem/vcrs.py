@@ -429,6 +429,9 @@ def _build_vertical_transformer(crs_from: CRS, crs_to: CRS) -> pyproj.Transforme
     # Download grid if best available is not on disk, then re-initialize
     if not trans_group.best_available:
         trans_group.download_grids()
+
+        # Refresh PROJ's cached grid availability after downloading
+        pyproj.datadir.set_data_dir(pyproj.datadir.get_data_dir())
         trans_group = TransformerGroup(crs_from=crs_from, crs_to=crs_to, always_xy=True)
 
     # If the best available grid is still not there, raise a warning
@@ -485,9 +488,9 @@ def _to_vcrs_2d_pyproj(
     cols = np.arange(col_start, col_start + data.shape[1])
 
     # 2/ Transform elevations at the same coordinates as the full raster
-    # GeoUtils applies the shared Area/Point convention before the original affine transform
-    xx, _ = _ij2xy(i=0, j=cols, transform=transform, area_or_point=area_or_point)
-    _, yy = _ij2xy(i=rows, j=0, transform=transform, area_or_point=area_or_point)
+    # GeoUtils locates pixel centers with the original affine transform
+    xx, _ = _ij2xy(i=0, j=cols, transform=transform)
+    _, yy = _ij2xy(i=rows, j=0, transform=transform)
     xx, yy = np.meshgrid(xx, yy)
     zz_trans = _transform_zz(
         transformer=transformer,
@@ -639,6 +642,9 @@ def _get_vertical_transform_crss(
 
     if crs is None:
         raise ValueError("A horizontal CRS is required before transforming a vertical CRS.")
+
+    # Normalize Rasterio and other CRS inputs before using PyProj methods
+    crs = CRS.from_user_input(crs)
 
     # Get source VCRS from current CRS
     src_vcrs = _vcrs_from_crs(crs)
@@ -834,7 +840,7 @@ def _to_vcrs_1d_dataframe(ds: Any, data_column: str | None, src_crs: CRS, dst_cr
     else:
         result.geometry = gpd.points_from_xy(ds.geometry.x, ds.geometry.y, z=values, crs=ds.crs)
     result.set_crs(dst_crs, allow_override=True, inplace=True)
-    result.attrs["data_column"] = data_column
+    result.attrs["data_name"] = data_column
     return result
 
 
@@ -860,10 +866,10 @@ def _to_vcrs_1d(
     # Resolve any missing grid once before sending work to workers
     _build_vertical_transformer(src_crs, dst_crs)
     if epc._is_dask:
-        if epc.data_column is None:
+        if epc.data_name is None:
             raise ValueError("Dask-backed point clouds require an explicit data column.")
         meta = epc.ds._meta.set_crs(dst_crs, allow_override=True)
-        result = epc.ds.map_partitions(_to_vcrs_1d_dataframe, epc.data_column, src_crs, dst_crs, meta=meta)
+        result = epc.ds.map_partitions(_to_vcrs_1d_dataframe, epc.data_name, src_crs, dst_crs, meta=meta)
         attrs = _get_dataframe_attrs(epc.ds).copy()
         attrs["crs"] = dst_crs
         _set_dataframe_attrs(result, attrs)
@@ -882,18 +888,18 @@ def _to_vcrs_1d(
             mp_config.cluster.submit(
                 _to_vcrs_1d_dataframe,
                 source.ds.iloc[start : start + partition_size],
-                epc.data_column,
+                epc.data_name,
                 src_crs,
                 dst_crs,
             )
             for start in range(0, source.point_count, partition_size)
         ]
         parts = mp_config.cluster.gather(futures)
-        result = pd.concat(parts) if parts else _to_vcrs_1d_dataframe(source.ds, epc.data_column, src_crs, dst_crs)
+        result = pd.concat(parts) if parts else _to_vcrs_1d_dataframe(source.ds, epc.data_name, src_crs, dst_crs)
     else:
-        result = _to_vcrs_1d_dataframe(epc.ds, epc.data_column, src_crs, dst_crs)
+        result = _to_vcrs_1d_dataframe(epc.ds, epc.data_name, src_crs, dst_crs)
 
     # Reconstruct the runtime native class or return the dataframe directly for accessors
     if epc._is_pd:
         return result
-    return epc.__class__(result, data_column=epc.data_column)
+    return epc.__class__(result, data_column=epc.data_name)

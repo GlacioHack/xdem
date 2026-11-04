@@ -120,13 +120,13 @@ class TestBlockwiseCoreg:
             new_dem = _grid_pointcloud(
                 trans_epc,
                 grid_coords=tba_dem.coords(grid=False),
-                data_column_name="z",
+                data_name="z",
             )[0]
 
         expected = Raster.from_array(new_dem, tba_dem.transform, tba_dem.crs, tba_dem.nodata)
         actual = blockwise_coreg._wrapper_apply_epc(tba_dem, (1, 1, 1), (1, 1, 1), (1, 1, 1))
 
-        assert actual == expected
+        assert actual.raster_equal(expected)
 
     def test_apply_z_correction_parameter(self, step, blockwise_coreg):
         """
@@ -173,7 +173,7 @@ class TestBlockwiseCoreg:
         [
             pytest.param(xdem.coreg.NuthKaab(vertical_shift=False), id="NuthKaab"),
             pytest.param(xdem.coreg.NuthKaab(vertical_shift=True), id="NuthKaab_vertical"),
-            pytest.param(xdem.coreg.CPD(only_translation=True), id="CPD"),
+            pytest.param(xdem.coreg.CPD(only_translation=True, subsample=300), id="CPD"),
             pytest.param(xdem.coreg.ICP(only_translation=True), id="ICP"),
             pytest.param(xdem.coreg.DhMinimize(), id="DhMinimize"),
             pytest.param(xdem.coreg.LZD(only_translation=True), id="LZD"),

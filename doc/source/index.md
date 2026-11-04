@@ -39,16 +39,16 @@ xDEM `v0.2` is released with **support for elevation point clouds**, as well as 
 We are **finalizing a ``dem`` Xarray accessor**, and refining a command-line interface to perform **multi-step analysis workflows**.
 :::
 
-xDEM is **tailored to perform quantitative analysis that implicitly understands the intricacies of elevation data**,
-both from a **georeferencing viewpoint** (vertical referencing, nodata values, projection, pixel interpretation) and
-a **statistical viewpoint** (outlier robustness, specificities of 3D alignment and error structure).
+xDEM is tailored to perform quantitative analysis that **implicitly understands the intricacies of elevation data**,
+both from a **georeferencing** viewpoint (vertical referencing, nodata values, projection, pixel interpretation) and
+a **statistical** viewpoint (outlier robustness, specificities of 3D alignment and error structure).
 
-It exposes **an intuitive object-based API to foster accessibility**, and strives **to be computationally scalable**
+It exposes an intuitive object-based API to foster **accessibility**, and strives to be computationally **scalable**
 through Dask.
 
 Additionally, through its sister-package [GeoUtils](https://geoutils.readthedocs.io/en/stable/), xDEM is built on top
 of core geospatial packages (Rasterio, GeoPandas, PyProj) and numerical packages (NumPy, Xarray, SciPy) to provide
-**consistent higher-level functionalities at the interface of DEMs and elevation point cloud objects**.
+**consistent higher-level functionalities** at the interface of DEMs and elevation point cloud objects.
 
 ----------------
 

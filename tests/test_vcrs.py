@@ -11,6 +11,7 @@ import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import pytest
+import rasterio as rio
 import xarray as xr
 from affine import Affine
 from geoutils.multiproc import MultiprocConfig
@@ -219,6 +220,29 @@ class TestVCRS:
             ValueError, match="Invalid vcrs given. Must be a vertical " "CRS or the literal string 'Ellipsoid'."
         ):
             xdem.vcrs._combine_crs_and_vcrs(crs=CRS("EPSG:4326"), vcrs="NotAVerticalCRS")  # type: ignore
+
+    @pytest.mark.parametrize("crs_type", [CRS, rio.crs.CRS], ids=["pyproj", "rasterio"])
+    @pytest.mark.parametrize(
+        "source_definition, destination_definition",
+        [("EPSG:32633+5703", "EPSG:32633+6360"), ("EPSG:4979", "EPSG:4326+6360")],
+        ids=["compound", "ellipsoid"],
+    )
+    def test_get_vertical_transform_crss__crs_types(
+        self, crs_type: Any, source_definition: str, destination_definition: str
+    ) -> None:
+        """Checks that Rasterio and PyProj inputs both yield PyProj CRSs for a vertical transformation."""
+
+        # Create a source with a vertical CRS so no source override is needed
+        source = crs_type.from_user_input(source_definition)
+
+        # Prepare a transformation to NAVD88
+        src_crs, dst_crs = xdem.vcrs._get_vertical_transform_crss(source, dst_vcrs=6360)
+
+        # Check PyProj types, the original source reference and the requested destination reference
+        assert isinstance(src_crs, CRS)
+        assert isinstance(dst_crs, CRS)
+        assert src_crs == CRS(source_definition)
+        assert dst_crs == CRS(destination_definition)
 
     # Compare to manually-extracted shifts at specific coordinates for the geoid grids
     egm96_chile = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
@@ -487,7 +511,7 @@ class TestToVCRSChunked:
             crs="EPSG:32633+5703",
             index=coordinates * 3 + 7,
         )
-        frame.attrs["data_column"] = "height"
+        frame.attrs["data_name"] = "height"
         original = frame.copy()
 
         # Create EPC and Dask versions; the original GeoDataFrame is used for the Pandas accessor call below

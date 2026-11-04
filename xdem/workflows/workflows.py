@@ -468,7 +468,7 @@ class Workflows(ABC):
         """
         if self.config["outputs"]["generate_pdf"] and _HAS_PLUTOPRINT:
             book = plutoprint.Book(plutoprint.PAGE_SIZE_A4, plutoprint.PAGE_MARGINS_NARROW)
-            book.load_url(str(self.outputs_folder / "report.html"))
+            book.load_url((self.outputs_folder / "report.html").resolve().as_uri())
 
             # Export the entire document to PDF
             book.write_to_pdf(str(self.outputs_folder / "report.pdf"))

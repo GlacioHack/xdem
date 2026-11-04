@@ -43,7 +43,7 @@ class TestExamples:
         [
             (ref_dem, np.array([465.11816, 207.3236, 208.30563, 748.7337, 797.28644], dtype=np.float32), None),
             (tba_dem, np.array([464.6715, 213.7554, 207.8788, 760.8192, 797.3268], dtype=np.float32), None),
-            (ddem, np.array([1.37, -1.67, 0.13, -10.10, 2.49], dtype=np.float32), 10e-3),
+            (ddem, np.array([1.46, -1.64, 0.20, -10.05, 2.54], dtype=np.float32), 10e-3),
             (giza_dem, np.array([-32768.0, 80.30466, -32768.0, -32768.0, -32768.0], dtype=np.float32), None),
         ],
     )
