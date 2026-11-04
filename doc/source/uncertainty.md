@@ -147,7 +147,7 @@ es.plot(magnitude_kwargs={
 })
 ```
 
-We can predict the **error magnitude** over the entire DEM, assuming errors inferred from static surfaces apply 
+We can predict the **error magnitude** over the entire DEM, assuming errors inferred from static surfaces apply
 to other terrain, such as glaciers:
 
 ```{code-cell} ipython3
@@ -236,12 +236,12 @@ Multiple studies address uncertainty analysis of elevation, or elevation changes
 [Anderson (2019)](https://doi.org/10.1002/esp.4551) and [Hugonnet et al. (2022)](https://doi.org/10.1109/JSTARS.2022.3188922).
 
 For estimation, they are **mutually compatible**. The framework of [Hugonnet et al. (2022)](https://doi.org/10.1109/JSTARS.2022.3188922) encompasses
-the others, as it allows both **spatially variable error magnitudes** (heteroscedasticity) and **spatial correlation models with nested ranges**, 
+the others, as it allows both **spatially variable error magnitudes** (heteroscedasticity) and **spatial correlation models with nested ranges**,
 assuming a sum of components. This is directly supported by {class}`~xdem.ErrorStructure`, described further below in {ref}`uncertainty-object`.
 
 ### Propagating errors
 
-Additionally, xDEM provides both **analytical solutions** for propagating uncertainty in some operations, and **numerical simulations** 
+Additionally, xDEM provides both **analytical solutions** for propagating uncertainty in some operations, and **numerical simulations**
 to repeat the same operation on elevations perturbed by random error fields, allowing us to check whether the analytical
 approximations are appropriate.
 
@@ -358,7 +358,7 @@ es.info()
 ```
 
 An error structure is returned by {meth}`~xdem.DEM.estimate_error_structure` and passed to the
-{ref}`propagation functions <uncertainty-propagation>` or {ref}`random fields generation <uncertainty-simulation>`, 
+{ref}`propagation functions <uncertainty-propagation>` or {ref}`random fields generation <uncertainty-simulation>`,
 all described directly below.
 
 (error-struc)=
@@ -382,7 +382,7 @@ For elevation data, differences on **static surfaces** (e.g. bare-rock, grasslan
 From there, use `other_precision="same"` to assume to two DEMs have independent errors with the same magnitude and spatial correlation, or
 `other_precision="negligible"` when reference errors can be ignored.
 
-Below, we first **pre-coregister** the DEMs to correct systematic errros, and plot the final error proxy:
+Below, we first **pre-coregister** the DEMs to correct systematic errors, and plot the final error proxy:
 
 ```{code-cell} ipython3
 aligned_dem = xdem.coreg.LZD().fit_and_apply(ref, tba, inlier_mask=static_surfaces, random_state=42)
@@ -410,7 +410,7 @@ by using the `precoreg` argument.
 Elevation errors often have **variable magnitude**, also called **heteroscedasticity**.
 
 By default, xDEM uses terrain slope and maximal curvature to explain this variability.
-Here, we pass only **slope** and explicitly select the **standard deviation** (while the default spread estimator is the **NMAD**, 
+Here, we pass only **slope** and explicitly select the **standard deviation** (while the default spread estimator is the **NMAD**,
 for robustness to outliers):
 
 ```{code-cell} ipython3
@@ -438,7 +438,7 @@ slope_magnitude.plot(ax=axes[1], cmap="Purples", vmin=0, cbar_title="Elevation e
 plt.show()
 ```
 
-By default, **linear interpolation between bins** is used as functional model, but it is possible to specify any custom model, 
+By default, **linear interpolation between bins** is used as functional model, but it is possible to specify any custom model,
 and to refit without performing the binning again with {meth}`~xdem.ErrorStructure.refit_magnitude`, as shown in {ref}`uncertainty-custom-magnitude`.
 
 We can pass several predictors, such as **slope and maximal curvature**:
@@ -477,7 +477,7 @@ sig_dem.plot(ax=axes[1], cmap="Purples", vmin=0, cbar_title="Elevation error (1Ï
 plt.show()
 ```
 
-We can see that error magnitude varies both with slope and maximal curvature, despite some co-dependency, meaning 
+We can see that error magnitude varies both with slope and maximal curvature, despite some co-dependency, meaning
 they are both useful to consider.
 
 The map extends the fitted relationship beyond static surfaces, assuming that **the predictors also explain
@@ -490,7 +490,7 @@ For custom bins and magnitude models, see
 
 **Spatial correlation** describes how elevation errors vary together across locations.
 
-Below, we estimate a variogram, explicitly selecting the **Matheron** estimator (STD equivalent for semivariance/correlation, 
+Below, we estimate a variogram, explicitly selecting the **Matheron** estimator (STD equivalent for semivariance/correlation,
 while the default is **Dowd**, the robust median-equivalent for semivariance) and a **spherical** model fit:
 
 ```{code-cell} ipython3
@@ -547,7 +547,7 @@ Uncertainty propagation always returns a {class}`~geoutils.PropagationSummary` w
 For nonlinear operations, {attr}`~geoutils.PropagationSummary.mean` can differ from {attr}`~geoutils.PropagationSummary.estimate`.
 ```
 
-Each one of these outputs **has the same type/shape as the typical output of the operation**. For example, a propagated uncertainty for a spatial average over 2 glaciers will return 2 scalar outputs, 
+Each one of these outputs **has the same type/shape as the typical output of the operation**. For example, a propagated uncertainty for a spatial average over 2 glaciers will return 2 scalar outputs,
 a slope uncertainty will have the same shape as the slope raster, and a propagated coregistration uncertainty will return uncertainty for the 6 translation/rotations parameters.
 
 
@@ -689,7 +689,7 @@ Below, we propagate errors to the mean elevation differences over **Brombreen an
 with a choice of approximations from [Rolstad et al. (2009)](https://doi.org/10.3189/002214309789470950)
 or [Hugonnet et al. (2022)](https://doi.org/10.1109/JSTARS.2022.3188922).
 
-**Numerical** propagation generates multiple {ref}`random error fields <uncertainty-simulation>` to perturbate the input, and compute the output multiple times.
+**Numerical** propagation generates multiple {ref}`random error fields <uncertainty-simulation>` to perturb the input, and compute the output multiple times.
 
 We combine independent errors from both DEMs and use a 100 m grid to speed up numerical simulations:
 
@@ -779,7 +779,7 @@ We can also propagate errors to terrain attributes such as **slope and aspect**.
 **Analytical** propagation uses a **first-order Taylor series approximation**, following
 [Oksanen & Sarjakoski (2005)](https://doi.org/10.1016/j.cageo.2005.02.014).
 
-**Numerical** propagation generates multiple {ref}`random error fields <uncertainty-simulation>` to perturbate the input, and compute the output multiple times, as for other operations.
+**Numerical** propagation generates multiple {ref}`random error fields <uncertainty-simulation>` to perturb the input, and compute the output multiple times, as for other operations.
 
 Below, we compare slope uncertainty from both methods with the "Florinsky" surface fit:
 
@@ -916,7 +916,7 @@ for ax in axes:
 plt.show()
 ```
 
-The above plotting often suffices because horizontal components often have a similar error magnitude, which differs from vertical 
+The above plotting often suffices because horizontal components often have a similar error magnitude, which differs from vertical
 ones.
 If you suspect horizontal directional effects due to your topography (e.g., limited orientations), inspect the 6 parameters directly!
 
