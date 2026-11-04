@@ -30,7 +30,10 @@ from geoutils._misc import import_optional
 from geoutils.uncertainty import PropagationSummary as GeoUtilsPropagationSummary
 from geoutils.uncertainty.predictors import _spatial_predictors
 from geoutils.uncertainty.propagation import simulate
+from numpy.typing import NDArray
 from pyproj import CRS
+from scipy.integrate import quad_vec
+from scipy.stats import chi2, norm
 
 from xdem.coreg import Coreg
 from xdem.coreg.affine import ICP, LZD, _coreg_error_inputs
@@ -49,8 +52,13 @@ class PropagationSummary(GeoUtilsPropagationSummary):  # type: ignore[misc]
     With return_coregs=True, coregs stores the fitted Coreg objects and their fit metadata for each simulation
     number.
 
-    plot() displays translations and rotations on separate axes, with the original fit and mean +/- one
-    standard deviation. For example::
+    plot() displays horizontal/vertical uncertainty ellipses when covariance is available, or parameter
+    error bars otherwise. With kind="parameters", it shows the original fit and mean +/- one standard deviation.
+    With kind="ellipses", it shows joint X/Y uncertainty and separate Z intervals.
+    With kind="horizontal_vertical", one ellipse summarizes horizontal and vertical translation uncertainty,
+    and another summarizes tilt and yaw uncertainty. Horizontal translation and tilt use sqrt(X² + Y²),
+    with ellipses centered on their means. Rotations are displayed in microradians.
+    Both ellipse views use analytical parameter covariance or samples saved with return_samples=True. For example::
 
         summary = xdem.uncertainty.propagate_uncertainty_coreg(
             reference, moving, xdem.coreg.LZD(), error_structure={"tba": errors}, return_coregs=True,
@@ -64,15 +72,56 @@ class PropagationSummary(GeoUtilsPropagationSummary):  # type: ignore[misc]
 
     coregs: Mapping[int, Coreg] | None = None
 
-    def plot(self, axes: Sequence[Any] | None = None, **kwargs: Any) -> tuple[Any, Any]:
+    def plot(
+        self,
+        axes: Sequence[Any] | None = None,
+        *,
+        kind: Literal["parameters", "ellipses", "horizontal_vertical"] | None = None,
+        coverage: float = 0.95,
+        show_samples: bool = True,
+        **kwargs: Any,
+    ) -> tuple[Any, ...]:
         """
-        Plot parameter means with one standard deviation and mark the original fitted values.
+        Plot coregistration uncertainty for translations and rotations.
+
+        By default, horizontal/vertical ellipses show parameter means, with gray zero reference lines.
+        Without parameter covariance or all six saved parameter samples, the default shows parameter error bars.
+        Use kind="parameters" to plot means with one standard deviation and the original fitted values.
+
+        The ellipse view uses a Gaussian approximation to the parameter covariance. Each X/Y ellipse has
+        the requested joint coverage, while each Z interval has the same marginal coverage.
+        The horizontal/vertical view uses sqrt(X² + Y²) for horizontal translation and tilt.
+        Numerical ellipses summarize these magnitudes and Z values across simulations. Analytical ellipses
+        use deterministic quadrature of the joint Gaussian parameters to calculate magnitude moments.
+        Coverage uses a Gaussian approximation. Rotations are converted to microradians for display.
 
         :param axes: Optional Matplotlib axes for translations and rotations.
-        :param kwargs: Additional arguments for Matplotlib errorbar().
+            The ellipse view takes four axes: translation X/Y, translation Z, rotation X/Y and rotation Z.
+            The horizontal/vertical view takes two axes, for translations and rotations.
+        :param kind: None selects horizontal/vertical ellipses when covariance is available, otherwise error bars.
+            "parameters" shows individual error bars. "ellipses" separates joint X/Y and Z uncertainty.
+            "horizontal_vertical" shows horizontal magnitudes against vertical parameters.
+        :param coverage: Probability enclosed by each ellipse or Z interval in the ellipse views.
+        :param show_samples: Show saved simulations in the horizontal/vertical view as points with 50% opacity.
+            Each simulation contributes its horizontal magnitude and vertical value.
+        :param kwargs: Additional arguments for Matplotlib errorbar(). In the horizontal/vertical view,
+            color and label also describe each ellipse, for comparing summaries on the same axes.
 
-        :returns: Translation and rotation axes.
+        :returns: Two parameter or horizontal/vertical axes, or four axes for the ellipse view.
         """
+
+        if kind is None:
+            has_covariance = self.output.get("parameter_covariance") is not None
+            has_samples = self.samples is not None and {"tx", "ty", "tz", "rx", "ry", "rz"}.issubset(
+                self.samples.columns
+            )
+            kind = "horizontal_vertical" if has_covariance or has_samples else "parameters"
+        if kind not in {"parameters", "ellipses", "horizontal_vertical"}:
+            raise ValueError("kind must be 'parameters', 'ellipses' or 'horizontal_vertical'.")
+        if kind == "horizontal_vertical":
+            return _plot_parameter_horizontal_vertical(self, axes, coverage, show_samples=show_samples, **kwargs)
+        if kind == "ellipses":
+            return _plot_parameter_ellipses(self, axes, coverage, **kwargs)
 
         import_optional("matplotlib")
         import matplotlib.pyplot as plt
@@ -96,6 +145,255 @@ class PropagationSummary(GeoUtilsPropagationSummary):  # type: ignore[misc]
             axis.set_ylabel(f"{title} ({unit})")
             axis.legend()
         return translation_axis, rotation_axis
+
+
+def _parameter_covariance(summary: PropagationSummary, coverage: float) -> pd.DataFrame:
+    """Read finite parameter covariance from an analytical result or saved simulation samples."""
+
+    # Analytical fits store covariance, while numerical fits can provide complete parameter draws
+    if not np.isfinite(coverage) or not 0 < coverage < 1:
+        raise ValueError("coverage must be finite and strictly between zero and one.")
+    covariance = summary.output.get("parameter_covariance")
+    if covariance is None and summary.samples is not None:
+        covariance = summary.samples.dropna().cov()
+    if not isinstance(covariance, pd.DataFrame):
+        raise ValueError("Ellipse plots require parameter covariance or samples saved with return_samples=True.")
+    parameters = ["tx", "ty", "tz", "rx", "ry", "rz"]
+    if not set(parameters).issubset(covariance.index) or not set(parameters).issubset(covariance.columns):
+        raise ValueError("Ellipse plots require covariance for all six coregistration parameters.")
+    if not np.isfinite(covariance.loc[parameters, parameters].to_numpy()).all():
+        raise ValueError("Ellipse plots require finite parameter covariance.")
+    return covariance
+
+
+def _parameter_covariance_ellipse(
+    block: NDArray[np.float64], means: NDArray[np.float64], coverage: float, *, color: Any, label: str
+) -> Any:
+    """Construct a joint Gaussian confidence ellipse from a pair of parameter means and their covariance."""
+
+    from matplotlib.patches import Ellipse
+
+    joint_scale = chi2.ppf(coverage, df=2)
+    # Eigenvectors orient the ellipse, and covariance eigenvalues give its squared radii
+    eigenvalues, eigenvectors = np.linalg.eigh(block)
+    radii = np.sqrt(joint_scale * np.maximum(eigenvalues, 0))
+    direction = eigenvectors[:, -1]
+    angle = np.degrees(np.arctan2(direction[1], direction[0]))
+    return Ellipse(
+        xy=means,
+        width=2 * radii[-1],
+        height=2 * radii[0],
+        angle=angle,
+        facecolor=color,
+        edgecolor=color,
+        alpha=0.25,
+        label=label,
+    )
+
+
+def _gaussian_horizontal_vertical_moments(
+    means: NDArray[np.float64], covariance: NDArray[np.float64]
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Calculate the mean and covariance of (sqrt(X² + Y²), Z) for joint Gaussian parameters.
+
+    Integrate the Gaussian Laplace transform to obtain the magnitude mean and its expected gradient.
+    The second moment is E[X² + Y²], and Stein's identity gives covariance with Z from that gradient.
+    Far from zero, Hermite quadrature of centered magnitude changes avoids cancellation in the variance.
+    """
+
+    # Rotate the horizontal covariance to independent Gaussian components
+    horizontal_mean = means[:2]
+    horizontal = np.hypot(*horizontal_mean)
+    variances, directions = np.linalg.eigh(covariance[:2, :2])
+    variances = np.maximum(variances, 0)
+    total_variance = variances.sum()
+    if total_variance == 0:
+        return np.array([horizontal, means[2]]), np.diag([0.0, covariance[2, 2]])
+
+    # A smooth magnitude can be integrated accurately using a small Hermite grid
+    if horizontal**2 > 100 * total_variance:
+        nodes, weights = np.polynomial.hermite.hermgauss(12)
+        first, second = np.meshgrid(nodes, nodes, indexing="ij")
+        independent = np.column_stack((first.ravel(), second.ravel())) * np.sqrt(2)
+        weights = np.outer(weights, weights).ravel() / np.pi
+        deviations = independent @ (directions * np.sqrt(variances)).T
+        coordinates = horizontal_mean + deviations
+        magnitudes = np.hypot(coordinates[:, 0], coordinates[:, 1])
+
+        # Subtract squared lengths before division to resolve small changes around a large mean
+        changes = (2 * (deviations @ horizontal_mean) + np.sum(deviations**2, axis=1)) / (magnitudes + horizontal)
+        mean_change = weights @ changes
+        magnitude_mean = horizontal + mean_change
+        magnitude_variance = weights @ (changes - mean_change) ** 2
+        gradient = weights @ (coordinates / magnitudes[:, None])
+    else:
+        # Normalize the second moment to one so the integral is independent of coordinate units
+        scale = np.sqrt(horizontal**2 + total_variance)
+        scaled_variances = variances / scale**2
+        scaled_mean = directions.T @ horizontal_mean / scale
+
+        def integrand(value: float) -> NDArray[np.float64]:
+            """Evaluate the Gaussian Laplace transform for the magnitude mean and expected gradient."""
+
+            squared = value**2
+            denominator = 1 + 2 * squared * scaled_variances
+            log_transform = -0.5 * np.log1p(2 * squared * scaled_variances).sum()
+            log_transform -= squared * np.sum(scaled_mean**2 / denominator)
+            mean_term = -np.expm1(log_transform) / squared
+            gradient_terms = 2 * scaled_mean / denominator * np.exp(log_transform)
+            return np.concatenate(([mean_term], gradient_terms))
+
+        moments, _ = quad_vec(integrand, 0, np.inf, epsabs=1e-12, epsrel=1e-12)
+        moments /= np.sqrt(np.pi)
+        magnitude_mean = scale * moments[0]
+        magnitude_variance = scale**2 * max(1 - moments[0] ** 2, 0)
+        gradient = directions @ moments[1:]
+
+    # The Gaussian cross covariance depends on the expected gradient of the magnitude
+    cross_covariance = gradient @ covariance[:2, 2]
+    transformed_covariance = np.array([[magnitude_variance, cross_covariance], [cross_covariance, covariance[2, 2]]])
+    return np.array([magnitude_mean, means[2]]), transformed_covariance
+
+
+def _plot_parameter_ellipses(
+    summary: PropagationSummary, axes: Sequence[Any] | None, coverage: float, **kwargs: Any
+) -> tuple[Any, ...]:
+    """Draw Gaussian X/Y uncertainty ellipses and separate Z intervals for translations and rotations."""
+
+    covariance = _parameter_covariance(summary, coverage)
+    parameters = ["tx", "ty", "tz", "rx", "ry", "rz"]
+    if axes is not None and len(axes) != 4:
+        raise ValueError("Ellipse plots require four axes.")
+
+    # Separate horizontal and vertical parameters so different error magnitudes have their own scales
+    import_optional("matplotlib")
+    import matplotlib.pyplot as plt
+
+    if axes is None:
+        _, grid = plt.subplots(2, 2, figsize=(9, 7), constrained_layout=True, width_ratios=[2, 1])
+        axes = tuple(grid.flat)
+    point_options = {"fmt": "o", "color": "C0", "label": "Mean", **kwargs}
+    interval_options = {
+        **point_options,
+        "capsize": kwargs.get("capsize", 3),
+        "label": kwargs.get("label", f"{coverage:.0%} interval"),
+    }
+    marginal_scale = norm.ppf((1 + coverage) / 2)
+    units = (summary.output.get("translation_units", "coordinate units"), "radian")
+
+    for index, (names, title, unit) in enumerate(
+        zip((parameters[:3], parameters[3:]), ("Translation", "Rotation"), units)
+    ):
+        horizontal_axis, vertical_axis = axes[2 * index : 2 * index + 2]
+        horizontal_names = names[:2]
+        means = summary.mean.loc[horizontal_names].to_numpy(dtype=float)
+        block = covariance.loc[horizontal_names, horizontal_names].to_numpy(dtype=float)
+
+        ellipse = _parameter_covariance_ellipse(
+            block, means, coverage, color=point_options["color"], label=f"{coverage:.0%} joint region"
+        )
+        horizontal_axis.add_patch(ellipse)
+        horizontal_axis.errorbar(*means, **point_options)
+        horizontal_axis.plot(*summary.estimate.loc[horizontal_names], "x", color="0.2", label="Original fit")
+        horizontal_axis.set(
+            xlabel=f"X {title.lower()} ({unit})", ylabel=f"Y {title.lower()} ({unit})", title=f"{title} in X/Y"
+        )
+        horizontal_axis.set_aspect("equal", adjustable="datalim")
+        horizontal_axis.autoscale_view()
+        horizontal_axis.margins(0.2)
+
+        # Z uses the normal marginal interval rather than the two-dimensional ellipse scale
+        vertical_name = names[2]
+        interval = marginal_scale * summary.std.loc[vertical_name]
+        vertical_axis.errorbar([0], [summary.mean.loc[vertical_name]], yerr=[interval], **interval_options)
+        vertical_axis.plot([0], [summary.estimate.loc[vertical_name]], "x", color="0.2", label="Original fit")
+        vertical_axis.set(
+            xticks=[0], xticklabels=[vertical_name], ylabel=f"Z {title.lower()} ({unit})", title=f"{title} in Z"
+        )
+        for axis in (horizontal_axis, vertical_axis):
+            axis.legend(fontsize="small")
+    return tuple(axes)
+
+
+def _plot_parameter_horizontal_vertical(
+    summary: PropagationSummary, axes: Sequence[Any] | None, coverage: float, *, show_samples: bool, **kwargs: Any
+) -> tuple[Any, ...]:
+    """
+    Plot horizontal magnitudes and vertical parameters with uncertainty ellipses around their means.
+
+    _parameter_covariance() reads the parameter covariance. _gaussian_horizontal_vertical_moments()
+    transforms the Gaussian parameters to magnitude moments, or we summarize saved simulations directly.
+    _parameter_covariance_ellipse() draws the Gaussian approximation from these moments.
+    Rotations are displayed in microradians.
+    """
+
+    # Validate the covariance before allocating the plotting panels
+    covariance = _parameter_covariance(summary, coverage)
+    if axes is not None and len(axes) != 2:
+        raise ValueError("Horizontal/vertical plots require two axes.")
+
+    import_optional("matplotlib")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgba
+    from matplotlib.ticker import MaxNLocator
+
+    if axes is None:
+        _, axes = plt.subplots(1, 2, figsize=(9, 3.8), constrained_layout=True)
+    point_options = {"fmt": "x", "color": "0.2", "zorder": 4, **kwargs, "label": "_nolegend_"}
+    color = kwargs.get("color", "C0")
+    label = kwargs.get("label", "Horizontal/vertical")
+    unit = summary.output.get("translation_units", "coordinate units")
+    labels = (
+        (f"Horizontal translation ({unit})", f"Vertical translation ({unit})"),
+        ("Tilt (µrad)", "Yaw (µrad)"),
+    )
+
+    # Convert translations and rotations to horizontal magnitudes and vertical parameters
+    for axis, names, title, scale, (xlabel, ylabel) in zip(
+        axes,
+        (("tx", "ty", "tz"), ("rx", "ry", "rz")),
+        ("Translation", "Rotation"),
+        (1.0, 1e6),
+        labels,
+    ):
+        parameters = list(names)
+        means = summary.mean.loc[parameters].to_numpy(dtype=float) * scale
+        parameter_covariance = covariance.loc[parameters, parameters].to_numpy(dtype=float) * scale**2
+        samples = None
+
+        # Summarize one horizontal magnitude and vertical value per simulation
+        if (
+            summary.method == "numerical"
+            and summary.samples is not None
+            and set(names).issubset(summary.samples.columns)
+        ):
+            values = summary.samples.loc[:, parameters].dropna().to_numpy(dtype=float) * scale
+            samples = np.column_stack((np.hypot(values[:, 0], values[:, 1]), values[:, 2]))
+            center = samples.mean(axis=0)
+            block = np.cov(samples, rowvar=False)
+        else:
+            center, block = _gaussian_horizontal_vertical_moments(means, parameter_covariance)
+
+        # Show the Gaussian region and optional simulations around the parameter means
+        ellipse = _parameter_covariance_ellipse(block, center, coverage, color=color, label=label)
+        ellipse.set(alpha=None, facecolor=to_rgba(color, 0.15), linewidth=1.5)
+        axis.add_patch(ellipse)
+        if show_samples and samples is not None:
+            axis.scatter(*samples.T, color=color, alpha=0.5, s=12, edgecolors="none", zorder=2)
+
+        # Mark zero independently of the simulations
+        axis.axhline(0, color="0.85", linewidth=0.8, zorder=0)
+        axis.axvline(0, color="0.85", linewidth=0.8, zorder=0)
+        axis.errorbar(*center, **point_options)
+        axis.set(xlabel=xlabel, ylabel=ylabel, title=f"{title} uncertainty ({coverage:.0%})")
+        axis.autoscale_view()
+        axis.margins(0.15)
+
+        # Use readable ticks without forcing symmetric limits around zero
+        axis.xaxis.set_major_locator(MaxNLocator(nbins=5))
+        axis.yaxis.set_major_locator(MaxNLocator(nbins=5))
+    return tuple(axes)
 
 
 def propagate_uncertainty_coreg(
@@ -202,7 +500,12 @@ def propagate_uncertainty_coreg(
                 key: value if np.isscalar(value) else np.where(valid, value, value[valid][0])
                 for key, value in aligned_values.items()
             }
-            sources[name] = source.copy(new_array=np.ma.masked_where(~valid.reshape(source.data.shape), source.data))
+
+            # GLS/TLS filters predictors during co-sampling without changing elevation gradients
+            if options.get("error_structure") is None:
+                sources[name] = source.copy(
+                    new_array=np.ma.masked_where(~valid.reshape(source.data.shape), source.data)
+                )
         reference, aligned = sources["ref"], sources["tba"]
 
     operation_seed = int(np.random.default_rng(random_state).integers(0, 2**32))

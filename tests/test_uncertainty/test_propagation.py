@@ -114,6 +114,55 @@ class TestElevationErrorEstimation:
         pd.testing.assert_frame_equal(actual_magnitude.grouped_statistics, expected_magnitude.grouped_statistics)
 
     @pytest.mark.parametrize("kind", ["raster", "point"])
+    @pytest.mark.parametrize("entrypoint", ["function", "method", "accessor"])
+    @pytest.mark.parametrize("override", [False, True], ids=["defaults", "overrides"])
+    def test_estimate_error_structure__estimators(self, kind: str, entrypoint: str, override: bool) -> None:
+        """Checks that NMAD and Dowd are defaults and explicit estimators override them through every API."""
+
+        pytest.importorskip("skgstat")
+
+        # Create correlated errors with outliers
+        rows, columns = np.mgrid[:20, :24]
+        values = np.sin(columns / 3) + np.cos(rows / 4)
+        values[::5, ::6] += 100
+        proxy = xdem.DEM.from_array(values, Affine(2, 0, 0, 0, -2, 40), 32632, nodata=-9999)
+        source = proxy if kind == "raster" else proxy.to_pointcloud()
+        estimators: dict[str, Any] = {
+            "spread_estimator": np.std if override else gu.stats.nmad,
+            "variogram_estimator": "matheron" if override else "dowd",
+        }
+        options: dict[str, Any] = {
+            "components": {"measurement": {"magnitude": "constant", "correlation": "spherical"}},
+            "n_pairs": 5_000,
+            "n_lags": 8,
+            "pair_sampling": "random_xy",
+            "random_state": 42,
+        }
+        expected = gu.ErrorStructure.estimate(source, **options, **estimators)
+        if override:
+            options.update(estimators)
+
+        # Estimate through each public API
+        if entrypoint == "function":
+            actual = xdem.uncertainty.estimate_error_structure(source, **options)
+        elif entrypoint == "method":
+            actual = source.estimate_error_structure(**options)
+        else:
+            accessor = source.to_xarray().dem if kind == "raster" else source.gdf.epc
+            actual = accessor.estimate_error_structure(**options)
+
+        # Compare magnitude and the empirical variogram before model fitting
+        assert actual.predict_magnitude() == pytest.approx(expected.predict_magnitude())
+        assert actual.metadata["spread_estimator"] == ("std" if override else "nmad")
+        assert actual.metadata["variogram_estimator"] == estimators["variogram_estimator"]
+        assert actual.empirical_variogram is not None
+        assert expected.empirical_variogram is not None
+        np.testing.assert_array_equal(actual.empirical_variogram.counts, expected.empirical_variogram.counts)
+        np.testing.assert_array_equal(
+            actual.empirical_variogram.semivariance, expected.empirical_variogram.semivariance
+        )
+
+    @pytest.mark.parametrize("kind", ["raster", "point"])
     def test_estimate_error_structure__variable_precision(self, kind: str) -> None:
         """Checks that equal precision divides variable magnitudes by sqrt(2) without changing correlation."""
 
@@ -140,7 +189,8 @@ class TestElevationErrorEstimation:
             "bins": 4,
             "min_count": 10,
             "spread_estimator": np.std,
-            "n_pairs": 600,
+            # Supply enough pairs for fitting
+            "n_pairs": 5_000,
             "n_lags": 8,
             "pair_sampling": "random_xy",
             "random_state": 42,
@@ -165,7 +215,10 @@ class TestElevationErrorEstimation:
         np.testing.assert_array_equal(same.empirical_variogram.counts, negligible.empirical_variogram.counts)
         np.testing.assert_allclose(same.empirical_variogram.semivariance, negligible.empirical_variogram.semivariance)
         distances = np.array([0.0, 5.0, 10.0, 30.0])
-        np.testing.assert_allclose(same.predict_correlation(distances), negligible.predict_correlation(distances))
+        # Allow rounding near zero correlation
+        np.testing.assert_allclose(
+            same.predict_correlation(distances), negligible.predict_correlation(distances), atol=1e-10
+        )
 
     @pytest.mark.parametrize("other_precision", ["negligible", "same"])
     @pytest.mark.parametrize(
@@ -652,7 +705,7 @@ class TestElevationErrorEstimationPrecoreg:
 
 
 class TestPropagation:
-    """Test module for coregistration dispatch and workflows in propagate_uncertainty()."""
+    """Test module for coregistration dispatch and workflows in propagate()."""
 
     @pytest.mark.parametrize("point_input", [None, "ref", "tba"])
     @pytest.mark.parametrize("error_applied_to", ["ref", "tba"])
@@ -683,7 +736,7 @@ class TestPropagation:
 
         # 2/ Run twice with the same seed
         result, repeated = (
-            xdem.uncertainty.propagate_uncertainty(
+            xdem.uncertainty.propagate(
                 source,
                 "coreg",
                 error_structure={error_applied_to: structure},
@@ -775,7 +828,7 @@ class TestPropagation:
             "return_coregs": True,
         }
         direct = xdem.uncertainty.propagate_uncertainty_coreg(reference, source, coreg_method, **options)
-        generic = xdem.uncertainty.propagate_uncertainty(
+        generic = xdem.uncertainty.propagate(
             source,
             "coreg",
             inputs={"coreg": {"reference_elev": reference}},
@@ -806,7 +859,8 @@ class TestElevationErrorEstimationChunked:
     """Test module for elevation error estimation with Dask and multiprocessing."""
 
     @pytest.mark.parametrize("backend", ["dask", "multiproc"])
-    def test_estimate_error_structure__proxy(self, backend: str, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("override", [False, True], ids=["defaults", "overrides"])
+    def test_estimate_error_structure__proxy(self, backend: str, tmp_path: Path, override: bool) -> None:
         """Checks that lazy and file proxies match eager estimation without loading their inputs."""
 
         if backend == "dask":
@@ -817,8 +871,9 @@ class TestElevationErrorEstimationChunked:
         proxy = xdem.DEM.from_array(values, Affine(2, 0, 0, 0, -2, 14), 32632, nodata=-9999)
         options: dict[str, Any] = {
             "components": {"measurement": {"magnitude": "constant", "correlation": None}},
-            "spread_estimator": np.std,
         }
+        if override:
+            options["spread_estimator"] = np.std
         expected = proxy.estimate_error_structure(**options)
 
         # Split into 3 x 4 tiles with shorter final rows and columns
@@ -847,7 +902,8 @@ class TestElevationErrorEstimationChunked:
             assert not source.is_loaded
         assert proxy.is_loaded
 
-    def test_estimate_error_structure__point_proxy(self) -> None:
+    @pytest.mark.parametrize("override", [False, True], ids=["defaults", "overrides"])
+    def test_estimate_error_structure__point_proxy(self, override: bool) -> None:
         """Checks that a lazy point proxy matches eager estimation and preserves its graph."""
 
         dask_geopandas = pytest.importorskip("dask_geopandas")
@@ -859,8 +915,9 @@ class TestElevationErrorEstimationChunked:
         source = xdem.EPC(gu.PointCloud.from_xyz(np.arange(35), np.zeros(35), values, crs=32632))
         options: dict[str, Any] = {
             "components": {"measurement": {"magnitude": "constant", "correlation": None}},
-            "spread_estimator": np.std,
         }
+        if override:
+            options["spread_estimator"] = np.std
         expected = source.estimate_error_structure(**options)
 
         # Split points into three uneven partitions to check that no rows are dropped
@@ -878,7 +935,8 @@ class TestElevationErrorEstimationChunked:
         assert source.is_loaded
 
     @pytest.mark.parametrize("backend", ["dask", "multiproc"])
-    def test_estimate_error_structure__terrain_predictors(self, backend: str, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("override", [False, True], ids=["defaults", "overrides"])
+    def test_estimate_error_structure__terrain_predictors(self, backend: str, tmp_path: Path, override: bool) -> None:
         """Checks that Dask/MP terrain predictors give the same grouped statistics as in-memory inputs."""
 
         if backend == "dask":
@@ -898,10 +956,11 @@ class TestElevationErrorEstimationChunked:
             "components": {"measurement": {"magnitude": "heteroscedastic", "correlation": None}},
             "bins": 3,
             "min_count": 10,
-            "spread_estimator": np.std,
             "random_state": 4,
         }
 
+        if override:
+            options["spread_estimator"] = np.std
         expected = source.estimate_error_structure(reference, precoreg=False, **options)
 
         # 2/ Run Dask or MP estimation
@@ -1046,7 +1105,7 @@ class TestPropagationErrors:
     """Test module for unsupported analytical fits and explicit numerical sample selection."""
 
     @pytest.mark.parametrize("with_source", [False, True])
-    def test_propagate_uncertainty__error_custom_analytical(self, with_source: bool, tmp_path: Path) -> None:
+    def test_propagate__error_custom_analytical(self, with_source: bool, tmp_path: Path) -> None:
         """Checks an error is raised for analytical custom propagation before loading elevations."""
 
         # Open an optional raster without loading it
@@ -1061,7 +1120,7 @@ class TestPropagationErrors:
 
         # Request a custom analytical calculation with a terrain predictor
         with pytest.raises(NotImplementedError, match="Custom callables only support numerical propagation"):
-            xdem.uncertainty.propagate_uncertainty(
+            xdem.uncertainty.propagate(
                 source,
                 np.mean,
                 error_structure=errors,
@@ -1073,7 +1132,7 @@ class TestPropagationErrors:
         if source is not None:
             assert not source.is_loaded
 
-    def test_propagate_uncertainty__error_sample_selection(self) -> None:
+    def test_propagate__error_sample_selection(self) -> None:
         """Checks an error is raised when raster simulation draws are requested without selecting pixels."""
 
         # Create a raster and error model
@@ -1082,4 +1141,4 @@ class TestPropagationErrors:
 
         # Check saving samples requires selected pixels
         with pytest.raises(ValueError, match="Select outputs with at"):
-            xdem.uncertainty.propagate_uncertainty(raster, error_structure=errors, return_samples=True)
+            xdem.uncertainty.propagate(raster, error_structure=errors, return_samples=True)

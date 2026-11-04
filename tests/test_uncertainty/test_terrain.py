@@ -21,7 +21,7 @@ class TestTerrainPropagation:
     @pytest.mark.parametrize("attribute", ["slope", "aspect"])
     @pytest.mark.parametrize("degrees", [False, True])
     @pytest.mark.parametrize("correlated", [False, True])
-    def test_propagate_uncertainty__finite_differences(
+    def test_propagate__finite_differences(
         self, surface_fit: str | None, attribute: str, degrees: bool, correlated: bool
     ) -> None:
         """Checks that analytical terrain uncertainty matches finite differences."""
@@ -45,7 +45,7 @@ class TestTerrainPropagation:
             options["surface_fit"] = surface_fit
 
         # Select an interior pixel for comparison
-        summary = xdem.uncertainty.propagate_uncertainty(
+        summary = xdem.uncertainty.propagate(
             raster,
             "terrain",
             error_structure=errors,
@@ -81,7 +81,7 @@ class TestTerrainPropagation:
         assert summary.metadata["approximation"] == "first_order"
         np.testing.assert_array_equal(raster.data, values)
 
-    def test_propagate_uncertainty__flat(self) -> None:
+    def test_propagate__flat(self) -> None:
         """Checks that flat slope has undefined analytical uncertainty and positive numerical uncertainty."""
 
         # Create flat terrain (slope undefined)
@@ -90,14 +90,14 @@ class TestTerrainPropagation:
         options = {"attribute": "slope", "engine": "scipy"}
 
         # Run analytical and numerical propagation
-        analytical = xdem.uncertainty.propagate_uncertainty(
+        analytical = xdem.uncertainty.propagate(
             raster,
             "terrain",
             error_structure=errors,
             method="analytical",
             operation_options=options,
         )
-        numerical = xdem.uncertainty.propagate_uncertainty(
+        numerical = xdem.uncertainty.propagate(
             raster,
             "terrain",
             error_structure=errors,
@@ -111,7 +111,7 @@ class TestTerrainPropagation:
         assert numerical.mean.data[3, 4] > 0
         assert numerical.std.data[3, 4] > 0
 
-    def test_propagate_uncertainty__slope_mean(self) -> None:
+    def test_propagate__slope_mean(self) -> None:
         """Checks that slope simulations preserve the DEM grid and give a positive mean on flat terrain."""
 
         # Create flat terrain
@@ -121,7 +121,7 @@ class TestTerrainPropagation:
         structure = xdem.ErrorStructure([xdem.ErrorComponent("measurement", 0.5)])
 
         # Save slope samples from four simulations
-        result = xdem.uncertainty.propagate_uncertainty(
+        result = xdem.uncertainty.propagate(
             dem,
             "terrain",
             error_structure=structure,

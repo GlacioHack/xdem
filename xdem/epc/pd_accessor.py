@@ -26,8 +26,8 @@ from typing import Any, Literal
 
 import geopandas as gpd
 import pandas as pd
+from geoutils import open_pointcloud
 from geoutils.pointcloud.base import _get_dataframe_attrs, _set_dataframe_attrs
-from geoutils.pointcloud.loading import open_pointcloud
 from geoutils.pointcloud.pd_accessor import GeoDataFramePointCloudAccessor
 from pyproj import CRS
 from pyproj.crs import VerticalCRS

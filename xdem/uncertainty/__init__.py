@@ -24,7 +24,7 @@ from xdem.uncertainty.error_structure import (
     ErrorMagnitude,
     ErrorStructure,
 )
-from xdem.uncertainty.propagation import estimate_error_structure, propagate_uncertainty
+from xdem.uncertainty.propagation import estimate_error_structure, propagate
 from xdem.uncertainty.spatial import (
     number_effective_samples,
     patches_method,
@@ -39,7 +39,7 @@ __all__ = [
     "estimate_error_structure",
     "number_effective_samples",
     "patches_method",
-    "propagate_uncertainty",
+    "propagate",
     "propagate_uncertainty_coreg",
     "spatial_error_propagation",
 ]

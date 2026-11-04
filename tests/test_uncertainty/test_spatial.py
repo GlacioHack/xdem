@@ -107,7 +107,7 @@ class TestSpatialErrorPropagation:
 
     @pytest.mark.parametrize("statistic", ["mean", "integral"])
     @pytest.mark.parametrize("point_input", [False, True])
-    def test_propagate_uncertainty__weighted_areas(self, statistic: str, point_input: bool) -> None:
+    def test_propagate__weighted_areas(self, statistic: str, point_input: bool) -> None:
         """Checks that weighted area means and integrals have the expected estimate and uncertainty."""
 
         # Create an area with unequal weights
@@ -120,7 +120,7 @@ class TestSpatialErrorPropagation:
         structure = gu.ErrorStructure([gu.ErrorComponent("measurement", 0.2)])
 
         # Propagate area uncertainty
-        summary = xdem.uncertainty.propagate_uncertainty(
+        summary = xdem.uncertainty.propagate(
             source,
             "spatial",
             error_structure=structure,
@@ -142,7 +142,7 @@ class TestSpatialErrorPropagation:
         assert summary.estimate["selected"] == pytest.approx(expected)
         assert summary.std["selected"] == pytest.approx(0.2 * np.linalg.norm(coefficients))
 
-    def test_propagate_uncertainty__reproject(self) -> None:
+    def test_propagate__reproject(self) -> None:
         """Checks that reprojection uncertainty matches GeoUtils."""
 
         # Create fine and coarse grids
@@ -162,7 +162,7 @@ class TestSpatialErrorPropagation:
             operation_kwargs=options,
             method="analytical",
         )
-        actual = xdem.uncertainty.propagate_uncertainty(
+        actual = xdem.uncertainty.propagate(
             operation=source.reproject,
             error_structure=errors,
             operation_options=options,
@@ -239,7 +239,7 @@ class TestSpatialErrorPropagation:
             subsample=None,
         ) == pytest.approx((mean_sigma / expected) ** 2)
 
-    def test_propagate_uncertainty__area(self) -> None:
+    def test_propagate__area(self) -> None:
         """Checks that area simulations match analytical uncertainty and an equivalent callable."""
 
         # 1/ Run area simulations
@@ -252,7 +252,7 @@ class TestSpatialErrorPropagation:
         mask[:, :2] = False
 
         # Save simulated averages
-        result = xdem.uncertainty.propagate_uncertainty(
+        result = xdem.uncertainty.propagate(
             dem,
             "spatial",
             error_structure=structure,
@@ -263,7 +263,7 @@ class TestSpatialErrorPropagation:
         )
 
         # Repeat with a callable and the same draws
-        direct = xdem.uncertainty.propagate_uncertainty(
+        direct = xdem.uncertainty.propagate(
             dem,
             lambda value: np.ma.mean(value.data[mask]),
             error_structure=structure,

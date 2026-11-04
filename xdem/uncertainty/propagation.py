@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from xdem.dem.base import DEMLike
     from xdem.epc.base import EPCLike
 
-__all__ = ["estimate_error_structure", "propagate_uncertainty"]
+__all__ = ["estimate_error_structure", "propagate"]
 
 
 ############################################
@@ -157,13 +157,15 @@ def estimate_error_structure(
     other_precision: Literal["negligible", "same"] = "negligible",
     at: Literal["self", "other"] | None = None,
     align: Literal["raise", "reproject"] = "reproject",
+    spread_estimator: Callable[[Any], Any] | None = gu.stats.nmad,
+    variogram_estimator: str | Callable[[Any], float] = "dowd",
     mp_config: MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> ErrorStructure:
     """
     Estimate elevation error magnitudes and spatial correlation using terrain predictors.
 
-    With two elevation inputs, slope and maximum curvature are used as predictors by default.
+    With two elevation inputs, slope and maximal curvature are used as predictors by default.
     Pass predictors={} for constant magnitudes.
 
     With ``other=None``, source is considered an error proxy, used without precoregistration or precision scaling.
@@ -192,6 +194,9 @@ def estimate_error_structure(
     :param at: Comparison locations: "self", "other", or None to prefer point locations when present.
         Choosing "other" can interpolate source elevations and smooth their noise.
     :param align: "raise" reports mismatched grids or coordinate systems; "reproject" aligns them for comparison.
+    :param spread_estimator: Error magnitude estimator, defaulting to NMAD for robustness to outliers.
+        None uses the GeoUtils default, numpy.std().
+    :param variogram_estimator: Empirical variogram estimator, defaulting to Dowd for robustness to outliers.
     :param mp_config: Worker and tile settings for multiprocessing estimation.
     :param kwargs: Additional options for GeoUtils ErrorStructure.estimate(), such as components, bins and
         random_state.
@@ -329,6 +334,8 @@ def estimate_error_structure(
             source,
             predictors=predictor_specs,
             mask=mask,
+            spread_estimator=spread_estimator,
+            variogram_estimator=variogram_estimator,
             mp_config=mp_config,
             **kwargs,
         )
@@ -434,7 +441,7 @@ def _simulate(
 ###################################
 
 
-def propagate_uncertainty(
+def propagate(
     data: Any = None,
     operation: Literal["terrain", "spatial", "coreg"] | Callable[..., Any] | None = None,
     *,
@@ -454,7 +461,7 @@ def propagate_uncertainty(
 
     For example, propagate errors to a mean over all valid DEM pixels::
 
-        summary = xdem.uncertainty.propagate_uncertainty(
+        summary = xdem.uncertainty.propagate(
             dem, "spatial", error_structure=errors, method="analytical",
             inputs={"spatial": {"areas": {"whole_dem": None}}},
         )

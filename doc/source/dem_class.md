@@ -182,9 +182,15 @@ stable terrain as a proxy.
 
 ```{code-cell} ipython3
 # Estimate elevation uncertainty assuming both DEMs have similar precision
+import numpy as np
+
+stable_terrain = ~vect_gla.create_mask(dem)
+# Sample the full scene diagonal
+max_lag = np.hypot(dem.shape[0] * dem.res[1], dem.shape[1] * dem.res[0])
 predictors = {"slope": dem.slope(), "max_curvature": dem.max_curvature()}
 error_structure = dem.estimate_error_structure(
-    dem_tba_coreg, predictors=predictors, other_precision="same", n_pairs=100_000, random_state=42,
+    dem_tba_coreg, mask=stable_terrain, predictors=predictors, other_precision="same",
+    n_pairs=100_000, max_lag=max_lag, random_state=42,
 )
 sig_dem = error_structure.predict_magnitude(predictors, like=dem)
 rho_sig = error_structure.predict_correlation

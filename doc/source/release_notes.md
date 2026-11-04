@@ -8,7 +8,23 @@ Below, the release notes for all minor versions and our roadmap to a first major
 (uncertainty-module-migration)=
 ### Uncertainty module migration
 
-Guidance for migrating from `xdem.spatialstats` to `xdem.uncertainty` will be added here.
+The `xdem.spatialstats` module is deprecated in favor of `xdem.uncertainty`, built on the [GeoUtils uncertainty module](https://geoutils.readthedocs.io/en/stable/uncertainty.html).
+
+For **estimation**, everything now revolves around an {class}`~xdem.ErrorStructure`, describing error magnitude and correlation.
+For **propagation**, pass it to {func}`~xdem.uncertainty.propagate` and receive a {class}`~geoutils.PropagationSummary` object.
+
+{meth}`~xdem.ErrorStructure.estimate` and {meth}`~xdem.DEM.estimate_error_structure` are interchangeable ways to estimate {class}`~xdem.ErrorStructure`.
+
+In more details, to adjust from previous code:
+- `DEM.estimate_uncertainty()` is essentially replaced by `DEM.estimate_error_structure()`, but without multiple outputs: everything is contained in {class}`~xdem.ErrorStructure`,
+- `estimate_error_structure()` now handles all the steps previously done with `nd_binning()`, `interp_nd_binning()`, `two_step_standardization()`,
+  `sample_empirical_variogram()` and `fit_sum_model_variogram()`, avoiding the need to pass volatile inputs and outputs between those,
+- To run grouped statistics and variogram estimation steps separately, refer to the [Statistics module in GeoUtils](https://geoutils.readthedocs.io/en/stable/stats.html),
+- Use {func}`~xdem.uncertainty.number_effective_samples` and {func}`~xdem.uncertainty.spatial_error_propagation` in place of the `spatialstats` functions,
+  now passing an `ErrorStructure` instead of variogram parameters and error arrays,
+- A new `propagate()` now supports **analytical or numerical** propagation to spatial averages, terrain attributes, coregistration, and some custom operations.
+
+Find more details about the new API on the {ref}`uncertainty` page!
 
 ## 0.2.0
 

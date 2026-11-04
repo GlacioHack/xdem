@@ -376,7 +376,7 @@ class DEMBase(RasterBase, _VerticalReference):  # type: ignore[misc]
         """
         Estimate elevation errors with terrain predictors and the GeoUtils error estimator.
 
-        With two inputs, terrain slope and maximum curvature are used as predictors by default.
+        With two inputs, terrain slope and maximal curvature are used as predictors by default.
         Pass predictors={} for constant magnitudes. With other=None, this dataset is an error proxy
         and uses constant magnitudes without predictor inputs.
 
@@ -440,7 +440,7 @@ class DEMBase(RasterBase, _VerticalReference):  # type: ignore[misc]
         :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
         :param random_state: Random state or seed number to use for subsampling and optimizer.
         :param list_vars: Variables to use to predict error variability (= elevation heteroscedasticity). Either rasters
-            or names of a terrain attributes. Defaults to slope and maximum curvature of the DEM.
+            or names of a terrain attributes. Defaults to slope and maximal curvature of the DEM.
         :param list_vario_models: Variogram forms to model the spatial correlation of error. A list translates into
             a sum of models. Uses three by default for a method allowing multiple correlation range, otherwise one.
         :param random_state: State or seed to use for randomization.

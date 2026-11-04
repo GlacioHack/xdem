@@ -72,7 +72,8 @@ html_allow_html = True  # To allow HTML embedding, to add "Workflows" HTML repor
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/", None),
-    "geoutils": ("https://geoutils.readthedocs.io/en/stable", None),
+    # Resolve against a local GeoUtils build when checking development branches together
+    "geoutils": (os.environ.get("GEOUTILS_DOCS_PATH") or "https://geoutils.readthedocs.io/en/stable", None),
     "rasterio": ("https://rasterio.readthedocs.io/en/stable", None),
     "numpy": ("https://numpy.org/doc/stable", None),
     "matplotlib": ("https://matplotlib.org/stable", None),

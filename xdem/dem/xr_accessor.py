@@ -6,7 +6,8 @@ import pathlib
 from typing import Any, Literal
 
 import xarray as xr
-from geoutils.raster.xr_accessor import DataArrayRasterAccessor, open_raster
+from geoutils import open_raster
+from geoutils.raster.xr_accessor import DataArrayRasterAccessor
 from pyproj.crs import VerticalCRS
 
 from xdem.dem.base import DEMBase

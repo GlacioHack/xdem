@@ -193,7 +193,7 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     DEM.coregister_3d
 ```
 
-### Uncertainty analysis
+## Uncertainty analysis
 
 ### Error structures and public workflows
 
@@ -204,18 +204,64 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     ErrorMagnitude
     ErrorComponent
     ErrorStructure
-    uncertainty.PropagationSummary
+    ErrorStructure.estimate
+    ErrorStructure.info
+    ErrorStructure.plot
+    ErrorStructure.plot_magnitude
+    ErrorStructure.plot_correlation
+    ErrorStructure.predict_magnitude
+    ErrorStructure.predict_correlation
+    ErrorStructure.refit
+    ErrorStructure.refit_magnitude
+    ErrorStructure.refit_variogram
+    DEM.estimate_error_structure
+    EPC.estimate_error_structure
+    DEM.random_field
+    EPC.random_field
     uncertainty.estimate_error_structure
-    uncertainty.propagate_uncertainty
+    uncertainty.propagate
     uncertainty.propagate_uncertainty_coreg
     uncertainty.number_effective_samples
     uncertainty.spatial_error_propagation
     uncertainty.patches_method
 ```
 
+### Propagation summaries
+
+Spatial and terrain propagation return the GeoUtils summary. Coregistration extends it with parameter plots.
+
+```{eval-rst}
+.. currentmodule:: geoutils
+
+.. autosummary::
+    :toctree: gen_modules/
+
+    PropagationSummary
+    PropagationSummary.info
+    PropagationSummary.interval
+
+.. currentmodule:: xdem
+
+.. autosummary::
+    :toctree: gen_modules/
+
+    uncertainty.PropagationSummary
+    uncertainty.PropagationSummary.plot
+```
+
 ### Shared fitting and analytical calculations
 
 ```{eval-rst}
+.. currentmodule:: geoutils
+
+.. autosummary::
+    :toctree: gen_modules/
+
+    Variogram
+    stats.nmad
+
+.. currentmodule:: xdem
+
 .. autosummary::
     :toctree: gen_modules/
 

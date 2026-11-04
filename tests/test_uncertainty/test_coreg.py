@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -12,7 +13,7 @@ import pytest
 import xarray as xr
 from affine import Affine
 from geoutils.stats.variography import VariogramModel
-from scipy.stats import chi2
+from scipy.stats import chi2, norm, rice
 
 import xdem
 
@@ -26,6 +27,30 @@ def icp_dem() -> gu.Raster:
     values = 40 + 5 * np.sin(x / 6) + 3 * np.cos(y / 8) + 2 * np.sin((x + y) / 7)
     return gu.Raster.from_array(
         values, Affine(2, 0, 500_000, 0, -3, 5_100_000), 32632, nodata=np.nan, area_or_point="Point"
+    )
+
+
+@pytest.fixture
+def parameter_summary() -> xdem.uncertainty.PropagationSummary:
+    """Create six correlated parameters with stored covariance and deterministic simulation samples."""
+
+    labels = pd.Index(["tx", "ty", "tz", "rx", "ry", "rz"])
+    covariance = np.diag([4.0, 1.0, 0.25, 0.04, 0.01, 0.0025])
+    covariance[0, 1] = covariance[1, 0] = 1.0
+    covariance[3, 4] = covariance[4, 3] = 0.01
+    samples = pd.DataFrame(np.random.default_rng(42).multivariate_normal(np.zeros(6), covariance, 200), columns=labels)
+    mean = samples.mean()
+    estimate = mean + samples.std() / 4
+    selection = pd.DataFrame({"flat_index": np.arange(6), "estimate": estimate}, index=labels)
+    return xdem.uncertainty.PropagationSummary(
+        estimate=estimate,
+        mean=mean,
+        std=samples.std(),
+        error_structure=gu.ErrorStructure([gu.ErrorComponent("uncorrelated", 0.2)]),
+        method="analytical",
+        selection=selection,
+        samples=samples,
+        output={"translation_units": "metre", "parameter_covariance": samples.cov()},
     )
 
 
@@ -88,7 +113,7 @@ class TestCoregistrationPropagationSummary:
     def test_plot(self, input_axes: bool) -> None:
         """Checks that plot show the right data."""
 
-        import matplotlib.pyplot as plt
+        plt = pytest.importorskip("matplotlib.pyplot")
 
         # We create a synthetic propagation summary
         labels = pd.Index(["tx", "ty", "tz", "rx", "ry", "rz"])
@@ -124,6 +149,264 @@ class TestCoregistrationPropagationSummary:
             np.testing.assert_allclose(axis.lines[-1].get_ydata(orig=False), summary.estimate.loc[list(names)])
             assert axis.get_ylabel() == label
         plt.close(plotted_axes[0].figure)
+
+    @pytest.mark.parametrize("input_axes", [False, True])
+    @pytest.mark.parametrize("source", ["analytical", "samples"])
+    @pytest.mark.parametrize("coverage", [0.68, 0.95])
+    def test_plot__ellipses(
+        self,
+        parameter_summary: xdem.uncertainty.PropagationSummary,
+        input_axes: bool,
+        source: str,
+        coverage: float,
+    ) -> None:
+        """Checks that joint X/Y regions and separate Z intervals reproduce the parameter covariance."""
+
+        plt = pytest.importorskip("matplotlib.pyplot")
+        summary = parameter_summary
+        if source == "samples":
+            changes: dict[str, Any] = {"method": "numerical", "output": {"translation_units": "metre"}}
+            summary = replace(summary, **changes)
+
+        # Draw both layouts from the same correlated parameters
+        axes = tuple(plt.subplots(2, 2)[1].flat) if input_axes else None
+        plotted = summary.plot(axes=axes, kind="ellipses", coverage=coverage, capsize=5, color="C2")
+        assert len(plotted) == 4
+        if axes is not None:
+            assert plotted == axes
+
+        # A transformed unit circle has the requested covariance after removing the joint probability scale
+        covariance = parameter_summary.output["parameter_covariance"]
+        for index, names in enumerate((("tx", "ty", "tz"), ("rx", "ry", "rz"))):
+            horizontal, vertical = plotted[2 * index : 2 * index + 2]
+            ellipse = horizontal.patches[0]
+            transform = ellipse.get_patch_transform().get_matrix()[:2, :2]
+            expected = covariance.loc[list(names[:2]), list(names[:2])].to_numpy()
+            np.testing.assert_allclose(transform @ transform.T / chi2.ppf(coverage, 2), expected)
+            np.testing.assert_allclose(ellipse.center, summary.mean.loc[list(names[:2])])
+            np.testing.assert_allclose(
+                np.asarray(horizontal.lines[-1].get_data()).ravel(), summary.estimate.loc[list(names[:2])]
+            )
+
+            # Z has a one-dimensional normal interval, with its own axis and units
+            bounds = (
+                summary.mean.loc[names[2]]
+                + np.array([-1, 1]) * norm.ppf((1 + coverage) / 2) * summary.std.loc[names[2]]
+            )
+            np.testing.assert_allclose(vertical.collections[0].get_segments()[0][:, 1], bounds)
+            unit = "metre" if index == 0 else "radian"
+            assert horizontal.get_xlabel() == f"X {'translation' if index == 0 else 'rotation'} ({unit})"
+            assert vertical.get_xticklabels()[0].get_text() == names[2]
+        plt.close(plotted[0].figure)
+
+    @pytest.mark.parametrize("kind", [None, "horizontal_vertical"])
+    @pytest.mark.parametrize("input_axes", [False, True])
+    @pytest.mark.parametrize("source", ["analytical", "samples"])
+    @pytest.mark.parametrize("coverage", [0.68, 0.95])
+    def test_plot__horizontal_vertical(
+        self,
+        parameter_summary: xdem.uncertainty.PropagationSummary,
+        input_axes: bool,
+        source: str,
+        coverage: float,
+        kind: str | None,
+    ) -> None:
+        """Checks that ellipses show horizontal magnitudes, vertical parameters and their covariance."""
+
+        plt = pytest.importorskip("matplotlib.pyplot")
+        summary = parameter_summary
+        if source == "samples":
+            changes: dict[str, Any] = {"method": "numerical", "output": {"translation_units": "metre"}}
+            summary = replace(summary, **changes)
+        else:
+            # Equal independent horizontal variances give a Rice magnitude
+            covariance = summary.output["parameter_covariance"].copy()
+            for names in (("tx", "ty", "tz"), ("rx", "ry", "rz")):
+                variance = covariance.loc[names[0], names[0]]
+                covariance.loc[list(names), list(names)] = np.diag(
+                    [variance, variance, covariance.loc[names[2], names[2]]]
+                )
+            changes = {"output": {**summary.output, "parameter_covariance": covariance}}
+            summary = replace(summary, **changes)
+        axes = tuple(plt.subplots(1, 2)[1]) if input_axes else None
+
+        options: dict[str, Any] = {} if kind is None else {"kind": kind}
+        plotted = summary.plot(axes=axes, coverage=coverage, **options)
+
+        assert len(plotted) == 2
+        if axes is not None:
+            assert plotted == axes
+
+        # Compare transformed covariance and means
+        covariance = summary.output.get("parameter_covariance")
+        if covariance is None:
+            covariance = summary.samples.cov()
+        for axis, names, scale, xlabel, ylabel in zip(
+            plotted,
+            (("tx", "ty", "tz"), ("rx", "ry", "rz")),
+            (1.0, 1e6),
+            ("Horizontal translation (metre)", "Tilt (µrad)"),
+            ("Vertical translation (metre)", "Yaw (µrad)"),
+        ):
+            assert len(axis.patches) == 1
+            ellipse = axis.patches[0]
+            block = covariance.loc[list(names), list(names)].to_numpy()
+            mean_x, mean_y, mean_z = summary.mean.loc[list(names)]
+            horizontal = np.hypot(mean_x, mean_y)
+            sigma = np.sqrt(block[0, 0])
+            magnitude_mean = rice.mean(horizontal / sigma, scale=sigma)
+            magnitude_variance = rice.var(horizontal / sigma, scale=sigma)
+            expected_center = np.array([magnitude_mean, mean_z]) * scale
+            expected = np.diag([magnitude_variance, block[2, 2]])
+            if source == "samples":
+                values = summary.samples.loc[:, list(names)].to_numpy()
+                magnitudes = np.sqrt(values[:, 0] ** 2 + values[:, 1] ** 2)
+                expected_center = np.array([magnitudes.mean(), values[:, 2].mean()]) * scale
+                expected = np.cov(magnitudes, values[:, 2])
+            transform = ellipse.get_patch_transform().get_matrix()[:2, :2]
+            np.testing.assert_allclose(transform @ transform.T / (chi2.ppf(coverage, 2) * scale**2), expected)
+            np.testing.assert_allclose(ellipse.center, expected_center)
+            np.testing.assert_array_equal(axis.lines[0].get_ydata(), [0, 0])
+            np.testing.assert_array_equal(axis.lines[1].get_xdata(), [0, 0])
+            assert axis.get_legend() is None
+            assert axis.get_xlabel() == xlabel
+            assert axis.get_ylabel() == ylabel
+            assert 0 in axis.get_xticks()
+            assert 0 in axis.get_yticks()
+            assert axis.get_xlim()[0] < 0 < axis.get_xlim()[1]
+            assert axis.get_ylim()[0] < 0 < axis.get_ylim()[1]
+        plt.close(plotted[0].figure)
+
+    @pytest.mark.parametrize(
+        "horizontal_std, other_std, expected_mean",
+        [(0.0, 0.0, 0.0), (2.0, 2.0, np.sqrt(2 * np.pi)), (2.0, 0.0, np.sqrt(8 / np.pi))],
+    )
+    def test_plot__zero_horizontal_mean(
+        self,
+        parameter_summary: xdem.uncertainty.PropagationSummary,
+        horizontal_std: float,
+        other_std: float,
+        expected_mean: float,
+    ) -> None:
+        """Checks that zero horizontal means give finite ellipses with Gaussian magnitude moments."""
+
+        plt = pytest.importorskip("matplotlib.pyplot")
+        labels = parameter_summary.mean.index
+        covariance = pd.DataFrame(np.diag([horizontal_std**2, other_std**2, 1, 0, 0, 0]), labels, labels)
+        changes: dict[str, Any] = {
+            "mean": pd.Series(0.0, index=labels),
+            "samples": None,
+            "output": {"parameter_covariance": covariance},
+        }
+        summary = replace(parameter_summary, **changes)
+
+        axes = summary.plot()
+
+        # Independent X/Y errors give Rayleigh or half-normal magnitudes
+        expected_covariance = np.diag([horizontal_std**2 + other_std**2 - expected_mean**2, 1])
+        ellipse = axes[0].patches[0]
+        transform = ellipse.get_patch_transform().get_matrix()[:2, :2]
+        np.testing.assert_allclose(ellipse.center, [expected_mean, 0])
+        np.testing.assert_allclose(transform @ transform.T / chi2.ppf(0.95, 2), expected_covariance, atol=1e-10)
+        np.testing.assert_array_equal(axes[1].patches[0].center, [0, 0])
+        plt.close(axes[0].figure)
+
+    @pytest.mark.parametrize("horizontal_mean", [0.0, 1.0, 1000.0])
+    def test_plot__correlated_gaussian_magnitudes(
+        self, parameter_summary: xdem.uncertainty.PropagationSummary, horizontal_mean: float
+    ) -> None:
+        """Checks that Gaussian magnitudes include X/Y correlation and covariance with the vertical parameter."""
+
+        plt = pytest.importorskip("matplotlib.pyplot")
+        labels = parameter_summary.mean.index
+        means = horizontal_mean * np.array([1.0, 2.0, 3.0])
+        block = 4 * np.outer([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]) + np.diag([0, 0, 1])
+        covariance = np.zeros((6, 6))
+        covariance[:3, :3], covariance[3:, 3:] = block, block * 1e-12
+        changes: dict[str, Any] = {
+            "mean": pd.Series(np.concatenate((means, means * 1e-6)), index=labels),
+            "std": pd.Series(np.sqrt(np.diag(covariance)), index=labels),
+            "samples": None,
+            "output": {"parameter_covariance": pd.DataFrame(covariance, labels, labels)},
+        }
+        summary = replace(parameter_summary, **changes)
+
+        axes = summary.plot()
+
+        # With Y = 2X, the magnitude is sqrt(5) times a folded normal variable
+        signed_probability = 2 * norm.cdf(horizontal_mean / 2) - 1
+        absolute_mean = 2 * np.sqrt(2 / np.pi) * np.exp(-(horizontal_mean**2) / 8)
+        absolute_mean += horizontal_mean * signed_probability
+        expected_mean = np.sqrt(5) * absolute_mean
+        magnitude_variance = 5 * (horizontal_mean**2 + 4 - absolute_mean**2)
+        cross_covariance = np.sqrt(5) * 12 * signed_probability
+        expected_covariance = np.array([[magnitude_variance, cross_covariance], [cross_covariance, 37]])
+        for axis in axes:
+            ellipse = axis.patches[0]
+            transform = ellipse.get_patch_transform().get_matrix()[:2, :2]
+            np.testing.assert_allclose(ellipse.center, [expected_mean, means[2]], rtol=1e-9, atol=1e-9)
+            np.testing.assert_allclose(
+                transform @ transform.T / chi2.ppf(0.95, 2), expected_covariance, rtol=1e-9, atol=1e-9
+            )
+        plt.close(axes[0].figure)
+
+    @pytest.mark.parametrize("show_samples", [False, True])
+    def test_plot__numerical_draws(
+        self, parameter_summary: xdem.uncertainty.PropagationSummary, show_samples: bool
+    ) -> None:
+        """Checks that numerical points show one horizontal magnitude and vertical value per simulation."""
+
+        plt = pytest.importorskip("matplotlib.pyplot")
+
+        # Set distinct translations and rotations
+        draws = pd.DataFrame(
+            [[8, 20, 30, 1e-6, 2e-6, 3e-6], [10, 24, 32, 3e-6, 6e-6, 5e-6], [12, 28, 34, 5e-6, 10e-6, 7e-6]],
+            columns=parameter_summary.selection.index,
+        )
+        changes: dict[str, Any] = {
+            "method": "numerical",
+            "samples": draws,
+            "mean": draws.mean(),
+            "std": draws.std(),
+            "output": {"translation_units": "metre"},
+        }
+        summary = replace(parameter_summary, **changes)
+
+        axes = summary.plot(show_samples=show_samples)
+
+        # Check magnitudes in displayed units
+        expected = (
+            [[np.sqrt(464), 30], [26, 32], [np.sqrt(928), 34]],
+            [[np.sqrt(5), 3], [np.sqrt(45), 5], [np.sqrt(125), 7]],
+        )
+        for axis, values in zip(axes, expected):
+            np.testing.assert_allclose(axis.patches[0].center, np.mean(values, axis=0))
+            assert len(axis.collections) == int(show_samples)
+            if show_samples:
+                np.testing.assert_allclose(axis.collections[0].get_offsets(), values, atol=1e-14)
+                assert axis.collections[0].get_alpha() == 0.5
+        plt.close(axes[0].figure)
+
+    def test_plot__compare_summaries(self, parameter_summary: xdem.uncertainty.PropagationSummary) -> None:
+        """Checks that plot() overlays labelled analytical and numerical ellipses with zero ticks."""
+
+        plt = pytest.importorskip("matplotlib.pyplot")
+        changes: dict[str, Any] = {"method": "numerical", "output": {"translation_units": "metre"}}
+        numerical = replace(parameter_summary, **changes)
+
+        axes = parameter_summary.plot(color="C0", label="Analytical")
+        plotted = numerical.plot(axes=axes, color="C1", label="Numerical")
+
+        assert plotted == axes
+        for axis in axes:
+            assert len(axis.patches) == 2
+            assert len(axis.collections) == 1
+            assert axis.collections[0].get_alpha() == 0.5
+            assert axis.patches[0].get_edgecolor() != axis.patches[1].get_edgecolor()
+            assert axis.get_legend_handles_labels()[1] == ["Analytical", "Numerical"]
+            assert 0 in axis.get_xticks()
+            assert 0 in axis.get_yticks()
+        plt.close(axes[0].figure)
 
 
 class TestPropagateUncertaintyCoreg:
@@ -312,6 +595,47 @@ class TestPropagateUncertaintyCoreg:
         np.testing.assert_array_equal(reference.data, original_reference.data)
         np.testing.assert_array_equal(source.data, original_source.data)
         np.testing.assert_array_equal(slope.data, (reference if side == "ref" else source).slope().data)
+
+    @pytest.mark.parametrize("solver", [xdem.coreg.LZD, xdem.coreg.ICP])
+    def test_propagate_uncertainty_coreg__matching_gls_estimates(
+        self, icp_dem: gu.Raster, solver: type[xdem.coreg.AffineCoreg]
+    ) -> None:
+        """Checks that analytical and numerical GLS fits have identical unperturbed estimates and centroids."""
+
+        # Leave elevations finite where predictors are missing
+        source = icp_dem + 0.2
+        predictor = np.ones(icp_dem.shape)
+        predictor[:2] = np.nan
+        statistics = pd.DataFrame(
+            {"std": [0.01, 0.02], "count": [100, 100]}, index=pd.Index([0.0, 1.0], name="position")
+        )
+        magnitude = gu.ErrorMagnitude.variable_from_grouped_stats(statistics)
+        errors = {side: gu.ErrorStructure([gu.ErrorComponent("measurement", magnitude)]) for side in ("ref", "tba")}
+        predictors = {side: {"position": predictor} for side in errors}
+        options: dict[str, Any] = {
+            "error_structure": errors,
+            "error_predictors": predictors,
+            "fit_kwargs": {"error_structure": errors, "error_predictors": predictors},
+            "random_state": 12,
+        }
+        method = solver(only_translation=True, subsample=40)
+
+        # Use the same GLS fit for both propagation methods
+        analytical = xdem.uncertainty.propagate_uncertainty_coreg(
+            icp_dem, source, method, method="analytical", **options
+        )
+        numerical = xdem.uncertainty.propagate_uncertainty_coreg(
+            icp_dem,
+            source,
+            method,
+            method="numerical",
+            n_simulations=2,
+            on_error="raise",
+            **options,
+        )
+
+        pd.testing.assert_series_equal(analytical.estimate, numerical.estimate)
+        np.testing.assert_array_equal(analytical.output["centroid"], numerical.output["centroid"])
 
     @pytest.mark.parametrize("only_translation", [True, False])
     @pytest.mark.parametrize(
@@ -697,6 +1021,61 @@ class TestCoregUncertaintyAnalyticalVsNumerical:
         # 2/ Draw native Gaussian fields independently of the analytical covariance implementation
         options: dict[str, Any] = dict(error_structure={error_applied_to: errors}, inlier_mask=mask, random_state=42)
         _compare_simulated_uncertainty(reference, moving, method, options, only_translation, check_mean=True)
+
+
+class TestCoregistrationPropagationSummaryErrors:
+    """Test module for missing covariance and invalid options in coregistration summary plots."""
+
+    @pytest.mark.parametrize(
+        "changes, options, message",
+        [
+            ({"output": {}, "samples": None}, {}, "require parameter covariance"),
+            ({}, {"kind": "unknown"}, "kind must be"),
+            ({}, {"coverage": 0}, "coverage must be"),
+            ({}, {"coverage": 1}, "coverage must be"),
+            ({}, {"coverage": np.nan}, "coverage must be"),
+            ({}, {"axes": (None, None)}, "require four axes"),
+        ],
+    )
+    def test_plot__error_ellipse_inputs(
+        self,
+        parameter_summary: xdem.uncertainty.PropagationSummary,
+        changes: dict[str, Any],
+        options: dict[str, Any],
+        message: str,
+    ) -> None:
+        """Checks an error is raised for missing covariance, invalid coverage or an invalid ellipse layout."""
+
+        pytest.importorskip("matplotlib")
+        summary = replace(parameter_summary, **changes)
+
+        with pytest.raises(ValueError, match=message):
+            summary.plot(**{"kind": "ellipses", **options})
+
+    @pytest.mark.parametrize(
+        "changes, options, message",
+        [
+            ({"output": {}, "samples": None}, {}, "require parameter covariance"),
+            ({}, {"coverage": 0}, "coverage must be"),
+            ({}, {"coverage": 1}, "coverage must be"),
+            ({}, {"coverage": np.nan}, "coverage must be"),
+            ({}, {"axes": (None,)}, "require two axes"),
+        ],
+    )
+    def test_plot__error_horizontal_vertical_inputs(
+        self,
+        parameter_summary: xdem.uncertainty.PropagationSummary,
+        changes: dict[str, Any],
+        options: dict[str, Any],
+        message: str,
+    ) -> None:
+        """Checks an error is raised for missing covariance or invalid horizontal/vertical plot options."""
+
+        pytest.importorskip("matplotlib")
+        summary = replace(parameter_summary, **changes)
+
+        with pytest.raises(ValueError, match=message):
+            summary.plot(**{"kind": "horizontal_vertical", **options})
 
 
 class TestPropagateUncertaintyCoregErrors:
