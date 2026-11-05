@@ -192,19 +192,14 @@ class _PreviewResult:
 
         # Create all keys normally read from saved ASV results so every report section can render
         for comparison in COMPARISONS:
-            print("\ncomparison", comparison)
             parameter_values = comparison.benchmark.values
             if comparison.benchmark.parameter_name == "raster_size" and SUMMARY_RASTER_SIZE not in parameter_values:
                 parameter_values = (*parameter_values, SUMMARY_RASTER_SIZE)
-            print("parameter_values", parameter_values)
             parameter_count = len(parameter_values)
-            print("parameter_count", parameter_count)
 
             for series_index, (_, class_name) in enumerate(comparison.series, start=1):
-                print("series_index", series_index)
-                print("class_name", class_name)
+
                 prefix = f"{COMPARISON_BENCHMARK_MODULE}.{class_name}"
-                print("prefix")
                 if f"{prefix}.time_operation" in self.values:
                     continue
 
@@ -218,33 +213,14 @@ class _PreviewResult:
                 self.values[f"{prefix}.time_operation"] = [
                     scale * series_index * 0.05 * 2**index for index in range(parameter_count)
                 ]
-                print(
-                    f"{prefix}.time_operation",
-                    self.parameters[f"{prefix}.time_operation"],
-                    "->",
-                    self.values[f"{prefix}.time_operation"],
-                )
 
                 self.values[f"{prefix}.track_end_to_end_time_s"] = [
                     scale * series_index * 0.10 * 2**index for index in range(parameter_count)
                 ]
-                print(
-                    f"{prefix}.track_end_to_end_time_s",
-                    self.parameters[f"{prefix}.track_end_to_end_time_s"],
-                    "->",
-                    self.values[f"{prefix}.track_end_to_end_time_s"],
-                )
-
                 self.values[f"{prefix}.track_process_tree_mem_increase_mb"] = [
                     scale * series_index * (100.0 + 40.0 * index + 20.0 * max(0, index - 1))
                     for index in range(parameter_count)
                 ]
-                print(
-                    f"{prefix}.track_process_tree_mem_increase_mb",
-                    self.parameters[f"{prefix}.track_process_tree_mem_increase_mb"],
-                    "->",
-                    self.values[f"{prefix}.track_end_to_end_time_s"],
-                )
 
     def get_all_result_keys(self) -> Any:
         """Return every generated benchmark result key."""
@@ -307,35 +283,18 @@ def _select_complete_result(
     required_keys = _required_benchmark_keys()
     candidates = []
     for result in results:
-        print("result", result._filename)
-        print(
-            "result",
-            "asv_suite.parameter_sweeps.reproject_rms_operator_inmem__rastersize.track_process_tree_mem_increase_mb"
-            in result.get_all_result_keys(),
-        )
-        print(
-            "result",
-            "asv_suite.parameter_sweeps.topo_nearest_gdalcli_operator__rastersize.time_operation"
-            in result.get_all_result_keys(),
-        )
-        pb = "asv_suite.parameter_sweeps.topo_nearest_gdalcli_operator__rastersize.time_operation"
-        # print(result.get_result_params(pb), result.get_result_value(pb))
-        # print (l)
+
         # Machine and commit filters make local multi-machine histories predictable
         if machine is not None and result.params.get("machine") != machine:
-            print("1")
             continue
         if commit is not None and not result.commit_hash.startswith(commit):
-            print("2")
             continue
 
         # ASV does not expose the environment name as a public property
         result_environment = str(getattr(result, "_env_name", ""))
         if environment is not None and result_environment != environment:
-            print("3")
             continue
         if require_complete and not required_keys.issubset(result.get_all_result_keys()):
-            print(require_complete, not required_keys.issubset(result.get_all_result_keys()))
             continue
         candidates.append(result)
 
@@ -381,14 +340,12 @@ def _result_series(result: Any, key: str) -> tuple[list[int], list[float]]:
 
     # Comparisons deliberately define exactly one parameter dimension
     params = result.get_result_params(key)
-    print(params)
     if len(params) != 1:
         raise ValueError(f"Comparison must contain one parameter: {key}")
     parameters = [_decode_parameter(value) for value in params[0]]
 
     # Ask ASV to align values against the parameter order stored with this result
     values = result.get_result_value(key, params)
-    print(values)
 
     if not isinstance(values, list):
         values = [values]
@@ -406,15 +363,10 @@ def collect_comparison_measurements(
     # Convert each saved ASV series into one record per numeric input value
     records = []
     available = set(result.get_all_result_keys())
-    print(
-        "asv_suite.parameter_sweeps.topo_nearest_rasterio_inmem__rastersize.track_process_tree_mem_increase_mb"
-        in available
-    )
-    print("A")
+
     for comparison in comparisons:
         for series_label, class_name in comparison.series:
             selected_case = BENCHMARK_CASE_BY_CLASS[class_name]
-            print(selected_case)
             if BENCHMARK_BY_CLASS[class_name] != comparison.benchmark:
                 raise ValueError(f"Comparison benchmark does not match registered case {class_name}")
 
@@ -424,15 +376,11 @@ def collect_comparison_measurements(
                 "end_to_end": _benchmark_key(class_name, "track_end_to_end_time_s"),
                 "memory": _benchmark_key(class_name, "track_process_tree_mem_increase_mb"),
             }
-            print("key", keys)
-            print("available", available)
+
             missing = set(keys.values()) - available
-            print(missing)
             if missing:
                 raise ValueError(f"Missing comparison results: {', '.join(sorted(missing))}")
 
-            print("keys", keys["operation"])
-            print("missing", missing)
             operation_params, operation_times = _result_series(result, keys["operation"])
             end_to_end_params, end_to_end_times = _result_series(result, keys["end_to_end"])
             memory_params, peak_memory = _result_series(result, keys["memory"])
@@ -846,7 +794,7 @@ def _plot_memory_increase_by_raster_size(
     comparisons = _gdal_comparisons()
     column_count = 3
     row_count = math.ceil(len(comparisons) / column_count)
-    print(row_count, column_count)
+
     figure, axes = plt.subplots(
         row_count,
         column_count,
@@ -1956,10 +1904,9 @@ def render_comparisons(
     include_asv_history: bool = True,
 ) -> list[ComparisonMeasurement]:
     """Write comparison plots and one landing page beside the native ASV site."""
-    print(result._filename)
+
     # Only expose the history shell when ASV has already published its native report
     include_asv_history = include_asv_history and (website_directory / "asv" / "index.html").is_file()
-    print(include_asv_history)
 
     # All generated material stays under the gitignored ASV website directory
     report_directory = website_directory / COMPARISON_REPORT_DIRECTORY
@@ -2042,7 +1989,7 @@ def _render_preview(website_directory: Path) -> None:
     # Two fake revisions also exercise the generated before/after performance table
     current_result = _PreviewResult()
     baseline_result = _PreviewResult(commit_hash="preview-baseline", geoutils_scale=1.25)
-    print(current_result)
+
     render_comparisons(
         current_result,
         website_directory,
@@ -2075,10 +2022,8 @@ def main() -> None:
     if args.preview:
         website_directory = args.website_directory or PREVIEW_WEBSITE_DIRECTORY
         _render_preview(website_directory)
-        print(f"Benchmark preview written to {website_directory / 'index.html'}")
         return
 
-    print("select_asv_result")
     # Optional filters select a reproducible record from histories with several machines
     result = select_asv_result(
         args.results_directory,
@@ -2087,12 +2032,10 @@ def main() -> None:
         environment=args.environment,
         require_complete=False,
     )
-    print(result)
 
     baseline_result = None
 
     if args.baseline_commit is not None:
-        print("args.baseline_commit", args.baseline_commit)
 
         baseline_result = select_asv_result(
             args.results_directory,
