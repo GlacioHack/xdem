@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import warnings
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -333,8 +332,8 @@ class TestClassVsAccessorConsistencyDEMBase:
     - Automatic coverage of every public method using ``NeedsTestError``,
     - Chunked methods for exact results and unchanged source laziness.
 
-    Comparisons account for masked arrays in DEM and NaN arrays in Xarray. Coregistration and uncertainty are tested
-    separately below because they need additional inputs.
+    Comparisons account for masked arrays in DEM and NaN arrays in Xarray. Uncertainty methods are compared in
+    tests/test_uncertainty/test_propagation.py.
     """
 
     # Run tests for different DEMs
@@ -376,9 +375,8 @@ class TestClassVsAccessorConsistencyDEMBase:
     # List of DEM-specific methods that WILL NOT LOAD the output for certain arguments
     methods_output_noload_allowed_args: dict[str, Any] = {}
 
-    # Methods whose richer inputs and multiple outputs are covered by TestDEMEagerAnalysis below
+    # Uncertainty methods are covered in tests/test_uncertainty/test_propagation.py
     methods_tested_separately = [
-        "coregister_3d",
         "estimate_error_structure",
         "estimate_uncertainty",
     ]
@@ -418,6 +416,7 @@ class TestClassVsAccessorConsistencyDEMBase:
     methods_and_kwargs = [
         # 1. Will load, not inplace
         ("to_vcrs", {"vcrs": "EGM96", "force_source_vcrs": "Ellipsoid"}),
+        ("coregister_3d", {"coreg_method": coreg.VerticalShift(subsample=50), "random_state": 42}),
         ("slope", {}),
         ("aspect", {}),
         ("hillshade", {}),
@@ -441,7 +440,7 @@ class TestClassVsAccessorConsistencyDEMBase:
     ]
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
-    @pytest.mark.parametrize("method, kwargs", [(f, k) for f, k in methods_and_kwargs])  # type: ignore
+    @pytest.mark.parametrize("method, kwargs", methods_and_kwargs, ids=[m for m, _ in methods_and_kwargs])
     def test_methods__equality_and_loading(self, path_dem: str, method: str, kwargs: dict[str, Any]) -> None:
         """
         Test that the DEMBase-specific method output and loading mechanism of the two objects are exactly the same
@@ -459,8 +458,12 @@ class TestClassVsAccessorConsistencyDEMBase:
         args = kwargs.copy()
 
         # Apply method for each class
-        output_dem = getattr(dem, method)(**args)
-        output_ds = getattr(ds.dem, method)(**args)
+        outputs = []
+        for source in (dem, ds.dem):
+            if method == "coregister_3d":
+                args["reference_elev"] = source.copy()
+            outputs.append(getattr(source, method)(**args))
+        output_dem, output_ds = outputs
 
         # Determine if operation was in-place or not
         inplace = method in ["set_vcrs"]
@@ -553,6 +556,7 @@ class TestClassVsAccessorConsistencyDEMBase:
 
     chunked_methods_and_args = (
         ("to_vcrs", {"vcrs": "EGM96", "force_source_vcrs": "Ellipsoid"}),
+        ("coregister_3d", {"coreg_method": coreg.VerticalShift(subsample=50), "random_state": 42}),
         ("slope", {}),
         ("aspect", {}),
         ("hillshade", {}),
@@ -573,7 +577,7 @@ class TestClassVsAccessorConsistencyDEMBase:
     )
 
     @pytest.mark.parametrize("path_dem", [longyearbyen_path])  # type: ignore
-    @pytest.mark.parametrize("method, kwargs", [(f, k) for f, k in chunked_methods_and_args])  # type: ignore
+    @pytest.mark.parametrize("method, kwargs", chunked_methods_and_args, ids=[m for m, _ in chunked_methods_and_args])
     def test_chunked_methods__equality_loading_laziness(
         self, path_dem: str, method: str, kwargs: dict[str, Any]
     ) -> None:
@@ -605,10 +609,12 @@ class TestClassVsAccessorConsistencyDEMBase:
         args = kwargs.copy()
 
         # Apply method for each
-        output_dem = getattr(dem, method)(**args, mp_config=mp_config)
-        output_ds = getattr(ds.dem, method)(**args)
-        output_dem2 = getattr(dem2, method)(**args)
-        output_ds2 = getattr(ds2.dem, method)(**args)
+        outputs = []
+        for source, config in ((dem, mp_config), (ds.dem, None), (dem2, None), (ds2.dem, None)):
+            if method == "coregister_3d":
+                args["reference_elev"] = source.copy()
+            outputs.append(getattr(source, method)(**args, mp_config=config))
+        output_dem, output_ds, output_dem2, output_ds2 = outputs
 
         # For a raster-type output
         if isinstance(output_dem, Raster):
@@ -691,247 +697,3 @@ class TestClassVsAccessorConsistencyDEMBase:
         assert_output_equal(output_dem, output_ds)
         assert_output_equal(output_dem, output_dem2, strict_masked=False)
         assert_output_equal(output_dem, output_ds2)
-
-
-class TestDEMEagerAnalysis:
-    """
-    Test module for eager coregistration and uncertainty through DEM and its Xarray accessor.
-
-    This class tests:
-    - ``coregister_3d`` with raster and point references, masks and bias variables,
-    - ``estimate_uncertainty`` with raster and point references, masks and all approaches.
-    """
-
-    def test_coregister_3d__bias_variables_and_mask(self, accessor_dem_path: Path) -> None:
-        """Checks that eager DataArray masks and bias variables retain fitted corrections and excluded outliers."""
-
-        # 1/ Add a known linear bias and a 100-metre error patch that the fitting mask excludes
-        reference = DEM(accessor_dem_path)
-        reference = reference.copy(new_array=np.zeros(reference.shape, dtype=np.float64))
-        rows, cols = np.indices(reference.shape)
-        variable = reference.copy(new_array=cols.astype(np.float64))
-        stable = ~((rows >= 5) & (rows < 9) & (cols >= 9) & (cols < 13))
-        source = reference.copy(new_array=3 + 0.5 * variable.data + np.where(stable, 0, 100))
-
-        def linear_bias(values: Any, gradient: float, offset: float) -> Any:
-            """Calculate a linear bias from one predictor, supplied as an array or a one-element tuple."""
-            return gradient * np.squeeze(values) + offset
-
-        # 2/ Run the same bias correction with DEM inputs and Xarray inputs
-        method = coreg.BiasCorr(fit_or_bin="fit", fit_func=linear_bias, bias_var_names=["elevation"])
-        expected = source.coregister_3d(
-            reference, method.copy(), inlier_mask=stable, bias_vars={"elevation": variable}, random_state=42
-        )
-        ds = DEMAccessor.from_array(
-            source.data, source.transform, source.crs, nodata=source.nodata, area_or_point=source.area_or_point
-        )
-        mask_ds = DEMAccessor.from_array(stable, source.transform, source.crs)
-        variable_ds = DEMAccessor.from_array(variable.data, variable.transform, variable.crs)
-        actual = ds.dem.coregister_3d(
-            reference, method.copy(), inlier_mask=mask_ds, bias_vars={"elevation": variable_ds.dem}, random_state=42
-        )
-
-        # 3/ Check that both calls remove the bias and leave the excluded 100-metre patch unchanged
-        assert isinstance(expected, DEM)
-        assert isinstance(actual, xr.DataArray)
-        assert_output_equal(expected, actual)
-        np.testing.assert_allclose(actual.data, np.where(stable, 0, 100), atol=1e-12, rtol=0)
-        np.testing.assert_array_equal(ds.data, source.get_nanarray())
-
-    @pytest.mark.parametrize("method", [coreg.VerticalShift, coreg.NuthKaab, coreg.DhMinimize, coreg.LZD, coreg.ICP])
-    @pytest.mark.parametrize("reference_kind", ["dem", "dataarray", "accessor", "epc", "dataframe"])
-    def test_coregister_3d__reference_types(self, accessor_dem_path: Path, reference_kind: str, method: Any) -> None:
-        """
-        Checks that eager DEM coregistration matches native fits for raster and point references with different methods.
-        """
-
-        # 1/ Use an 8-metre offset for VerticalShift and real DEMs for methods that estimate horizontal shifts
-        if method is coreg.VerticalShift:
-            reference = DEM(accessor_dem_path)
-            source = reference + 8
-        else:
-            reference = DEM(examples.get_path_test("longyearbyen_ref_dem"))
-            source = DEM(examples.get_path_test("longyearbyen_tba_dem"))
-        ds = DEMAccessor.from_array(
-            source.data, source.transform, source.crs, nodata=source.nodata, area_or_point=source.area_or_point
-        )
-        reference_ds = DEMAccessor.from_array(
-            reference.data,
-            reference.transform,
-            reference.crs,
-            nodata=reference.nodata,
-            area_or_point=reference.area_or_point,
-        )
-
-        # Build every accepted reference type from the same elevations so only the input type changes
-        references = {
-            "dem": reference,
-            "dataarray": reference_ds,
-            "accessor": reference_ds.dem,
-            "epc": reference.to_pointcloud(data_column_name="height", subsample=1000, random_state=42),
-        }
-        references["dataframe"] = references["epc"].ds.copy()
-        references["dataframe"].attrs["data_name"] = "height"
-
-        # 2/ Run DEM and Xarray calls with the same reference type and random seed
-        expected = source.coregister_3d(references[reference_kind], method(), subsample=5000, random_state=42)
-        actual = ds.dem.coregister_3d(references[reference_kind], method(), subsample=5000, random_state=42)
-        assert isinstance(expected, DEM)
-        assert isinstance(actual, xr.DataArray)
-        assert_output_equal(expected, actual)
-        np.testing.assert_array_equal(ds.data, source.get_nanarray())
-
-    @pytest.mark.parametrize("approach", ["Basic", "R2009", "H2022"])
-    @pytest.mark.parametrize("precision", ["same", "finer"])
-    @pytest.mark.parametrize("mask_kind", ["none", "array", "dataarray"])
-    def test_estimate_uncertainty__approaches_and_masks(
-        self, accessor_dem_path: Path, approach: str, precision: str, mask_kind: str
-    ) -> None:
-        """Checks that eager accessor uncertainty maps and correlation functions exactly match native DEM results."""
-
-        pytest.importorskip("skgstat")
-        pytest.importorskip("sklearn")
-
-        # 1/ Add repeatable random errors and use slope as the only variable so each group contains enough points
-        reference = DEM(accessor_dem_path)
-        rng = np.random.default_rng(42)
-        other = reference + rng.normal(0, 2, reference.shape).astype(np.float32)
-        stable = None if mask_kind == "none" else np.isfinite(reference.get_nanarray())
-        options: dict[str, Any] = {
-            "approach": approach,
-            "precision_of_other": precision,
-            "random_state": 42,
-            "list_vario_models": "spherical",
-            "list_vars": ("slope",),
-        }
-
-        # 2/ Run the same uncertainty calculation through the DEM and Xarray interfaces
-        expected, expected_corr = reference.estimate_uncertainty(other, stable_terrain=stable, **options)
-        ds = open_dem(accessor_dem_path)
-        other_ds = DEMAccessor.from_array(
-            other.data, other.transform, other.crs, nodata=other.nodata, area_or_point=other.area_or_point
-        )
-        accessor_stable = (
-            DEMAccessor.from_array(stable, reference.transform, reference.crs) if mask_kind == "dataarray" else stable
-        )
-        actual, actual_corr = ds.dem.estimate_uncertainty(other_ds, stable_terrain=accessor_stable, **options)
-
-        # 3/ Check output types, uncertainty values and correlation values at fixed distances
-        assert isinstance(expected, DEM)
-        assert isinstance(actual, xr.DataArray)
-        assert_output_equal(expected, actual)
-        distances = np.array([0, 20, 100, 500, 1000], dtype=float)
-        np.testing.assert_array_equal(expected_corr(distances), actual_corr(distances))
-
-    @pytest.mark.parametrize("approach", ["Basic", "R2009", "H2022"])
-    @pytest.mark.parametrize(
-        "reference_kind", ["epc", "accessor", "dataframe", "named_column", "legacy_column", "geometry_z"]
-    )
-    def test_estimate_uncertainty__point_reference(
-        self, accessor_dem_path: Path, approach: str, reference_kind: str
-    ) -> None:
-        """Checks that point references produce identical native and accessor uncertainty maps and correlations."""
-
-        pytest.importorskip("skgstat")
-        pytest.importorskip("sklearn")
-        import geopandas as gpd
-
-        # 1/ Convert the DEM to points, add repeatable random errors and keep an intensity column that must not change
-        dem = DEM(accessor_dem_path)
-        points = dem.to_pointcloud(data_column_name="height")
-        errors = np.random.default_rng(42).normal(0, 2, points.point_count)
-        points.data = points.data + errors
-        frame = points.ds.copy()
-        frame["intensity"] = np.arange(len(frame), dtype=np.uint16)
-        frame.attrs["data_name"] = "height"
-        native = EPC(frame, data_column="height")
-        references: dict[str, Any] = {"epc": native, "accessor": frame.epc, "dataframe": frame}
-
-        # Select an explicit elevation column despite metadata naming the intensity column
-        references["named_column"] = frame.rename(columns={"height": "elevation"})
-        references["named_column"].attrs["data_name"] = "intensity"
-
-        # Use the legacy default elevation column when the dataframe has no active attribute
-        references["legacy_column"] = frame.rename(columns={"height": "z"})
-        references["legacy_column"].attrs.pop("data_name", None)
-
-        # Also store the elevations in the point geometry to check that supported point representation
-        geometry_frame = frame.drop(columns="height")
-        geometry_frame.geometry = gpd.points_from_xy(frame.geometry.x, frame.geometry.y, z=frame.height, crs=frame.crs)
-        geometry_frame.attrs["data_name"] = None
-        references["geometry_z"] = geometry_frame
-
-        # 2/ Run every point representation with the same mask, uncertainty model and random seed
-        options: dict[str, Any] = {
-            "approach": approach,
-            "random_state": 42,
-            "list_vario_models": "spherical",
-            "list_vars": ("slope",),
-            "stable_terrain": np.isfinite(dem.get_nanarray()),
-        }
-        if reference_kind == "named_column":
-            options["z_name"] = "elevation"
-        expected, expected_corr = dem.estimate_uncertainty(native, **options)
-        ds = open_dem(accessor_dem_path)
-        actual, actual_corr = ds.dem.estimate_uncertainty(references[reference_kind], **options)
-
-        # 3/ Check output types and values, and confirm that the source point elevations did not change
-        assert isinstance(expected, DEM)
-        assert isinstance(actual, xr.DataArray)
-        assert_output_equal(expected, actual)
-        distances = np.array([0, 20, 100, 500], dtype=float)
-        np.testing.assert_array_equal(expected_corr(distances), actual_corr(distances))
-        np.testing.assert_array_equal(native.data, frame.height)
-
-
-class TestDEMAnalysisErrors:
-    """Test module for rejecting unsupported lazy DEM analysis without executing Dask graphs."""
-
-    @pytest.mark.parametrize("lazy_argument", ["reference", "mask", "variable"])
-    def test_coregister_3d__error_lazy_analysis_arguments(self, accessor_dem_path: Path, lazy_argument: str) -> None:
-        """Checks that coregistration rejects lazy references, masks and bias variables without executing graphs."""
-
-        pytest.importorskip("dask.array")
-        from dask.callbacks import Callback
-
-        # 1/ Keep the source DEM in memory and make one secondary input lazy in each case
-        source = open_dem(accessor_dem_path)
-        lazy = open_dem(accessor_dem_path, chunks=11)
-        graph = lazy.data
-        reference = lazy if lazy_argument == "reference" else DEM(accessor_dem_path)
-
-        # Pass the lazy object under the argument name expected by coregistration
-        options: dict[str, Any] = {"coreg_method": coreg.VerticalShift()}
-        if lazy_argument == "mask":
-            options["inlier_mask"] = lazy > 0
-        if lazy_argument == "variable":
-            options["bias_vars"] = {"elevation": lazy}
-        tasks: list[Any] = []
-
-        # 2/ Reject the call before Dask runs and leave the lazy input unchanged
-        # The callback records every executed Dask task, so the list must remain empty
-        with Callback(pretask=lambda *args: tasks.append(args[0])):
-            with pytest.raises(NotImplementedError, match="Dask coregistration and uncertainty"):
-                source.dem.coregister_3d(reference, **options)
-        assert tasks == []
-        assert lazy.data is graph and not lazy._in_memory
-
-    def test_coregister_3d__error_dask_analysis_unsupported(self, accessor_dem_path: Path) -> None:
-        """Checks that coregistration rejects a Dask DEM without computing or replacing its data."""
-
-        pytest.importorskip("dask.array")
-        from dask.callbacks import Callback
-
-        # 1/ Open a Dask DEM and save its data object so it can be checked after the rejected call
-        ds = open_dem(accessor_dem_path, chunks=11)
-        source_array = ds.data
-        tasks: list[Any] = []
-        options = {"coreg_method": coreg.VerticalShift()}
-
-        # 2/ Reject the call before reading elevations or changing the Dask source
-        # The callback records every executed Dask task, so the list must remain empty
-        with Callback(pretask=lambda *args: tasks.append(args[0])):
-            with pytest.raises(NotImplementedError, match="Dask coregistration and uncertainty"):
-                ds.dem.coregister_3d(DEM(accessor_dem_path), **options)
-        assert tasks == []
-        assert ds.data is source_array and not ds._in_memory

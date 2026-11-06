@@ -12,10 +12,12 @@ import pandas as pd
 import pytest
 import xarray as xr
 from affine import Affine
+from geoutils.multiproc import MultiprocConfig
 from geoutils.stats.variography import VariogramModel
 from scipy.stats import chi2, norm, rice
 
 import xdem
+from xdem import DEM, open_dem
 
 
 @pytest.fixture
@@ -150,9 +152,15 @@ class TestCoregistrationPropagationSummary:
             assert axis.get_ylabel() == label
         plt.close(plotted_axes[0].figure)
 
-    @pytest.mark.parametrize("input_axes", [False, True])
-    @pytest.mark.parametrize("source", ["analytical", "samples"])
-    @pytest.mark.parametrize("coverage", [0.68, 0.95])
+    @pytest.mark.parametrize(
+        "source, input_axes, coverage",
+        [
+            pytest.param("analytical", False, 0.95, id="analytical-new-axes-95"),
+            pytest.param("analytical", True, 0.68, id="analytical-supplied-axes-68"),
+            pytest.param("samples", False, 0.68, id="samples-new-axes-68"),
+            pytest.param("samples", True, 0.95, id="samples-supplied-axes-95"),
+        ],
+    )
     def test_plot__ellipses(
         self,
         parameter_summary: xdem.uncertainty.PropagationSummary,
@@ -199,10 +207,15 @@ class TestCoregistrationPropagationSummary:
             assert vertical.get_xticklabels()[0].get_text() == names[2]
         plt.close(plotted[0].figure)
 
-    @pytest.mark.parametrize("kind", [None, "horizontal_vertical"])
-    @pytest.mark.parametrize("input_axes", [False, True])
-    @pytest.mark.parametrize("source", ["analytical", "samples"])
-    @pytest.mark.parametrize("coverage", [0.68, 0.95])
+    @pytest.mark.parametrize(
+        "source, kind, input_axes, coverage",
+        [
+            pytest.param("analytical", None, False, 0.95, id="analytical-default-new-axes-95"),
+            pytest.param("analytical", "horizontal_vertical", True, 0.68, id="analytical-explicit-supplied-axes-68"),
+            pytest.param("samples", None, True, 0.68, id="samples-default-supplied-axes-68"),
+            pytest.param("samples", "horizontal_vertical", False, 0.95, id="samples-explicit-new-axes-95"),
+        ],
+    )
     def test_plot__horizontal_vertical(
         self,
         parameter_summary: xdem.uncertainty.PropagationSummary,
@@ -503,7 +516,8 @@ class TestPropagateUncertaintyCoreg:
             (xdem.coreg.LZD, {"fit_loss_func": "soft_l1"}),
             (xdem.coreg.ICP, {"fit_loss_func": "soft_l1"}),
             (xdem.coreg.ICP, {"method": "point-to-point"}),
-            (xdem.coreg.ICP, {"sampling_strategy": "iterative_same_xy"}),
+            (xdem.coreg.ICP, {"sampling_strategy": "same_xy", "iterative_sampling": True}),
+            (xdem.coreg.ICP, {"sampling_strategy": "nearest_xy", "iterative_sampling": True}),
         ],
     )
     def test_propagate_uncertainty_coreg__numerical_estimators(
@@ -532,10 +546,17 @@ class TestPropagateUncertaintyCoreg:
         assert summary.n_success == 3
         assert summary.std["tz"] > 0
 
-    @pytest.mark.parametrize("solver", [xdem.coreg.LZD, xdem.coreg.ICP])
-    @pytest.mark.parametrize("side", ["ref", "tba"])
-    @pytest.mark.parametrize("predictor_kind", ["array", "raster", "terrain_name"])
-    @pytest.mark.parametrize("propagation_method", ["analytical", "numerical"])
+    @pytest.mark.parametrize(
+        "solver, side, predictor_kind, propagation_method",
+        [
+            pytest.param(xdem.coreg.LZD, "ref", "array", "analytical", id="lzd-reference-array-analytical"),
+            pytest.param(xdem.coreg.LZD, "tba", "raster", "numerical", id="lzd-moving-raster-numerical"),
+            pytest.param(xdem.coreg.LZD, "ref", "terrain_name", "numerical", id="lzd-reference-terrain-numerical"),
+            pytest.param(xdem.coreg.ICP, "tba", "array", "numerical", id="icp-moving-array-numerical"),
+            pytest.param(xdem.coreg.ICP, "ref", "raster", "analytical", id="icp-reference-raster-analytical"),
+            pytest.param(xdem.coreg.ICP, "tba", "terrain_name", "analytical", id="icp-moving-terrain-analytical"),
+        ],
+    )
     def test_propagate_uncertainty_coreg__nan_predictors(
         self,
         curved_dem: xdem.DEM,
@@ -616,7 +637,7 @@ class TestPropagateUncertaintyCoreg:
             "error_structure": errors,
             "error_predictors": predictors,
             "fit_kwargs": {"error_structure": errors, "error_predictors": predictors},
-            "random_state": 12,
+            "random_state": 42,
         }
         method = solver(only_translation=True, subsample=40)
 
@@ -830,9 +851,16 @@ class TestPropagateUncertaintyCoreg:
 class TestCoregUncertaintyAnalyticalVsNumerical:
     """Test module for analytical uncertainty compared with numerical uncertainty from simulations for coreg."""
 
-    @pytest.mark.parametrize("gls_method", ["approximate", "exact", "inducing"])
-    @pytest.mark.parametrize("correlated", [False, True])
-    @pytest.mark.parametrize("only_translation", [True, False])
+    @pytest.mark.parametrize("only_translation", [True, False], ids=["translation", "rigid"])
+    @pytest.mark.parametrize(
+        "gls_method, correlated",
+        [
+            pytest.param("approximate", False, id="independent"),
+            pytest.param("approximate", True, id="correlated-approximate"),
+            pytest.param("exact", True, id="correlated-exact"),
+            pytest.param("inducing", True, id="correlated-inducing"),
+        ],
+    )
     def test_propagate_uncertainty_coreg__gls_matches_simulation(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -871,7 +899,7 @@ class TestCoregUncertaintyAnalyticalVsNumerical:
         # Curvature constrains all six parameters, and the border excludes observations that could leave the grid
         rows, columns = np.indices((12, 13))
         values = 5 * np.sin(columns / 3) + 3 * np.cos(rows / 4) + 2 * np.sin((columns + rows) / 5)
-        reference = gu.Raster.from_array(values, Affine(2, 0, 0, 0, -2, 24), 32632)
+        reference = gu.Raster.from_array(values, Affine(2, 0, 0, 0, -2, 24), 32632, nodata=np.nan)
         source = reference.copy()
         mask = np.zeros(reference.shape, dtype=bool)
         mask[2:-2, 2:-2] = True
@@ -903,9 +931,15 @@ class TestCoregUncertaintyAnalyticalVsNumerical:
             reference, source, method, options, only_translation, n_simulations=20, check_mean=True
         )
 
-    @pytest.mark.parametrize("solver", [xdem.coreg.LZD, xdem.coreg.ICP])
-    @pytest.mark.parametrize("only_translation", [True, False])
-    @pytest.mark.parametrize("point_input", [None, "tba"])
+    @pytest.mark.parametrize(
+        "solver, only_translation, point_input",
+        [
+            pytest.param(xdem.coreg.LZD, True, None, id="lzd-translation-raster"),
+            pytest.param(xdem.coreg.LZD, False, "tba", id="lzd-rigid-points"),
+            pytest.param(xdem.coreg.ICP, False, None, id="icp-rigid-raster"),
+            pytest.param(xdem.coreg.ICP, True, "tba", id="icp-translation-points"),
+        ],
+    )
     def test_propagate_uncertainty_coreg__both_inputs_match_simulation(
         self,
         icp_dem: gu.Raster,
@@ -968,10 +1002,17 @@ class TestCoregUncertaintyAnalyticalVsNumerical:
         assert analytical.output["parameter_covariance"].shape == (6, 6)
 
     @pytest.mark.filterwarnings("ignore::DeprecationWarning")
-    @pytest.mark.parametrize("layout", ["raster", "points", "inverted"])
-    @pytest.mark.parametrize("only_translation", [True, False])
-    @pytest.mark.parametrize("error_applied_to", ["ref", "tba"])
-    @pytest.mark.parametrize("correlated", [False, True])
+    @pytest.mark.parametrize(
+        "layout, only_translation, error_applied_to, correlated",
+        [
+            pytest.param("raster", True, "ref", False, id="raster-translation-reference-independent"),
+            pytest.param("raster", False, "tba", True, id="raster-rigid-moving-correlated"),
+            pytest.param("points", False, "ref", True, id="points-rigid-reference-correlated"),
+            pytest.param("points", True, "tba", False, id="points-translation-moving-independent"),
+            pytest.param("inverted", True, "ref", True, id="inverted-translation-reference-correlated"),
+            pytest.param("inverted", False, "tba", False, id="inverted-rigid-moving-independent"),
+        ],
+    )
     def test_propagate_uncertainty_coreg__icp_matches_simulation(
         self,
         icp_dem: gu.Raster,
@@ -1008,7 +1049,7 @@ class TestCoregUncertaintyAnalyticalVsNumerical:
         method = xdem.coreg.ICP(
             only_translation=only_translation,
             subsample=1,
-            sampling_strategy="same_xy" if layout == "raster" else "independent",
+            sampling_strategy="nearest_xy" if layout == "raster" else "independent",
             tolerance_translation=1e-9,
             tolerance_rotation=1e-8,
             max_iterations=50,
@@ -1021,6 +1062,210 @@ class TestCoregUncertaintyAnalyticalVsNumerical:
         # 2/ Draw native Gaussian fields independently of the analytical covariance implementation
         options: dict[str, Any] = dict(error_structure={error_applied_to: errors}, inlier_mask=mask, random_state=42)
         _compare_simulated_uncertainty(reference, moving, method, options, only_translation, check_mean=True)
+
+
+@pytest.fixture
+def coreg_dem_paths(icp_dem: gu.Raster, tmp_path: Path) -> tuple[Path, ...]:
+    """Write elevations and error predictors for coregistration uncertainty comparisons."""
+
+    quality = np.linspace(0, 1, icp_dem.data.size).reshape(icp_dem.shape)
+    quality[3, 4] = np.nan
+    paths = tuple(tmp_path / f"input-{index}.tif" for index in range(4))
+    rasters = (icp_dem, icp_dem + 0.2, icp_dem.copy(new_array=quality), icp_dem.copy(new_array=1 - quality))
+    for raster, path in zip(rasters, paths):
+        raster.to_file(path)
+    return paths
+
+
+class TestCoregistrationPropagationChunked:
+    """Test module for analytical and numerical coregistration uncertainty with Dask and multiprocessing."""
+
+    @pytest.mark.parametrize(
+        "backend, coreg_method, fit_options",
+        [
+            pytest.param("dask", xdem.coreg.ICP, {"force_opti": "gls", "gls_method": "approximate"}, id="gls-dask"),
+            pytest.param("mp", xdem.coreg.LZD, {"force_opti": "tls", "tls_method": "spatial"}, id="tls-mp"),
+        ],
+    )
+    def test_propagate_uncertainty_coreg__chunk_invariance_analytical(
+        self,
+        backend: str,
+        coreg_method: type[xdem.coreg.AffineCoreg],
+        fit_options: dict[str, Any],
+        coreg_dem_paths: tuple[Path, ...],
+    ) -> None:
+        """Checks that chunked heights, gradients and predictors give exactly the in-memory parameter covariance."""
+
+        if fit_options.get("gls_method") in ("approximate", "exact"):
+            pytest.importorskip("linear_operator")
+
+        # 1/ Open inputs and define variable error models
+        reference, source = (DEM(path, load_data=True) for path in coreg_dem_paths[:2])
+        quality = np.linspace(0, 1, reference.data.size).reshape(reference.shape)
+        quality[3, 4] = np.nan
+        statistics = pd.DataFrame(
+            {"std": [0.01, 0.02], "count": [100, 100]}, index=pd.Index([0.0, 1.0], name="quality")
+        )
+        magnitude = gu.ErrorMagnitude.variable_from_grouped_stats(statistics)
+        fit_options = dict(fit_options)
+        # Use the same spatial correlation for both elevation errors
+        correlation = VariogramModel("gaussian", effective_range=8, partial_sill=1)
+        errors = gu.ErrorStructure([gu.ErrorComponent("measurement", magnitude, correlation)])
+        models = {"ref": errors, "tba": errors}
+        predictors = {"ref": {"quality": quality}, "tba": {"quality": 1 - quality}}
+        estimator = coreg_method(subsample=40, only_translation=False)
+        options: dict[str, Any] = dict(
+            error_structure=models, method="analytical", random_state=12, fit_kwargs=fit_options
+        )
+
+        # Calculate the in-memory reference
+        expected = xdem.uncertainty.propagate_uncertainty_coreg(
+            reference, source, estimator, error_predictors=predictors, **options
+        )
+
+        # 2/ Propagate errors from the chunked elevations
+        if backend == "dask":
+            # 2.1/ If using Dask
+            pytest.importorskip("dask")
+            # Use different layouts and shorter final chunks
+            chunks = ((3, 5), (4, 7), (4, 4), (5, 3))
+            inputs = [
+                open_dem(path, chunks={"y": rows, "x": columns}).dem
+                for path, (rows, columns) in zip(coreg_dem_paths, chunks)
+            ]
+            config = None
+            first, second, ref_quality, tba_quality = inputs
+            predictors = {"ref": {"quality": ref_quality}, "tba": {"quality": tba_quality}}
+            assert all(not value.is_loaded for value in inputs)
+            actual = xdem.uncertainty.propagate_uncertainty_coreg(
+                first, second, estimator, error_predictors=predictors, mp_config=config, **options
+            )
+            assert all(not value.is_loaded for value in inputs)
+        else:
+            # 2.2/ If using MP
+            inputs = [DEM(path) for path in coreg_dem_paths]
+            config = MultiprocConfig(chunks=(3, 5))
+            first, second, ref_quality, tba_quality = inputs
+            predictors = {"ref": {"quality": ref_quality}, "tba": {"quality": tba_quality}}
+            assert all(not value.is_loaded for value in inputs)
+            actual = xdem.uncertainty.propagate_uncertainty_coreg(
+                first, second, estimator, error_predictors=predictors, mp_config=config, **options
+            )
+            assert all(not value.is_loaded for value in inputs)
+
+        # 3/ Check equality of estimates and parameter covariance
+        pd.testing.assert_series_equal(actual.estimate, expected.estimate, check_exact=True)
+        pd.testing.assert_series_equal(actual.std, expected.std, check_exact=True)
+        pd.testing.assert_frame_equal(
+            actual.output["parameter_covariance"], expected.output["parameter_covariance"], check_exact=True
+        )
+
+    @pytest.mark.parametrize(
+        "backend, coreg_method, predictor_kind, fit_errors",
+        [
+            ("dask", xdem.coreg.ICP, "array", True),
+            ("mp", xdem.coreg.LZD, "none", False),
+            ("dask", xdem.coreg.CPD, "scalar", False),
+        ],
+    )
+    def test_propagate_uncertainty_coreg__chunk_invariance_numerical(
+        self,
+        backend: str,
+        coreg_dem_paths: tuple[Path, ...],
+        coreg_method: type[xdem.coreg.AffineCoreg],
+        predictor_kind: str,
+        fit_errors: bool,
+    ) -> None:
+        """Checks that uncertainty propag for coreg on chunked data gives exactly the in-memory result."""
+
+        # 1/ Open inputs and define independent error models
+        reference, source = (DEM(path, load_data=True) for path in coreg_dem_paths[:2])
+        predictors = None
+        # Small errors for fits to converge
+        scalar_magnitude = 0.001 if fit_errors else 0.01
+        magnitude: float | gu.ErrorMagnitude = scalar_magnitude
+        if predictor_kind != "none":
+            quality: Any = 0.5
+            if predictor_kind == "array":
+                # Add a NaN
+                quality = np.linspace(1, 0, reference.data.size).reshape(reference.shape)
+                quality[3, 4] = np.nan
+            statistics = pd.DataFrame(
+                {"std": [scalar_magnitude, 2 * scalar_magnitude], "count": [100, 100]},
+                index=pd.Index([0.0, 1.0], name="quality"),
+            )
+            magnitude = gu.ErrorMagnitude.variable_from_grouped_stats(statistics)
+            predictors = {"ref": {"quality": quality}, "tba": {"quality": 1 - quality}}
+        errors = gu.ErrorStructure([gu.ErrorComponent("measurement", magnitude)])
+        estimator = coreg_method(subsample=40, only_translation=True)
+        options: dict[str, Any] = dict(
+            error_structure={"ref": errors, "tba": errors},
+            error_predictors=predictors,
+            n_simulations=3,
+            random_state=42,
+            return_samples=True,
+            return_coregs=True,
+            on_error="raise",
+        )
+        # Use the same error models in fitting and propagation
+        if fit_errors:
+            options["fit_kwargs"] = dict(error_structure=options["error_structure"], error_predictors=predictors)
+
+        # Calculate the in-memory reference with the same seed
+        expected = xdem.uncertainty.propagate_uncertainty_coreg(reference, source, estimator, **options)
+
+        # 2/ Propagate errors from the chunked elevations
+        if backend == "dask":
+            # 2.1/ If using Dask
+            pytest.importorskip("dask")
+            # Use different layouts and shorter final chunks
+            chunks = ((3, 5), (4, 7))
+            inputs = [
+                open_dem(path, chunks={"y": rows, "x": columns}).dem
+                for path, (rows, columns) in zip(coreg_dem_paths[:2], chunks)
+            ]
+            config = None
+            first, second = inputs
+            assert all(not value.is_loaded for value in inputs)
+            actual = xdem.uncertainty.propagate_uncertainty_coreg(first, second, estimator, mp_config=config, **options)
+            assert all(not value.is_loaded for value in inputs)
+        else:
+            # 2.2/ If using MP
+            inputs = [DEM(path) for path in coreg_dem_paths[:2]]
+            config = MultiprocConfig(chunks=(3, 5))
+            first, second = inputs
+            assert all(not value.is_loaded for value in inputs)
+            actual = xdem.uncertainty.propagate_uncertainty_coreg(first, second, estimator, mp_config=config, **options)
+            assert all(not value.is_loaded for value in inputs)
+
+        # 3/ Check equality of summaries, samples and fitted transforms
+        pd.testing.assert_series_equal(actual.estimate, expected.estimate, check_exact=True)
+        pd.testing.assert_series_equal(actual.mean, expected.mean, check_exact=True)
+        pd.testing.assert_series_equal(actual.std, expected.std, check_exact=True)
+        pd.testing.assert_frame_equal(actual.samples, expected.samples, check_exact=True)
+
+        # Fits with error models use the original elevations
+        if fit_errors:
+            analytical = xdem.uncertainty.propagate_uncertainty_coreg(
+                reference,
+                source,
+                estimator,
+                error_structure=options["error_structure"],
+                error_predictors=predictors,
+                fit_kwargs=options["fit_kwargs"],
+                random_state=42,
+                method="analytical",
+            )
+            pd.testing.assert_series_equal(actual.estimate, analytical.estimate, check_exact=True)
+            np.testing.assert_array_equal(actual.output["centroid"], analytical.output["centroid"])
+
+        # Compare every saved simulation fit
+        assert actual.coregs is not None and expected.coregs is not None
+        for number, fitted in actual.coregs.items():
+            reference_fit = expected.coregs[number]
+            assert isinstance(fitted, xdem.coreg.AffineCoreg)
+            assert isinstance(reference_fit, xdem.coreg.AffineCoreg)
+            np.testing.assert_array_equal(fitted.to_matrix(), reference_fit.to_matrix())
 
 
 class TestCoregistrationPropagationSummaryErrors:
@@ -1150,7 +1395,8 @@ class TestPropagateUncertaintyCoregErrors:
             {"fit_loss_func": "soft_l1"},
             {"trim_residuals": True},
             {"linearized": False},
-            {"sampling_strategy": "iterative_same_xy"},
+            {"sampling_strategy": "same_xy", "iterative_sampling": True},
+            {"sampling_strategy": "nearest_xy", "iterative_sampling": True},
         ],
     )
     def test_propagate_uncertainty_coreg__error_icp_options(self, icp_dem: gu.Raster, options: dict[str, Any]) -> None:

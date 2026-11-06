@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os.path
 import sys
 import warnings
 from functools import partial
+from pathlib import Path
 from typing import Any, Callable, Literal, cast
 from unittest.mock import patch
 
@@ -19,19 +21,23 @@ import rasterio as rio
 import scipy.ndimage
 import scipy.optimize
 import scipy.spatial
+import xarray as xr
 from geoutils import Raster, Vector
+from geoutils._dispatch import _get_raster_interface, is_dask_array
 from geoutils._typing import Number
+from geoutils.multiproc import MultiprocConfig
 from geoutils.raster.transformation import _translate
 from geoutils.stats import nmad
 from geoutils.stats.variography import VariogramModel
 from scipy.ndimage import binary_dilation
 from scipy.stats import chi2
 
-from xdem import DEM, EPC, coreg, examples
+from xdem import DEM, EPC, coreg, examples, open_dem, open_epc
 from xdem._typing import NDArrayf
 from xdem.coreg.affine import (
     AffineCoreg,
     _cpd_estep_classic,
+    _cpd_estep_lsg,
     _cpd_fit,
     _cpd_iteration_step,
     _cpd_mstep_lsg_least_squares,
@@ -48,17 +54,21 @@ from xdem.coreg.affine import (
     _icp_iteration_step,
     _iterate_method,
     _lsg_build_whitened_terms,
+    _lsg_update_sigma_dependent,
     _lzd_fit_gls_tls,
     _lzd_tls_observation_jacobians,
     _lzd_tls_spatial_covariance,
     _nuth_kaab_fit_func,
-    _reproject_horizontal_shift_samecrs,
     _SampledErrors,
     invert_matrix,
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
 )
-from xdem.coreg.base import InFitOrBinDict
+from xdem.coreg.base import (
+    InFitOrBinDict,
+    _reproject_horizontal_shift_samecrs,
+    _sample_coreg_inputs,
+)
 from xdem.coreg.pipeline import CoregPipeline
 
 # We list and ID methods to reuse consistently in tests
@@ -115,6 +125,9 @@ def curved_dem() -> Raster:
 @pytest.fixture
 def small_dem(request: pytest.FixtureRequest) -> Raster:
     """Create small DEM with slope/aspect variations in X/Y for tests."""
+
+    if request.param == "example":
+        return load_examples()[0]
 
     # Create waves or smooth terrain at native pixel coordinates in a projected CRS
     rows, columns = np.indices((16, 18))
@@ -248,8 +261,8 @@ class TestAffineCoreg:
     fit_args_rst_rst = dict(reference_elev=ref, to_be_aligned_elev=tba, inlier_mask=inlier_mask)
 
     # Convert DEMs to points with a bit of subsampling for speed-up
-    ref_pts = ref.to_pointcloud(data_column_name="z", subsample=3000, random_state=42).ds
-    tba_pts = ref.to_pointcloud(data_column_name="z", subsample=3000, random_state=42).ds
+    ref_pts = ref.to_pointcloud(data_name="z", subsample=3000, random_state=42)
+    tba_pts = ref.to_pointcloud(data_name="z", subsample=3000, random_state=42)
 
     # Raster-Point
     fit_args_rst_pts = dict(reference_elev=ref, to_be_aligned_elev=tba_pts, inlier_mask=inlier_mask)
@@ -281,7 +294,8 @@ class TestAffineCoreg:
         transform = rio.Affine.translation(500_000, 7_000_000) * rio.Affine.rotation(angle) * rio.Affine.scale(2, -3)
 
         # Derive centroid and scale before any random sampling
-        centroid, scale = _get_centroid_scale(values, transform)
+        raster = Raster.from_array(values, transform, 32632, nodata=np.nan)
+        centroid, scale = _get_centroid_scale(raster)
 
         # Compare the centroid to explicit coordinates on these small grids
         rows, columns = np.indices(shape)
@@ -295,18 +309,15 @@ class TestAffineCoreg:
         np.testing.assert_allclose(scale, expected_scale, rtol=1e-12)
 
     @pytest.mark.parametrize("method", [coreg.NuthKaab, coreg.LZD, coreg.ICP])
-    @pytest.mark.parametrize("area_or_point", [None, "Area", "Point"])
     def test_fit__identity(
         self,
         curved_dem: Raster,
         method: Callable[..., AffineCoreg],
-        area_or_point: Literal["Area", "Point"] | None,
     ) -> None:
-        """Checks that fitting a DEM to itself gives zero shifts, for every pixel interpretation and coreg method."""
+        """Checks that fitting a DEM to itself gives zero shifts, for every coreg method."""
 
-        # Set the interpretation
+        # Copy the reference raster
         reference = curved_dem.copy()
-        reference.set_area_or_point(area_or_point)
 
         # Fit the same finite surface at a fixed sample of its locations
         fitted = method(subsample=600).fit(reference, reference, random_state=42)
@@ -418,11 +429,12 @@ class TestAffineCoreg:
         # Check all fit parameters are the opposite of those used above, within a relative 1% (10% for ICP)
         fit_shifts = [-horizontal_coreg.meta["outputs"]["affine"][k] for k in ["shift_x", "shift_y", "shift_z"]]
 
-        # Allow one pixel for ICP, half a pixel for NuthKaab, and a tenth of a pixel for LZD
+        # Allow one pixel for ICP, a millimetre for NuthKaab, and a tenth of a pixel for LZD
         if coreg_method == coreg.ICP:
             atol = ref.res[0]
         elif coreg_method == coreg.NuthKaab:
-            atol = 0.5 * ref.res[0]
+            assert horizontal_coreg.meta["outputs"]["iterative"]["converged"]
+            atol = 1e-3
         else:
             atol = 0.1 * ref.res[0]
         assert np.allclose(fit_shifts, shifts, atol=atol)
@@ -466,19 +478,16 @@ class TestAffineCoreg:
         ],
     )
     @pytest.mark.parametrize("pair", ["raster-raster", "raster-point", "point-raster"])
-    @pytest.mark.parametrize("area_or_point", ["Area", "Point"])
     def test_fit__translated_raster_and_points(
         self,
         curved_dem: Raster,
         method: Callable[..., AffineCoreg],
         pair: str,
-        area_or_point: Literal["Area", "Point"],
     ) -> None:
         """Checks that raster and point fits recover an artificial translation with either input as reference."""
 
         # Translate the same terrain in map coordinates and height without resampling its elevations
         reference = curved_dem.copy()
-        reference.set_area_or_point(area_or_point)
         shifted = reference.translate(1.2, -0.8) + 2.5
         reference_input: Any = reference
         shifted_input: Any = shifted
@@ -520,27 +529,6 @@ class TestAffineCoreg:
         # Express horizontal errors in pixels; use the same interpolation allowance for every resolution
         error = np.asarray(fitted.to_translations()) + (shift_x, shift_y, 2.5)
         np.testing.assert_array_less(np.abs(error) / (res_x, res_y, 1), 0.03)
-
-    @pytest.mark.parametrize("method", [coreg.NuthKaab, coreg.LZD, coreg.ICP])
-    @pytest.mark.parametrize("resample", [False, True])
-    def test_apply__pixel_interpretation(
-        self, curved_dem: Raster, method: Callable[..., AffineCoreg], resample: bool
-    ) -> None:
-        """Checks that applying a fitted transform preserves a raster pixel interpretation."""
-
-        # Use Point interpretation to check that fit() and apply() preserve its metadata
-        reference = curved_dem.copy()
-        reference.set_area_or_point("Point")
-        shifted = reference.translate(1.2, -0.8) + 2.5
-
-        # Fit and apply, with/without resampling onto the input grid
-        options = {} if method == coreg.NuthKaab else {"only_translation": True}
-        fitted = method(subsample=1, **options).fit(reference, shifted, random_state=42)
-        aligned = fitted.apply(shifted, resample=resample)
-
-        # Check the pixel interpretation of the input and applied rasters
-        assert aligned.area_or_point == "Point"
-        assert shifted.area_or_point == "Point"
 
     @pytest.mark.parametrize("method", [coreg.VerticalShift, coreg.NuthKaab, coreg.LZD])
     @pytest.mark.parametrize("shape", [(40, 44), (33, 37)])
@@ -617,7 +605,7 @@ class TestAffineCoreg:
         full_mask = np.zeros(reference.shape, dtype=bool)
         full_mask[8:32, 9:35] = True
         cropped_mask = Raster.from_array(full_mask, reference.transform, reference.crs).icrop(crop_bounds)
-        mask_input = cropped_mask.data if mask_type == "array" else cropped_mask
+        mask_input = cropped_mask.data.astype(bool) if mask_type == "array" else cropped_mask
 
         # Fit on full/crop grids
         full_fit = method(subsample=1).fit(reference, shifted, inlier_mask=full_mask)
@@ -654,10 +642,10 @@ class TestAffineCoreg:
     @pytest.mark.parametrize(
         "coreg_method, shift",
         [
-            (coreg.NuthKaab, (9.492646, 2.841536, -2.058883)),
-            (coreg.DhMinimize, (10.164111, 2.600748, -1.995853)),
-            (coreg.LZD, (10.281134, 2.300993, -1.817791)),
-            (coreg.ICP, (9.142172, 2.879442, -1.519637)),
+            (coreg.NuthKaab, (9.5419945977, 2.4087110377, -2.0448009781)),
+            (coreg.DhMinimize, (9.6256947374, 2.2681895893, -2.0308876436)),
+            (coreg.LZD, (9.8927189822, 2.3583391233, -1.8579951604)),
+            (coreg.ICP, (9.8533661257, 3.0586983690, -1.4578430017)),
         ],
     )
     def test_coreg_translations__example(
@@ -715,14 +703,13 @@ class TestAffineCoreg:
                 {"error_structure": geoutils.ErrorStructure([geoutils.ErrorComponent("measurement", 0.01)])},
             ),
             (coreg.ICP, {"sampling_strategy": "independent"}, {}),
-            (coreg.ICP, {"sampling_strategy": "iterative_same_xy"}, {}),
+            (coreg.ICP, {"sampling_strategy": "nearest_xy", "iterative_sampling": True}, {}),
             (coreg.CPD, {"lsg": False, "estep_knearest": None}, {}),
             (coreg.CPD, {"lsg": False, "estep_knearest": 64}, {}),
             (coreg.CPD, {"lsg": True, "estep_knearest": None}, {}),
             (coreg.CPD, {"lsg": True, "estep_knearest": 64}, {}),
             (coreg.CPD, {"initial_shift": (-0.3, 0.2)}, {}),
             (coreg.CPD, {"sampling_strategy": "independent"}, {}),
-            (coreg.CPD, {"sampling_strategy": "iterative_same_xy"}, {}),
         ],
     )
     def test_fit_and_apply__dem_epc_rigid_transform(
@@ -778,6 +765,9 @@ class TestAffineCoreg:
     ) -> None:
         """Checks that all point input formats (Z axis or data_name) and initial shifts recover the same translation."""
 
+        # Match the float32 precision of raster outputs
+        small_dem = small_dem.astype("float32")
+
         # Translate points and modify to specific point input format
         points = _point_samples(small_dem, count=None)
         matrix = matrix_from_translations_rotations(0.6, -0.4, 0.8)
@@ -787,6 +777,7 @@ class TestAffineCoreg:
         expected = np.column_stack((moving.gdf.geometry.x, moving.gdf.geometry.y, moving.data))
         if pair == "geodataframe":
             reference_input = moving.gdf.rename(columns={"z": "height"})
+            moving_input = small_dem.to_xarray()
         elif pair == "geometry-z":
             moving_input = EPC.from_xyz(*expected.T, crs=small_dem.crs, use_z=True)
             reference_input = small_dem
@@ -810,6 +801,8 @@ class TestAffineCoreg:
         )
 
         # Convert raster output to points, account for its float32 elevation values
+        if isinstance(aligned, xr.DataArray):
+            aligned = aligned.rst.to_geoutils()
         if isinstance(aligned, Raster):
             aligned = _point_samples(aligned, count=None)
             expected[:, 2] = expected[:, 2].astype(np.float32)
@@ -824,13 +817,17 @@ class TestAffineCoreg:
     @pytest.mark.parametrize("method", [partial(coreg.ICP, method="point-to-point"), partial(coreg.CPD, lsg=False)])
     @pytest.mark.parametrize("small_dem", ["waves"], indirect=True)
     @pytest.mark.parametrize("height_columns", [("z", "z"), ("elevation", "height"), (None, None)])
-    @pytest.mark.parametrize("sampling_strategy", ["independent", "same_xy", "iterative_same_xy"])
+    @pytest.mark.parametrize(
+        "sampling_strategy, iterative_sampling",
+        [("independent", False), ("nearest_xy", False), ("independent", True), ("nearest_xy", True)],
+    )
     def test_fit_and_apply__epc_epc_rigid_transform(
         self,
         small_dem: Raster,
         method: Callable[..., AffineCoreg],
         height_columns: tuple[str | None, str | None],
-        sampling_strategy: str,
+        sampling_strategy: Literal["independent", "same_xy", "nearest_xy"],
+        iterative_sampling: bool,
     ) -> None:
         """Checks that two EPC inputs can recover an artificial rigid transform with different height column setup."""
 
@@ -851,6 +848,7 @@ class TestAffineCoreg:
         # Fit and apply
         fitted = method(
             sampling_strategy=sampling_strategy,
+            iterative_sampling=iterative_sampling,
             subsample=1,
             max_iterations=100,
             tolerance_translation=1e-6,
@@ -878,6 +876,12 @@ class TestAffineCoreg:
             values[6:9, 8:11] = np.nan
         reference = Raster.from_array(values, transform, small_dem.crs, nodata=np.nan, area_or_point="Point")
         points = _point_samples(reference, count=None)
+        if geometry == "gap":
+            # Select points where raster normals are defined on both sides of each pixel
+            valid_normals = ~binary_dilation(~np.isfinite(values))
+            valid = reference.copy(new_array=valid_normals)
+            point_validity = valid.interp_at_points(points, method="nearest", as_array=True)
+            points = EPC(points.gdf.loc[point_validity.astype(bool)].copy(), data_name="z")
         matrix = matrix_from_translations_rotations(0.6, -0.4, 0.8, 0.4, -0.3, 0.5)
         centroid = (points.gdf.geometry.x.mean(), points.gdf.geometry.y.mean(), points.data.mean())
         moving = EPC(coreg.apply_matrix(points.gdf, matrix=matrix, centroid=centroid), data_name="z")
@@ -897,6 +901,121 @@ class TestAffineCoreg:
         np.testing.assert_allclose(actual, original, rtol=0, atol=1e-6)
 
     @pytest.mark.parametrize(
+        "method, options",
+        [
+            (coreg.NuthKaab, {"bin_before_fit": False}),
+            (coreg.LZD, {"only_translation": True}),
+            (coreg.ICP, {"only_translation": True}),
+            (coreg.CPD, {"only_translation": True}),
+        ],
+    )
+    def test_fit__valid_gradient(
+        self, curved_dem: Raster, method: Any, options: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Checks that fit() excludes invalid gradient cells before sampling."""
+
+        from xdem.coreg import affine
+
+        # Record sampled reference coordinates
+        sample = affine._sample_coreg_inputs
+        samples = []
+
+        def record_samples(*args: Any, **kwargs: Any) -> Any:
+            result = sample(*args, **kwargs)
+            samples.append(result[0])
+            return result
+
+        # Fit with a fixed sample count
+        monkeypatch.setattr(affine, "_sample_coreg_inputs", record_samples)
+        fitted = method(subsample=20, max_iterations=1, **options).fit(curved_dem, curved_dem + 0.2, random_state=42)
+
+        # Check samples avoid undefined edge gradients
+        assert len(samples) == 1
+        rows, columns = curved_dem.xy2ij(*samples[0][:2], op=np.float64)
+        assert np.all((rows > 0) & (rows < curved_dem.height - 1))
+        assert np.all((columns > 0) & (columns < curved_dem.width - 1))
+        assert fitted.meta["outputs"]["random"]["subsample_final"] == 20
+
+    @pytest.mark.parametrize(
+        "method, options",
+        [
+            (coreg.NuthKaab, {"bin_before_fit": False, "max_iterations": 3}),
+            (coreg.LZD, {"only_translation": True, "linearized": False, "max_iterations": 3}),
+            (coreg.DhMinimize, {}),
+        ],
+    )
+    def test_fit__interpolates_shifted_coordinates(
+        self, curved_dem: Raster, method: Any, options: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Checks that fit() interpolates at updated coordinates."""
+
+        from geoutils.raster.base import RasterBase
+
+        # Shift the raster horizontally and vertically
+        moving = curved_dem.translate(0.3, -0.2) + 0.5
+
+        # Exclude edges with incomplete interpolation or gradients
+        mask = np.zeros(curved_dem.shape, dtype=bool)
+        mask[3:-3, 3:-3] = True
+
+        # Record interpolation locations during fitting
+        queries: list[tuple[NDArrayf, NDArrayf]] = []
+        query_options: list[dict[str, Any]] = []
+        interpolate = RasterBase.interp_at_points
+
+        def record_query(raster: Any, points: Any, *args: Any, **kwargs: Any) -> Any:
+            if kwargs.get("method") == "linear" and kwargs.get("as_array"):
+                x, y = points
+                queries.append((np.asarray(x).copy(), np.asarray(y).copy()))
+                query_options.append(kwargs)
+            return interpolate(raster, points, *args, **kwargs)
+
+        # Fit the translated raster
+        monkeypatch.setattr(RasterBase, "interp_at_points", record_query)
+        if method is coreg.DhMinimize:
+            with pytest.warns(DeprecationWarning, match="DhMinimize is deprecated"):
+                estimator = method(subsample=100, **options)
+        else:
+            estimator = method(subsample=100, **options)
+        fitted = estimator.fit(curved_dem, moving, inlier_mask=mask, random_state=42)
+
+        # Check changing coordinates and recovered translation
+        assert len(queries) > 1
+        assert all(
+            "return_interpolator" not in query and "force_scipy_function" not in query for query in query_options
+        )
+        assert any(not np.array_equal(x, queries[0][0]) or not np.array_equal(y, queries[0][1]) for x, y in queries[1:])
+        np.testing.assert_allclose(fitted.to_translations(), (-0.3, 0.2, -0.5), rtol=0, atol=0.05)
+
+    @pytest.mark.parametrize("kind", ["gradients", "pixel_gradients", "normals"])
+    def test_dem_geometry_array__raster_edges(self, kind: str) -> None:
+        """Checks that gradients and normals are exact inside the raster and invalid at its edges."""
+
+        from xdem.coreg.affine import _dem_geometry_array
+
+        # Create a plane with known gradients
+        rows, columns = np.indices((9, 11))
+        values = (3 * rows + 2 * columns).astype(float)
+        transform = rio.Affine(2, 0, 0, 0, -3, 0)
+
+        # Expect map gradients (2 / 2, 3 / -3), and normalize (-dz/dx, -dz/dy, 1) for unit normals
+        expected_values = np.array([2.0, 3.0]) if kind == "pixel_gradients" else np.array([1.0, -1.0])
+        if kind == "normals":
+            expected_values = np.array([-1.0, 1.0, 1.0]) / np.sqrt(3)
+
+        # Exclude edges
+        expected = np.broadcast_to(expected_values[:, None, None], (len(expected_values), *values.shape)).copy()
+        expected[:, [0, -1], :] = np.nan
+        expected[:, :, [0, -1]] = np.nan
+
+        # Check equality
+        actual = _dem_geometry_array(
+            values, transform, normals=kind == "normals", pixel_gradients=kind == "pixel_gradients"
+        )
+
+        np.testing.assert_array_equal(actual, expected)
+
+    @pytest.mark.parametrize(
         "method, step",
         [
             (coreg.ICP, _icp_iteration_step),
@@ -904,8 +1023,12 @@ class TestAffineCoreg:
             (coreg.CPD, _cpd_iteration_step),
         ],
     )
+    @pytest.mark.parametrize("sampling_strategy", ["same_xy", "nearest_xy", "independent"])
+    @pytest.mark.parametrize("iterative_sampling", [False, True])
     def test_fit__iterative_sampling_budget(
         self,
+        sampling_strategy: Literal["independent", "same_xy", "nearest_xy"],
+        iterative_sampling: bool,
         curved_dem: Raster,
         method: Callable[..., AffineCoreg],
         step: Callable[..., Any],
@@ -916,17 +1039,27 @@ class TestAffineCoreg:
         # Translate a DEM
         moving = curved_dem.translate(2.2, -1.6) + 1
         calls = []
+        samples = []
+        sample_inputs = _sample_coreg_inputs
 
         # Count optimization steps
         def count_step(*args: Any, **kwargs: Any) -> Any:
             calls.append(None)
             return step(*args, **kwargs)
 
+        def count_samples(*args: Any, **kwargs: Any) -> Any:
+            """Record the sampling strategy used for each point sample."""
+
+            samples.append(kwargs["sampling_strategy"])
+            return sample_inputs(*args, **kwargs)
+
+        monkeypatch.setattr("xdem.coreg.affine._sample_coreg_inputs", count_samples)
         monkeypatch.setattr("xdem.coreg.affine." + step.__name__, count_step)
 
-        # Run two iterations with resampling after each step
+        # Run two iterations with optional resampling after each step
         fitted = method(
-            sampling_strategy="iterative_same_xy",
+            sampling_strategy=sampling_strategy,
+            iterative_sampling=iterative_sampling,
             subsample=100,
             max_iterations=2,
             tolerance_translation=1e-14,
@@ -935,6 +1068,8 @@ class TestAffineCoreg:
 
         # Both optimization work and reported rows follow the same total budget
         assert len(calls) == 2
+        assert samples == [sampling_strategy] * (2 if iterative_sampling else 1)
+        assert fitted.meta["inputs"]["specific"]["iterative_sampling"] is iterative_sampling
         assert fitted.meta["outputs"]["iterative"]["last_iteration"] == 2
         assert len(fitted.meta["outputs"]["iterative"]["iteration_stats"]) == 2
         assert not fitted.meta["outputs"]["iterative"]["converged"]
@@ -1039,9 +1174,9 @@ class TestAffineCoreg:
     @pytest.mark.parametrize(
         "coreg_method, shifts_rotations",
         [
-            (coreg.ICP, (9.1421721, 2.8794423, -1.5196373, 0.0100435, -0.0073668, -0.0087533)),
-            (coreg.LZD, (10.281134, 2.300993, -1.817791, 0.0079446, -0.0081343, -0.0057847)),
-            (coreg.CPD, (8.243680, 3.946520, -1.703947, 0.0086867, -0.0094364, -0.0014735)),
+            (coreg.ICP, (9.8900985247, 3.0995878400, -1.4538489508, 0.0107737861, -0.0068968375, -0.0103135375)),
+            (coreg.LZD, (9.8927189822, 2.3583391233, -1.8579951604, 0.0072921008, -0.0074175769, -0.0079536577)),
+            (coreg.CPD, (8.1298096067, -0.5026554389, -1.8464607188, 0.0071207134, -0.0064376846, -0.0193155092)),
         ],
     )
     def test_coreg_rigid__example(
@@ -1290,47 +1425,106 @@ class TestAffineCoreg:
         if coreg_method != coreg.CPD:
             assert np.allclose(invert_fit_shifts_translations[:3], shifts_rotations[:3], rtol=10e-1)
 
-    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD])  # type: ignore
-    def test_coreg_rigid__sampling_strategy(self, coreg_method: Callable[..., AffineCoreg]) -> None:
-        """Checks that point-to-point methods apply independent and same-location sampling strategies."""
+    @pytest.mark.parametrize(
+        "small_dem, layout, rotation",
+        [
+            ("waves", "points", False),
+            ("waves", "points", True),
+            ("waves", "raster", False),
+            ("smooth", "points", False),
+            ("smooth", "points", True),
+            ("smooth", "raster", False),
+            ("example", "resampled_raster", True),
+        ],
+        indirect=["small_dem"],
+    )
+    @pytest.mark.parametrize("coreg_method", [coreg.ICP, coreg.CPD])
+    @pytest.mark.parametrize(
+        "sampling_strategy, position_tolerance",
+        [
+            ("independent", 2.0),
+            ("same_xy", 1.0),
+            ("nearest_xy", 1e-6),
+        ],
+    )
+    def test_coreg_rigid__sampling_strategy(
+        self,
+        small_dem: Raster,
+        layout: str,
+        rotation: bool,
+        coreg_method: Callable[..., AffineCoreg],
+        sampling_strategy: Literal["independent", "same_xy", "nearest_xy"],
+        position_tolerance: float,
+    ) -> None:
+        """Checks sampling strategies, and how well they recover precision: nearest_xy should be the best."""
 
-        # Get reference elevation
-        ref = self.ref
+        moving: Raster | EPC
+        fitting_cases: list[tuple[Callable[..., AffineCoreg], bool]]
+        if layout == "resampled_raster":
+            # Get reference elevation
+            ref = small_dem
 
-        # Add artificial shift and rotations
-        # (Define small rotations on purpose, so that the "translation only" coregistration is not affected)
-        shifts_rotations = (10, 10, 10, 0.5, 0.5, 0.5)
-        matrix = matrix_from_translations_rotations(*shifts_rotations)
-        centroid = (ref.bounds.left, ref.bounds.bottom, np.nanmean(ref))
-        ref_shifted_rotated = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
+            # Add artificial shift and rotations
+            # (Define small rotations on purpose, so that the "translation only" coregistration is not affected)
+            shifts_rotations = (10, 10, 10, 0.5, 0.5, 0.5)
+            matrix = matrix_from_translations_rotations(*shifts_rotations)
+            centroid = (ref.bounds.left, ref.bounds.bottom, np.nanmean(ref))
+            moving = coreg.apply_matrix(ref, matrix=matrix, centroid=centroid)
+            fit_options: dict[str, Any] = {"subsample": 50000 if coreg_method is coreg.ICP else 500}
+            fitting_cases = [(coreg_method, False)]
+            if sampling_strategy != "independent":
+                fitting_cases.append((coreg_method, True))
+        else:
+            # Transform original pixel centers without resampling elevations
+            points = _point_samples(small_dem, count=None)
+            angles = (0.4, -0.3, 0.5) if rotation else (0, 0, 0)
+            matrix = matrix_from_translations_rotations(0.6, -0.4, 0.8, *angles)
+            centroid = (points.gdf.geometry.x.mean(), points.gdf.geometry.y.mean(), points.data.mean())
+            moving = EPC(coreg.apply_matrix(points.gdf, matrix, centroid=centroid), data_name="z")
+            if layout == "points":
+                # Different populations prevent independent samples from selecting identical pixel indexes
+                moving = EPC(moving.gdf.iloc[::2].copy(), data_name="z")
+            else:
+                moving = small_dem.translate(0.6, -0.4) + 0.8
+            expected = np.column_stack((points.gdf.geometry.x, points.gdf.geometry.y, points.data))
+            fit_options = {
+                "subsample": 100,
+                "max_iterations": 100,
+                "tolerance_translation": 1e-7,
+                "tolerance_rotation": 1e-7,
+            }
+            point_method = (
+                partial(coreg_method, method="point-to-point")
+                if coreg_method is coreg.ICP
+                else partial(coreg_method, lsg=False)
+            )
+            fitting_cases = [(coreg_method, False), (point_method, False)]
 
         # Run co-registration
-        subsample_size = 50000 if coreg_method != coreg.CPD else 500
-        c = coreg_method(subsample=subsample_size, sampling_strategy="independent")
-        c.fit(ref, ref_shifted_rotated, random_state=42)
+        for method, iterative_sampling in fitting_cases:
+            fitted = method(
+                sampling_strategy=sampling_strategy, iterative_sampling=iterative_sampling, **fit_options
+            ).fit(small_dem, moving, random_state=42 if layout == "resampled_raster" else 41)
+            if layout == "resampled_raster":
+                # Get invert of resulting matrix
+                recovered = translations_rotations_from_matrix(invert_matrix(fitted.to_matrix()))
 
-        c2 = coreg_method(subsample=subsample_size, sampling_strategy="same_xy")
-        c2.fit(ref, ref_shifted_rotated, random_state=42)
+                # Check that rotations are not far from expected values, skipping Z axis which is harder to get
+                np.testing.assert_allclose(recovered[3:5], shifts_rotations[3:5], atol=0.25)
+            else:
+                # Compare the sampling strategies on the same points and transform
+                transformed = EPC(coreg.apply_matrix(points.gdf, matrix, centroid=centroid), data_name="z")
+                restored = fitted.apply(transformed)
+                actual = np.column_stack((restored.gdf.geometry.x, restored.gdf.geometry.y, restored.data))
+                error = np.sqrt(np.mean(np.sum((actual - expected) ** 2, axis=1)))
 
-        c3 = coreg_method(subsample=subsample_size, sampling_strategy="iterative_same_xy")
-        c3.fit(ref, ref_shifted_rotated, random_state=42)
+                # Original observations recover this noiseless transform to micrometre precision
+                # Interpolation and independent samples allow half or one X pixel, respectively
+                # The X resolution is two map units
+                assert error < position_tolerance, f"{method}: position error {error} exceeds {position_tolerance}"
 
-        # Get invert of resulting matrices
-        invert_fit_matrix = invert_matrix(c.meta["outputs"]["affine"]["matrix"])
-        invert_fit_shifts_translations = translations_rotations_from_matrix(invert_fit_matrix)
-        invert_fit_matrix2 = invert_matrix(c2.meta["outputs"]["affine"]["matrix"])
-        invert_fit_shifts_translations2 = translations_rotations_from_matrix(invert_fit_matrix2)
-        invert_fit_matrix3 = invert_matrix(c3.meta["outputs"]["affine"]["matrix"])
-        invert_fit_shifts_translations3 = translations_rotations_from_matrix(invert_fit_matrix3)
-
-        # TODO: Add checks depending on magnitude of translation/rotation
-        #  ("independent" should perform better for large magnitude, "same_xy" better for small,
-        #  and "iterative_same_xy" best for all)
-
-        # Check that rotations are not far from expected values, skipping Z axis which is harder to get
-        assert np.allclose(invert_fit_shifts_translations[3:5], shifts_rotations[3:5], atol=0.25)
-        assert np.allclose(invert_fit_shifts_translations2[3:5], shifts_rotations[3:5], atol=0.25)
-        assert np.allclose(invert_fit_shifts_translations3[3:5], shifts_rotations[3:5], atol=0.25)
+        assert coreg_method().meta["inputs"]["specific"]["sampling_strategy"] == "nearest_xy"
+        assert coreg_method().meta["inputs"]["specific"]["iterative_sampling"] is False
 
     @pytest.mark.parametrize("method", [coreg.NuthKaab, coreg.LZD, coreg.ICP])
     @pytest.mark.parametrize("physical_holes", [False, True])
@@ -1767,11 +1961,12 @@ class TestAffineCoreg:
 
         # Compare the small exact normal equations, including the solvers' covariance regularization
         x, y = small_dem.coords(grid=True)
-        coordinates = np.column_stack((x.ravel(), y.ravel()))
+        # Exclude raster edges without centered gradients
+        coordinates = np.column_stack((x[1:-1, 1:-1].ravel(), y[1:-1, 1:-1].ravel()))
         covariance = sum(model.to_covariance_matrix(coordinates) for model in models.values())
-        covariance += 1e-3 * (0.01**2 + 0.02**2 + 0.01**2) * np.eye(small_dem.data.size)
+        covariance += 1e-3 * (0.01**2 + 0.02**2 + 0.01**2) * np.eye(len(coordinates))
         gy, gx = np.gradient(np.asarray(small_dem.data), -small_dem.res[1], small_dem.res[0])
-        design = np.column_stack((-gx.ravel(), -gy.ravel(), np.ones(small_dem.data.size)))
+        design = np.column_stack((-gx[1:-1, 1:-1].ravel(), -gy[1:-1, 1:-1].ravel(), np.ones(len(coordinates))))
         expected = np.linalg.inv(design.T @ np.linalg.solve(covariance, design))
         np.testing.assert_allclose(fitted.meta["outputs"]["fitorbin"]["fit_pcov"][:3, :3], expected, rtol=1e-7)
         np.testing.assert_allclose(fitted.to_translations(), (0, 0, -0.2), rtol=0, atol=1e-8)
@@ -1782,6 +1977,7 @@ class TestAffineCoreg:
         [
             (coreg.LZD, {}),
             (coreg.ICP, {"sampling_strategy": "same_xy"}),
+            (coreg.ICP, {"sampling_strategy": "nearest_xy"}),
             (coreg.ICP, {"sampling_strategy": "independent"}),
         ],
     )
@@ -1825,7 +2021,7 @@ class TestAffineCoreg:
 
         # Record the existing shared preparation without changing its observation selection
         sampled = []
-        sample = affine._subsample_rst_pts
+        sample = affine._sample_coreg_inputs
         derive = affine._dem_normals_curvature
         normals = []
 
@@ -1842,7 +2038,7 @@ class TestAffineCoreg:
             normals.append(True)
             return derive(*args, **kwargs)
 
-        monkeypatch.setattr(affine, "_subsample_rst_pts", record_samples)
+        monkeypatch.setattr(affine, "_sample_coreg_inputs", record_samples)
         monkeypatch.setattr(affine, "_dem_normals_curvature", record_normals)
         fitted = solver(only_translation=True, subsample=1, **options).fit(
             reference,
@@ -1890,7 +2086,7 @@ class TestAffineCoreg:
         backend: str | None,
         options: dict[str, Any],
     ) -> None:
-        """Checks that GLS backends fit all observations with bounded covariance and the requested settings."""
+        """Checks that GLS backends fit all valid observations with bounded covariance and the requested settings."""
 
         pytest.importorskip("linear_operator")
         if backend == "inducing":
@@ -1899,7 +2095,8 @@ class TestAffineCoreg:
         # 1/ Create a vertical offset
         source = curved_dem + 1
         rows, columns = np.indices(curved_dem.shape)
-        count = curved_dem.data.size
+        # All interior cells have valid centered gradients
+        count = (curved_dem.height - 2) * (curved_dem.width - 2)
 
         # Record covariance allocations and approximation settings
         evaluated_shapes, ranks, requested_neighbors = [], [], []
@@ -1975,6 +2172,27 @@ class TestAffineCoreg:
             assert requested_neighbors and set(requested_neighbors) == {options.get("gls_neighbors", 60)}
         if backend != "exact":
             assert any(len(shape) == 3 for shape in evaluated_shapes)
+
+
+class TestAffineCoregEdges:
+    """Test module for pixel interpretation metadata when applying affine corrections."""
+
+    @pytest.mark.parametrize("resample", [pytest.param(False, id="no-resample"), pytest.param(True, id="resample")])
+    def test_apply__pixel_interpretation(self, curved_dem: Raster, resample: bool) -> None:
+        """Checks that applying a transform preserves a raster pixel interpretation."""
+
+        # Use Point interpretation to check that apply() preserves its metadata
+        reference = curved_dem.copy()
+        reference.set_area_or_point("Point")
+        shifted = reference.translate(1.2, -0.8) + 2.5
+
+        # Apply with/without resampling onto the input grid
+        fitted = coreg.AffineCoreg.from_translations(-1.2, 0.8, -2.5)
+        aligned = fitted.apply(shifted, resample=resample)
+
+        # Check the pixel interpretation of the input and applied rasters
+        assert aligned.area_or_point == "Point"
+        assert shifted.area_or_point == "Point"
 
 
 class TestSampledParameterCovariance:
@@ -2064,28 +2282,6 @@ class TestAffineCoregErrors:
         vshiftcorr.fit(dem1, dem2, transform=affine, crs=crs)
 
         pytest.raises(ValueError, icp.fit, dem1, dem2, transform=affine)
-
-    @pytest.mark.parametrize("method", _RIGID_METHODS)
-    @pytest.mark.parametrize("reverse", [False, True])
-    def test_fit__equivalent_pixel_interpretations(
-        self, curved_dem: Raster, method: Callable[..., AffineCoreg], reverse: bool, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Checks that equivalent "Area" and "Point" rasters align without introducing a half pixel shift."""
-
-        # Change only the interpretation and enable warnings for differing metadata
-        monkeypatch.setitem(geoutils.config, "warn_area_or_point", True)
-        point_dem = curved_dem.copy()
-        point_dem.set_area_or_point("Point")
-        np.testing.assert_array_equal(point_dem.coords(grid=True), curved_dem.coords(grid=True))
-        reference, moving = (point_dem, curved_dem) if reverse else (curved_dem, point_dem)
-
-        # Check metadata warning during fit
-        fitted = method(only_translation=True, subsample=1, tolerance_translation=1e-6)
-        with pytest.warns(UserWarning, match="One raster has a pixel interpretation"):
-            fitted.fit(reference, moving, random_state=41)
-
-        # Should not be any translation (only the warning above)
-        np.testing.assert_allclose(fitted.to_translations(), [0, 0, 0], rtol=0, atol=1e-5)
 
     @pytest.mark.parametrize(
         "initial_shifts",
@@ -2192,7 +2388,7 @@ class TestAffineCoregErrors:
             reference = curved_dem.to_pointcloud(data_name="z")
 
         # Check error
-        with pytest.raises(ValueError, match="inlier_mask.*no inliers"):
+        with pytest.raises(ValueError, match="no finite data common"):
             coreg.VerticalShift().fit(reference, shifted, inlier_mask=mask)
 
     @pytest.mark.parametrize("method", [coreg.LZD, coreg.ICP])
@@ -2279,6 +2475,47 @@ class TestAffineCoregErrors:
         errors = geoutils.ErrorStructure([geoutils.ErrorComponent("measurement", 0.01, correlation)])
         with pytest.raises(ValueError, match="X/Y coordinates"):
             method().fit(curved_dem, curved_dem + 0.2, error_structure=errors)
+
+    @pytest.mark.parametrize("reducer", [None, 0, "median"])
+    def test_nuth_kaab__error_vshift_reduc_func(self, reducer: Any) -> None:
+        """Checks an error is raised for a vertical statistic that is not callable."""
+
+        with pytest.raises(TypeError, match="vshift_reduc_func must be callable"):
+            coreg.NuthKaab(vshift_reduc_func=reducer)
+
+    @pytest.mark.parametrize("min_slope", [-1, 90, np.inf, np.nan, None, "1"])
+    def test_nuth_kaab__error_min_slope(self, min_slope: Any) -> None:
+        """Checks an error is raised for a slope threshold outside the finite range [0, 90) degrees."""
+
+        with pytest.raises(ValueError, match="min_slope must be a finite angle"):
+            coreg.NuthKaab(min_slope=min_slope)
+
+    @pytest.mark.parametrize(
+        "method", [coreg.Coreg, coreg.AffineCoreg, coreg.VerticalShift, coreg.NuthKaab, coreg.LZD, coreg.BiasCorr]
+    )
+    def test_init__error_iterative_sampling(self, method: Callable[..., coreg.Coreg]) -> None:
+        """Checks an error is raised when iterative_sampling is passed to a method other than ICP or CPD."""
+
+        with pytest.raises(TypeError, match="iterative_sampling"):
+            method(iterative_sampling=True)
+
+    @pytest.mark.parametrize("method", [partial(coreg.ICP, method="point-to-point"), partial(coreg.CPD, lsg=False)])
+    @pytest.mark.parametrize("sampling_strategy", ["same_xy", "iterative_same_xy", "iterative_nearest_xy", "invalid"])
+    def test_fit__error_sampling_strategy(
+        self, curved_dem: Raster, method: Callable[..., AffineCoreg], sampling_strategy: str
+    ) -> None:
+        """Checks an error is raised for invalid sampling or same_xy with two point clouds."""
+
+        # Create a point cloud
+        points = _point_samples(curved_dem, count=100)
+        fitted = method(sampling_strategy=sampling_strategy)
+        message = (
+            "same_xy requires at least one raster" if sampling_strategy == "same_xy" else "sampling_strategy must be"
+        )
+
+        # Check the sampling strategy error
+        with pytest.raises(ValueError, match=message):
+            fitted.fit(points, points, random_state=42)
 
 
 class TestVerticalShift:
@@ -2389,7 +2626,7 @@ class TestVerticalShift:
         assert np.nanmedian(dh) == pytest.approx(0, abs=10e-6)
         assert np.nanvar(dh) == pytest.approx(0, abs=10e-6)
 
-    @pytest.mark.parametrize("coreg_method__vshift", [(coreg.VerticalShift, -2.305015)])
+    @pytest.mark.parametrize("coreg_method__vshift", [(coreg.VerticalShift, -2.33294677734375)])
     def test_coreg_vertical_translation__example(
         self, coreg_method__vshift: tuple[type[AffineCoreg], tuple[float, float, float]]
     ) -> None:
@@ -2416,14 +2653,93 @@ class TestVerticalShift:
 class TestNuthKaab:
     """Test module for NuthKaab coregistration."""
 
-    def test_nuthkaab__no_vertical_shift(self) -> None:
+    @pytest.mark.parametrize("min_slope", [None, 0, 1, 10])
+    @pytest.mark.parametrize("spacing", [(2, 3), (20, 30)])
+    def test_fit__min_slope(self, curved_dem: Raster, min_slope: float | None, spacing: tuple[int, int]) -> None:
+        """Checks that NK uses only slopes above min_slope in degrees, for different pixel sizes."""
+
+        from xdem.coreg import affine
+
+        # Scale elevations with pixel size to preserve the terrain slopes
+        values = np.asarray(curved_dem.data) * spacing[0] / 2
+        transform = rio.Affine.translation(500_000, 7_000_000) * rio.Affine.rotation(17)
+        reference = Raster.from_array(
+            values, transform * rio.Affine.scale(spacing[0], -spacing[1]), curved_dem.crs, nodata=np.nan
+        )
+        angle = 1 if min_slope is None else min_slope
+        threshold = np.tan(np.deg2rad(angle))
+        slopes = np.hypot(*np.gradient(values, -spacing[1], spacing[0]))[1:-1, 1:-1]
+        expected = slopes[slopes > threshold]
+
+        # Record the slopes passed to each horizontal fit
+        options: dict[str, Any] = {} if min_slope is None else {"min_slope": min_slope}
+        with patch.object(affine, "_nuth_kaab_bin_fit", wraps=affine._nuth_kaab_bin_fit) as fit:
+            fitted = coreg.NuthKaab(subsample=1, max_iterations=3, **options).fit(
+                reference, reference.translate(0.3, -0.2) + 0.2
+            )
+
+        # Compare sampled slopes, then check every iteration
+        for index, call in enumerate(fit.call_args_list):
+            tangent, aspect = call.kwargs["slope_tan"], call.kwargs["aspect"]
+            slopes = np.hypot(tangent * np.sin(aspect) / spacing[0], tangent * np.cos(aspect) / spacing[1])
+            assert np.all(slopes > threshold)
+            if index == 0:
+                np.testing.assert_allclose(np.sort(slopes), np.sort(expected), rtol=0, atol=1e-10)
+        assert fitted.meta["outputs"]["random"]["subsample_final"] == expected.size
+        assert fitted.meta["inputs"]["specific"]["min_slope"] == angle
+        assert "Minimum terrain slope (degrees)" in fitted.info(as_str=True)
+
+    @pytest.mark.parametrize("reducer", [None, np.mean, np.median], ids=["default", "mean", "median"])
+    @pytest.mark.parametrize("max_iterations", [1, 3])
+    def test_fit__vertical_reduction(self, curved_dem: Raster, reducer: Any, max_iterations: int) -> None:
+        """Checks that NK centers each fit and reports the chosen vertical statistic at the final X/Y alignment."""
+
+        from xdem.coreg import affine
+
+        # Use slopes above 1 deg, and a mask valid after the horizontal shift
+        rows, columns = np.indices(curved_dem.shape)
+        values = 0.3 * columns + 0.4 * rows + 0.005 * columns**2 + 0.007 * rows**2 + 0.002 * rows * columns
+        reference = curved_dem.copy(new_array=values)
+        moving = reference.translate(0.6, -0.4) + 0.8
+        moving.data[::7, ::7] += 2  # Asymmetric height errors to distinguish the mean from the median
+        mask = np.zeros(reference.shape, dtype=bool)
+        mask[4:-4, 4:-4] = True
+        coordinates = reference.ij2xy(*np.where(mask))
+        moving_values = moving.interp_at_points(coordinates, method="linear", as_array=True)
+        initial_dh = values[mask] - moving_values
+        statistic = np.median if reducer is None else reducer
+
+        # Record the residuals passed to each horizontal fit
+        options: dict[str, Any] = {} if reducer is None else {"vshift_reduc_func": reducer}
+        with patch.object(affine, "_nuth_kaab_bin_fit", wraps=affine._nuth_kaab_bin_fit) as fit:
+            fitted = coreg.NuthKaab(subsample=1, bin_before_fit=False, max_iterations=max_iterations, **options).fit(
+                reference, moving, inlier_mask=mask, random_state=42
+            )
+        centered = [call.kwargs["dh"] for call in fit.call_args_list]
+
+        # Calculate Z independently at the returned horizontal alignment
+        shift_x, shift_y, shift_z = fitted.to_translations()
+        final_coordinates = (coordinates[0] + shift_x, coordinates[1] + shift_y)
+        final_dh = reference.interp_at_points(final_coordinates, method="linear", as_array=True) - moving_values
+        assert abs(np.mean(initial_dh) - np.median(initial_dh)) > 1e-3
+        np.testing.assert_allclose(
+            np.sort(centered[0]), np.sort(initial_dh - statistic(initial_dh)), rtol=0, atol=1e-10
+        )
+        np.testing.assert_allclose([statistic(dh) for dh in centered], 0, rtol=0, atol=1e-10)
+        assert fit.call_count == fitted.meta["outputs"]["iterative"]["last_iteration"]
+        assert shift_z == pytest.approx(statistic(final_dh), abs=1e-10)
+        assert fitted.meta["inputs"]["affine"]["vshift_reduc_func"] is statistic
+        assert statistic.__name__ in fitted.info(as_str=True)
+
+    @pytest.mark.parametrize("reducer", [np.mean, np.median])
+    def test_nuthkaab__no_vertical_shift(self, reducer: Any) -> None:
         """Checks that disabling the Nuth and Kääb vertical shift preserves horizontal shifts."""
 
         ref, tba = load_examples()[0:2]
 
         # Compare NK method with/without applying vertical shift
-        coreg_method1 = coreg.NuthKaab(vertical_shift=True)
-        coreg_method2 = coreg.NuthKaab(vertical_shift=False)
+        coreg_method1 = coreg.NuthKaab(vertical_shift=True, vshift_reduc_func=reducer)
+        coreg_method2 = coreg.NuthKaab(vertical_shift=False, vshift_reduc_func=reducer)
 
         coreg_method1.fit(ref, tba, random_state=42)
         coreg_method2.fit(ref, tba, random_state=42)
@@ -2529,7 +2845,9 @@ class TestNuthKaab:
 
         # Check failure
         method = coreg.NuthKaab(subsample=1, bin_before_fit=bin_before_fit)
-        with pytest.raises(ValueError, match="no more valid values|the surface may be too flat or planar"):
+        with pytest.raises(
+            ValueError, match="no more valid values|no finite data common|the surface may be too flat or planar"
+        ):
             method.fit(reference, shifted, random_state=42)
 
 
@@ -3074,7 +3392,8 @@ class TestLZD:
         def finish_iteration(**kwargs: Any) -> tuple[Any, ...]:
             """Return a converged transform and its known final increment covariance."""
 
-            kwargs["constant_inputs"][-1]["error_output"]["fit_pcov"] = local_covariance
+            arguments = inspect.signature(kwargs["method"]).bind(kwargs["iterating_input"], *kwargs["constant_inputs"])
+            arguments.arguments["fit_kwargs"]["error_output"]["fit_pcov"] = local_covariance
             output = dict(converged=True, last_iteration=2, iteration_stats=pd.DataFrame())
             return matrix, None, output, np.sqrt(np.diag(local_covariance))
 
@@ -3811,6 +4130,26 @@ class TestCPD:
         np.testing.assert_allclose(cache["curvature"], 0, rtol=0, atol=1e-10)
         np.testing.assert_allclose(cache["a"], 30, rtol=0, atol=1e-10)
 
+    @pytest.mark.parametrize("knn", [None, 4])
+    def test_cpd_estep_lsg__exact_fit(self, knn: int | None) -> None:
+        """Checks that exact point matches have finite CPD probabilities at very small variance."""
+
+        # Create distinct points with known normals
+        points = np.random.default_rng(13).normal(size=(12, 3))
+        normals = np.tile([0.0, 0.0, 1.0], (len(points), 1))
+        cache = _cpd_precompute(
+            points.T, points.T, 0, lsg=True, ref_normals=normals, curvature=np.zeros(len(points)), estep_knn_k=knn
+        )
+        terms = _lsg_update_sigma_dependent(cache["lsg"], sigma2=1e-30, weight_cpd=0)
+        neighbours = cache["knn"] or {}
+
+        # Fail if cancellation in squared distances causes exponential overflow
+        with np.errstate(over="raise", invalid="raise"):
+            result = _cpd_estep_lsg(cache["lsg"], terms, points, knn_tree=neighbours.get("tree"), knn_k=knn)
+
+        # Each point matches only itself
+        np.testing.assert_array_equal(result["P"], np.eye(len(points)))
+
     @pytest.mark.parametrize("lsg", [False, True])
     def test_cpd_fit__variance_floor(self, lsg: bool) -> None:
         """Checks the edge case behaviour: small residuals should not shrink CPD variance below its lower bound."""
@@ -3859,6 +4198,575 @@ class TestCPD:
         assert np.all(np.isfinite(means))
         np.testing.assert_allclose(translation, expected_translation, rtol=0, atol=1e-7)
         np.testing.assert_allclose(rotation, np.eye(3), rtol=0, atol=1e-7)
+
+
+@pytest.fixture
+def affine_dem_paths(curved_dem: Raster, tmp_path: Path) -> dict[str, Path]:
+    """Write curved DEMs with shifts, NaNs and different grid interpretations."""
+
+    # Create shifted elevations with NaNs
+    reference = curved_dem.astype("float64")
+    reference.data[8:10, 12:14] = np.ma.masked
+    moving = (reference + 0.2).translate(0.3, -0.2)
+
+    # Check metadata from an empty first tile
+    empty = curved_dem.copy()
+    empty.data[:15, :19] = np.ma.masked
+    point = curved_dem.copy()
+    point.set_area_or_point("Point")
+    rotated = Raster.from_array(
+        curved_dem.data, curved_dem.transform * rio.Affine.rotation(10), curved_dem.crs, nodata=np.nan
+    )
+    rasters = dict(
+        base=curved_dem,
+        aligned=curved_dem + 0.2,
+        reference=reference,
+        moving=moving,
+        empty=empty,
+        point=point,
+        rotated=rotated,
+        rotated_moving=rotated + 0.2,
+    )
+    paths = {name: tmp_path / f"{name}.tif" for name in rasters}
+    for name, raster in rasters.items():
+        raster.to_file(paths[name])
+    return paths
+
+
+@pytest.fixture
+def rotated_dem_paths(tmp_path: Path, curved_dem: Raster) -> tuple[Path, ...]:
+    """Write two DEMs on a rotated grid with a known interpolated shift."""
+
+    # Create a rotated reference raster
+    reference = Raster.from_array(
+        curved_dem.data,
+        curved_dem.transform * rio.Affine.rotation(10),
+        curved_dem.crs,
+        nodata=np.nan,
+        area_or_point="Point",
+    )
+    # Use one grid to isolate interpolation from reprojection
+    x, y = reference.coords(grid=True, force_offset="center")
+    values = reference.interp_at_points(
+        (x.ravel() - 0.3, y.ravel() + 0.2),
+        method="linear",
+        nodata_handling="nearest",
+        as_array=True,
+    ).reshape(reference.shape)
+    moving = reference.copy(new_array=values + 0.5)
+
+    paths = tuple(tmp_path / f"input-{index}.tif" for index in range(2))
+    for raster, path in zip((reference, moving), paths):
+        raster.to_file(path)
+    return paths
+
+
+@pytest.fixture
+def sampling_dem_paths(tmp_path: Path, curved_dem: Raster) -> tuple[Path, ...]:
+    """Write DEMs and a predictor with gaps larger than the sampling chunks."""
+
+    # Create gaps larger than a chunk
+    reference = curved_dem.copy()
+    reference.set_area_or_point("Point")
+    moving = reference.translate(0.3, -0.2)
+    moving.data[5:18, 8:22] = np.ma.masked
+    rows, columns = np.indices(moving.shape)
+    quality = moving.copy(new_array=(rows * moving.width + columns).astype(float))
+    quality.data[20:24, 5:10] = np.ma.masked
+
+    paths = tuple(tmp_path / f"input-{index}.tif" for index in range(3))
+    for raster, path in zip((reference, moving, quality), paths):
+        raster.to_file(path)
+    return paths
+
+
+@pytest.fixture
+def affine_epc_path(curved_dem: Raster, tmp_path: Path) -> Path:
+    """Write sampled elevations with a known vertical shift for point partition comparisons."""
+
+    pytest.importorskip("pyarrow")
+    points = _point_samples(curved_dem)
+    points = points.copy(new_array=points.data + 0.2)
+    path = tmp_path / "points.parquet"
+    points.to_parquet(str(path))
+    return path
+
+
+class TestAffineChunked:
+    """Test module for affine fit() and apply() with Dask and multiprocessing."""
+
+    @pytest.mark.parametrize("backend", ["dask", "mp"])
+    @pytest.mark.parametrize("rotated", [False, True])
+    def test_apply__chunk_invariance(
+        self,
+        affine_dem_paths: dict[str, Path],
+        backend: str,
+        rotated: bool,
+    ) -> None:
+        """
+        Checks that apply() matches in-memory values without loading its inputs
+
+        To avoid testing every method, we simply define an AffineCoreg from a matrix, as all share the same apply.
+        """
+
+        # 1/ Open inputs and define the transform
+        path = affine_dem_paths["empty"]
+        curved_dem = DEM(path, load_data=True)
+
+        # Create a translation or rotation
+        matrix = matrix_from_translations_rotations(0.3, -0.2, 0.5, 0.03 if rotated else 0, 0, 0)
+        estimator = coreg.AffineCoreg.from_matrix(matrix)
+        estimator.meta["outputs"]["affine"]["centroid"] = (
+            float(np.mean(curved_dem.coords(grid=False)[0])),
+            float(np.mean(curved_dem.coords(grid=False)[1])),
+            float(np.ma.median(curved_dem.data)),
+        )
+        # Calculate the in-memory reference
+        expected = estimator.apply(curved_dem)
+
+        # 2/ Apply the transform
+        if backend == "dask":
+            # 2.1/ If using Dask
+            pytest.importorskip("dask")
+            source = open_dem(path, chunks={"y": 7, "x": 9}).dem
+            assert not source.is_loaded
+            actual = estimator.apply(source)
+            assert isinstance(actual, xr.DataArray) and not actual.dem.is_loaded
+            values = actual.compute().data.squeeze()
+            assert not source.is_loaded and not actual.dem.is_loaded
+        else:
+            # 2.2/ If using MP
+            source = DEM(path)
+            config = MultiprocConfig(chunks=(7, 9), outfile=str(path.with_name("output.tif")))
+            assert not source.is_loaded
+            actual = estimator.apply(source, mp_config=config)
+            assert isinstance(actual, Raster) and not actual.is_loaded
+            values = actual.to_nanarray()
+            assert not source.is_loaded
+
+        # 3/ Check equality of values, dtype and transform
+        result = _get_raster_interface(actual)
+        np.testing.assert_array_equal(values, expected.to_nanarray())
+        assert result.dtype == values.dtype == expected.dtype
+        assert result.transform == expected.transform
+
+    @pytest.mark.parametrize(
+        "method, backend, case",
+        [
+            pytest.param(coreg.VerticalShift, "dask", "shifted", id="VerticalShift-dask"),
+            pytest.param(coreg.VerticalShift, "mp", "shifted", id="VerticalShift-mp"),
+            pytest.param(partial(coreg.NuthKaab, bin_before_fit=False), "dask", "shifted", id="NuthKaab-dask"),
+            pytest.param(partial(coreg.LZD, linearized=False), "mp", "shifted", id="LZD-nonlinear-mp"),
+            pytest.param(coreg.DhMinimize, "mp", "shifted", id="DhMinimize-mp"),
+            pytest.param(coreg.ICP, "dask", "shifted", id="ICP-dask"),
+            pytest.param(coreg.CPD, "mp", "shifted", id="CPD-mp"),
+            pytest.param(
+                partial(coreg.ICP, sampling_strategy="nearest_xy", iterative_sampling=True),
+                "dask",
+                "shifted",
+                id="ICP-iterative-nearest-dask",
+            ),
+            pytest.param(
+                partial(coreg.CPD, sampling_strategy="same_xy", iterative_sampling=True),
+                "mp",
+                "shifted",
+                id="CPD-iterative-same-mp",
+            ),
+            pytest.param(
+                partial(coreg.NuthKaab, bin_before_fit=False, min_slope=5, vshift_reduc_func=np.mean),
+                "dask",
+                "rotated-shift",
+                id="NuthKaab-dask-rotated",
+            ),
+            pytest.param(
+                partial(coreg.NuthKaab, bin_before_fit=False, min_slope=5, vshift_reduc_func=np.mean),
+                "mp",
+                "rotated-shift",
+                id="NuthKaab-mp-rotated",
+            ),
+            pytest.param(coreg.ICP, "mp_workers", "aligned", id="ICP-worker-cluster"),
+            pytest.param(partial(coreg.ICP, only_translation=True), "dask", "rotated", id="ICP-dask-rotated"),
+            pytest.param(partial(coreg.ICP, only_translation=True), "mp", "area-point", id="ICP-area-point"),
+            pytest.param(partial(coreg.ICP, only_translation=True), "mp", "point-area", id="ICP-point-area"),
+            pytest.param(coreg.ICP, "dask_points", "points-reference", id="ICP-points-reference"),
+            pytest.param(coreg.ICP, "dask_points", "points-moving", id="ICP-points-moving"),
+        ],
+    )
+    def test_fit__chunk_invariance(
+        self,
+        affine_dem_paths: dict[str, Path],
+        rotated_dem_paths: tuple[Path, ...],
+        case: str,
+        backend: str,
+        method: Callable[..., AffineCoreg],
+        request: pytest.FixtureRequest,
+    ) -> None:
+        """Checks that affine fits with chunked inputs match in-memory results for many input options."""
+
+        from contextlib import nullcontext
+
+        from geoutils.multiproc.cluster import ClusterGenerator
+
+        from tests.test_coreg.test_base import assert_coreg_meta_equal
+
+        # 1/ Open inputs and prepare fitting options
+        path_names = {
+            "shifted": ("reference", "moving"),
+            "aligned": ("base", "aligned"),
+            "rotated": ("rotated", "rotated_moving"),
+            "area-point": ("point", "base"),
+            "point-area": ("base", "point"),
+        }
+        names = path_names.get(case, ("base", "base"))
+        paths = rotated_dem_paths if case == "rotated-shift" else tuple(affine_dem_paths[name] for name in names)
+        reference: Any
+        moving: Any
+        reference, moving = (DEM(path, load_data=True) for path in paths)
+        mask = None
+        # Add an input mask
+        if case == "rotated-shift":
+            # Exclude edges reached by interpolation and gradients
+            mask = np.zeros(reference.shape, dtype=bool)
+            mask[3:-3, 3:-3] = True
+        elif case == "shifted":
+            mask = np.ones(reference.shape, dtype=bool)
+            mask[:3] = False
+        elif case in ("area-point", "point-area"):
+            np.testing.assert_array_equal(reference.coords(grid=True), moving.coords(grid=True))
+        elif backend == "dask_points":
+            pytest.importorskip("dask_geopandas")
+            point_path = request.getfixturevalue("affine_epc_path")
+            points = EPC(point_path)
+            points.load()
+            if case == "points-reference":
+                reference = points
+            else:
+                moving = points
+
+        context = (
+            pytest.warns(DeprecationWarning, match="DhMinimize is deprecated")
+            if method is coreg.DhMinimize
+            else nullcontext()
+        )
+        options: dict[str, Any] = {"subsample": 80}
+        if method not in (coreg.VerticalShift, coreg.DhMinimize) and backend != "mp_workers":
+            options["max_iterations"] = 3
+        if case == "rotated-shift":
+            options.update(subsample=100, max_iterations=5)
+        with context:
+            estimator = method(**options)
+        fit_options: dict[str, Any] = dict(inlier_mask=mask, random_state=42)
+        if backend == "mp_workers":
+            # Use the same error model for both fits
+            fit_options["error_structure"] = geoutils.ErrorStructure([geoutils.ErrorComponent("measurement", 0.01)])
+
+        # Calculate the in-memory reference
+        expected = estimator.copy().fit(reference, moving, **fit_options)
+
+        # 2/ Fit the chunked elevations
+        first: Any
+        second: Any
+        if backend.startswith("dask"):
+            # 2.1/ If using Dask
+            pytest.importorskip("dask")
+            # Use different layouts and shorter final chunks
+            chunks = ((7, 9 if case != "shifted" else reference.width - 1), (11, 6))
+            first, second = (
+                open_dem(path, chunks={"y": rows, "x": columns}).dem for path, (rows, columns) in zip(paths, chunks)
+            )
+            if backend == "dask_points":
+                # Use uneven point partitions and raster tiles
+                lazy_points = open_epc(point_path, chunks=137).pc
+                if case == "points-reference":
+                    first = lazy_points
+                else:
+                    second = lazy_points
+            assert not first.is_loaded and not second.is_loaded
+            actual = estimator.copy().fit(first, second, **fit_options)
+            assert not first.is_loaded and not second.is_loaded
+        else:
+            # 2.2/ If using MP
+            first, second = (DEM(path) for path in paths)
+            config = MultiprocConfig(chunks=(13, 17) if backend == "mp_workers" else (7, 9))
+            workers = ClusterGenerator("multiprocessing", nb_workers=2) if backend == "mp_workers" else nullcontext()
+            assert not first.is_loaded and not second.is_loaded
+            with workers as cluster:
+                if cluster is not None:
+                    config.cluster = cluster
+                actual = estimator.copy().fit(first, second, mp_config=config, **fit_options)
+            assert not first.is_loaded and not second.is_loaded
+
+        # 3/ Check equality of matrices and fit metadata
+        np.testing.assert_array_equal(actual.to_matrix(), expected.to_matrix())
+        assert assert_coreg_meta_equal(actual.meta["outputs"], expected.meta["outputs"])
+        if case in ("area-point", "point-area"):
+            np.testing.assert_allclose(actual.to_translations(), [0, 0, 0], rtol=0, atol=1e-5)
+
+    @pytest.mark.parametrize("case", ["mixed-reference", "mixed-moving", "arrays"])
+    def test_fit_and_apply__chunk_invariance_arrays(self, curved_dem: Raster, case: str) -> None:
+        """Checks that mixed NumPy/Dask arrays match in-memory fitting."""
+
+        pytest.importorskip("dask")
+
+        import dask.array as da
+
+        # 1/ Create arrays with a known height offset
+        estimator: AffineCoreg
+        if case == "arrays":
+            reference = curved_dem.data.filled(np.nan)
+            moving = reference + 0.2
+            estimator = coreg.ICP(subsample=80, max_iterations=3)
+        else:
+            reference = np.arange(30.0).reshape(5, 6)
+            moving = reference + 2
+            estimator = coreg.VerticalShift(subsample=10)
+        options = dict(transform=curved_dem.transform, crs=curved_dem.crs, random_state=42)
+        # Calculate the in-memory reference
+        expected_fit = estimator.copy()
+        expected, expected_transform = expected_fit.fit_and_apply(reference, moving, **options)
+
+        # Use different layouts and shorter final chunks
+        first, second = reference, moving
+        if case != "mixed-moving":
+            first = da.from_array(reference, chunks=(7, 9) if case == "arrays" else (3, 4))
+        if case != "mixed-reference":
+            second = da.from_array(moving, chunks=(11, 6) if case == "arrays" else (3, 4))
+
+        # 2/ Fit and apply to the chunked arrays
+        actual_fit = estimator.copy()
+        actual, transform = actual_fit.fit_and_apply(first, second, **options)
+
+        # 3/ Check equality of matrices, values and transforms
+        assert is_dask_array(actual) == is_dask_array(second)
+        np.testing.assert_array_equal(actual_fit.to_matrix(), expected_fit.to_matrix())
+        values = actual.compute() if is_dask_array(actual) else actual
+        np.testing.assert_array_equal(values, expected)
+        assert transform == expected_transform
+        assert is_dask_array(first) == (case != "mixed-moving")
+        assert is_dask_array(second) == (case != "mixed-reference")
+        if case != "arrays":
+            assert actual_fit.to_matrix()[2, 3] == -2
+            np.testing.assert_array_equal(reference, np.arange(30.0).reshape(5, 6))
+            np.testing.assert_array_equal(moving, reference + 2)
+
+    def test_apply__chunk_invariance_point_metadata(self, curved_dem: Raster) -> None:
+        """Checks that apply() preserves point labels and attributes without loading Dask arrays."""
+
+        pytest.importorskip("dask")
+
+        # 1/ Create labeled points and an auxiliary column
+        points = _point_samples(curved_dem, count=25)
+        points.gdf["quality"] = np.arange(25, dtype=np.uint16)
+        points.gdf.index = pd.Index(np.arange(25) * 2 + 100)
+        source = points.to_xarray()
+        source.attrs["survey"] = "test"
+        source.coords["x"].attrs["units"] = "m"
+        source = source.chunk(point=7)
+        assert not source.pc.is_loaded
+
+        # 2/ Apply the same translation to both inputs
+        estimator = coreg.AffineCoreg.from_translations(2, -1, 5)
+        expected = estimator.apply(points)
+        actual = estimator.apply(source)
+
+        # 3/ Check equality of values, labels and metadata
+        assert isinstance(actual, xr.DataArray)
+        assert not actual.pc.is_loaded
+        computed = actual.compute()
+        np.testing.assert_array_equal(computed.pc.to_array(), expected.to_array())
+        np.testing.assert_array_equal(computed.point.data, points.gdf.index)
+        np.testing.assert_array_equal(computed.quality.data, points.gdf.quality)
+        assert computed.attrs == source.attrs
+        assert computed.coords["x"].attrs == source.coords["x"].attrs
+        assert computed.pc.crs == points.crs
+        # Check input loading after computing
+        assert not source.pc.is_loaded and not actual.pc.is_loaded
+
+    @pytest.mark.parametrize("backend", ["dask", "mp"])
+    def test_sample_coreg_inputs__chunk_invariance_valid(
+        self, backend: str, sampling_dem_paths: tuple[Path, ...]
+    ) -> None:
+        """Checks that raster sampling selects the nearest finite cells and their auxiliary values."""
+
+        # 1/ Open elevations and the quality predictor
+        reference, moving, quality = (DEM(path, load_data=True) for path in sampling_dem_paths)
+        # Require finite elevations and auxiliary values
+        finite = ~(np.ma.getmaskarray(moving.data) | np.ma.getmaskarray(quality.data))
+        expected_coordinates = np.vstack(moving.ij2xy(*np.where(finite)))
+        candidates = np.vstack((expected_coordinates, moving.data.data[finite]))
+        expected_quality = quality.data.data[finite]
+        sampling_options: dict[str, Any] = dict(
+            inlier_mask=None,
+            subsample=25,
+            random_state=42,
+            sampling_strategy="nearest_xy",
+            aux_tied_to="tba",
+        )
+        in_memory_reference, in_memory_moving, in_memory_values = _sample_coreg_inputs(
+            reference, moving, aux_vars={"quality": quality}, **sampling_options
+        )
+
+        # 2/ Sample across chunk boundaries
+        if backend == "dask":
+            # 2.1/ If using Dask
+            pytest.importorskip("dask")
+            # Use different layouts and shorter final chunks
+            chunks = ((7, 9), (5, 11), (9, 7))
+            first, second, auxiliary = (
+                open_dem(path, chunks={"y": rows, "x": columns}).dem
+                for path, (rows, columns) in zip(sampling_dem_paths, chunks)
+            )
+            config = None
+            assert not first.is_loaded and not second.is_loaded and not auxiliary.is_loaded
+            reference_sample, moving_sample, values = _sample_coreg_inputs(
+                _get_raster_interface(first),
+                _get_raster_interface(second),
+                aux_vars={"quality": auxiliary},
+                mp_config=config,
+                **sampling_options,
+            )
+            assert not first.is_loaded and not second.is_loaded and not auxiliary.is_loaded
+        else:
+            # 2.2/ If using MP
+            first, second, auxiliary = (DEM(path) for path in sampling_dem_paths)
+            config = MultiprocConfig(chunks=(7, 9))
+            assert not first.is_loaded and not second.is_loaded and not auxiliary.is_loaded
+            reference_sample, moving_sample, values = _sample_coreg_inputs(
+                _get_raster_interface(first),
+                _get_raster_interface(second),
+                aux_vars={"quality": auxiliary},
+                mp_config=config,
+                **sampling_options,
+            )
+            assert not first.is_loaded and not second.is_loaded and not auxiliary.is_loaded
+
+        # 3/ Check equality of sampled coordinates and predictors
+        # Find expected cells with an independent nearest-cell search
+        indexes = scipy.spatial.cKDTree(expected_coordinates.T).query(reference_sample[:2].T)[1]
+        assert reference_sample.shape == moving_sample.shape == (3, 25)
+        np.testing.assert_array_equal(moving_sample, candidates[:, indexes])
+        np.testing.assert_array_equal(reference_sample, in_memory_reference)
+        np.testing.assert_array_equal(moving_sample, in_memory_moving)
+        assert values is not None
+        assert in_memory_values is not None
+        np.testing.assert_array_equal(values["quality"], expected_quality[indexes])
+        np.testing.assert_array_equal(values["quality"], in_memory_values["quality"])
+
+    @pytest.mark.parametrize(
+        "backend, point_side, sampling_strategy", [("dask", "ref", "same_xy"), ("mp", "tba", "nearest_xy")]
+    )
+    def test_sample_coreg_inputs__chunk_invariance_sampling(
+        self,
+        curved_dem: Raster,
+        backend: str,
+        point_side: str,
+        sampling_strategy: Literal["independent", "same_xy", "nearest_xy"],
+        affine_dem_paths: dict[str, Path],
+    ) -> None:
+        """Checks that either point input defines the same in-memory and chunked sampling target."""
+
+        # 1/ Prepare points between raster pixel centers
+        points = _point_samples(curved_dem, count=30)
+        points = EPC(coreg.apply_matrix(points.gdf, matrix_from_translations_rotations(0.3, -0.2, 1)), data_name="z")
+        original_points = points.gdf.copy()
+        options: dict[str, Any] = dict(
+            inlier_mask=None, sampling_strategy=sampling_strategy, subsample=15, random_state=42
+        )
+        in_memory_inputs = (points, curved_dem) if point_side == "ref" else (curved_dem, points)
+        expected = _sample_coreg_inputs(*in_memory_inputs, **options)
+
+        # 2/ Sample in the selected input order
+        if backend == "dask":
+            # 2.1/ If using Dask
+            pytest.importorskip("dask")
+            raster = open_dem(affine_dem_paths["base"], chunks={"y": 7, "x": 9}).dem
+            point_array = points.to_xarray().chunk(point=7)
+            inputs = (point_array.pc, raster) if point_side == "ref" else (raster, point_array.pc)
+            assert not raster.is_loaded and not point_array.pc.is_loaded
+            actual = _sample_coreg_inputs(inputs[0], inputs[1], **options)
+            assert not raster.is_loaded and not point_array.pc.is_loaded
+        else:
+            # 2.2/ If using MP
+            raster = DEM(affine_dem_paths["base"])
+            inputs = (points, raster) if point_side == "ref" else (raster, points)
+            config = MultiprocConfig(chunks=(7, 9))
+            assert not raster.is_loaded
+            actual = _sample_coreg_inputs(inputs[0], inputs[1], mp_config=config, **options)
+            assert not raster.is_loaded
+
+        # 3/ Check equality of samples and unchanged inputs
+        np.testing.assert_array_equal(actual[0], expected[0])
+        np.testing.assert_array_equal(actual[1], expected[1])
+        assert actual[0].shape == actual[1].shape == (3, 15)
+        assert actual[2] is None
+        assert points.gdf.equals(original_points)
+
+
+class TestAffineChunkedErrors:
+    """Test module for invalid chunked inputs and unused variables in affine fit() and apply()."""
+
+    @pytest.mark.parametrize("operation", ["fit", "apply"])
+    def test_methods__error_dask_and_multiproc(self, curved_dem: Raster, operation: str) -> None:
+        """Checks an error is raised for Dask inputs combined with multiprocessing."""
+
+        pytest.importorskip("dask")
+
+        from geoutils.multiproc import MultiprocConfig
+
+        # 1/ Create a lazy raster
+        source = curved_dem.to_xarray().chunk({"y": 7, "x": 9})
+        estimator = coreg.AffineCoreg.from_translations(0, 0, 1)
+        if operation == "fit":
+            estimator = coreg.ICP(subsample=80)
+
+        # 2/ Call the operation with Dask/MP at once
+        arguments = (source, source) if operation == "fit" else (source,)
+        with pytest.raises(ValueError, match="Cannot use multiprocessing and Dask simultaneously"):
+            getattr(estimator, operation)(*arguments, mp_config=MultiprocConfig(chunks=(7, 9)))
+
+        # 3/ Check input was not loaded
+        assert not source.rst.is_loaded
+
+    @pytest.mark.parametrize("operation", ["fit", "apply"])
+    def test_methods__error_dataset_input(self, curved_dem: Raster, operation: str) -> None:
+        """Checks an error is raised for a Dataset passed without selecting an elevation DataArray."""
+
+        pytest.importorskip("dask")
+
+        # 1/ Create a lazy Dataset
+        source = curved_dem.to_xarray().chunk({"y": 7, "x": 9})
+        dataset = source.to_dataset(name="elevation")
+        estimator = coreg.AffineCoreg.from_translations(0, 0, 1)
+        if operation == "fit":
+            estimator = coreg.ICP(subsample=80)
+
+        # 2/ Call the operation on the Dataset directly
+        arguments = (dataset, source) if operation == "fit" else (dataset,)
+        with pytest.raises(TypeError, match="Select an elevation DataArray"):
+            getattr(estimator, operation)(*arguments)
+
+        # 3/ Check input still unloaded
+        assert not source.rst.is_loaded
+
+    def test_apply__ignored_lazy_bias_variable(self, curved_dem: Raster) -> None:
+        """Checks that apply() warns about unused bias variables without computing their arrays."""
+
+        pytest.importorskip("dask")
+
+        # 1/ Create lazy elevations
+        source = curved_dem.to_xarray().chunk({"y": 7, "x": 9})
+        estimator = coreg.AffineCoreg.from_translations(0, 0, 1)
+        expected = estimator.apply(curved_dem)
+
+        # 2/ Apply while checking the unused variable warning
+        with pytest.warns(UserWarning, match="ignoring.*bias_vars"):
+            actual = estimator.apply(source, bias_vars={"unused": source})
+
+        # 3/ Check equality of values and lazy loading
+        assert not actual.rst.is_loaded
+        np.testing.assert_array_equal(actual.compute().data.squeeze(), expected.data.filled(np.nan))
+        assert not source.rst.is_loaded
+        assert not actual.rst.is_loaded
 
 
 class TestDhMinimizeDeprecation:

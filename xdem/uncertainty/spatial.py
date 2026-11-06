@@ -25,13 +25,14 @@ import logging
 import warnings
 from collections.abc import Callable, Hashable, Iterable, Mapping
 from dataclasses import replace
-from typing import Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import pandas as pd
 from geoutils import ErrorMagnitude, Raster
+from geoutils._dispatch import _get_pointcloud_interface, _get_raster_interface
 from geoutils.filters import mean_filter
 from geoutils.filters.regular import _create_circular_mask
 from geoutils.operators import LocalData
@@ -48,13 +49,17 @@ from scipy.spatial.distance import cdist
 from xdem._typing import NDArrayf
 from xdem.uncertainty.propagation import _simulate
 
+if TYPE_CHECKING:
+    from geoutils.pointcloud.pointcloud import PointCloudLike
+    from geoutils.raster.base import RasterLike
+
 ######################################
 # 1/ AREA INPUTS AND COVARIANCE SUMS
 ######################################
 
 
 def _area_support(
-    area: Any, support: gu.Raster | gu.PointCloud, predictors: Mapping[str, Any] | None
+    area: Any, support: RasterLike | PointCloudLike, predictors: Mapping[str, Any] | None
 ) -> tuple[NDArray[Any], NDArray[np.bool_], dict[str, NDArray[Any]]]:
     """
     Select finite observations and their magnitude predictors within one spatial area.
@@ -66,26 +71,40 @@ def _area_support(
         raise TypeError("A numeric area has no location; use a spatial mask or vector with support.")
 
     # Reset point indexes to match weights by row
-    sampling_support = support
-    if isinstance(support, gu.PointCloud):
-        sampling_support = gu.PointCloud(support.gdf.reset_index(drop=True), data_column=support.data_name)
+    raster = _get_raster_interface(support)
+    points = _get_pointcloud_interface(support) if raster is None else None
+    sampling_support = raster if raster is not None else points
+    if points is not None:
+        if points._is_xr:
+            dimension = next(iter(points._dataset.dims))
+            dataset = points._dataset.assign_coords({dimension: np.arange(points.point_count)})
+        else:
+            dataset = points._dataset.reset_index(drop=True)
+        sampling_support = _get_pointcloud_interface(points._cast_pointcloud_output(dataset))
 
     # Select observations and predictors with the same mask
+    assert sampling_support is not None
     sampled = sampling_support.cosample(
         sampling_support, auxiliary=predictors, auxiliary_at="self", mask=area, align="reproject", subsample=1
     )
 
     # Return coordinates and predictors in observation order
-    if isinstance(sampled, gu.Raster):
-        mask = ~np.ma.getmaskarray(sampled.data[0])
-        coordinates = sampled.ij2xy(*np.where(mask))
-        values = {name: sampled.data[index + 2][mask].data for index, name in enumerate(predictors or {})}
+    sampled_raster = _get_raster_interface(sampled)
+    if sampled_raster is not None:
+        array = sampled_raster.to_nanarray()
+        mask = np.isfinite(array[0])
+        coordinates = sampled_raster.ij2xy(*np.where(mask))
+        values = {name: array[index + 2][mask] for index, name in enumerate(predictors or {})}
     else:
         # Match the mask to the original observation order
-        mask = np.zeros(len(support.gdf), dtype=bool)
-        mask[sampled.ds.index.to_numpy()] = True
-        coordinates = (sampled.ds.geometry.x.to_numpy(), sampled.ds.geometry.y.to_numpy())
-        values = {name: sampled.ds[name].to_numpy() for name in predictors or {}}
+        selected = _get_pointcloud_interface(sampled)
+        assert selected is not None and points is not None
+        dataset = selected._dataset
+        indexes = dataset.get_index(next(iter(dataset.dims))) if selected._is_xr else dataset.index
+        mask = np.zeros(points.point_count, dtype=bool)
+        mask[indexes.to_numpy()] = True
+        coordinates = selected.to_xyz()[:2]
+        values = {name: np.asarray(selected._get_column_values(name)) for name in predictors or {}}
     return np.column_stack(coordinates), mask, values
 
 
@@ -975,7 +994,7 @@ def patches_method(
 
 
 def _propagate_areas(
-    source: gu.Raster | gu.PointCloud,
+    source: RasterLike | PointCloudLike,
     *,
     areas: Mapping[Hashable, Any],
     error_structure: gu.ErrorStructure,
@@ -990,13 +1009,17 @@ def _propagate_areas(
     # 1/ Check inputs
     if statistic not in {"mean", "integral"}:
         raise ValueError("statistic must be 'mean' or 'integral'.")
-    if isinstance(source, gu.PointCloud) and statistic == "integral" and weights is None:
+    raster = _get_raster_interface(source)
+    points = _get_pointcloud_interface(source) if raster is None else None
+    source_interface = raster if raster is not None else points
+    assert source_interface is not None
+    if points is not None and statistic == "integral" and weights is None:
         raise ValueError("A point cloud integral requires explicit point area weights.")
-    values = _numeric_values(source).reshape(-1)
+    values = _numeric_values(source_interface).reshape(-1)
     area_weights = (
         np.ones(values.size)
         if weights is None
-        else np.broadcast_to(_numeric_values(weights), source.data.shape).reshape(-1)
+        else np.broadcast_to(_numeric_values(weights), source_interface.data.shape).reshape(-1)
     )
     if np.any(~np.isfinite(area_weights)) or np.any(area_weights < 0):
         raise ValueError("Area weights must be finite and nonnegative.")
@@ -1004,7 +1027,7 @@ def _propagate_areas(
     # 2/ Select observations and weights for each area
     targets = []
     for area in areas.values():
-        coordinates, mask, _ = _area_support(area, source, None)
+        coordinates, mask, _ = _area_support(area, source_interface, None)
         positions = np.flatnonzero(mask)
         coefficients = area_weights[positions].copy()
         if coefficients.sum() <= 0:
@@ -1013,8 +1036,8 @@ def _propagate_areas(
         # Normalize mean weights or apply pixel areas for raster integrals
         if statistic == "mean":
             coefficients /= coefficients.sum()
-        elif isinstance(source, gu.Raster):
-            coefficients *= abs(source.transform.determinant)
+        elif raster is not None:
+            coefficients *= abs(raster.transform.determinant)
 
         # Store selected observations with their weights and original indexes
         targets.append(
@@ -1048,7 +1071,7 @@ def _propagate_areas(
         )
 
     # 4/ Propagate area uncertainty analytically
-    aligned = _spatial_predictors(source, predictors, size=values.size)
+    aligned = _spatial_predictors(source_interface, predictors, size=values.size)
     by_id = {name: dict(enumerate(value)) if np.ndim(value) else value for name, value in (aligned or {}).items()}
     summary = gu.uncertainty.propagate(
         operator,
