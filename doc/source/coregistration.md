@@ -178,6 +178,9 @@ translation iteratively by solving a cosine equation between the terrain slope, 
 The iteration stops if it reaches the maximum number of iteration limit, or if the iterative shift amplitude falls
 below a specified tolerance.
 
+Terrain slopes at or below 1° are excluded by default because dividing elevation differences by a near-zero
+slope amplifies errors. Set `NuthKaab(min_slope=...)` to change this threshold in degrees. 
+
 ```{code-cell} ipython3
 :tags: [hide-cell]
 :mystnb:
@@ -421,6 +424,23 @@ Iterative closest point (ICP) coregistration is an iterative point cloud registr
 It aims at iteratively minimizing the distance between closest neighbours by applying sequential rigid transformations. For point-to-point, the 3D distance is used for the minimization while, for point-to-plane, the 3D distance projected on the plane normals is used instead. If DEMs are used as inputs, they are converted to point clouds.
 As for Nuth and Kääb (2011), the iteration stops if it reaches the maximum number of iteration limit or if the iterative transformation amplitude falls below a specified tolerance.
 
+ICP and CPD offer three sampling strategies through `sampling_strategy`:
+
+- `"nearest_xy"` (default) samples target X/Y coordinates, then selects the nearest valid original observations
+  from the other input. A point cloud defines the target when paired with a raster. For two rasters or two point
+  clouds, the reference defines the target. The subsample size limits target locations. Several targets may select
+  the same observation from the other input.
+- `"same_xy"` samples common X/Y coordinates and interpolates raster elevations there. It requires at least one raster.
+- `"independent"` samples each input separately.
+
+ICP and CPD use a fixed point sample by default (`iterative_sampling=False`). Set `iterative_sampling=True`
+to update the moving input and select the point samples again after each optimization step, using the chosen
+`sampling_strategy`. The same random state is used for each sample. `max_iterations` counts the total optimization
+steps with either setting.
+The default preserves original coordinates and elevations, avoiding interpolation errors during sampling.
+For larger offsets, try `"independent"` or supply an `initial_shift` estimate. Interpolation in `"same_xy"`
+can be useful for irregular point locations. Repeating the sampling can also change the selected observations
+before the fit has converged, particularly for CPD on smooth terrain.
 
 ```{code-cell} ipython3
 # Define a coregistration based on ICP

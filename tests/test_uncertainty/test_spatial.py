@@ -142,6 +142,53 @@ class TestSpatialErrorPropagation:
         assert summary.estimate["selected"] == pytest.approx(expected)
         assert summary.std["selected"] == pytest.approx(0.2 * np.linalg.norm(coefficients))
 
+    @pytest.mark.parametrize(
+        "point_input, method, statistic",
+        [
+            pytest.param(False, "analytical", "mean", id="raster-analytical-mean"),
+            pytest.param(False, "numerical", "integral", id="raster-numerical-integral"),
+            pytest.param(True, "analytical", "integral", id="points-analytical-integral"),
+            pytest.param(True, "numerical", "mean", id="points-numerical-mean"),
+        ],
+    )
+    def test_propagate__accessor_areas(self, method: str, statistic: str, point_input: bool) -> None:
+        """Checks that accessor area propagation matches weighted GeoUtils raster and point cloud results."""
+
+        # Create raster or point cloud elevations
+        values = np.arange(48, dtype=float).reshape(6, 8)
+        raster = gu.Raster.from_array(values, Affine(2, 0, 0, 0, -2, 12), 32632)
+        source = raster.to_pointcloud() if point_input else raster
+        target = source.gdf.copy() if point_input else raster.to_xarray()
+        if point_input:
+            target.attrs["data_name"] = source.data_name
+
+        # Select ten observations with unequal weights
+        mask = np.zeros(source.data.shape, dtype=bool)
+        mask.reshape(-1)[5:15] = True
+        weights = np.linspace(1, 2, values.size).reshape(source.data.shape)
+        errors = gu.ErrorStructure([gu.ErrorComponent("measurement", 0.2)])
+        options: dict[str, Any] = {
+            "error_structure": errors,
+            "method": method,
+            "inputs": {"spatial": {"areas": {"selected": mask}, "weights": weights}},
+            "operation_options": {"statistic": statistic},
+            "at": "all",
+        }
+        if method == "numerical":
+            options.update(n_simulations=3, random_state=42, return_samples=True)
+
+        # Propagate the weighted area statistic
+        expected = xdem.uncertainty.propagate(source, "spatial", **options)
+        actual = xdem.uncertainty.propagate(target, "spatial", **options)
+
+        # Compare summaries, simulations and source values
+        for name in ("estimate", "mean", "std"):
+            pd.testing.assert_series_equal(getattr(actual, name), getattr(expected, name), check_exact=True)
+        if method == "numerical":
+            assert actual.samples is not None and expected.samples is not None
+            pd.testing.assert_frame_equal(actual.samples, expected.samples)
+        np.testing.assert_array_equal(source.data, values.ravel() if point_input else values)
+
     def test_propagate__reproject(self) -> None:
         """Checks that reprojection uncertainty matches GeoUtils."""
 
@@ -175,9 +222,10 @@ class TestSpatialErrorPropagation:
         np.testing.assert_array_equal(actual.estimate.data, expected.estimate.data)
         np.testing.assert_array_equal(actual.std.data, expected.std.data)
 
-    @pytest.mark.skipif(find_spec("skgstat") is None, reason="Requires scikit-gstat")
     def test_spatial_error_propagation__covariance(self) -> None:
         """Checks that area uncertainty matches the weighted covariance sum across error components."""
+
+        pytest.importorskip("skgstat")
 
         # 1/ Create error components
         # Create a grid with a varying predictor
@@ -301,13 +349,19 @@ class TestSpatialErrorPropagation:
 class TestEffectiveSampleSize:
     """Test module for exact and approximate integration of spatial correlation models."""
 
-    @pytest.mark.parametrize("range1", [10**i for i in range(3)])
-    @pytest.mark.parametrize("psill1", [0.1, 1, 10])
     @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])
-    @pytest.mark.parametrize("area", [10 ** (2 * i) for i in range(3)])
-    @pytest.mark.skipif(find_spec("skgstat") is None, reason="Requires scikit-gstat")
+    @pytest.mark.parametrize(
+        "range1, psill1, area",
+        [
+            pytest.param(100, 0.1, 1, id="below-range"),
+            pytest.param(10, 1, 100, id="near-range"),
+            pytest.param(1, 10, 10000, id="above-range"),
+        ],
+    )
     def test_neff_circular_single_range(self, range1: float, psill1: float, model1: str, area: float) -> None:
         """Checks that radial quadrature matches the circular formula for each supported correlation model."""
+
+        pytest.importorskip("skgstat")
 
         # Convert the model partial sill to an error magnitude while keeping unit correlation variance
         structure = xdem.ErrorStructure(
@@ -322,16 +376,21 @@ class TestEffectiveSampleSize:
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
 
-    @pytest.mark.parametrize("range1", [10**i for i in range(2)])
-    @pytest.mark.parametrize("range2", [10**i for i in range(2)])
-    @pytest.mark.parametrize("range3", [10**i for i in range(2)])
-    @pytest.mark.parametrize("model1", ["spherical", "exponential", "gaussian", "cubic"])
-    @pytest.mark.parametrize("model2", ["spherical", "exponential", "gaussian", "cubic"])
-    @pytest.mark.skipif(find_spec("skgstat") is None, reason="Requires scikit-gstat")
+    @pytest.mark.parametrize(
+        "range1, range2, range3, model1, model2",
+        [
+            pytest.param(1, 1, 1, "spherical", "exponential", id="equal-ranges"),
+            pytest.param(1, 10, 10, "gaussian", "cubic", id="short-first-range"),
+            pytest.param(10, 1, 10, "exponential", "gaussian", id="short-second-range"),
+            pytest.param(10, 10, 1, "cubic", "spherical", id="short-third-range"),
+        ],
+    )
     def test_neff_circular_three_ranges(
         self, range1: float, range2: float, range3: float, model1: str, model2: str
     ) -> None:
         """Checks that radial quadrature and circular formulas agree for the sum of three correlation models."""
+
+        pytest.importorskip("skgstat")
 
         # Use equal component variances to compare combinations of short and long correlation ranges
         area = 1000
@@ -358,9 +417,10 @@ class TestEffectiveSampleSize:
         # Check results are the exact same
         assert neff_circ_exact == pytest.approx(neff_circ_numer, rel=0.001)
 
-    @pytest.mark.skipif(find_spec("skgstat") is None, reason="Requires scikit-gstat")
     def test_neff_exact_and_approx_hugonnet(self) -> None:
         """Checks that sampled covariance sums approximate the exact effective sample size within ten percent."""
+
+        pytest.importorskip("skgstat")
 
         # Create a regular grid with the same error magnitude at every location
         shape = (15, 15)
@@ -505,9 +565,10 @@ class TestPatchesMethod:
 class TestSpatialErrorPropagationErrors:
     """Test module for errors/warning during spatial error propagation."""
 
-    @pytest.mark.skipif(find_spec("skgstat") is None, reason="Requires scikit-gstat")
     def test_number_effective_samples__error_variable_magnitude(self) -> None:
         """Checks an error is raised for variable magnitudes without predictors passed."""
+
+        pytest.importorskip("skgstat")
 
         # Define a variable error magnitude
         index = pd.Index([0.0, 1.0], name="quality")

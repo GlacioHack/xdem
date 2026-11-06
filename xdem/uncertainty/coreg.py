@@ -20,13 +20,20 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, fields
 from typing import Any, Literal
 
 import geoutils as gu
 import numpy as np
 import pandas as pd
+from geoutils._dispatch import (
+    _get_pointcloud_interface,
+    _get_raster_interface,
+    is_dask_array,
+)
 from geoutils._misc import import_optional
+from geoutils.multiproc import MultiprocConfig, map_overlap
 from geoutils.uncertainty import PropagationSummary as GeoUtilsPropagationSummary
 from geoutils.uncertainty.predictors import _spatial_predictors
 from geoutils.uncertainty.propagation import simulate
@@ -37,7 +44,11 @@ from scipy.stats import chi2, norm
 
 from xdem.coreg import Coreg
 from xdem.coreg.affine import ICP, LZD, _coreg_error_inputs
-from xdem.coreg.base import _as_eager_elevation, translations_rotations_from_matrix
+from xdem.coreg.base import (
+    _as_coreg_elevation,
+    _check_coreg_input_families,
+    translations_rotations_from_matrix,
+)
 from xdem.uncertainty.propagation import _select_outputs
 
 
@@ -145,6 +156,75 @@ class PropagationSummary(GeoUtilsPropagationSummary):  # type: ignore[misc]
             axis.set_ylabel(f"{title} ({unit})")
             axis.legend()
         return translation_axis, rotation_axis
+
+
+def _add_coreg_error_block(source: gu.Raster, error: gu.Raster) -> gu.Raster:
+    """Add error values to a raster tile."""
+
+    error_tile = error.crop(source, inplace=False)
+    return source.copy(new_array=source.data + error_tile.data)
+
+
+def _fill_coreg_predictor_block(raster: gu.Raster, fill_value: float) -> gu.Raster:
+    """Replace missing predictor values within one raster tile."""
+
+    values = np.ma.asarray(raster.data, dtype=float).filled(np.nan)
+    return raster.copy(new_array=np.where(np.isfinite(values), values, fill_value))
+
+
+def _prepare_coreg_simulation_raster(
+    source: Any,
+    predictors: Mapping[str, Any],
+    mp_config: MultiprocConfig | None,
+    temporary_files: ExitStack,
+) -> tuple[Any, dict[str, Any]]:
+    """
+    Mask elevations with missing predictors and prepare finite predictor rasters for numerical error draws.
+
+    cosample() selects the same finite cells for every fit. Each predictor's minimum supplies a finite value
+    outside those cells because random field generation validates magnitudes over the complete grid.
+    Dask arrays stay lazy, and multiprocessing reads and writes raster tiles.
+    """
+
+    # Use scalar predictors directly
+    scalar_predictors = {name: value for name, value in predictors.items() if np.isscalar(value)}
+    if any(not np.isfinite(value) for value in scalar_predictors.values()):
+        raise ValueError("Input has no finite elevations and error predictors.")
+    raster_predictors = {name: value for name, value in predictors.items() if name not in scalar_predictors}
+    if not raster_predictors:
+        return source, scalar_predictors
+
+    # Exclude elevations with missing predictors
+    sampling_config = temporary_files.enter_context(mp_config.temporary()) if mp_config is not None else None
+    sampled = source.cosample(
+        source, auxiliary=raster_predictors, auxiliary_at="self", at="self", mp_config=sampling_config
+    )
+    if mp_config is None:
+        source = _get_raster_interface(sampled.isel(band=0, drop=True))
+    else:
+        source = gu.Raster(sampled.name, bands=1)
+
+    # Fill predictor copies outside the fit sample
+    prepared = dict(scalar_predictors)
+    for index, name in enumerate(raster_predictors):
+        predictor = (
+            _get_raster_interface(sampled.isel(band=index + 2, drop=True))
+            if mp_config is None
+            else gu.Raster(sampled.name, bands=index + 3)
+        )
+        fill_value = predictor.stats("min", mp_config=mp_config)
+        if not np.isfinite(fill_value):
+            raise ValueError("Input has no finite elevations and error predictors.")
+        if mp_config is None:
+            import_optional("dask")
+            import dask.array as da
+
+            values = da.ma.filled(predictor.data, np.nan)
+            prepared[name] = predictor.copy(new_array=da.where(da.isfinite(values), values, fill_value))
+        else:
+            output_config = temporary_files.enter_context(mp_config.temporary())
+            prepared[name] = map_overlap(_fill_coreg_predictor_block, predictor, output_config, fill_value)
+    return source, prepared
 
 
 def _parameter_covariance(summary: PropagationSummary, coverage: float) -> pd.DataFrame:
@@ -410,6 +490,7 @@ def propagate_uncertainty_coreg(
     random_state: int | np.random.Generator | None = None,
     fit_kwargs: Mapping[str, Any] | None = None,
     return_coregs: bool = False,
+    mp_config: MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> PropagationSummary:
     """
@@ -430,12 +511,15 @@ def propagate_uncertainty_coreg(
     :param random_state: Seed controlling error draws and the fixed fit sample.
     :param fit_kwargs: Additional arguments passed unchanged to fit().
     :param return_coregs: Store each successful numerical fit as a Coreg, including its fit metadata.
+    :param mp_config: Worker and tile settings for fitting and numerical error fields.
     :param kwargs: GeoUtils simulation options, including n_simulations, at, return_samples and quantiles.
         random_field_options passes options to generate_random_field(), which approximates correlated fields by
         default.
 
     :returns: A propagation summary with six labelled parameters and optional fitted Coregs.
     """
+
+    _check_coreg_input_families(reference_elev, to_be_aligned_elev, inlier_mask, error_predictors, mp_config=mp_config)
 
     # 1/ Check inputs
     if method not in {"analytical", "numerical"}:
@@ -450,178 +534,210 @@ def propagate_uncertainty_coreg(
     if "error_applied_to" in kwargs or "predictors" in kwargs:
         raise TypeError("Use error_structure and error_predictors mappings keyed by 'ref' and 'tba'.")
 
-    # 2/ Prepare elevations and fitting options
-    reference = _as_eager_elevation(reference_elev)
-    aligned = _as_eager_elevation(to_be_aligned_elev)
-    options = dict(fit_kwargs or {})
-    options.update(inlier_mask=inlier_mask, weights=weights)
-    if subsample is not None:
-        options["subsample"] = subsample
-    # Resolve terrain predictors separately on each uncertain DEM
-    from xdem import terrain
+    with ExitStack() as input_files:
+        # 2/ Prepare elevations and fitting options
+        reference = _as_coreg_elevation(reference_elev)
+        aligned = _as_coreg_elevation(to_be_aligned_elev)
+        options = dict(fit_kwargs or {})
+        if mp_config is not None:
+            options["mp_config"] = mp_config
+        options.update(inlier_mask=inlier_mask, weights=weights)
+        if subsample is not None:
+            options["subsample"] = subsample
+        # Resolve terrain predictors separately on each uncertain DEM
+        from xdem import terrain
 
-    sources = {"ref": reference, "tba": aligned}
-    resolved = {}
-    for name, values in predictor_inputs.items():
-        resolved[name] = {
-            key: (
-                terrain.get_terrain_attribute(sources[name], value)
-                if isinstance(value, str)
-                and isinstance(sources[name], gu.Raster)
-                and value in terrain.available_attributes
-                else value
-            )
-            for key, value in values.items()
-        }
-
-    if method == "analytical":
-        # Fit with the error models and filter missing predictors during co-sampling
-        legacy_errors = any(key in options for key in ("sig_ref", "sig_tba", "corr_ref", "corr_tba"))
-        if isinstance(coreg_method, (LZD, ICP)) and not legacy_errors:
-            options.update(error_structure=models, error_predictors=resolved)
-        if isinstance(coreg_method, ICP) and reference.crs != aligned.crs:
-            raise ValueError("Analytical ICP requires inputs in the same CRS.")
-    else:
-        # Select the same finite observations for the unperturbed fit and every numerical draw
-        draw_predictors = {}
-        for name, values in resolved.items():
-            source = sources[name]
-            aligned_values = _spatial_predictors(source, values, size=source.data.size)
-            assert aligned_values is not None
-            valid = np.isfinite(np.ma.asarray(source.data, dtype=float).filled(np.nan)).reshape(-1)
-            for value in aligned_values.values():
-                valid &= np.isfinite(value)
-            if not np.any(valid):
-                raise ValueError(f"Input {name!r} has no finite elevations and error predictors.")
-
-            # Fill masked values to pass input checks
-            # The elevation mask excludes these cells from fitting
-            draw_predictors[name] = {
-                key: value if np.isscalar(value) else np.where(valid, value, value[valid][0])
-                for key, value in aligned_values.items()
+        sources = {"ref": reference, "tba": aligned}
+        resolved = {}
+        for name, values in predictor_inputs.items():
+            resolved[name] = {
+                key: (
+                    terrain.get_terrain_attribute(sources[name], value, mp_config=mp_config)
+                    if isinstance(value, str)
+                    and _get_raster_interface(sources[name]) is not None
+                    and value in terrain.available_attributes
+                    else value
+                )
+                for key, value in values.items()
             }
 
+        if method == "analytical":
+            # Fit with the error models and filter missing predictors during co-sampling
+            legacy_errors = any(key in options for key in ("sig_ref", "sig_tba", "corr_ref", "corr_tba"))
+            if isinstance(coreg_method, (LZD, ICP)) and not legacy_errors:
+                options.update(error_structure=models, error_predictors=resolved)
+            if isinstance(coreg_method, ICP) and reference.crs != aligned.crs:
+                raise ValueError("Analytical ICP requires inputs in the same CRS.")
+        else:
+            # Select the same finite observations for the unperturbed fit and every numerical draw
+            draw_predictors = {}
             # GLS/TLS filters predictors during co-sampling without changing elevation gradients
-            if options.get("error_structure") is None:
-                sources[name] = source.copy(
-                    new_array=np.ma.masked_where(~valid.reshape(source.data.shape), source.data)
-                )
-        reference, aligned = sources["ref"], sources["tba"]
+            mask_elevations = options.get("error_structure") is None
+            for name, values in resolved.items():
+                source = sources[name]
+                raster = _get_raster_interface(source)
+                if raster is not None and (mp_config is not None or is_dask_array(raster.data)):
+                    prepared_source, draw_predictors[name] = _prepare_coreg_simulation_raster(
+                        source, values, mp_config, input_files
+                    )
+                    if mask_elevations:
+                        sources[name] = prepared_source
+                    continue
+                aligned_values = _spatial_predictors(source, values, size=source.data.size)
+                assert aligned_values is not None
+                valid = np.isfinite(np.ma.asarray(source.data, dtype=float).filled(np.nan)).reshape(-1)
+                for value in aligned_values.values():
+                    valid &= np.isfinite(value)
+                if not np.any(valid):
+                    raise ValueError(f"Input {name!r} has no finite elevations and error predictors.")
 
-    operation_seed = int(np.random.default_rng(random_state).integers(0, 2**32))
+                # Fill masked values to pass input checks
+                # The elevation mask excludes these cells from fitting
+                draw_predictors[name] = {
+                    key: value if np.isscalar(value) else np.where(valid, value, np.min(value[valid]))
+                    for key, value in aligned_values.items()
+                }
+                if mask_elevations:
+                    prepared_source = source.copy(
+                        new_array=np.ma.masked_where(~valid.reshape(source.data.shape), source.data)
+                    )
+                    sources[name] = (
+                        _get_raster_interface(prepared_source)
+                        if raster is not None
+                        else _get_pointcloud_interface(prepared_source)
+                    )
+            reference, aligned = sources["ref"], sources["tba"]
 
-    def fit(ref: Any, tba: Any) -> Coreg:
-        """We fit a copy using the same observation sample for every realization."""
+        operation_seed = int(np.random.default_rng(random_state).integers(0, 2**32))
 
-        return coreg_method.copy().fit(ref, tba, random_state=operation_seed, **options)
+        def fit(ref: Any, tba: Any) -> Coreg:
+            """We fit a copy using the same observation sample for every realization."""
 
-    # 3/ Fit unperturbed inputs for the output "estimate" (base output value of PropagationSummary)
-    original = fit(reference, aligned)
+            return coreg_method.copy().fit(ref, tba, random_state=operation_seed, **options)
 
-    # 4/ Extract transformation parameters and metadata
-    centroid = getattr(original, "centroid", lambda: None)()
-    center = np.zeros(3) if centroid is None else np.asarray(centroid)
-    labels = pd.Index(["tx", "ty", "tz", "rx", "ry", "rz"])
+        # 3/ Fit unperturbed inputs for the output "estimate" (base output value of PropagationSummary)
+        original = fit(reference, aligned)
 
-    def parameters(fitted: Coreg) -> pd.Series:
-        """Read matrix parameters, and correct to original centroid."""
+        # 4/ Extract transformation parameters and metadata
+        centroid = getattr(original, "centroid", lambda: None)()
+        center = np.zeros(3) if centroid is None else np.asarray(centroid)
+        labels = pd.Index(["tx", "ty", "tz", "rx", "ry", "rz"])
 
-        matrix = fitted.to_matrix().copy()
-        fitted_centroid = getattr(fitted, "centroid", lambda: None)()
-        fitted_center = np.zeros(3) if fitted_centroid is None else np.asarray(fitted_centroid)
-        matrix[:3, 3] += (np.eye(3) - matrix[:3, :3]) @ (fitted_center - center)
-        return pd.Series(
-            translations_rotations_from_matrix(matrix, return_degrees=False),
-            index=labels,
-        )
+        def parameters(fitted: Coreg) -> pd.Series:
+            """Read matrix parameters, and correct to original centroid."""
 
-    estimate = parameters(original)
-    # Read coordinate units from either Rasterio or PyProj CRS objects
-    crs = None if reference.crs is None else CRS.from_user_input(reference.crs)
-    translation_units = crs.axis_info[0].unit_name if crs is not None and crs.is_projected else "coordinate units"
-    output = {
-        "centroid": centroid,
-        "crs": reference.crs,
-        "translation_units": translation_units,
-        "rotation_units": "radian",
-    }
-
-    # 5/ Return analytical uncertainty
-    if method == "analytical":
-        if isinstance(original, ICP):
-            covariance = original.meta["outputs"]["fitorbin"]["fit_pcov"]
-            output["parameter_covariance"] = pd.DataFrame(covariance, index=labels, columns=labels)
-            output["fixed_correspondences"] = True
-        elif not isinstance(original, LZD) or "fit_perr" not in original.meta["outputs"].get("fitorbin", {}):
-            raise ValueError("Analytical coregistration uncertainty requires an LZD fit with GLS/TLS uncertainties.")
-        if isinstance(original, LZD) and "fit_pcov" in original.meta["outputs"]["fitorbin"]:
-            native_covariance = original.meta["outputs"]["fitorbin"]["fit_pcov"]
-            covariance = np.zeros((6, 6))
-            covariance[: len(native_covariance), : len(native_covariance)] = native_covariance
-            output["parameter_covariance"] = pd.DataFrame(covariance, index=labels, columns=labels)
-        standard_errors = np.zeros(6)
-        errors = original.meta["outputs"]["fitorbin"]["fit_perr"]
-        standard_errors[: len(errors)] = errors
-        return PropagationSummary(
-            estimate=estimate,
-            mean=estimate.copy(),
-            std=pd.Series(standard_errors, index=labels),
-            error_structure=error_structure,
-            method="analytical",
-            output=output,
-            selection=_select_outputs(estimate, kwargs.pop("at", None)),
-        )
-
-    # 6/ Simulate numerical uncertainty
-    fitted_coregs: list[Coreg] | None = [] if return_coregs else None
-
-    def calculate(values: Mapping[str, Any]) -> pd.Series:
-        """Refit the perturbed inputs and extract the six native parameters."""
-
-        fitted = fit(values.get("ref", reference), values.get("tba", aligned))
-        result = parameters(fitted)
-
-        # Save fits that GeoUtils includes in its parameter summaries
-        if fitted_coregs is not None and np.any(np.isfinite(result.to_numpy())):
-            fitted_coregs.append(fitted)
-        return result
-
-    field_options = dict(kwargs.pop("random_field_options", {}) or {})
-
-    def draw_error(generator: np.random.Generator) -> dict[str, Any]:
-        """Draw independent native fields for the named elevation inputs."""
-
-        values = {}
-        for name, model in models.items():
-            source = sources[name]
-            error = model.generate_random_field(
-                like=source, predictors=draw_predictors.get(name), random_state=generator, **field_options
+            matrix = fitted.to_matrix().copy()
+            fitted_centroid = getattr(fitted, "centroid", lambda: None)()
+            fitted_center = np.zeros(3) if fitted_centroid is None else np.asarray(fitted_centroid)
+            matrix[:3, 3] += (np.eye(3) - matrix[:3, :3]) @ (fitted_center - center)
+            return pd.Series(
+                translations_rotations_from_matrix(matrix, return_degrees=False),
+                index=labels,
             )
-            values[name] = source.copy(new_array=source.data + error.data)
-        return values
 
-    selection = _select_outputs(estimate, kwargs.pop("at", None))
-    if (kwargs.get("return_samples", False) or kwargs.get("quantiles")) and selection.empty:
-        raise ValueError("Select outputs with at when requesting samples or quantiles.")
-    kwargs.setdefault("on_error", "warn")
-    kwargs.setdefault("n_simulations", 100)
-    summary = simulate(
-        estimate=estimate,
-        draw_error=draw_error,
-        calculate=calculate,
-        error_structure=error_structure,
-        selection=selection,
-        random_state=random_state,
-        output=output,
-        **kwargs,
-    )
+        estimate = parameters(original)
+        # Read coordinate units from either Rasterio or PyProj CRS objects
+        crs = None if reference.crs is None else CRS.from_user_input(reference.crs)
+        translation_units = crs.axis_info[0].unit_name if crs is not None and crs.is_projected else "coordinate units"
+        output = {
+            "centroid": centroid,
+            "crs": reference.crs,
+            "translation_units": translation_units,
+            "rotation_units": "radian",
+        }
 
-    # Match saved fits to successful simulation numbers, including gaps after failed draws
-    stored_coregs = None
-    if fitted_coregs is not None:
-        assert summary.n_simulations is not None
-        numbers = [number for number in range(1, summary.n_simulations + 1) if number not in summary.failures]
-        stored_coregs = dict(zip(numbers, fitted_coregs, strict=True))
-    return PropagationSummary(
-        **{item.name: getattr(summary, item.name) for item in fields(summary)}, coregs=stored_coregs
-    )
+        # 5/ Return analytical uncertainty
+        if method == "analytical":
+            if isinstance(original, ICP):
+                covariance = original.meta["outputs"]["fitorbin"]["fit_pcov"]
+                output["parameter_covariance"] = pd.DataFrame(covariance, index=labels, columns=labels)
+                output["fixed_correspondences"] = True
+            elif not isinstance(original, LZD) or "fit_perr" not in original.meta["outputs"].get("fitorbin", {}):
+                raise ValueError(
+                    "Analytical coregistration uncertainty requires an LZD fit with GLS/TLS uncertainties."
+                )
+            if isinstance(original, LZD) and "fit_pcov" in original.meta["outputs"]["fitorbin"]:
+                native_covariance = original.meta["outputs"]["fitorbin"]["fit_pcov"]
+                covariance = np.zeros((6, 6))
+                covariance[: len(native_covariance), : len(native_covariance)] = native_covariance
+                output["parameter_covariance"] = pd.DataFrame(covariance, index=labels, columns=labels)
+            standard_errors = np.zeros(6)
+            errors = original.meta["outputs"]["fitorbin"]["fit_perr"]
+            standard_errors[: len(errors)] = errors
+            return PropagationSummary(
+                estimate=estimate,
+                mean=estimate.copy(),
+                std=pd.Series(standard_errors, index=labels),
+                error_structure=error_structure,
+                method="analytical",
+                output=output,
+                selection=_select_outputs(estimate, kwargs.pop("at", None)),
+            )
+
+        # 6/ Simulate numerical uncertainty
+        fitted_coregs: list[Coreg] | None = [] if return_coregs else None
+
+        def calculate(values: Mapping[str, Any]) -> pd.Series:
+            """Refit the perturbed inputs and extract the six native parameters."""
+
+            fitted = fit(values.get("ref", reference), values.get("tba", aligned))
+            result = parameters(fitted)
+
+            # Save fits that GeoUtils includes in its parameter summaries
+            if fitted_coregs is not None and np.any(np.isfinite(result.to_numpy())):
+                fitted_coregs.append(fitted)
+            return result
+
+        field_options = dict(kwargs.pop("random_field_options", {}) or {})
+
+        def draw_error(generator: np.random.Generator) -> dict[str, Any]:
+            """Draw independent native fields for the named elevation inputs."""
+
+            # Remove temporary files from the previous realization
+            temporary_files.close()
+            values = {}
+            for name, model in models.items():
+                source = sources[name]
+                config = temporary_files.enter_context(mp_config.temporary()) if mp_config is not None else None
+                error = model.generate_random_field(
+                    like=source,
+                    predictors=draw_predictors.get(name),
+                    random_state=generator,
+                    mp_config=config,
+                    **field_options,
+                )
+                if mp_config is not None and _get_raster_interface(source) is not None:
+                    output_config = temporary_files.enter_context(mp_config.temporary())
+                    values[name] = map_overlap(_add_coreg_error_block, source, output_config, error)
+                else:
+                    raster = _get_raster_interface(error)
+                    error = raster if raster is not None else _get_pointcloud_interface(error)
+                    values[name] = source.copy(new_array=source.data + error.data)
+            return values
+
+        selection = _select_outputs(estimate, kwargs.pop("at", None))
+        if (kwargs.get("return_samples", False) or kwargs.get("quantiles")) and selection.empty:
+            raise ValueError("Select outputs with at when requesting samples or quantiles.")
+        kwargs.setdefault("on_error", "warn")
+        kwargs.setdefault("n_simulations", 100)
+        with ExitStack() as temporary_files:
+            summary = simulate(
+                estimate=estimate,
+                draw_error=draw_error,
+                calculate=calculate,
+                error_structure=error_structure,
+                selection=selection,
+                random_state=random_state,
+                output=output,
+                **kwargs,
+            )
+
+        # Match saved fits to successful simulation numbers, including gaps after failed draws
+        stored_coregs = None
+        if fitted_coregs is not None:
+            assert summary.n_simulations is not None
+            numbers = [number for number in range(1, summary.n_simulations + 1) if number not in summary.failures]
+            stored_coregs = dict(zip(numbers, fitted_coregs, strict=True))
+        return PropagationSummary(
+            **{item.name: getattr(summary, item.name) for item in fields(summary)}, coregs=stored_coregs
+        )

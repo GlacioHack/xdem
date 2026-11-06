@@ -5,17 +5,21 @@ from __future__ import annotations
 import re
 import sys
 import warnings
+from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import pytest
+import rasterio as rio
 import scipy
 from geoutils import Raster, Vector
+from geoutils.multiproc import MultiprocConfig
 
 import xdem.terrain
-from xdem import examples
+from xdem import DEM, examples, open_dem
 from xdem.coreg import biascorr
 from xdem.fit import polynomial_2d, sumsin_1d
 
@@ -650,3 +654,239 @@ class TestBiasCorr:
         corrected_dem = tb.apply(bias_dem, bias_vars={"max_curvature": maxc})
         # Need to standardize by the synthetic bias spread to avoid huge/small values close to infinity
         assert np.nanvar((corrected_dem - self.ref) / np.nanstd(synthetic_bias)) < 0.01
+
+    @pytest.mark.parametrize("rotation", [0, 25])
+    @pytest.mark.parametrize("kind", ["deramp", "directional"])
+    def test_fit__coordinate_predictors(self, kind: str, rotation: float) -> None:
+        """Checks that sampled coordinate predictors match pixel indexes or GeoUtils along-track distances."""
+
+        # Create a small raster with a grid, rotated or not
+        values = np.arange(80.0, dtype=float).reshape(8, 10)
+        transform = rio.Affine.translation(0, 100) * rio.Affine.rotation(rotation) * rio.Affine.scale(2, -3)
+        reference = Raster.from_array(values, transform, 32632, area_or_point="Area")
+        estimator: biascorr.BiasCorr
+        if kind == "deramp":
+            estimator = biascorr.Deramp()
+            rows, columns = np.indices(reference.shape)
+            expected = {"xx": columns, "yy": rows}
+        else:
+            estimator = biascorr.DirectionalBias(angle=-37)
+            expected = {"angle": gu.raster.get_xy_rotated(reference, -37)[0]}
+
+        # Inspect predictors passed to the existing binning and fitting method
+        with patch.object(estimator, "_bin_or_and_fit_nd") as fitted:
+            estimator.fit(reference, reference + 2, random_state=42)
+
+        # Check equal coordinate calculation
+        actual = fitted.call_args.kwargs["bias_vars"]
+        assert set(actual) == set(expected)
+        for name in expected:
+            np.testing.assert_allclose(actual[name], expected[name].ravel(), rtol=0, atol=1e-12)
+
+
+@pytest.fixture
+def bias_dem_paths(tmp_path: Path, rotation: float, estimator: biascorr.BiasCorr) -> tuple[Path, ...]:
+    """Write curved DEMs and a masked predictor for bias correction comparisons."""
+
+    # Create curved terrain with NaNs and one empty tile
+    rows, columns = np.indices((20, 25))
+    values = (100 + 5 * np.sin(columns / 4) + 3 * np.cos(rows / 5)).astype("float32")
+    values[:7, :9] = np.nan
+    values[12, 15] = np.nan
+    # Slope requires square pixels
+    pixel_height = 2 if isinstance(estimator, biascorr.TerrainBias) else 3
+    raster = xdem.DEM.from_array(
+        values,
+        rio.Affine(2, 0, 500000, 0, -pixel_height, 7000000) * rio.Affine.rotation(rotation),
+        32632,
+        nodata=-9999,
+        area_or_point="Point",
+    )
+    reference = (raster + 0.02 * columns + 0.03 * rows).translate(-0.3, 0.2)
+    predictor = raster.copy(new_array=(columns + rows / 3).astype("float32"))
+    predictor.data[11, 14] = np.ma.masked
+
+    paths = tuple(tmp_path / f"input-{index}.tif" for index in range(3))
+    for elevation, path in zip((reference, raster, predictor), paths):
+        elevation.to_file(path)
+    return paths
+
+
+class TestBiasCorrChunked:
+    """Test module for bias correction with Dask and multiprocessing."""
+
+    @pytest.mark.parametrize(
+        "estimator, backend, rotation",
+        [
+            pytest.param(biascorr.BiasCorr(fit_func=xdem.fit.polynomial_1d), "dask", 0, id="fit-dask"),
+            pytest.param(
+                biascorr.BiasCorr(fit_or_bin="bin_and_fit", fit_func=xdem.fit.polynomial_1d, bin_sizes=5),
+                "mp",
+                0,
+                id="bin-fit-mp",
+            ),
+            pytest.param(biascorr.BiasCorr(fit_or_bin="bin", bin_sizes=5), "mp", 0, id="linear-mp"),
+            pytest.param(
+                biascorr.BiasCorr(fit_or_bin="bin", bin_sizes=5, bin_apply_method="per_bin"),
+                "dask",
+                0,
+                id="per-bin-dask",
+            ),
+            pytest.param(biascorr.Deramp(poly_order=2), "dask", 25, id="deramp-dask-rotated"),
+            pytest.param(biascorr.Deramp(poly_order=2), "mp", 0, id="deramp-mp"),
+            pytest.param(
+                biascorr.DirectionalBias(angle=30, fit_or_bin="bin", bin_sizes=5),
+                "mp",
+                25,
+                id="directional-mp-rotated",
+            ),
+            pytest.param(
+                biascorr.TerrainBias(terrain_attribute="elevation", fit_or_bin="bin", bin_sizes=5),
+                "dask",
+                0,
+                id="elevation-dask",
+            ),
+            pytest.param(
+                biascorr.TerrainBias(terrain_attribute="slope", fit_or_bin="bin", bin_sizes=5),
+                "dask",
+                0,
+                id="slope-dask",
+            ),
+            pytest.param(
+                biascorr.TerrainBias(terrain_attribute="slope", fit_or_bin="bin", bin_sizes=5),
+                "mp",
+                0,
+                id="slope-mp",
+            ),
+        ],
+    )
+    def test_fit_and_apply__chunk_invariance(
+        self,
+        backend: str,
+        estimator: biascorr.BiasCorr,
+        rotation: float,
+        bias_dem_paths: tuple[Path, ...],
+        tmp_path: Path,
+    ) -> None:
+        """Checks that bias correction with Dask/MP match in-memory results without loading elevations or predictors."""
+
+        from geoutils._dispatch import _get_raster_interface
+
+        from tests.test_coreg.test_base import assert_coreg_meta_equal
+
+        # 1/ Open inputs and prepare the bias predictor
+        reference, raster, predictor = (DEM(path, load_data=True) for path in bias_dem_paths)
+        bias_vars: dict[str, Any] | None = {"height": predictor} if estimator._needs_vars else None
+        options: dict[str, Any] = dict(subsample=80, random_state=42)
+        if bias_vars:
+            options["p0"] = [0, 1]
+
+        # 2/ Fit and apply the bias correction
+        expected = estimator.copy().fit(reference, raster, bias_vars=bias_vars, **options)
+        corrected = expected.apply(raster, bias_vars=bias_vars)
+
+        if backend == "dask":
+            # 2.1/ If using Dask
+            pytest.importorskip("dask")
+            chunks = ((6, 8), (7, 9), (6, 8))
+            inputs = [
+                open_dem(path, chunks={"y": rows, "x": columns}).dem
+                for path, (rows, columns) in zip(bias_dem_paths, chunks)
+            ]
+            first, source, variable = inputs
+            bias_vars = {"height": variable} if estimator._needs_vars else None
+            assert all(not value.is_loaded for value in inputs)
+            actual = estimator.copy().fit(first, source, bias_vars=bias_vars, **options)
+            output = actual.apply(source, bias_vars=bias_vars)
+            result = _get_raster_interface(output)
+            assert isinstance(output, type(source._obj)) and not result.is_loaded
+            values = output.compute().data
+            assert not result.is_loaded and all(not value.is_loaded for value in inputs)
+        else:
+            # 2.2/ If using MP
+            inputs = [DEM(path) for path in bias_dem_paths]
+            first, source, variable = inputs
+            config = MultiprocConfig(chunks=(6, 8), outfile=str(tmp_path / "output.tif"))
+            bias_vars = {"height": variable} if estimator._needs_vars else None
+            assert all(not value.is_loaded for value in inputs)
+            actual = estimator.copy().fit(first, source, bias_vars=bias_vars, mp_config=config, **options)
+            output = actual.apply(source, bias_vars=bias_vars, mp_config=config)
+            result = _get_raster_interface(output)
+            assert isinstance(output, DEM)
+            assert not result.is_loaded
+            values = result.to_nanarray()
+            assert all(not value.is_loaded for value in inputs)
+
+        # 3/ Check equality of fits, corrected values and metadata
+        assert actual.meta["outputs"]["random"]["subsample_final"] == 80
+        assert assert_coreg_meta_equal(actual.meta["outputs"], expected.meta["outputs"])
+        np.testing.assert_array_equal(values, corrected.to_nanarray())
+        assert (result.transform, result.crs, result.nodata, result.area_or_point) == (
+            raster.transform,
+            raster.crs,
+            raster.nodata,
+            raster.area_or_point,
+        )
+
+    @pytest.mark.parametrize(
+        "kind, band_axis",
+        [("array", False), ("array", True), ("predictor", False), ("predictor_array", False)],
+    )
+    def test_apply__chunk_invariance(self, kind: str, band_axis: bool) -> None:
+        """Checks that array and predictor corrections match in-memory values and preserve Dask laziness."""
+
+        pytest.importorskip("dask")
+
+        import dask.array as da
+
+        # 1/ Prepare a fitted correction and chunked inputs
+        estimator: biascorr.BiasCorr
+        source: Any
+        rows, columns = np.indices((12, 15))
+        values = (100 + np.sin(rows) + np.cos(columns)).astype("float32")
+        raster = Raster.from_array(values, rio.Affine(2, 0, 500000, 0, -2, 7000000), 32632)
+        if kind == "array":
+            estimator = biascorr.Deramp(poly_order=1).fit(raster + rows + columns / 2, raster)
+            # Use shorter final chunks, with or without a band axis
+            if band_axis:
+                values = values[np.newaxis]
+            source = da.from_array(values, chunks=(5, 7) if not band_axis else (1, 5, 7))
+            options = dict(transform=raster.transform, crs=raster.crs)
+            expected, expected_transform = estimator.apply(values, **options)
+            lazy_input = source
+        else:
+            estimator = biascorr.BiasCorr(fit_or_bin="bin", bin_sizes=4, bias_var_names=["height"])
+            estimator.fit(raster + 2, raster, bias_vars={"height": raster})
+            expected = estimator.apply(raster, bias_vars={"height": raster}).to_nanarray()
+            source = raster.to_xarray()
+            # Chunk a predictor with one missing value
+            predictor = source.copy(deep=True)
+            predictor.data[..., 1, 2] = np.nan
+            predictor = predictor.chunk({"y": 3, "x": 4})
+            expected[1, 2] = np.nan
+            expected_transform = raster.transform
+            lazy_input = predictor.data
+        graph = lazy_input.__dask_graph__()
+
+        # 2/ Apply to in-memory and Dask arrays
+        if kind == "array":
+            output, transform = estimator.apply(source, **options)
+            assert isinstance(output, da.Array) and output.shape == source.shape
+            computed = output.compute()
+            expected = expected.reshape(source.shape)
+        else:
+            output = estimator.apply(
+                source, bias_vars={"height": predictor.data if kind == "predictor_array" else predictor}
+            )
+            assert not output.rst.is_loaded
+            computed = output.compute().data.squeeze()
+            transform = output.rst.transform
+            np.testing.assert_array_equal(source.data.squeeze(), values)
+            assert not predictor.rst.is_loaded and not output.rst.is_loaded
+
+        # 3/ Check equality of values, shapes and transforms
+        np.testing.assert_array_equal(computed, expected)
+        assert transform == expected_transform
+        assert isinstance(lazy_input, da.Array) and lazy_input.__dask_graph__() is graph
+        if kind == "array":
+            assert isinstance(output, da.Array)

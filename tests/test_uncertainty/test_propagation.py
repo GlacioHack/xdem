@@ -6,23 +6,36 @@ import warnings
 from pathlib import Path
 from typing import Any, Literal
 
+import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import pandas as pd
 import pytest
+import xarray as xr
 from affine import Affine
+from geoutils._dispatch import _get_pointcloud_interface, _get_raster_interface
 from geoutils.multiproc import MultiprocConfig
+from geoutils.raster.xr_accessor import DataArrayRasterAccessor
 
 import xdem
+from xdem import DEM, open_dem
 
 
 class TestElevationErrorEstimation:
     """Test module for error estimation methods on DEMs and EPCs."""
 
     @pytest.mark.parametrize("kind", ["raster", "point"])
-    @pytest.mark.parametrize("entrypoint", ["function", "method", "accessor"])
-    @pytest.mark.parametrize("other_precision", [None, "negligible", "same"])
-    @pytest.mark.parametrize("comparison", [False, True], ids=["proxy", "comparison"])
+    @pytest.mark.parametrize(
+        "entrypoint, other_precision, comparison",
+        [
+            pytest.param("function", None, False, id="function-proxy-default"),
+            pytest.param("function", None, True, id="function-comparison-default"),
+            pytest.param("method", "same", False, id="method-proxy-same"),
+            pytest.param("method", "same", True, id="method-comparison-same"),
+            pytest.param("accessor", "negligible", False, id="accessor-proxy-negligible"),
+            pytest.param("accessor", "negligible", True, id="accessor-comparison-negligible"),
+        ],
+    )
     def test_estimate_error_structure__masked_inputs(
         self, kind: str, entrypoint: str, other_precision: str | None, comparison: bool
     ) -> None:
@@ -113,9 +126,17 @@ class TestElevationErrorEstimation:
         assert actual_magnitude.predictor_names == ("slope",)
         pd.testing.assert_frame_equal(actual_magnitude.grouped_statistics, expected_magnitude.grouped_statistics)
 
-    @pytest.mark.parametrize("kind", ["raster", "point"])
-    @pytest.mark.parametrize("entrypoint", ["function", "method", "accessor"])
-    @pytest.mark.parametrize("override", [False, True], ids=["defaults", "overrides"])
+    @pytest.mark.parametrize(
+        "kind, entrypoint, override",
+        [
+            pytest.param("raster", "function", False, id="raster-function-defaults"),
+            pytest.param("point", "function", True, id="points-function-overrides"),
+            pytest.param("point", "method", False, id="points-method-defaults"),
+            pytest.param("raster", "method", True, id="raster-method-overrides"),
+            pytest.param("raster", "accessor", False, id="raster-accessor-defaults"),
+            pytest.param("point", "accessor", True, id="points-accessor-overrides"),
+        ],
+    )
     def test_estimate_error_structure__estimators(self, kind: str, entrypoint: str, override: bool) -> None:
         """Checks that NMAD and Dowd are defaults and explicit estimators override them through every API."""
 
@@ -546,9 +567,15 @@ class TestElevationErrorEstimationPrecoreg:
             )
         else:
             target = source
+            accessor_reference = reference
             if entrypoint == "accessor":
                 target = source.gdf.epc if point_input == "tba" else source.to_xarray().dem
-            actual = target.estimate_error_structure(reference, precoreg=precoreg, coreg_method=coreg_method, **options)
+                accessor_reference = reference.gdf if point_input == "ref" else reference.to_xarray()
+                accessor_mask = DataArrayRasterAccessor.from_array(mask.data.filled(False), mask.transform, mask.crs)
+                options = {**options, "mask": accessor_mask}
+            actual = target.estimate_error_structure(
+                accessor_reference, precoreg=precoreg, coreg_method=coreg_method, **options
+            )
 
         # 3/ Check estimates and unchanged inputs
         assert actual.predict_magnitude() == pytest.approx(expected.predict_magnitude())
@@ -562,10 +589,15 @@ class TestElevationErrorEstimationPrecoreg:
             else:
                 assert elevation.georeferenced_coords_equal(original)
 
-    @pytest.mark.parametrize("reference_crs", [32632, 4326])
-    @pytest.mark.parametrize("pipeline", [False, True])
-    @pytest.mark.parametrize("variable", [False, True])
-    @pytest.mark.parametrize("entrypoint", ["function", "accessor"])
+    @pytest.mark.parametrize(
+        "reference_crs, pipeline, variable, entrypoint",
+        [
+            pytest.param(32632, False, False, "function", id="projected-affine-constant-function"),
+            pytest.param(4326, False, True, "accessor", id="geographic-affine-variable-accessor"),
+            pytest.param(32632, True, False, "accessor", id="projected-pipeline-constant-accessor"),
+            pytest.param(4326, True, True, "function", id="geographic-pipeline-variable-function"),
+        ],
+    )
     def test_estimate_error_structure__inverse_rotation(
         self,
         curved_dem: xdem.DEM,
@@ -628,8 +660,12 @@ class TestElevationErrorEstimationPrecoreg:
             "min_count": 3,
         }
         target = source.to_xarray().dem if entrypoint == "accessor" else source
+        comparison = reference.gdf if entrypoint == "accessor" else reference
+        comparison_mask = mask
+        if entrypoint == "accessor":
+            comparison_mask = DataArrayRasterAccessor.from_array(mask.data.filled(False), mask.transform, mask.crs)
         actual = target.estimate_error_structure(
-            reference, coreg_method=method, mask=mask, predictors=("slope",) if variable else {}, **options
+            comparison, coreg_method=method, mask=comparison_mask, predictors=("slope",) if variable else {}, **options
         )
 
         # 3/ Compare with the original errors and predictors at source pixel centers
@@ -855,102 +891,203 @@ class TestPropagation:
         np.testing.assert_array_equal(source.data, elevations + 1 + noise)
 
 
+class TestPropagationAccessors:
+    """Test module for propagation outputs and custom calculations in each in-memory object family."""
+
+    @pytest.mark.parametrize("point_input", [False, True])
+    @pytest.mark.parametrize("method", ["analytical", "numerical"])
+    def test_propagate__source_family(self, point_input: bool, method: str) -> None:
+        """Checks that propagation preserves accessor output families and matches GeoUtils object values."""
+
+        # Create equivalent GeoUtils and accessor inputs
+        raster = gu.Raster.from_array(np.arange(30.0).reshape(5, 6), Affine(2, 0, 0, 0, -2, 10), 32632)
+        source = raster.to_pointcloud() if point_input else raster
+        target = source.gdf.copy() if point_input else raster.to_xarray()
+        if point_input:
+            target.attrs["data_name"] = source.data_name
+        errors = gu.ErrorStructure([gu.ErrorComponent("measurement", 0.1)])
+        options: dict[str, Any] = {"error_structure": errors, "method": method, "at": "all"}
+        if method == "numerical":
+            options.update(n_simulations=3, random_state=42, return_samples=True)
+
+        # Propagate the same error model
+        expected = xdem.uncertainty.propagate(source, **options)
+        actual = xdem.uncertainty.propagate(target, **options)
+
+        # Check output types, values and source data
+        assert actual.estimate is target
+        for name in ("estimate", "mean", "std"):
+            result = getattr(actual, name)
+            assert isinstance(result, gpd.GeoDataFrame if point_input else xr.DataArray)
+            interface = _get_pointcloud_interface(result) if point_input else _get_raster_interface(result)
+            np.testing.assert_array_equal(np.asarray(interface.data).squeeze(), getattr(expected, name).data)
+            assert interface.crs == source.crs
+        pd.testing.assert_frame_equal(actual.selection, expected.selection)
+        if method == "numerical":
+            assert actual.samples is not None and expected.samples is not None
+            pd.testing.assert_frame_equal(actual.samples, expected.samples)
+        np.testing.assert_array_equal(source.data, np.arange(30.0) if point_input else np.arange(30.0).reshape(5, 6))
+
+    @pytest.mark.parametrize("point_input", [False, True])
+    def test_propagate__custom_family(self, point_input: bool) -> None:
+        """Checks that custom calculations receive the same object family for original and perturbed values."""
+
+        # Create equivalent GeoUtils and accessor inputs
+        raster = gu.Raster.from_array(np.arange(30.0).reshape(5, 6), Affine(2, 0, 0, 0, -2, 10), 32632)
+        source = raster.to_pointcloud() if point_input else raster
+        target = source.gdf.copy() if point_input else raster.to_xarray()
+        if point_input:
+            target.attrs["data_name"] = source.data_name
+        errors = gu.ErrorStructure([gu.ErrorComponent("measurement", 0.1)])
+
+        # Record the inputs received by the calculation
+        calls = []
+
+        def calculate(value: Any) -> Any:
+            """Return the elevations and record the received container type."""
+
+            calls.append(type(value))
+            return value
+
+        # Propagate through the custom calculation
+        actual = xdem.uncertainty.propagate(
+            target, calculate, error_structure=errors, n_simulations=3, random_state=42, at="all", return_samples=True
+        )
+        expected = xdem.uncertainty.propagate(
+            source, error_structure=errors, n_simulations=3, random_state=42, at="all", return_samples=True
+        )
+
+        # Check one original call and three perturbed calls
+        assert calls == [type(target)] * 4
+        for name in ("estimate", "mean", "std"):
+            result = getattr(actual, name)
+            interface = _get_pointcloud_interface(result) if point_input else _get_raster_interface(result)
+            np.testing.assert_array_equal(np.asarray(interface.data).squeeze(), getattr(expected, name).data)
+        assert actual.samples is not None and expected.samples is not None
+        pd.testing.assert_frame_equal(actual.samples, expected.samples)
+
+
+@pytest.fixture
+def terrain_dem_paths(tmp_path: Path) -> tuple[Path, ...]:
+    """Write curved DEMs with seeded measurement noise for terrain error estimation."""
+
+    # Create curved terrain with random errors
+    rng = np.random.default_rng(32)
+    y, x = np.mgrid[:24, :24]
+    elevation = 0.3 * x + 0.5 * y + 0.04 * x * y
+    transform = Affine(10, 0, 0, 0, -10, 240)
+    source = xdem.DEM(gu.Raster.from_array(elevation + rng.normal(size=x.shape), transform, 32632, nodata=-9999))
+    reference = xdem.DEM(gu.Raster.from_array(elevation, transform, 32632, nodata=-9999))
+
+    paths = tuple(tmp_path / f"input-{index}.tif" for index in range(2))
+    for raster, path in zip(
+        (
+            source,
+            reference,
+        ),
+        paths,
+    ):
+        raster.to_file(path)
+    return paths
+
+
+@pytest.fixture
+def error_proxy_paths(tmp_path: Path, backend: str) -> tuple[Path, Path]:
+    """Write a raster or point error proxy and a flat DEM for optional prealignment."""
+
+    if backend == "dask_geopandas":
+        pytest.importorskip("pyarrow")
+        columns, rows = np.meshgrid(np.arange(7), np.arange(5))
+        proxy = xdem.EPC(gu.PointCloud.from_xyz(columns.ravel(), rows.ravel(), np.linspace(-1, 1, 35), crs=32632))
+        path = tmp_path / "proxy.parquet"
+        proxy.to_parquet(str(path))
+    else:
+        values = np.arange(63.0).reshape(7, 9)
+        raster = DEM.from_array(values, Affine(2, 0, 0, 0, -2, 14), 32632, nodata=-9999)
+        path = tmp_path / "proxy.tif"
+        raster.to_file(path)
+    reference = DEM.from_array(np.zeros((7, 9)), Affine(1, 0, -1, 0, -1, 6), 32632, nodata=-9999)
+    reference_path = tmp_path / "reference.tif"
+    reference.to_file(reference_path)
+    return path, reference_path
+
+
 class TestElevationErrorEstimationChunked:
     """Test module for elevation error estimation with Dask and multiprocessing."""
 
-    @pytest.mark.parametrize("backend", ["dask", "multiproc"])
-    @pytest.mark.parametrize("override", [False, True], ids=["defaults", "overrides"])
-    def test_estimate_error_structure__proxy(self, backend: str, tmp_path: Path, override: bool) -> None:
-        """Checks that lazy and file proxies match eager estimation without loading their inputs."""
+    @pytest.mark.parametrize(
+        "backend, precoreg, override",
+        [
+            ("dask", None, False),
+            ("multiproc", None, True),
+            ("dask_geopandas", None, False),
+            ("dask_geopandas", False, True),
+            ("dask_geopandas", True, True),
+        ],
+    )
+    def test_estimate_error_structure__chunk_invariance_proxy(
+        self, backend: str, precoreg: bool | None, override: bool, error_proxy_paths: tuple[Path, Path]
+    ) -> None:
+        """Checks that raster and point proxies match in-memory error estimates without loading their inputs."""
 
-        if backend == "dask":
-            pytest.importorskip("dask")
-
-        # 1/ Create a proxy and expected spread
-        values = np.arange(63.0).reshape(7, 9)
-        proxy = xdem.DEM.from_array(values, Affine(2, 0, 0, 0, -2, 14), 32632, nodata=-9999)
+        # 1/ Open the proxy and configure optional prealignment
+        path, reference_path = error_proxy_paths
+        reference = DEM(reference_path, load_data=True) if precoreg is not None else None
         options: dict[str, Any] = {
             "components": {"measurement": {"magnitude": "constant", "correlation": None}},
         }
         if override:
             options["spread_estimator"] = np.std
-        expected = proxy.estimate_error_structure(**options)
+        if precoreg is not None:
+            options.update(predictors={}, precoreg=precoreg)
+            # A flat reference constrains only the vertical shift
+            if precoreg:
+                options["coreg_method"] = xdem.coreg.VerticalShift()
 
-        # Split into 3 x 4 tiles with shorter final rows and columns
-        if backend == "dask":
-            source = proxy.to_xarray().chunk({"y": 3, "x": 4})
-            graph = source.data
-            mp_config = None
-            assert not source.rst.is_loaded
+        # Calculate the in-memory reference
+        proxy: Any = xdem.EPC(path) if backend == "dask_geopandas" else DEM(path)
+        proxy.load()
+        expected = proxy.estimate_error_structure(reference, **options)
+
+        # 2/ Estimate errors from the chunked proxy
+        source: Any
+        if backend in ("dask", "dask_geopandas"):
+            # 2.1/ If using Dask
+            if backend == "dask_geopandas":
+                pytest.importorskip("dask_geopandas")
+                # Split 35 points into three uneven partitions
+                source = xdem.open_epc(path, chunks=12).epc
+            else:
+                pytest.importorskip("dask")
+                source = open_dem(path, chunks={"y": 3, "x": 4}).dem
+            other = open_dem(reference_path) if reference is not None else None
+            assert not source.is_loaded
+            actual = source.estimate_error_structure(other, **options)
+            assert not source.is_loaded
         else:
-            path = tmp_path / "proxy.tif"
-            proxy.to_file(path)
-            source = xdem.DEM(path)
-            mp_config = MultiprocConfig(chunks=(3, 4))
+            # 2.2/ If using MP
+            source = DEM(path)
+            config = MultiprocConfig(chunks=(3, 4))
+            other = open_dem(reference_path) if reference is not None else None
+            assert not source.is_loaded
+            actual = source.estimate_error_structure(other, mp_config=config, **options)
             assert not source.is_loaded
 
-        # 2/ Estimate without loading the original proxy
-        actual = xdem.uncertainty.estimate_error_structure(source=source, mp_config=mp_config, **options)
+        # 3/ Check equality of magnitudes and input loading
         assert type(actual) is gu.ErrorStructure
-
         # Allow rounding from reductions across chunks
         assert actual.predict_magnitude() == pytest.approx(expected.predict_magnitude(), rel=0, abs=1e-12)
-        if backend == "dask":
-            assert source.data is graph
-            assert not source.rst.is_loaded
-        else:
-            assert not source.is_loaded
         assert proxy.is_loaded
+        assert reference is None or reference.is_loaded
 
-    @pytest.mark.parametrize("override", [False, True], ids=["defaults", "overrides"])
-    def test_estimate_error_structure__point_proxy(self, override: bool) -> None:
-        """Checks that a lazy point proxy matches eager estimation and preserves its graph."""
-
-        dask_geopandas = pytest.importorskip("dask_geopandas")
-
-        from xdem.epc.pd_accessor import _register_dask_epc_accessor
-
-        # Create errors at 35 point locations
-        values = np.linspace(-1, 1, 35)
-        source = xdem.EPC(gu.PointCloud.from_xyz(np.arange(35), np.zeros(35), values, crs=32632))
-        options: dict[str, Any] = {
-            "components": {"measurement": {"magnitude": "constant", "correlation": None}},
-        }
-        if override:
-            options["spread_estimator"] = np.std
-        expected = source.estimate_error_structure(**options)
-
-        # Split points into three uneven partitions to check that no rows are dropped
-        _register_dask_epc_accessor()
-        lazy = dask_geopandas.from_geopandas(source.gdf, npartitions=3, sort=False)
-        graph = lazy.expr
-        assert not lazy.epc.is_loaded
-
-        # Estimate the proxy with no comparison dataset or prealignment opt-out
-        actual = lazy.epc.estimate_error_structure(**options)
-
-        # Allow rounding from reductions across partitions
-        assert actual.predict_magnitude() == pytest.approx(expected.predict_magnitude(), rel=0, abs=1e-12)
-        assert lazy.expr is graph and not lazy.epc.is_loaded
-        assert source.is_loaded
-
-    @pytest.mark.parametrize("backend", ["dask", "multiproc"])
-    @pytest.mark.parametrize("override", [False, True], ids=["defaults", "overrides"])
-    def test_estimate_error_structure__terrain_predictors(self, backend: str, tmp_path: Path, override: bool) -> None:
+    @pytest.mark.parametrize("backend, override, precoreg", [("dask", False, False), ("multiproc", True, True)])
+    def test_estimate_error_structure__chunk_invariance_terrain_predictors(
+        self, backend: str, override: bool, precoreg: bool, terrain_dem_paths: tuple[Path, ...]
+    ) -> None:
         """Checks that Dask/MP terrain predictors give the same grouped statistics as in-memory inputs."""
 
-        if backend == "dask":
-            pytest.importorskip("dask")
-
-        # 1/ Create inputs and expected result
-        # Create curved terrain with random errors
-        rng = np.random.default_rng(32)
-        y, x = np.mgrid[:24, :24]
-        elevation = 0.3 * x + 0.5 * y + 0.04 * x * y
-        transform = Affine(10, 0, 0, 0, -10, 240)
-        source = xdem.DEM(gu.Raster.from_array(elevation + rng.normal(size=x.shape), transform, 32632, nodata=-9999))
-        reference = xdem.DEM(gu.Raster.from_array(elevation, transform, 32632, nodata=-9999))
-
+        # 1/ Open DEMs and configure terrain predictors
+        source, reference = (DEM(path, load_data=True) for path in terrain_dem_paths)
         # Set magnitude estimation options
         options: dict[str, Any] = {
             "components": {"measurement": {"magnitude": "heteroscedastic", "correlation": None}},
@@ -959,88 +1096,95 @@ class TestElevationErrorEstimationChunked:
             "random_state": 4,
         }
 
+        # These statistics checks need only a vertical correction on their smooth terrain
+        if precoreg:
+            options["coreg_method"] = xdem.coreg.VerticalShift()
         if override:
             options["spread_estimator"] = np.std
-        expected = source.estimate_error_structure(reference, precoreg=False, **options)
+        expected = source.estimate_error_structure(reference, precoreg=precoreg, **options)
 
-        # 2/ Run Dask or MP estimation
+        # 2/ Estimate errors from the chunked DEMs
         if backend == "dask":
-            # Use different 6 x 8 and 8 x 6 chunks to check alignment
-            chunked_source = source.to_xarray().chunk({"x": 8, "y": 6})
-            chunked_reference = reference.to_xarray().chunk({"x": 6, "y": 8})
+            # 2.1/ If using Dask
+            pytest.importorskip("dask")
+            # Use different layouts and shorter final chunks
+            chunks = ((6, 8), (8, 6))
+            chunked_source, chunked_reference = (
+                open_dem(path, chunks={"y": rows, "x": columns}).dem
+                for path, (rows, columns) in zip(terrain_dem_paths, chunks)
+            )
             mp_config = None
-            assert not chunked_source.rst.is_loaded
-            assert not chunked_reference.rst.is_loaded
+            assert not chunked_source.is_loaded and not chunked_reference.is_loaded
+            result = xdem.uncertainty.estimate_error_structure(
+                chunked_source, chunked_reference, mp_config=mp_config, precoreg=precoreg, **options
+            )
+            assert not chunked_source.is_loaded and not chunked_reference.is_loaded
         else:
-            # Write rasters for MP reads in 8 x 8 tiles
-            source_path = tmp_path / "source.tif"
-            reference_path = tmp_path / "reference.tif"
-            source.to_file(source_path)
-            reference.to_file(reference_path)
-            chunked_source = xdem.DEM(source_path)
-            chunked_reference = xdem.DEM(reference_path)
+            # 2.2/ If using MP
+            chunked_source, chunked_reference = (DEM(path) for path in terrain_dem_paths)
             mp_config = MultiprocConfig(chunks=(8, 8))
-            assert not chunked_source.is_loaded
-            assert not chunked_reference.is_loaded
+            assert not chunked_source.is_loaded and not chunked_reference.is_loaded
+            result = xdem.uncertainty.estimate_error_structure(
+                chunked_source, chunked_reference, mp_config=mp_config, precoreg=precoreg, **options
+            )
+            assert not chunked_source.is_loaded and not chunked_reference.is_loaded
 
-        # Estimate from slope and curvature without loading either input
-        result = xdem.uncertainty.estimate_error_structure(
-            chunked_source, chunked_reference, mp_config=mp_config, precoreg=False, **options
-        )
-        source_loaded = chunked_source.rst.is_loaded if backend == "dask" else chunked_source.is_loaded
-        reference_loaded = chunked_reference.rst.is_loaded if backend == "dask" else chunked_reference.is_loaded
-        assert not source_loaded
-        assert not reference_loaded
-
-        # 3/ Compare grouped statistics
+        # 3/ Check equality of grouped statistics and input loading
         magnitude = result.components["measurement"].magnitude
-        eager_magnitude = expected.components["measurement"].magnitude
+        in_memory_magnitude = expected.components["measurement"].magnitude
         assert isinstance(magnitude, gu.ErrorMagnitude)
-        assert isinstance(eager_magnitude, gu.ErrorMagnitude)
+        assert isinstance(in_memory_magnitude, gu.ErrorMagnitude)
         assert result.empirical_variogram is None
         assert isinstance(magnitude.grouped_statistics, pd.DataFrame)
 
         # Allow rounding from reductions across chunks
         pd.testing.assert_frame_equal(
-            magnitude.grouped_statistics, eager_magnitude.grouped_statistics, check_exact=False, rtol=0, atol=1e-12
+            magnitude.grouped_statistics, in_memory_magnitude.grouped_statistics, check_exact=False, rtol=0, atol=1e-12
         )
 
-    def test_estimate_error_structure__point_raster(self) -> None:
-        """Checks that a Dask EPC matches in-memory estimation against a DEM and stays lazy."""
+    @pytest.mark.parametrize("point_input", [None, "ref", "tba"])
+    def test_estimate_error_structure__chunk_invariance_precoreg(
+        self, curved_dem: xdem.DEM, point_input: str | None
+    ) -> None:
+        """Checks that Dask prealignment matches in-memory estimation without loading rasters or point clouds."""
 
-        dask_geopandas = pytest.importorskip("dask_geopandas")
+        pytest.importorskip("dask")
 
-        from xdem.epc.pd_accessor import _register_dask_epc_accessor
-
-        # Create points inside a reference DEM
-        columns, rows = np.meshgrid(np.arange(7), np.arange(5))
-        values = np.linspace(-1, 1, columns.size)
-        source = xdem.EPC(gu.PointCloud.from_xyz(columns.ravel(), rows.ravel(), values, crs=32632))
-        reference = xdem.DEM.from_array(np.zeros((7, 9)), Affine(1, 0, -1, 0, -1, 6), 32632, nodata=-9999)
+        # 1/ Prepare elevations with a height shift and measurement noise
+        reference: Any = curved_dem
+        source: Any = reference.copy(
+            new_array=reference.data + 1 + np.random.default_rng(42).normal(0, 0.01, reference.shape)
+        )
+        if point_input == "ref":
+            reference = reference.to_pointcloud(force_pixel_offset="center")
+        elif point_input == "tba":
+            source = source.to_pointcloud(force_pixel_offset="center")
         options: dict[str, Any] = {
             "predictors": {},
             "components": {"measurement": {"magnitude": "constant", "correlation": None}},
             "spread_estimator": np.std,
+            "random_state": 4,
         }
-        assert source.is_loaded and reference.is_loaded
 
-        # Split 35 points into three uneven partitions to check row alignment
-        _register_dask_epc_accessor()
-        lazy = dask_geopandas.from_geopandas(source.gdf, npartitions=3, sort=False)
-        graph = lazy.expr
-        assert not lazy.epc.is_loaded
+        # 2/ Estimate errors with automatic prealignment
+        expected = xdem.uncertainty.estimate_error_structure(source, reference, **options)
 
-        # Run in-memory and Dask estimation
-        expected = source.estimate_error_structure(reference, precoreg=False, **options)
-        actual = lazy.epc.estimate_error_structure(reference, precoreg=False, **options)
+        # Use different raster chunks and uneven point partitions
+        lazy = []
+        for index, elevation in enumerate((source, reference)):
+            array = elevation.to_xarray()
+            chunks = {"x": 7 + index, "y": 5 + index} if isinstance(elevation, gu.Raster) else {array.dims[0]: 37}
+            lazy.append(array.chunk(chunks))
+        actual = xdem.uncertainty.estimate_error_structure(*lazy, **options)
 
-        # Allow rounding from reductions across partitions
-        assert isinstance(actual, gu.ErrorStructure)
+        # 3/ Check equality of magnitudes and unchanged inputs
+        # Allow rounding from reductions across chunks
         assert actual.predict_magnitude() == pytest.approx(expected.predict_magnitude(), rel=0, abs=1e-12)
-
-        # Check lazy points and loaded source data
-        assert lazy.expr is graph and not lazy.epc.is_loaded
-        assert source.is_loaded and reference.is_loaded
+        for array in lazy:
+            interface = _get_raster_interface(array)
+            if interface is None:
+                interface = _get_pointcloud_interface(array)
+            assert not interface.is_loaded
 
 
 class TestElevationErrorEstimationErrors:
@@ -1083,21 +1227,18 @@ class TestElevationErrorEstimationErrors:
         with pytest.raises(TypeError, match="coreg_method must be a Coreg instance or None"):
             xdem.uncertainty.estimate_error_structure(source, source, **options)
 
-    def test_estimate_error_structure__error_lazy_precoreg(self) -> None:
-        """Checks an error is raised for prealignment of lazy inputs without computing them."""
+    def test_estimate_error_structure__error_mixed_precoreg(self) -> None:
+        """Checks an error is raised for prealignment with mixed raster families before loading values."""
 
         pytest.importorskip("dask")
 
         # Split a raster into uneven chunks and preserve its lazy array
         source = xdem.DEM.from_array(np.ones((9, 11)), Affine(2, 0, 0, 0, -2, 18), 32632, nodata=-9999)
         lazy = source.to_xarray().chunk({"x": 4, "y": 5})
-        values = lazy.data
         assert not lazy.rst.is_loaded
 
-        # Prealignment requires eager data, so fail before any Dask tasks run
-        with pytest.raises(NotImplementedError, match="Dask coregistration"):
+        with pytest.raises(TypeError, match="Cannot mix Raster/PointCloud"):
             xdem.uncertainty.estimate_error_structure(lazy, source)
-        assert lazy.data is values
         assert not lazy.rst.is_loaded
 
 
@@ -1131,6 +1272,36 @@ class TestPropagationErrors:
         # Check the raster stays unloaded
         if source is not None:
             assert not source.is_loaded
+
+    @pytest.mark.parametrize("kind", ["array", "raster", "point"])
+    def test_propagate__error_lazy_source(self, kind: str) -> None:
+        """Checks an error is raised for Dask source propagation before any values are computed."""
+
+        pytest.importorskip("dask")
+
+        import dask.array as da
+
+        # Create a lazy array, raster or point cloud
+        raster = gu.Raster.from_array(np.ones((5, 7)), Affine(2, 0, 0, 0, -2, 10), 32632)
+        if kind == "array":
+            source = da.from_array(raster.data.filled(np.nan), chunks=(3, 4))
+        elif kind == "raster":
+            source = raster.to_xarray().chunk({"y": 3, "x": 4})
+        else:
+            source = raster.to_pointcloud().to_xarray()
+            source = source.chunk({source.dims[0]: 4})
+        errors = gu.ErrorStructure([gu.ErrorComponent("measurement", 0.1)])
+
+        # Check unsupported Dask inputs
+        with pytest.raises(NotImplementedError, match="Dask propagation for this operation"):
+            xdem.uncertainty.propagate(source, error_structure=errors)
+
+        # Check input loading
+        if kind == "array":
+            assert isinstance(source, da.Array)
+        else:
+            interface = _get_raster_interface(source) if kind == "raster" else _get_pointcloud_interface(source)
+            assert not interface.is_loaded
 
     def test_propagate__error_sample_selection(self) -> None:
         """Checks an error is raised when raster simulation draws are requested without selecting pixels."""

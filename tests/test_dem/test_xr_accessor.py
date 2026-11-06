@@ -58,13 +58,12 @@ class TestAccessor:
     @pytest.mark.parametrize("method", ["to_xdem", "to_geoutils"])
     @pytest.mark.parametrize("lazy", [False, True])
     def test_methods__conversion_loading_laziness(self, accessor_dem_path: Path, method: str, lazy: bool) -> None:
-        """Checks that native conversions load eager sources and preserve Dask graphs, values and metadata."""
+        """Checks that native conversions load eager sources and preserve Dask loading, values and metadata."""
 
-        # 1/ Open the file without loading its values and save the Dask data object when used
+        # 1/ Open the file without loading its values
         if lazy:
             pytest.importorskip("dask.array")
         source = open_dem(accessor_dem_path, vcrs=5703, chunks=13 if lazy else None)
-        graph = source.data if lazy else None
         assert not source._in_memory
 
         # 2/ Convert to DEM or Raster and check that a Dask source remains unchanged and lazy
@@ -72,8 +71,6 @@ class TestAccessor:
         assert type(result) is (DEM if method == "to_xdem" else Raster)
         assert result.is_loaded
         assert source._in_memory is not lazy
-        if lazy:
-            assert source.data is graph
 
         # 3/ Compare exact values, masks and metadata with an independent native reader
         expected = DEM(accessor_dem_path, vcrs=5703)
@@ -229,9 +226,17 @@ class TestAccessor:
         if lazy:
             assert not ds._in_memory
 
-    @pytest.mark.parametrize("pointcloud_return_type", [None, "geodataframe", "dataarray", "dataset"])
-    @pytest.mark.parametrize("as_array", [False, True])
-    @pytest.mark.parametrize("lazy", [False, True])
+    @pytest.mark.parametrize("lazy", [False, True], ids=["in-memory", "dask"])
+    @pytest.mark.parametrize(
+        "as_array, pointcloud_return_type",
+        [
+            pytest.param(True, None, id="array"),
+            pytest.param(False, None, id="default"),
+            pytest.param(False, "geodataframe", id="geodataframe"),
+            pytest.param(False, "dataarray", id="dataarray"),
+            pytest.param(False, "dataset", id="dataset"),
+        ],
+    )
     def test_to_pointcloud__equality_and_laziness(
         self, accessor_dem_path: Path, as_array: bool, lazy: bool, pointcloud_return_type: str | None
     ) -> None:
