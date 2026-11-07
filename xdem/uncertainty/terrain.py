@@ -21,10 +21,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import geoutils as gu
 import numpy as np
+from geoutils._dispatch import _get_raster_interface
 from geoutils.operators import LocalData
 from geoutils.operators.reducer import Sum
 from geoutils.uncertainty import PropagationSummary
@@ -35,9 +36,12 @@ from xdem.terrain import get_terrain_attribute
 from xdem.terrain.surfit import _divider_method_coef, all_coefs
 from xdem.uncertainty.propagation import _simulate
 
+if TYPE_CHECKING:
+    from geoutils.raster.base import RasterLike
+
 
 def _propagate_terrain(
-    source: gu.Raster,
+    source: RasterLike,
     *,
     attribute: str = "slope",
     error_structure: gu.ErrorStructure,
@@ -54,6 +58,7 @@ def _propagate_terrain(
     covariance. The derivative is undefined at zero gradient, where analytical standard deviations are NaN.
     """
 
+    raster = _get_raster_interface(source)
     options = dict(terrain_options or {})
 
     def calculate(value: Any) -> Any:
@@ -83,18 +88,18 @@ def _propagate_terrain(
         "Florinsky": ("fl_p", "fl_q"),
     }
     filter_names = names[options.get("surface_fit", "Florinsky")]
-    filters = [np.flip(all_coefs[name]) / _divider_method_coef(source.res[0], name) for name in filter_names]
+    filters = [np.flip(all_coefs[name]) / _divider_method_coef(raster.res[0], name) for name in filter_names]
     radius = filters[0].shape[0] // 2
-    values = _numeric_values(source)
+    values = _numeric_values(source).reshape(raster.shape)
     ids = np.arange(values.size).reshape(values.shape)
-    x, y = source.coords(grid=True, force_offset="center")
+    x, y = raster.coords(grid=True, force_offset="center")
     coordinates = np.column_stack((np.asarray(x).ravel(), np.asarray(y).ravel()))
     empty = LocalData(np.empty(0), np.empty(0, dtype=bool), np.empty(0, dtype=int))
     targets = [empty] * values.size
-    nominal = _numeric_values(estimate).reshape(-1)
+    nominal = _numeric_values(estimate)
 
     # Differentiate the angle only where the terrain function has a complete, non-flat neighborhood
-    for row, col in np.argwhere(np.isfinite(_numeric_values(estimate))):
+    for row, col in np.argwhere(np.isfinite(nominal.reshape(raster.shape))):
         window = np.s_[row - radius : row + radius + 1, col - radius : col + radius + 1]
         patch = values[window]
         if patch.shape != filters[0].shape or not np.all(np.isfinite(patch)):
@@ -123,7 +128,7 @@ def _propagate_terrain(
         )
 
     # GeoUtils computes each weighted covariance sum
-    aligned = _spatial_predictors(source, predictors, size=values.size)
+    aligned = _spatial_predictors(raster, predictors, size=values.size)
     by_id = {name: dict(enumerate(value)) if np.ndim(value) else value for name, value in (aligned or {}).items()}
     operator = Sum()
     operator._uses_error_covariance = False
@@ -135,13 +140,14 @@ def _propagate_terrain(
         error_structure,
         predictors=by_id,
         method="analytical",
-        nominal_estimate=nominal,
+        nominal_estimate=nominal.reshape(-1),
         output_labels=labels,
         at=[] if at is None else at,
         **kwargs,
     )
     moments = {
-        name: _wrap_like(estimate, np.asarray(getattr(summary, name)).reshape(values.shape)) for name in ("mean", "std")
+        name: _wrap_like(estimate, np.asarray(getattr(summary, name)).reshape(nominal.shape))
+        for name in ("mean", "std")
     }
     return replace(
         summary,

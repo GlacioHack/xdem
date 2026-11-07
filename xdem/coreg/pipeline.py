@@ -24,6 +24,7 @@ import copy
 import inspect
 import logging
 import warnings
+from contextlib import ExitStack
 from typing import (
     Any,
     Generator,
@@ -36,15 +37,20 @@ import geoutils as gu
 import numpy as np
 import rasterio as rio
 import rasterio.warp
-from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
+from geoutils._dispatch import (
+    _get_raster_interface,
+    is_dask_array,
+)
+from geoutils.multiproc import MultiprocConfig
+from geoutils.pointcloud.pointcloud import PointCloudType
 from geoutils.raster import Raster, RasterType
 
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg.base import (
     Coreg,
     CoregType,
-    _postprocess_coreg_apply,
     _preprocess_coreg_apply,
+    _preprocess_coreg_fit,
 )
 
 
@@ -179,6 +185,7 @@ class CoregPipeline(Coreg):
         area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str | None = None,
         random_state: int | np.random.Generator | None = None,
+        mp_config: MultiprocConfig | None = None,
         **kwargs: Any,
     ) -> CoregType:
         """Fit each step and pass intermediate aligned elevations to the following step."""
@@ -200,42 +207,57 @@ class CoregPipeline(Coreg):
             # Filter warnings of individual pipelines now that the one above was raised
             warnings.filterwarnings("ignore", message="Subsample argument passed to*", category=UserWarning)
 
-        tba_elev_mod = to_be_aligned_elev.copy()
+        # Prepare inputs
+        prepared = _preprocess_coreg_fit(
+            reference_elev=reference_elev,
+            to_be_aligned_elev=to_be_aligned_elev,
+            inlier_mask=inlier_mask,
+            transform=transform,
+            crs=crs,
+            area_or_point=area_or_point,
+            z_name=z_name,
+            mp_config=mp_config,
+            bias_vars=bias_vars,
+            fit_options=kwargs,
+        )
+        reference_elev = prepared["ref_elev"]
+        aligned = prepared["tba_elev"]
+        if _get_raster_interface(aligned) is not None:
+            tba_elev_mod = aligned.copy(deep=False)
+        else:
+            tba_elev_mod = aligned.copy()
 
-        for i, coreg in enumerate(self.pipeline):
-            logging.debug("Running pipeline step: %d / %d", i + 1, len(self.pipeline))
+        # Keep temporarily files during the pipeline run
+        with ExitStack() as temporary_files:
+            for i, coreg in enumerate(self.pipeline):
+                logging.debug("Running pipeline step: %d / %d", i + 1, len(self.pipeline))
 
-            main_args_fit = {
-                "reference_elev": reference_elev,
-                "to_be_aligned_elev": tba_elev_mod,
-                "transform": transform,
-                "inlier_mask": inlier_mask,
-                "crs": crs,
-                "z_name": z_name,
-                "weights": weights,
-                "subsample": subsample,
-                "random_state": random_state,
-            }
+                main_args_fit = {
+                    "reference_elev": reference_elev,
+                    "to_be_aligned_elev": tba_elev_mod,
+                    "inlier_mask": inlier_mask,
+                    "weights": weights,
+                    "subsample": subsample,
+                    "random_state": random_state,
+                    "mp_config": mp_config,
+                }
 
-            main_args_apply = {"elev": tba_elev_mod, "transform": transform, "crs": crs, "z_name": z_name}
+                main_args_apply = {"elev": tba_elev_mod}
+                # If non-affine method that expects a bias_vars argument
+                if coreg._needs_vars:
+                    step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
 
-            # If non-affine method that expects a bias_vars argument
-            if coreg._needs_vars:
-                step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
+                    main_args_fit.update({"bias_vars": step_bias_vars})
+                    main_args_apply.update({"bias_vars": step_bias_vars})
 
-                main_args_fit.update({"bias_vars": step_bias_vars})
-                main_args_apply.update({"bias_vars": step_bias_vars})
+                # Perform the step fit
+                coreg.fit(**main_args_fit)
 
-            # Perform the step fit
-            coreg.fit(**main_args_fit)
-
-            # Step apply: one output for a geodataframe, two outputs for array/transform
-            # We only run this step if it's not the last, otherwise it is unused!
-            if i != (len(self.pipeline) - 1):
-                if isinstance(tba_elev_mod, (Raster, gpd.GeoDataFrame, PointCloud)):
+                # We only run this step if it's not the last, otherwise it is unused!
+                if i != (len(self.pipeline) - 1):
+                    if mp_config is not None:
+                        main_args_apply["mp_config"] = temporary_files.enter_context(mp_config.temporary())
                     tba_elev_mod = coreg.apply(**main_args_apply)
-                else:
-                    tba_elev_mod, transform = coreg.apply(**main_args_apply)
 
         # Flag that the fitting function has been called.
         self._fit_called = True
@@ -305,52 +327,37 @@ class CoregPipeline(Coreg):
         if not self._fit_called and self._meta["outputs"]["affine"].get("matrix") is None:
             raise AssertionError(".fit() does not seem to have been called yet")
 
-        elev_array, transform, crs, z_name = _preprocess_coreg_apply(
-            elev=elev, transform=transform, crs=crs, z_name=z_name
+        # Normalize spatial metadata once for every step
+        result, _, _, _ = _preprocess_coreg_apply(
+            elev, transform, crs, z_name, bias_vars=bias_vars, mp_config=kwargs.get("mp_config")
         )
 
-        elev_mod = elev_array.copy()
-        out_transform = copy.copy(transform)
+        # Keep temporary files while running pipeline
+        with ExitStack() as temporary_files:
+            # Apply each step of the coregistration
+            for index, coreg in enumerate(self.pipeline):
+                # If non-affine method that expects a bias_vars argument
+                variables = self._parse_bias_vars(index, bias_vars) if coreg._needs_vars else None
+                step_kwargs = kwargs.copy()
+                config = kwargs.get("mp_config")
+                if config is not None and index < len(self.pipeline) - 1:
+                    step_kwargs["mp_config"] = temporary_files.enter_context(config.temporary())
+                result = coreg.apply(
+                    result, bias_vars=variables, resample=resample, resampling=resampling, **step_kwargs
+                )
 
-        # Apply each step of the coregistration
-        for i, coreg in enumerate(self.pipeline):
+            # If inputs were array, get array outputs while temporary files are available
+            if isinstance(elev, np.ndarray) or is_dask_array(elev):
+                raster = _get_raster_interface(result)
+                if is_dask_array(elev):
+                    values = raster.data.reshape(elev.shape)
+                else:
+                    values = raster.to_nanarray().reshape(elev.shape)
+                    if isinstance(elev, np.ma.MaskedArray):
+                        values = np.ma.masked_invalid(values)
+                return values, raster.transform
 
-            main_args_apply = {
-                "elev": elev_mod,
-                "transform": out_transform,
-                "crs": crs,
-                "z_name": z_name,
-                "resample": resample,
-                "resampling": resampling,
-            }
-
-            # If non-affine method that expects a bias_vars argument
-            if coreg._needs_vars:
-                step_bias_vars = self._parse_bias_vars(step=i, bias_vars=bias_vars)
-                main_args_apply.update({"bias_vars": step_bias_vars})
-
-            # Step apply: one return for a geodataframe, two returns for array/transform
-            if isinstance(elev_mod, gpd.GeoDataFrame):
-                elev_mod = coreg.apply(**main_args_apply, **kwargs)
-            else:
-                elev_mod, out_transform = coreg.apply(**main_args_apply, **kwargs)
-
-        # Post-process output depending on input type
-        applied_elev, out_transform = _postprocess_coreg_apply(
-            elev=elev,
-            applied_elev=elev_mod,
-            transform=transform,
-            out_transform=out_transform,
-            crs=crs,
-            resample=resample,
-            resampling=resampling,
-        )
-
-        # Only return object if raster or geodataframe, also return transform if object was an array
-        if isinstance(applied_elev, (gu.Raster, gpd.GeoDataFrame, gu.PointCloud)):
-            return applied_elev
-        else:
-            return applied_elev, out_transform
+            return result
 
     def __iter__(self) -> Generator[Coreg]:
         """Iterate over the pipeline steps."""

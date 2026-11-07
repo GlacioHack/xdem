@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Literal, Union, overload
 import geopandas as gpd
 import numpy as np
 from geoutils import PointCloud
+from geoutils._dispatch import _get_pointcloud_interface
 from geoutils.multiproc import MultiprocConfig
 from geoutils.pointcloud.base import PointCloudBase
 from geoutils.vector.transformation import _get_reproject_crs
@@ -216,38 +217,33 @@ class EPCBase(PointCloudBase, _VerticalReference):  # type: ignore[misc]
         """
         Align an elevation point cloud to reference elevation data in three dimensions.
 
-        :param reference_elev: Reference DEM or elevation point cloud, including eager accessors.
+        :param reference_elev: Reference DEM or elevation point cloud, including lazy accessors.
         :param coreg_method: Coregistration method or pipeline to fit and apply.
         :param inlier_mask: Boolean raster or array selecting stable terrain.
         :param bias_vars: Auxiliary raster or array variables required by the chosen correction.
         :param random_state: Seed or generator for reproducible subsampling and fitting.
         :param kwargs: Additional arguments passed to :meth:`xdem.coreg.Coreg.fit_and_apply`.
-        :returns: An aligned EPC or eager GeoDataFrame matching the input interface.
+        :returns: An aligned EPC or GeoDataFrame matching the input interface.
         """
 
-        from xdem.coreg.base import _as_eager_elevation
-
-        # Validate before loading or copying the source; Dask coregistration is a separate feature
+        # Validate before loading or copying the source
         if not isinstance(coreg_method, Coreg):
             raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
-        source = _as_eager_elevation(self)
-        reference = _as_eager_elevation(reference_elev)
-        mask = _as_eager_elevation(inlier_mask)
-        variables = None if bias_vars is None else {name: _as_eager_elevation(var) for name, var in bias_vars.items()}
 
-        # Use the native point cloud interface to preserve the chosen elevation column through fitting
+        # Coregister
         aligned = coreg_method.fit_and_apply(
-            reference,
-            source.copy(),
-            inlier_mask=mask,
-            bias_vars=variables,
+            reference_elev,
+            self,
+            inlier_mask=inlier_mask,
+            bias_vars=bias_vars,
             random_state=random_state,
             **kwargs,
         )
 
         # Restore 3D geometry when the source stored elevations in its point coordinates
-        result = aligned.ds
-        if self.data_name is None:
+        aligned = _get_pointcloud_interface(aligned)
+        result = aligned._dataset
+        if self.data_name is None and aligned.data_name is not None:
             result = self.ds.copy()
             result.geometry = gpd.points_from_xy(
                 aligned.geometry.x, aligned.geometry.y, z=aligned.data, crs=aligned.crs

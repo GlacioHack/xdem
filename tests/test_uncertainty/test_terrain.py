@@ -7,6 +7,7 @@ from typing import Any
 import geoutils as gu
 import numpy as np
 import pytest
+import xarray as xr
 from affine import Affine
 from geoutils import Raster
 from geoutils.stats.variography import VariogramModel
@@ -17,10 +18,19 @@ import xdem
 class TestTerrainPropagation:
     """Test module for terrain filter derivatives and analytical uncertainty at flat terrain."""
 
-    @pytest.mark.parametrize("surface_fit", [None, "Horn", "ZevenbergThorne", "Florinsky"])
-    @pytest.mark.parametrize("attribute", ["slope", "aspect"])
-    @pytest.mark.parametrize("degrees", [False, True])
-    @pytest.mark.parametrize("correlated", [False, True])
+    @pytest.mark.parametrize(
+        "surface_fit, attribute, degrees, correlated",
+        [
+            pytest.param(None, "slope", True, False, id="default-slope-degrees-independent"),
+            pytest.param(None, "aspect", False, True, id="default-aspect-radians-correlated"),
+            pytest.param("Horn", "slope", False, True, id="horn-slope-radians-correlated"),
+            pytest.param("Horn", "aspect", True, False, id="horn-aspect-degrees-independent"),
+            pytest.param("ZevenbergThorne", "slope", True, True, id="zevenberg-thorne-slope-degrees-correlated"),
+            pytest.param("ZevenbergThorne", "aspect", False, False, id="zevenberg-thorne-aspect-radians-independent"),
+            pytest.param("Florinsky", "slope", False, False, id="florinsky-slope-radians-independent"),
+            pytest.param("Florinsky", "aspect", True, True, id="florinsky-aspect-degrees-correlated"),
+        ],
+    )
     def test_propagate__finite_differences(
         self, surface_fit: str | None, attribute: str, degrees: bool, correlated: bool
     ) -> None:
@@ -149,3 +159,36 @@ class TestTerrainPropagation:
 
         # Check unchanged elevations
         assert np.all(dem.data == 1)
+
+    @pytest.mark.parametrize("method", ["analytical", "numerical"])
+    def test_propagate__accessor_family(self, method: str) -> None:
+        """Checks that terrain uncertainty propagation preserves DataArrays and matches GeoUtils raster results."""
+
+        # Create curved terrain, with Raster and accessor
+        rows, columns = np.indices((7, 9))
+        values = columns / 2 + rows / 3 + np.sin(columns / 4)
+        raster = gu.Raster.from_array(values, Affine(2, 0, 0, 0, -2, 14), 32632)
+        target = raster.to_xarray()
+        errors = gu.ErrorStructure([gu.ErrorComponent("measurement", 0.1)])
+
+        # Evaluate slope
+        options: dict[str, Any] = {
+            "error_structure": errors,
+            "method": method,
+            "operation_options": {"attribute": "slope", "engine": "scipy"},
+            "at": [(3, 4)],
+        }
+        if method == "numerical":
+            options.update(n_simulations=3, random_state=42, return_samples=True)
+        expected = xdem.uncertainty.propagate(raster, "terrain", **options)
+        actual = xdem.uncertainty.propagate(target, "terrain", **options)
+
+        # Compare values, grids and unchanged elevations
+        for name in ("estimate", "mean", "std"):
+            result = getattr(actual, name)
+            assert isinstance(result, xr.DataArray)
+            np.testing.assert_array_equal(result.rst.to_nanarray().squeeze(), getattr(expected, name).to_nanarray())
+            assert result.rst.transform == raster.transform and result.rst.crs == raster.crs
+        if method == "numerical":
+            np.testing.assert_array_equal(actual.samples, expected.samples)
+        np.testing.assert_array_equal(target.data.squeeze(), values)

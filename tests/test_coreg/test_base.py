@@ -6,7 +6,8 @@ import inspect
 import re
 import sys
 import warnings
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Literal, Mapping
+from unittest.mock import patch
 
 import geopandas as gpd
 import geoutils as gu
@@ -147,23 +148,19 @@ class TestCoregClass:
         rng = np.random.default_rng(42)
         valid_mask = rng.integers(0, 2, size=(50, 50), dtype=bool)
         values = np.arange(2500.0).reshape(valid_mask.shape)
+        raster = Raster.from_array(values, rio.transform.from_origin(0, 50, 1, 1), 32632, area_or_point="Area")
         options = dict(
-            ref_elev=values,
-            tba_elev=values + 2,
-            inlier_mask=valid_mask,
-            ref_transform=rio.transform.from_origin(0, 50, 1, 1),
-            tba_transform=rio.transform.from_origin(0, 50, 1, 1),
-            crs=rio.crs.CRS.from_epsg(32632),
-            area_or_point="Area",
-            z_name="z",
+            ref_elev=raster,
+            tba_elev=raster + 2,
+            inlier_mask=raster.copy(new_array=valid_mask),
             subsample=subsample,
             random_state=42,
             aux_vars={"quality": values * 2},
         )
 
         # Draw the same sample twice to check reproducible correspondence between the datasets
-        reference, aligned, auxiliary = xdem.coreg.base._subsample_rst_pts(**options)
-        repeated = xdem.coreg.base._subsample_rst_pts(**options)[0]
+        reference, aligned, auxiliary = xdem.coreg.base._sample_coreg_inputs(**options)
+        repeated = xdem.coreg.base._sample_coreg_inputs(**options)[0]
 
         # Preserve the sample budget, common finite population and reproducible ordering
         expected = int(subsample * np.count_nonzero(valid_mask)) if subsample <= 1 else int(subsample)
@@ -179,6 +176,100 @@ class TestCoregClass:
         # Auxiliary values must follow the same selected observations and ordering
         assert auxiliary is not None
         np.testing.assert_array_equal(auxiliary["quality"], reference[2] * 2)
+
+    @pytest.mark.parametrize("sampling_strategy", ["same_xy", "nearest_xy", "independent"])
+    def test_sample_coreg_inputs__raster_strategies(
+        self, sampling_strategy: Literal["independent", "same_xy", "nearest_xy"]
+    ) -> None:
+        """Checks that sampling uses same X/Y, nearest X/Y or independent raster coordinates."""
+
+        # 1/ Create shifted raster grids
+        rows, columns = np.indices((6, 8))
+        values = (rows * 8 + columns).astype(float)
+        reference = Raster.from_array(values, rio.transform.from_origin(0, 6, 1, 1), 32632, area_or_point="Area")
+        moving = reference.translate(0.3, -0.2) + 2
+
+        # 2/ Sample elevations with the requested strategy
+        first, second, auxiliary = xdem.coreg.base._sample_coreg_inputs(
+            reference,
+            moving,
+            None,
+            subsample=7,
+            sampling_strategy=sampling_strategy,
+            random_state=42,
+            aux_vars={"quality": moving},  # We duplicate "moving" here, to check sampling of auxiliary variables
+            aux_tied_to="tba",
+        )
+
+        # 3/ Checks
+        # Shape should contain X/Y/Z
+        assert first.shape[0] == second.shape[0] == 3
+
+        # Auxiliary values should be sampled like "second", thus equal because we passed them above
+        assert auxiliary is not None
+        np.testing.assert_array_equal(auxiliary["quality"], second[2])
+        # For same_xy, both rasters are sampled at shared coordinates
+        if sampling_strategy == "same_xy":
+            np.testing.assert_array_equal(first[:2], second[:2])
+        else:
+            # For nearest_xy and independent, elevations minus 2 identify the original moving pixels
+            expected = moving.ij2xy(*np.unravel_index((second[2] - 2).astype(int), moving.shape))
+            np.testing.assert_array_equal(second[:2], expected)
+            # For nearest_xy, paired pixel centers differ by the raster grid translation
+            if sampling_strategy == "nearest_xy":
+                np.testing.assert_allclose(
+                    second[:2] - first[:2], np.tile([[0.3], [-0.2]], (1, first.shape[1])), rtol=0, atol=1e-14
+                )
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    @pytest.mark.parametrize("sampling_strategy", ["same_xy", "nearest_xy"])
+    def test_sample_coreg_inputs__point_target(
+        self, reverse: bool, sampling_strategy: Literal["independent", "same_xy", "nearest_xy"]
+    ) -> None:
+        """Checks that point cloud coordinates define the sample in either raster and point cloud order."""
+
+        # 1/ Create points between pixel centers
+        rows, columns = np.indices((6, 8))
+        raster = Raster.from_array(
+            (2 * columns + 3 * rows).astype(float), rio.transform.from_origin(0, 6, 1, 1), 32632, area_or_point="Area"
+        )
+        x, y = raster.ij2xy([1, 2, 3, 4], [1, 3, 4, 6])
+        points = gu.PointCloud.from_xyz(x + 0.3, y - 0.2, np.arange(4.0), crs=raster.crs)
+        inputs = (points, raster) if reverse else (raster, points)
+        point_owner = "ref" if reverse else "tba"
+
+        # 2/ Sample elevations with the requested strategy
+        first, second, auxiliary = xdem.coreg.base._sample_coreg_inputs(
+            *inputs,
+            None,
+            subsample=3,
+            sampling_strategy=sampling_strategy,
+            random_state=42,
+            aux_vars={"quality": (points, "z")},  # Reuse point elevations to check auxiliary sampling
+            aux_tied_to=point_owner,
+        )
+
+        # 3/ Checks
+        raster_sample, point_sample = (second, first) if reverse else (first, second)
+        # Point elevations store their original indexes
+        indexes = point_sample[2].astype(int)
+        # Shape should contain X/Y/Z for three sampled points
+        assert point_sample.shape == raster_sample.shape == (3, 3)
+        # Point coordinates should be unchanged in either input order
+        np.testing.assert_array_equal(point_sample[:2], np.vstack((x + 0.3, y - 0.2))[:, indexes])
+
+        # Auxiliary values should match point elevations because we passed the same column
+        assert auxiliary is not None
+        np.testing.assert_array_equal(auxiliary["quality"], point_sample[2])
+        # For same_xy, raster elevations are interpolated at the point coordinates
+        if sampling_strategy == "same_xy":
+            np.testing.assert_array_equal(raster_sample[:2], point_sample[:2])
+            # Pixel centers give column = X - 0.5 and row = 5.5 - Y for the planar raster
+            np.testing.assert_allclose(raster_sample[2], 2 * (point_sample[0] - 0.5) + 3 * (5.5 - point_sample[1]))
+        else:
+            # For nearest_xy, use the nearest pixel centers and their original raster values
+            np.testing.assert_array_equal(raster_sample[:2], np.vstack((x, y))[:, indexes])
+            np.testing.assert_array_equal(raster_sample[2], raster.data[[1, 2, 3, 4], [1, 3, 4, 6]][indexes])
 
     all_coregs = [
         coreg.VerticalShift,
@@ -244,6 +335,106 @@ class TestCoregClass:
         ):
             vshift.fit(**self.fit_params, subsample=1000)
 
+    @pytest.mark.parametrize("factory", [coreg.Coreg, coreg.AffineCoreg, coreg.BiasCorr])
+    @pytest.mark.parametrize(
+        "reference_kind, aligned_kind, fit_method",
+        [
+            ("raster", "raster", "_fit_rst_rst"),
+            ("raster", "points", "_fit_rst_pts"),
+            ("points", "raster", "_fit_rst_pts"),
+            ("points", "points", "_fit_pts_pts"),
+        ],
+    )
+    def test_fit__spatial_dispatch(
+        self, factory: Callable[..., Coreg], reference_kind: str, aligned_kind: str, fit_method: str
+    ) -> None:
+        """Checks that fit() calls the fitting method matching each raster and point cloud pair."""
+
+        inputs: dict[str, Any] = {"raster": self.ref, "points": gu.PointCloud(self.points, data_name="z")}
+        reference, aligned = inputs[reference_kind], inputs[aligned_kind]
+        estimator = factory(meta={"subsample": 1}) if factory is Coreg else factory()
+
+        # Check the underlying function is called once
+        with patch.object(estimator, fit_method) as fitted:
+            estimator.fit(reference, aligned)
+        fitted.assert_called_once()
+        assert fitted.call_args.kwargs["ref_elev"] is reference
+        assert fitted.call_args.kwargs["tba_elev"] is aligned
+
+    def test_fit__point_elevation_columns(self) -> None:
+        """Checks that fit() uses each point cloud's selected elevation column independently."""
+
+        frame = gpd.GeoDataFrame(
+            {"reference_height": [1.0, 2.0, 3.0], "aligned_height": [3.0, 4.0, 5.0]},
+            geometry=gpd.points_from_xy([0, 1, 2], [0, 1, 2]),
+            crs=32632,
+        )
+        reference = gu.PointCloud(frame.copy(), data_name="reference_height")
+        aligned = gu.PointCloud(frame.copy(), data_name="aligned_height")
+
+        estimator = coreg.VerticalShift().fit(reference, aligned)
+
+        assert estimator.to_matrix()[2, 3] == -2
+
+    @pytest.mark.parametrize("operation", ["fit", "apply", "fit_and_apply"])
+    def test_methods__legacy_point_column(self, operation: str) -> None:
+        """Checks that fit(), apply() and fit_and_apply() use the requested elevation column."""
+
+        reference = gpd.GeoDataFrame(
+            {"height": [1.0, 2.0, 3.0]}, geometry=gpd.points_from_xy([0, 1, 2], [0, 1, 2]), crs=32632
+        )
+        aligned = reference.assign(height=reference.height + 2)
+
+        if operation == "apply":
+            result = coreg.AffineCoreg.from_translations(0, 0, -2).apply(aligned, z_name="height")
+        else:
+            estimator = coreg.VerticalShift()
+            result = getattr(estimator, operation)(reference, aligned, z_name="height")
+            assert estimator.to_matrix()[2, 3] == -2
+        if operation != "fit":
+            np.testing.assert_array_equal(result.height, reference.height)
+
+    @pytest.mark.parametrize("kind", ["array", "raster", "points"])
+    def test_fit__initial_shift(self, kind: str) -> None:
+        """Checks that fit() shifts the reference coordinates and aligns an array mask before fitting."""
+
+        # Create a raster or points
+        reference: Any
+        aligned: Any
+        values = np.ma.masked_equal(np.arange(30.0).reshape(5, 6), 0)
+        raster = Raster.from_array(values, rio.Affine(2, 0, 500000, 0, -2, 7000000), 32632, nodata=np.nan)
+        options: dict[str, Any] = {}
+        if kind == "array":
+            reference = aligned = values
+            options = dict(transform=raster.transform, crs=raster.crs, inlier_mask=np.ones(raster.shape, dtype=bool))
+        elif kind == "raster":
+            reference = aligned = raster.to_xarray()
+        else:
+            reference = aligned = gpd.GeoDataFrame(
+                {"z": [10.0, 20.0]}, geometry=gpd.points_from_xy([0, 1], [2, 3]), crs=32632
+            )
+        estimator = coreg.NuthKaab(initial_shift=(4, -2))
+        fit_method = "_fit_pts_pts" if kind == "points" else "_fit_rst_rst"
+
+        # Inspect inputs before fitting
+        with patch.object(estimator, fit_method) as fitted:
+            estimator.fit(reference, aligned, **options)
+        arguments = fitted.call_args.kwargs
+        first, second = arguments["ref_elev"], arguments["tba_elev"]
+
+        # Check the reference shift
+        if kind == "points":
+            expected = np.array([[-4, -3], [4, 5], [10, 20]])
+            np.testing.assert_array_equal(first.to_xyz(), expected)
+            np.testing.assert_array_equal(second.to_xyz(), [[0, 1], [2, 3], [10, 20]])
+        else:
+            assert first.transform == rio.Affine.translation(-4, 2) @ raster.transform
+            assert second.transform == raster.transform
+            np.testing.assert_array_equal(first.to_nanarray().squeeze(), raster.to_nanarray())
+            if kind == "array":
+                assert arguments["inlier_mask"].georeferenced_grid_equal(first)
+                np.testing.assert_array_equal(arguments["inlier_mask"].data, options["inlier_mask"])
+
     def test_coreg_raster_and_ndarray_args(self) -> None:
 
         # Create a small sample-DEM
@@ -302,6 +493,23 @@ class TestCoregClass:
         # If crs provided with input Raster, should raise a warning
         with pytest.warns(UserWarning, match="DEM .* overrides the given 'crs'"):
             vshiftcorr_a.apply(dem2, crs=dem2.crs)
+
+    @pytest.mark.parametrize("raster_output", [False, True])
+    def test_apply__raster_output(self, raster_output: bool) -> None:
+        """Checks that apply() formats arrays or rasters returned by _apply_rst()."""
+
+        raster = Raster.from_array(np.arange(12.0).reshape(3, 4), rio.Affine(2, 0, 0, 0, -2, 6), 32632)
+        estimator = coreg.Coreg(meta={"subsample": 1})
+        with patch.object(estimator, "_fit_rst_rst"):
+            estimator.fit(raster, raster)
+        expected = raster.to_nanarray() + 2
+        output = raster.copy(new_array=expected) if raster_output else expected
+
+        with patch.object(estimator, "_apply_rst", return_value=(output, raster.transform)) as applied:
+            actual = estimator.apply(raster)
+
+        assert applied.call_args.kwargs["elev"] is raster
+        np.testing.assert_array_equal(actual.to_nanarray(), expected)
 
     # Inputs contain: coregistration method, is implemented, comparison is "strict" or "approx"
     @pytest.mark.parametrize(
@@ -446,13 +654,11 @@ class TestCoregClass:
         if ref_type == "array":
             ref_dem = ref_dem.data
         elif ref_type == "pc":
-            ref_dem = ref_dem.to_pointcloud().ds
-            ref_dem.rename(columns={"b1": "z"}, inplace=True)
+            ref_dem = ref_dem.to_pointcloud(data_name="z")
         if tba_type == "array":
             tba_dem = tba_dem.data
         elif tba_type == "pc":
-            tba_dem = tba_dem.to_pointcloud().ds
-            tba_dem.rename(columns={"b1": "z"}, inplace=True)
+            tba_dem = tba_dem.to_pointcloud(data_name="z")
         if mask_type == "array":
             inlier_mask_crop = inlier_mask_crop.data
 
@@ -532,7 +738,7 @@ class TestCoregClass:
                 "dem1.crs",
                 "apply",
                 "error",
-                "'transform' must be given if DEM is array-like.",
+                "'transform' must be given if any DEM is array-like.",
             ),
             (
                 "dem1",
@@ -541,7 +747,7 @@ class TestCoregClass:
                 "None",
                 "apply",
                 "error",
-                "'crs' must be given if DEM is array-like.",
+                "'crs' must be given if any DEM is array-like.",
             ),
             ("dem1", "dem2", "dem2.transform", "None", "apply", "warns", "DEM .* overrides the given 'transform'"),
             (
@@ -553,8 +759,8 @@ class TestCoregClass:
                 "error",
                 "Input elevation data should be a raster, array, geodataframe or point cloud.*",
             ),
-            ("dem1 + np.nan", "dem2", "None", "None", "fit", "error", "'reference_dem' had only NaNs"),
-            ("dem1", "dem2 + np.nan", "None", "None", "fit", "error", "'dem_to_be_aligned' had only NaNs"),
+            ("dem1 + np.nan", "dem2", "None", "None", "fit", "error", "no finite data common"),
+            ("dem1", "dem2 + np.nan", "None", "None", "fit", "error", "no finite data common"),
         ],
     )
     def test_coreg_raises(self, combination: tuple[str, str, str, str, str, str, str]) -> None:
@@ -629,6 +835,80 @@ class TestCoregClass:
         )
 
         assert np.array_equal(dem_arr, dem_arr2_fixed)
+
+
+class TestCoregClassChunked:
+    """Test module for raster and array loading during fit()."""
+
+    @pytest.mark.parametrize("as_array", [False, True])
+    def test_fit__loading_laziness(self, as_array: bool) -> None:
+        """Checks that fit() passes raster and array inputs to _fit_rst_rst() without loading them."""
+
+        pytest.importorskip("dask")
+        raster = Raster.from_array(np.arange(30.0).reshape(5, 6), rio.Affine(2, 0, 0, 0, -2, 12), 32632)
+        first = raster.to_xarray().chunk({"y": 3, "x": 4})
+        second = (raster + 2).to_xarray().chunk({"y": 2, "x": 3})
+        inputs = (first.data, second.data) if as_array else (first, second)
+        options = dict(transform=raster.transform, crs=raster.crs) if as_array else {}
+        estimator = coreg.Coreg(meta={"subsample": 1})
+
+        with patch.object(estimator, "_fit_rst_rst") as fitted:
+            estimator.fit(*inputs, **options)
+
+        for name in ("ref_elev", "tba_elev"):
+            prepared = fitted.call_args.kwargs[name]
+            assert not prepared.is_loaded
+            assert prepared.transform == raster.transform
+        assert not first.rst.is_loaded and not second.rst.is_loaded
+
+
+class TestCoregClassErrors:
+    """Test module for mixed GeoUtils and accessor inputs to coregistration."""
+
+    @pytest.mark.parametrize(
+        "operation, argument",
+        [
+            ("fit", "reference"),
+            ("fit", "aligned"),
+            ("fit", "mask"),
+            ("fit", "predictor"),
+            ("fit", "error_predictor"),
+            ("fit_and_apply", "reference"),
+            ("apply", "reference"),
+            ("apply", "predictor"),
+        ],
+    )
+    def test_methods__error_mixed_families(self, argument: str, operation: str) -> None:
+        """Checks an error is raised for mixed GeoUtils and accessor inputs before Dask evaluates any arrays."""
+
+        pytest.importorskip("dask")
+
+        # Combine GeoUtils objects and lazy accessors
+        raster = Raster.from_array(np.ones((5, 6)), rio.Affine(2, 0, 500000, 0, -2, 7000000), 32632)
+        lazy = raster.to_xarray().chunk({"y": 3, "x": 4})
+        first = raster if argument == "reference" else lazy
+        second = raster if argument == "aligned" else lazy
+
+        # Select the mixed input argument
+        options: dict[str, Any] = {}
+        if argument == "mask":
+            options["inlier_mask"] = raster > 0
+        if argument == "predictor":
+            options["bias_vars"] = {"height": raster}
+        if argument == "error_predictor":
+            fit_options = {"error_predictors": {"ref": {"quality": raster}}}
+            options.update({"fit_kwargs": fit_options} if operation == "fit_and_apply" else fit_options)
+        if operation == "apply":
+            options["bias_vars"] = {"height": lazy if argument == "reference" else raster}
+        arguments = (first,) if operation == "apply" else (first, second)
+        estimator = coreg.AffineCoreg.from_translations(0, 0, 1) if operation == "apply" else coreg.VerticalShift()
+
+        # Check mixed input families
+        with pytest.raises(TypeError, match="Cannot mix Raster/PointCloud"):
+            getattr(estimator, operation)(*arguments, **options)
+
+        # Check input loading
+        assert not lazy.rst.is_loaded
 
 
 class TestAffineManipulation:
