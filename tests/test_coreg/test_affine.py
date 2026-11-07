@@ -16,7 +16,6 @@ import numpy as np
 import pandas as pd
 import pytest
 import rasterio as rio
-import scipy.ndimage
 import scipy.optimize
 import scipy.spatial
 from geoutils import Raster, Vector

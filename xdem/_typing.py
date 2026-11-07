@@ -25,7 +25,6 @@ import numpy as np
 
 # Only for Python >= 3.9
 if sys.version_info.minor >= 9:
-
     from numpy.typing import (  # this syntax works starting on Python 3.9
         ArrayLike,
         DTypeLike,
@@ -41,7 +40,6 @@ if sys.version_info.minor >= 9:
     MArrayf = np.ma.masked_array[Any, np.dtype[np.floating[Any]]]
 
 else:
-
     # Make an array-like type (since the array-like numpy type only exists in numpy>=1.20)
     DTypeLike = Union[str, type, np.dtype]  # type: ignore
     ArrayLike = Union[np.ndarray, np.ma.masked_array, List[Any], Tuple[Any]]  # type: ignore

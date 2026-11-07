@@ -99,7 +99,7 @@ xdem.spatialstats.plot_1d_binning(
     var_name="maxc",
     statistic_name="nanmedian",
     label_var="Maximal absolute curvature (100 m$^{-1}$)",
-    label_statistic="Slope of Horn (1981) minus\n " "slope of Zevenberg and Thorne (1987) (°)",
+    label_statistic="Slope of Horn (1981) minus\n slope of Zevenberg and Thorne (1987) (°)",
 )
 
 

@@ -50,7 +50,6 @@ else:
 
 
 class CustomValidator(Validator):  # type: ignore
-
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Raise error if package does not exist
         if not _HAS_CERBERUS:
@@ -88,7 +87,6 @@ class CustomValidator(Validator):  # type: ignore
         """
         if value is not None and not isinstance(value, bool):
             try:
-
                 CRS.from_user_input(value)
                 return True
             except (ValueError, TypeError, ConnectionResetError, HTTPError, URLError) as e:

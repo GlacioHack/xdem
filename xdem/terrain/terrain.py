@@ -323,7 +323,6 @@ def get_terrain_attribute(
 
     # Check that we're not using Horn for curvatures
     if surface_fit == "Horn":
-
         curvature_list = [
             "curvature",
             "profile_curvature",
@@ -587,7 +586,6 @@ def _get_terrain_attribute_base(
 
     # Process surface attributes
     if len(attributes_requiring_surface_fit) > 0:
-
         # Keyword arguments
         surface_kwargs = {
             "hillshade_azimuth": hillshade_azimuth,
@@ -627,7 +625,6 @@ def _get_terrain_attribute_base(
 
     # Process windowed attributes
     if len(attributes_requiring_windowed_index) > 0:
-
         windowed_indexes = _get_windowed_indexes(
             dem=dem_arr,
             windowed_indexes=attributes_requiring_windowed_index,
@@ -643,7 +640,6 @@ def _get_terrain_attribute_base(
 
     # Process windowed fractal attributes
     if len(attributes_requiring_windowed_fractal_index) > 0:
-
         windowed_fractal_indexes = _get_windowed_indexes(
             dem=dem_arr,
             windowed_indexes=attributes_requiring_windowed_fractal_index,
@@ -653,9 +649,7 @@ def _get_terrain_attribute_base(
             tri_method=tri_method,
             engine=engine,
         )
-        windowed_fractal_indexes = [
-            windowed_fractal_indexes[i] for i in range(windowed_fractal_indexes.shape[0])
-        ]  # type: ignore
+        windowed_fractal_indexes = [windowed_fractal_indexes[i] for i in range(windowed_fractal_indexes.shape[0])]  # type: ignore
     else:
         windowed_fractal_indexes = []  # type: ignore
 

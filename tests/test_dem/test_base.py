@@ -282,7 +282,6 @@ class TestClassVsAccessorConsistencyInherited:
 
         # For a raster-type output
         if isinstance(output_dem, DEM):
-
             # 1/ For Dask object: both inputs and outputs should be unloaded + lazy, and compute
             assert not ds._in_memory
             assert isinstance(ds.data, da.Array)
@@ -302,7 +301,6 @@ class TestClassVsAccessorConsistencyInherited:
 
         # For an array-type output
         elif isinstance(output_dem, np.ndarray):
-
             # 1/ For Dask object: input and output should be unloaded + lazy, and compute
             assert not ds._in_memory
             assert isinstance(ds.data, da.Array)
@@ -612,7 +610,6 @@ class TestClassVsAccessorConsistencyDEMBase:
 
         # For a raster-type output
         if isinstance(output_dem, Raster):
-
             # 1/ For Dask object: both inputs and outputs should be unloaded + lazy, and compute
             # Input
             assert not ds._in_memory
@@ -643,7 +640,6 @@ class TestClassVsAccessorConsistencyDEMBase:
 
         # For an array-type output
         elif isinstance(output_dem, np.ndarray):
-
             # 1/ For Dask object: both inputs and outputs should be unloaded + lazy, and compute
             # Input
             assert not ds._in_memory
@@ -671,7 +667,6 @@ class TestClassVsAccessorConsistencyDEMBase:
 
         # For a list of raster-type outputs
         elif isinstance(output_dem, list):
-
             # Preserve the native or Xarray interface for every requested terrain output
             assert all(isinstance(output, DEM) for output in output_dem)
             assert all(isinstance(output, DEM) for output in output_dem2)

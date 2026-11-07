@@ -217,7 +217,7 @@ class TestVCRS:
         """Test errors are correctly raised when combining incompatible CRS inputs."""
 
         with pytest.raises(
-            ValueError, match="Invalid vcrs given. Must be a vertical " "CRS or the literal string 'Ellipsoid'."
+            ValueError, match="Invalid vcrs given. Must be a vertical CRS or the literal string 'Ellipsoid'."
         ):
             xdem.vcrs._combine_crs_and_vcrs(crs=CRS("EPSG:4326"), vcrs="NotAVerticalCRS")  # type: ignore
 

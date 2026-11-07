@@ -105,7 +105,6 @@ class TestTerrainAttribute:
                 assert np.all(np.abs(diff_valid < 10 ** (-3) * magn))
 
         except Exception as exception:
-
             if PLOT:
                 import matplotlib.pyplot as plt
 
@@ -194,7 +193,6 @@ class TestTerrainAttribute:
                 assert np.nanpercentile(np.abs(diff_valid), 99) < 10 ** (-3) * magn
 
         except Exception as exception:
-
             if PLOT:
                 import matplotlib.pyplot as plt
 
@@ -277,9 +275,7 @@ class TestTerrainAttribute:
         )  # type: ignore
 
         # Create attributes using its own function
-        hillshade_u = xdem.terrain.hillshade(
-            self.dem.data, resolution=self.dem.res, surface_fit=surface_fit
-        )  # type: ignore
+        hillshade_u = xdem.terrain.hillshade(self.dem.data, resolution=self.dem.res, surface_fit=surface_fit)  # type: ignore
         fractal_roughness_u = xdem.terrain.fractal_roughness(self.dem.data, window_size_fractal=window_size_fractal)
         roughness_u = xdem.terrain.roughness(self.dem.data, window_size=window_size)
 
@@ -433,9 +429,7 @@ class TestTerrainAttribute:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Surface fit 'DoesNotExist' is not supported. Must be one of: "
-                "['Horn', 'ZevenbergThorne', "
-                "'Florinsky']"
+                "Surface fit 'DoesNotExist' is not supported. Must be one of: ['Horn', 'ZevenbergThorne', 'Florinsky']"
             ),
         ):
             xdem.terrain.slope(self.dem, surface_fit="DoesNotExist")  # type: ignore
@@ -443,7 +437,7 @@ class TestTerrainAttribute:
         # Wrong method name for TRI
         with pytest.raises(
             ValueError,
-            match=re.escape("TRI method 'DoesNotExist' is not supported. Must be one of: " "['Riley', 'Wilson']"),
+            match=re.escape("TRI method 'DoesNotExist' is not supported. Must be one of: ['Riley', 'Wilson']"),
         ):
             xdem.terrain.terrain_ruggedness_index(self.dem, method="DoesNotExist")  # type: ignore
 
@@ -451,7 +445,7 @@ class TestTerrainAttribute:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "Curvature method 'DoesNotExist' is not supported. Must be " "one of: ['geometric', 'directional']"
+                "Curvature method 'DoesNotExist' is not supported. Must be one of: ['geometric', 'directional']"
             ),
         ):
             xdem.terrain.max_curvature(self.dem, curv_method="DoesNotExist")  # type: ignore

@@ -79,7 +79,7 @@ class BlockwiseCoreg:
 
         if isinstance(step, type):
             raise ValueError(
-                "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
+                "The 'step' argument must be an instantiated Coreg subclass. Hint: write e.g. ICP() instead of ICP"
             )
         if not step.is_affine:
             raise ValueError("The blockwise coregistration only supports affine coregistration methods.")
@@ -194,7 +194,6 @@ class BlockwiseCoreg:
         self.shifts_z = []  # type: ignore
 
         for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
-
             shift_x = coreg.meta["outputs"]["affine"].get("shift_x", np.nan)
             shift_y = coreg.meta["outputs"]["affine"].get("shift_y", np.nan)
             shift_z = coreg.meta["outputs"]["affine"].get("shift_z", np.nan)

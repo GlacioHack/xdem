@@ -264,14 +264,16 @@ class TestCoregPipeline(_CoregPipelineInputs):
         assert list(coreg_fit_and_apply.pipeline[0].meta.keys()) == list(coreg_fit_then_apply.pipeline[0].meta.keys())
         assert all(
             assert_coreg_meta_equal(
-                coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k]  # type: ignore
+                coreg_fit_and_apply.pipeline[0].meta[k],  # type: ignore
+                coreg_fit_then_apply.pipeline[0].meta[k],  # type: ignore
             )
             for k in coreg_fit_and_apply.pipeline[0].meta.keys()
         )
         assert list(coreg_fit_and_apply.pipeline[1].meta.keys()) == list(coreg_fit_then_apply.pipeline[1].meta.keys())
         assert all(
             assert_coreg_meta_equal(
-                coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k]  # type: ignore
+                coreg_fit_and_apply.pipeline[1].meta[k],  # type: ignore
+                coreg_fit_then_apply.pipeline[1].meta[k],  # type: ignore
             )
             for k in coreg_fit_and_apply.pipeline[1].meta.keys()
         )
