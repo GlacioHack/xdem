@@ -16,7 +16,7 @@ There are a number of types of elevation data:
 4. **Elevation triangle irregular networks (TINs)** are a triangle mesh representing the continuous elevation surface. **They are usually not used for analysis**, instead in-memory for visualization or for conversion from an elevation point cloud to a DEM.
 
 ```{note}
-xDEM supports the two elevation data types primarily used for quantitative analysis: the {class}`~xdem.DEM` and the elevation point cloud (currently as a {class}`~geopandas.GeoDataFrame` for some operations, more soon!).
+xDEM supports the two elevation data types primarily used for quantitative analysis: the {class}`~xdem.DEM` and the {class}`~xdem.EPC`.
 
 See the **{ref}`elevation-objects` features pages** for more details.
 ```
@@ -61,7 +61,7 @@ For this reason, xDEM includes {ref}`tools to easily set a vertical CRS<vref-set
 ## The interpretation of pixel value for DEMs
 
 Among the elevation data types listed above, DEMs are the only gridded dataset. While gridded datasets have become
-ubiquitous for quantitative anaysis, they also suffer from a problem of pixel interpretation.
+ubiquitous for quantitative analysis, they also suffer from a problem of pixel interpretation.
 
 Pixel interpretation describes how a grid cell value should be interpreted, and has two definitions:
 - **“Area” (the most common)** where the value represents a sampling over the region of the pixel (and typically refers to the upper-left corner coordinate), or

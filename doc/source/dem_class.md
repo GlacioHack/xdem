@@ -1,5 +1,7 @@
 ---
 file_format: mystnb
+mystnb:
+  execution_timeout: 150
 jupytext:
   formats: md:myst
   text_representation:
@@ -54,7 +56,7 @@ dem = xdem.DEM(filename_dem)
 dem
 ```
 
-Detailed information on the {class}`~xdem.DEM` is printed using {func}`~geoutils.Raster.info`, along with basic statistics using `stats=True`:
+Detailed information on the {class}`~xdem.DEM` is printed using {func}`~xdem.DEM.info`, along with basic statistics using `stats=True`:
 
 ```{code-cell} ipython3
 # Print details of raster
@@ -67,11 +69,11 @@ The {class}`~xdem.DEM` data array remains implicitly unloaded until {attr}`~xdem
 The georeferencing metadata ({attr}`~xdem.DEM.transform`, {attr}`~xdem.DEM.crs`, {attr}`~xdem.DEM.nodata`), however, is always loaded. This allows to pass it effortlessly to other objects requiring it for geospatial operations (reproject-match, rasterizing a vector, etc).
 ```
 
-A {class}`~xdem.DEM` is saved to file by calling {func}`~xdem.DEM.save` with a {class}`str` or a {class}`pathlib.Path`.
+A {class}`~xdem.DEM` is saved to file by calling {func}`~xdem.DEM.to_file` with a {class}`str` or a {class}`pathlib.Path`.
 
 ```{code-cell} ipython3
 # Save raster to disk
-dem.save("mydem.tif")
+dem.to_file("mydem.tif")
 ```
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -128,7 +130,7 @@ by calling the function corresponding to the attribute name such as {func}`~xdem
 
 ```{code-cell} ipython3
 # Derive slope using the Zevenberg and Thorne (1987) method
-slope = dem.slope(method="ZevenbergThorne")
+slope = dem.slope(surface_fit="ZevenbergThorne")
 slope.plot(cmap="Reds", cbar_title="Slope (°)")
 ```
 
@@ -136,19 +138,31 @@ slope.plot(cmap="Reds", cbar_title="Slope (°)")
 For the full list of terrain attributes, see the {ref}`terrain-attributes` page.
 ```
 
+## Statistics
+
+The {func}`~xdem.DEM.stats` method allows to extract statistical information from a DEM in a dictionary.
+
+- Get all statistics in a dict:
+```{code-cell} ipython3
+dem.stats()
+```
+
+The DEM statistics functionalities in xDEM are based on those in GeoUtils.
+For more information on computing statistics, please refer to [GeoUtils' documentation](https://geoutils.readthedocs.io/en/stable/stats.html).
+
 ## Coregistration
 
 3D coregistration is performed with {func}`~xdem.DEM.coregister_3d`, which aligns the
-{class}`~xdem.DEM` to another DEM using a pipeline defined with a {class}`~xdem.coreg.Coreg`
+{class}`~xdem.DEM` to another DEM or EPC using a pipeline defined with a {class}`~xdem.coreg.Coreg`
 object (defaults to horizontal and vertical shifts).
 
 ```{code-cell} ipython3
 # Another DEM to-be-aligned to the first one
 filename_tba = xdem.examples.get_path("longyearbyen_tba_dem")
-dem_tba = xdem.DEM(filename_tba)
+dem_tba = xdem.DEM(filename_tba, vcrs=dem.vcrs)
 
 # Coregister (horizontal and vertical shifts)
-dem_tba_coreg = dem_tba.coregister_3d(dem)
+dem_tba_coreg = dem_tba.coregister_3d(dem, xdem.coreg.NuthKaab() + xdem.coreg.VerticalShift())
 
 # Plot the elevation change of the DEM due to coregistration
 dh_tba = dem_tba - dem_tba_coreg.reproject(dem_tba, silent=True)
@@ -161,14 +175,25 @@ For more details on building coregistration pipelines and accessing metadata, se
 
 ## Uncertainty analysis
 
-Estimation of DEM-related uncertainty can be performed with {func}`~xdem.DEM.estimate_uncertainty`, which estimates both
+Estimation of DEM-related uncertainty can be performed with {func}`~xdem.DEM.estimate_error_structure`, which estimates both
 **an error map** considering variable per-pixel errors and **the spatial correlation of errors**. The workflow relies
 on an independent elevation data object that is **assumed to have either much finer or similar precision**, and uses
 stable terrain as a proxy.
 
 ```{code-cell} ipython3
 # Estimate elevation uncertainty assuming both DEMs have similar precision
-sig_dem, rho_sig = dem.estimate_uncertainty(dem_tba_coreg, precision_of_other="same", random_state=42)
+import numpy as np
+
+stable_terrain = ~vect_gla.create_mask(dem)
+# Sample the full scene diagonal
+max_lag = np.hypot(dem.shape[0] * dem.res[1], dem.shape[1] * dem.res[0])
+predictors = {"slope": dem.slope(), "max_curvature": dem.max_curvature()}
+error_structure = dem.estimate_error_structure(
+    dem_tba_coreg, mask=stable_terrain, predictors=predictors, other_precision="same",
+    n_pairs=100_000, max_lag=max_lag, random_state=42,
+)
+sig_dem = error_structure.predict_magnitude(predictors, like=dem)
+rho_sig = error_structure.predict_correlation
 
 # The error map variability is estimated from slope and curvature by default
 sig_dem.plot(cmap="Purples", cbar_title=r"Random error in elevation (1$\sigma$, m)")

@@ -15,17 +15,19 @@ More details are available on each feature page!
 
 ### Terrain attributes
 
+References for **curvatures** are detailed further below the other terrain attributes.
+
 ```{list-table}
-   :widths: 1 1
+   :widths: 1 2
    :header-rows: 1
    :stub-columns: 1
 
    * - Method
      - Reference
+   * - Partial derivatives (slope, aspect, curvatures)
+     - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107) or [Florinsky (2009)](https://doi.org/10.1080/13658810802527499)
    * - Slope, aspect and hillshade
      - [Horn (1981)](http://dx.doi.org/10.1109/PROC.1981.11918) or [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
-   * - Curvatures
-     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
    * - Topographic position index
      - [Weiss (2001)](http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf)
    * - Terrain ruggedness index
@@ -36,12 +38,45 @@ More details are available on each feature page!
      - [Jenness (2004)](<https://doi.org/10.2193/0091-7648(2004)032[0829:CLSAFD]2.0.CO;2>)
    * - Fractal roughness
      - [Taud and Parrot (2005)](https://doi.org/10.4000/geomorphologie.622)
+   * - Texture shading
+     - [Brown (2010)](https://mountaincartography.icaci.org/activities/workshops/banff_canada/papers/brown.pdf) and [Allmendinger and Karabinos (2023)](https://doi.org/10.1130/GES02531.1)
+```
+
+**Curvatures** follow the recommended system of [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414). Where no direct DOI can be linked, consult this paper for the full citation.
+There are two ways of defining curvatures: either _geometric_ (curvatures can be defined by the radius of a circle), or _directional derivative_ (curvatures can be understood as directional derivatives of the elevation field).
+xDEM defaults to the geometric method.
+
+```{list-table}
+   :widths: 1 1 1
+   :header-rows: 1
+   :stub-columns: 1
+   * - Method
+     - Geometric
+     - Directional derivative
+   * - Profile curvature
+     - Krcho (1973) and Evans (1979)
+     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
+   * - Tangential curvature
+     - Krcho (1983)
+     - [Zevenbergen and Thorne (1987)](http://dx.doi.org/10.1002/esp.3290120107)
+   * - Planform curvature
+     - Sobolevsky (1932)
+     - Sobolevsky (1932)
+   * - Flowline curvature
+     - [Minár et al. (2020)](https://doi.org/10.1016/j.earscirev.2020.103414)
+     - Shary (1991)
+   * - Maximal/Maximum curvature
+     - [Shary (1995)](https://doi.org/10.1007/BF02084608)
+     - [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503)
+   * - Minimal/Minimum curvature
+     - [Shary (1995)](https://doi.org/10.1007/BF02084608)
+     - [Wood (1996)](https://lra.le.ac.uk/handle/2381/34503)
 ```
 
 ### Coregistration
 
 ```{list-table}
-   :widths: 1 1
+   :widths: 1 2
    :header-rows: 1
    :stub-columns: 1
 
@@ -51,8 +86,12 @@ More details are available on each feature page!
      - [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011)
    * - Dh minimization
      - N/A
+   * - Least Z-difference
+     - [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf)
    * - Iterative closest point
-     - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955)
+     - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955), [Chen and Medioni (1992)](https://doi.org/10.1016/0262-8856(92)90066-C)
+   * - Coherent point drift
+     - [Myronenko and Song (2010)](https://doi.org/10.1109/TPAMI.2010.46)
    * - Vertical shift
      - N/A
 ```
@@ -60,7 +99,7 @@ More details are available on each feature page!
 ### Bias-correction
 
 ```{list-table}
-   :widths: 1 1
+   :widths: 1 2
    :header-rows: 1
    :stub-columns: 1
 
@@ -68,16 +107,12 @@ More details are available on each feature page!
      - Reference
    * - Deramp
      - N/A
-   * - Directional bias (sum of sinuoids)
+   * - Directional bias (sinusoids)
      - [Girod et al. (2017)](https://doi.org/10.3390/rs9070704)
-   * - Directional bias (other)
-     - N/A
-   * - Terrain bias (maximum curvature)
+   * - Terrain bias (curvature)
      - [Gardelle et al. (2012)](https://doi.org/10.3189/2012JoG11J175)
    * - Terrain bias (elevation)
      - [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011)
-   * - Terrain bias (other)
-     - N/A
    * - Vertical shift
      - N/A
 ```
@@ -85,7 +120,7 @@ More details are available on each feature page!
 ### Gap-filling
 
 ```{list-table}
-   :widths: 1 1
+   :widths: 1 2
    :header-rows: 1
    :stub-columns: 1
 
@@ -101,14 +136,14 @@ More details are available on each feature page!
 ### Uncertainty analysis
 
 ```{list-table}
-   :widths: 2 1
+   :widths: 1 1
    :header-rows: 1
    :stub-columns: 1
 
    * - Method
      - Reference
-   * - R2009 (multiple correlation ranges, circular approximation)
+   * - R2009 (nested ranges, circular approx.)
      - [Rolstad et al. (2009)](http://dx.doi.org/10.3189/002214309789470950)
-   * - H2022 (heteroscedasticity, multiple correlation ranges, spatial propagation approximation)
+   * - H2022 (heterosc., nested ranges, spatial propag.)
      - [Hugonnet et al. (2022)](http://dx.doi.org/10.1109/JSTARS.2022.3188922)
 ```

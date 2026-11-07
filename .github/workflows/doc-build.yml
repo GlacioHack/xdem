@@ -1,0 +1,37 @@
+name: documentation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Update .readthedocs.yaml when changing OS, Python or dependencies
+  doc:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+      # Pip does not install the graphviz binary, only bindings
+      # We need this system install
+      - name: Install system dependencies
+        run: |
+            sudo apt-get update
+            sudo apt-get install -y graphviz
+      - name: Install project with documentation dependencies
+        run: uv pip install --system --torch-backend=cpu -e ".[doc,opt]"
+
+      # Comment this temporary override after the GeoUtils accessor release
+      - name: Install latest GeoUtils main
+        run: uv pip install --system --upgrade --reinstall --no-deps "geoutils @ git+https://github.com/GlacioHack/geoutils.git@main"
+
+      - name: Sphinx build with full traceback
+        run: |
+          cd doc
+          sphinx-build -T -b html source/ build/

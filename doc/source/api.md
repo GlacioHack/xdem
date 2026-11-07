@@ -31,7 +31,7 @@ Below, we only repeat some core attributes and methods of GeoUtils, see
     :toctree: gen_modules/
 
     DEM
-    DEM.save
+    DEM.to_file
 ```
 
 ### Plotting or summarize info
@@ -137,6 +137,17 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
     DEM.interp_points
 ```
 
+### Statistics
+
+```{eval-rst}
+.. autosummary::
+    :toctree: gen_modules/
+
+    DEM.stats
+    EPC.stats
+    DEM.get_stats
+```
+
 ### Terrain attributes
 
 ```{eval-rst}
@@ -146,15 +157,18 @@ See the full list of vector methods in [GeoUtils' documentation](https://geoutil
     DEM.slope
     DEM.aspect
     DEM.hillshade
-    DEM.curvature
     DEM.profile_curvature
+    DEM.tangential_curvature
     DEM.planform_curvature
-    DEM.maximum_curvature
+    DEM.flowline_curvature
+    DEM.max_curvature
+    DEM.min_curvature
     DEM.topographic_position_index
     DEM.terrain_ruggedness_index
     DEM.roughness
     DEM.rugosity
     DEM.fractal_roughness
+    DEM.texture_shading
 ```
 
 Or to get multiple related terrain attributes at once (for performance):
@@ -179,209 +193,88 @@ To build and pass your coregistration pipeline to {func}`~xdem.DEM.coregister_3d
     DEM.coregister_3d
 ```
 
-### Uncertainty analysis
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    DEM.estimate_uncertainty
-```
-
-(api-geo-handle)=
-
-## Coreg
-
-**Overview of co-registration class structure**:
-
-```{eval-rst}
-.. inheritance-diagram:: xdem.coreg.base.Coreg xdem.coreg.affine xdem.coreg.biascorr
-        :top-classes: xdem.coreg.Coreg
-```
-
-### Coregistration, pipeline and blockwise
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.Coreg
-    coreg.CoregPipeline
-    coreg.BlockwiseCoreg
-```
-
-#### Fitting and applying transforms
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.Coreg.fit_and_apply
-    coreg.Coreg.fit
-    coreg.Coreg.apply
-```
-
-#### Extracting metadata
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.Coreg.info
-    coreg.Coreg.meta
-```
-
-#### Quick coregistration
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.workflows.dem_coregistration
-```
-
-### Affine coregistration
-
-#### Parent object (to define custom methods)
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.AffineCoreg
-```
-
-#### Coregistration methods
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.VerticalShift
-    coreg.NuthKaab
-    coreg.DhMinimize
-    coreg.ICP
-```
-
-#### Manipulating affine transforms
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.AffineCoreg.from_matrix
-    coreg.AffineCoreg.to_matrix
-    coreg.AffineCoreg.from_translations
-    coreg.AffineCoreg.to_translations
-    coreg.AffineCoreg.from_rotations
-    coreg.AffineCoreg.to_rotations
-
-    coreg.apply_matrix
-    coreg.invert_matrix
-```
-
-### Bias-correction
-
-#### Parent object (to define custom methods)
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.BiasCorr
-```
-
-#### Bias-correction methods
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    coreg.Deramp
-    coreg.DirectionalBias
-    coreg.TerrainBias
-```
-
 ## Uncertainty analysis
 
-```{important}
-Several uncertainty functionalities of xDEM are being implemented directly in SciKit-GStat for spatial statistics
-(e.g., fitting a sum of variogram models, pairwise subsampling for grid data). This will allow to simplify several
-function inputs and outputs, by relying on a single {func}`~skgstat.Variogram` object.
-
-This will trigger API changes in future package versions.
-```
-
-### Core routines for heteroscedasticity, spatial correlations, error propagation
+### Error structures and public workflows
 
 ```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    spatialstats.infer_heteroscedasticity_from_stable
-    spatialstats.infer_spatial_correlation_from_stable
-    spatialstats.spatial_error_propagation
+    ErrorMagnitude
+    ErrorComponent
+    ErrorStructure
+    ErrorStructure.estimate
+    ErrorStructure.info
+    ErrorStructure.plot
+    ErrorStructure.plot_magnitude
+    ErrorStructure.plot_correlation
+    ErrorStructure.predict_magnitude
+    ErrorStructure.predict_correlation
+    ErrorStructure.refit
+    ErrorStructure.refit_magnitude
+    ErrorStructure.refit_variogram
+    DEM.estimate_error_structure
+    EPC.estimate_error_structure
+    DEM.random_field
+    EPC.random_field
+    uncertainty.estimate_error_structure
+    uncertainty.propagate
+    uncertainty.propagate_uncertainty_coreg
+    uncertainty.number_effective_samples
+    uncertainty.spatial_error_propagation
+    uncertainty.patches_method
 ```
 
-### Sub-routines for heteroscedasticity
+### Propagation summaries
+
+Spatial and terrain propagation return the GeoUtils summary. Coregistration extends it with parameter plots.
 
 ```{eval-rst}
+.. currentmodule:: geoutils
+
 .. autosummary::
     :toctree: gen_modules/
 
-    spatialstats.nd_binning
-    spatialstats.interp_nd_binning
-    spatialstats.two_step_standardization
-```
+    PropagationSummary
+    PropagationSummary.info
+    PropagationSummary.interval
 
-### Sub-routines for spatial correlations
+.. currentmodule:: xdem
 
-```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    spatialstats.sample_empirical_variogram
-    spatialstats.fit_sum_model_variogram
-    spatialstats.correlation_from_variogram
+    uncertainty.PropagationSummary
+    uncertainty.PropagationSummary.plot
 ```
 
-### Sub-routines for error propagation
+### Shared fitting and analytical calculations
 
 ```{eval-rst}
+.. currentmodule:: geoutils
+
 .. autosummary::
     :toctree: gen_modules/
 
-    spatialstats.number_effective_samples
-```
+    Variogram
+    stats.nmad
 
-### Empirical validation
+.. currentmodule:: xdem
 
-```{eval-rst}
 .. autosummary::
     :toctree: gen_modules/
 
-    spatialstats.patches_method
+    fit.interp_binning
+    fit.get_perbin_binning
+    uncertainty.spatial.neff_exact
+    uncertainty.spatial.neff_hugonnet_approx
+    uncertainty.spatial.neff_circular_approx_theoretical
+    uncertainty.spatial.neff_circular_approx_numerical
 ```
 
-### Plotting for uncertainty analysis
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    spatialstats.plot_variogram
-    spatialstats.plot_1d_binning
-    spatialstats.plot_2d_binning
-```
-
-## Stand-alone functions (moved)
-
-```{eval-rst}
-.. autosummary::
-    :toctree: gen_modules/
-
-    spatialstats.nmad
-```
-
+Generic grouping, cosampling, pair sampling, variogram fitting and their plots are provided by GeoUtils.
+The entire `xdem.spatialstats` module and `DEM.estimate_uncertainty()` are deprecated.
 
 ## Development classes (removal or re-factoring)
 

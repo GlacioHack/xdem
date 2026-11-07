@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Difference of DEMs classes and functions."""
+
 from __future__ import annotations
 
 import warnings
@@ -59,7 +60,7 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
                 mask = gu.Raster(mask)
             # If that fails, raise an error
             except rio.errors.RasterioIOError:
-                raise ValueError(f"Mask path not in a supported Raster or Vector format: {mask}")
+                raise ValueError(f"Raster path not in a supported Raster or Vector format: {mask}")
 
     # At this point, the mask variable is either a Raster or a Vector
     # Now, convert the mask into an array by either rasterizing a Vector or by fetching a Raster's data
@@ -71,7 +72,7 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
         mask_array = (mask.data == true_value).squeeze()
     else:
         raise TypeError(
-            f"Mask has invalid type: {type(mask)}. Expected one of: " f"{[gu.Raster, gu.Vector, str, type(None)]}"
+            f"Raster has invalid type: {type(mask)}. Expected one of: " f"{[gu.Raster, gu.Vector, str, type(None)]}"
         )
 
     return mask_array

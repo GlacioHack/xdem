@@ -23,7 +23,7 @@ def environment_yml_nopy(fn_env: str, py_version: str, add_deps: list[str] = Non
 
     # Optionally, add other dependencies
     if add_deps is not None:
-        conda_dep_env_forced_py.extend(add_deps)
+        conda_dep_env_forced_py.extend(add_deps.split(","))
 
     # Copy back to new yaml dict
     yaml_out = yaml_env.copy()
@@ -51,4 +51,4 @@ if __name__ == "__main__":
         help="List of dependencies to add.",
     )
     args = parser.parse_args()
-    environment_yml_nopy(fn_env=args.fn_env, py_version=args.py_version, add_deps=args.add_deps.split(","))
+    environment_yml_nopy(fn_env=args.fn_env, py_version=args.py_version, add_deps=args.add_deps)

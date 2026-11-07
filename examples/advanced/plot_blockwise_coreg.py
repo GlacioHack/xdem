@@ -5,15 +5,15 @@ Blockwise coregistration
 Often, biases are spatially variable, and a "global" shift may not be enough to coregister a DEM properly.
 In the :ref:`sphx_glr_basic_examples_plot_nuth_kaab.py` example, we saw that the method improved the alignment significantly, but there were still possibly nonlinear artefacts in the result.
 Clearly, nonlinear coregistration approaches are needed.
-One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrarily small grid, and then "puppet warp" the DEM to fit the reference best.
+One solution is :class:`xdem.coreg.BlockwiseCoreg`, a helper to run any ``Coreg`` class over an arbitrary grid. Thanks to this tool, local errors are detected more effectively and memory usage is reduced.
+Indeed, the entire DEM does not need to be loaded into memory, the processes run for each block, also enabling multiprocessing.
 
-The ``BlockwiseCoreg`` class runs in five steps:
+The ``BlockwiseCoreg`` class runs in four steps:
 
 1. Generate a subdivision grid to divide the DEM in N blocks.
-2. Run the requested coregistration approach in each block.
-3. Extract each result as a source and destination X/Y/Z point.
-4. Interpolate the X/Y/Z point-shifts into three shift-rasters.
-5. Warp the DEM to apply the X/Y/Z shifts.
+2. Run the requested coregistration approach in each block and save the results.
+3. Based on these results, calculation of the overall offset.
+4. Apply to the entire DEM also by block, but this time with an overlap, this overlap corresponds to the maximum offset calculated in step 2.
 
 """
 
@@ -22,6 +22,7 @@ import geoutils as gu
 # sphinx_gallery_thumbnail_number = 2
 import matplotlib.pyplot as plt
 import numpy as np
+from geoutils.multiproc import ClusterGenerator, MultiprocConfig
 
 import xdem
 
@@ -35,13 +36,6 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 # Create a stable ground mask (not glacierized) to mark "inlier data"
 inlier_mask = ~glacier_outlines.create_mask(reference_dem)
 
-plt_extent = [
-    reference_dem.bounds.left,
-    reference_dem.bounds.right,
-    reference_dem.bounds.bottom,
-    reference_dem.bounds.top,
-]
-
 # %%
 # The DEM to be aligned (a 1990 photogrammetry-derived DEM) has some vertical and horizontal biases that we want to avoid, as well as possible nonlinear distortions.
 # The product is a mosaic of multiple DEMs, so "seams" may exist in the data.
@@ -54,37 +48,64 @@ plt.show()
 
 # %%
 # Horizontal and vertical shifts can be estimated using :class:`xdem.coreg.NuthKaab`.
-# Let's prepare a coregistration class that calculates 64 offsets, evenly spread over the DEM.
+# Let's prepare a coregistration class with a tiling configuration
+# BlockwiseCoreg is also available without ``mp_config`` by specifying the block size and the save directory.
 
-blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(), subdivision=64)
-
-
-# %%
-# The grid that will be used can be visualized with a helper function.
-# Coregistration will be performed in each block separately.
-
-plt.title("Subdivision grid")
-plt.imshow(blockwise.subdivide_array(dem_to_be_aligned.shape), cmap="gist_ncar")
-plt.show()
+# Create a configuration with two processing nodes
+cluster = ClusterGenerator("multi", nb_workers=2)
+mp_config = MultiprocConfig(chunks=500, outfile="aligned_dem.tif", cluster=cluster)
+# Currently, with mp_config, block_size_fit must be equal to chunk_size
+blockwise = xdem.coreg.BlockwiseCoreg(
+    xdem.coreg.NuthKaab(), mp_config=mp_config, block_size_fit=500, block_size_apply=1000
+)
 
 # %%
 # Coregistration is performed with the ``.fit()`` method.
-# This runs in multiple threads by default, so more CPU cores are preferable here.
 
-aligned_dem = blockwise.fit_and_apply(reference_dem, dem_to_be_aligned, inlier_mask=inlier_mask)
+blockwise.fit(reference_dem, dem_to_be_aligned, inlier_mask)
+blockwise.apply(dem_to_be_aligned)
+
+# Close workers after fitting and applying the correction
+cluster.close()
+
+aligned_dem = xdem.DEM("aligned_dem.tif")
 
 # %%
 # The estimated shifts can be visualized by applying the coregistration to a completely flat surface.
-# This shows the estimated shifts that would be applied in elevation; additional horizontal shifts will also be applied if the method supports it.
-# The :func:`xdem.coreg.BlockwiseCoreg.stats` method can be used to annotate each block with its associated Z shift.
+# This shows the estimated shifts that would be applied in elevation;
+# additional horizontal shifts will also be applied if the method supports it.
 
-z_correction = blockwise.apply(
-    np.zeros_like(dem_to_be_aligned.data), transform=dem_to_be_aligned.transform, crs=dem_to_be_aligned.crs
-)[0]
-plt.title("Vertical correction")
-plt.imshow(z_correction, cmap="RdYlBu", vmin=-10, vmax=10, extent=plt_extent)
-for _, row in blockwise.stats().iterrows():
-    plt.annotate(round(row["z_off"], 1), (row["center_x"], row["center_y"]), ha="center")
+rows, cols, _ = blockwise.shape_tiling_grid
+
+matrix_x = np.full((rows, cols), np.nan)
+matrix_y = np.full((rows, cols), np.nan)
+matrix_z = np.full((rows, cols), np.nan)
+
+for key, value in blockwise.meta["outputs"].items():
+    row, col = map(int, key.split("_"))
+    matrix_x[row, col] = value["shift_x"]
+    matrix_y[row, col] = value["shift_y"]
+    matrix_z[row, col] = value["shift_z"]
+
+
+def plot_heatmap(matrix, title, cmap, ax):
+    im = ax.imshow(matrix, cmap=cmap)
+    for (i, j), val in np.ndenumerate(matrix):
+        ax.text(j, i, f"{val:.2f}", ha="center", va="center", color="black")
+    ax.set_title(title)
+    ax.set_xticks(np.arange(cols))
+    ax.set_yticks(np.arange(rows))
+    ax.invert_yaxis()
+    plt.colorbar(im, ax=ax)
+
+
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+plot_heatmap(matrix_x, "shifts in X", "Reds", axes[0])
+plot_heatmap(matrix_y, "shifts in Y", "Greens", axes[1])
+plot_heatmap(matrix_z, "shifts in Z", "Blues", axes[2])
+
+plt.tight_layout()
+plt.show()
 
 # %%
 # Then, the new difference can be plotted to validate that it improved.
@@ -97,6 +118,5 @@ plt.show()
 # %%
 # We can compare the NMAD to validate numerically that there was an improvement:
 
-
-print(f"Error before: {xdem.spatialstats.nmad(diff_before[inlier_mask]):.2f} m")
-print(f"Error after: {xdem.spatialstats.nmad(diff_after[inlier_mask]):.2f} m")
+print(f"Error before: {gu.stats.nmad(diff_before[inlier_mask]):.2f} m")
+print(f"Error after: {gu.stats.nmad(diff_after[inlier_mask]):.2f} m")

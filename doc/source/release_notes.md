@@ -1,6 +1,58 @@
+(release-notes)=
 # Release notes
 
 Below, the release notes for all minor versions and our roadmap to a first major version.
+
+## 0.3.0 (unreleased)
+
+(uncertainty-module-migration)=
+### Uncertainty module migration
+
+The `xdem.spatialstats` module is deprecated in favor of `xdem.uncertainty`, built on the [GeoUtils uncertainty module](https://geoutils.readthedocs.io/en/stable/uncertainty.html).
+
+For **estimation**, everything now revolves around an {class}`~xdem.ErrorStructure`, describing error magnitude and correlation.
+For **propagation**, pass it to {func}`~xdem.uncertainty.propagate` and receive a {class}`~geoutils.PropagationSummary` object.
+
+{meth}`~xdem.ErrorStructure.estimate` and {meth}`~xdem.DEM.estimate_error_structure` are interchangeable ways to estimate {class}`~xdem.ErrorStructure`.
+
+In more details, to adjust from previous code:
+- `DEM.estimate_uncertainty()` is essentially replaced by `DEM.estimate_error_structure()`, but without multiple outputs: everything is contained in {class}`~xdem.ErrorStructure`,
+- `estimate_error_structure()` now handles all the steps previously done with `nd_binning()`, `interp_nd_binning()`, `two_step_standardization()`,
+  `sample_empirical_variogram()` and `fit_sum_model_variogram()`, avoiding the need to pass volatile inputs and outputs between those,
+- To run grouped statistics and variogram estimation steps separately, refer to the [Statistics module in GeoUtils](https://geoutils.readthedocs.io/en/stable/stats.html),
+- Use {func}`~xdem.uncertainty.number_effective_samples` and {func}`~xdem.uncertainty.spatial_error_propagation` in place of the `spatialstats` functions,
+  now passing an `ErrorStructure` instead of variogram parameters and error arrays,
+- A new `propagate()` now supports **analytical or numerical** propagation to spatial averages, terrain attributes, coregistration, and some custom operations.
+
+Find more details about the new API on the {ref}`uncertainty` page!
+
+## 0.2.0
+
+xDEM version 0.2 is the **second minor release**, notably marked by the merge in efforts with [demcompare](https://github.com/CNES/demcompare) (no longer maintained) to build a unified tool!
+It is the result of months of work to consolidate several features, in particular support for **elevation point clouds** (EPCs). Parallel work on scalability with Dask and Multiprocessing
+is ongoing, and should soon be released in a 0.3.
+
+This new version adds:
+- Elevation point cloud objects (for both vector and LAS files) with relevant methods (coregistration, vertical referencing) and that builds on the point cloud object of GeoUtils (to interface easily with rasters and vectors),
+- Support for elevation point clouds in coregistration and bias-correction pipelines,
+- New terrain attributes including new fits to estimate derivatives (used for slope, aspect, ...), more rigorous curvature definitions and texture shading for visualization,
+- An experimental command-line interface for multi-step workflows such as DEM accuracy assessment,
+- Statistics features common to rasters and point clouds based on GeoUtils (being expanded with binning and spatial statistics).
+
+Computationally, we started introducing parallel out-of-memory functionalities (for now through Multiprocessing, soon available also through Dask) for:
+- Blockwise coregistration,
+- Terrain attributes (that also benefit from a general performance improvement, and the option of using SciPy as engine instead of Numba).
+
+Internally, xDEM has now defined a governance, nearly doubled its number of tests, robustified its packaging and minimized its required dependencies.
+
+A few changes might be required to adapt from previous versions (from deprecation warnings):
+
+- The `curvature()` function is being deprecated in favor of other clearly defined curvatures,
+- The `slope_method=` argument of `slope()` and `aspect()` is being deprecated in favor of a `surface_fit=` argument for all surface derivatives (including curvatures),
+- The `spatialstats.nmad()` function is being deprecator in favor of `geoutils.stats.nmad()`,
+- The `.save()` function is being deprecated in favor of `.to_file()`,
+- Specify `DEM.interp_points(as_array=True)` to mirror the previous behaviour of returning a 1D array of interpolated values, otherwise now returns an elevation point cloud by default,
+- The `Mask` class of GeoUtils is deprecated in favor of `Raster(is_mask=True)` to declare a boolean-type Raster, but should keep working until 0.3.
 
 ## 0.1.0
 

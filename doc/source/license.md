@@ -1,18 +1,6 @@
----
-file_format: mystnb
-jupytext:
-  formats: md:myst
-  text_representation:
-    extension: .md
-    format_name: myst
-kernelspec:
-  display_name: xdem-env
-  language: python
-  name: xdem
----
 (license)=
 
-# Apache License
+# License
 
 _Version 2.0, January 2004_
 _&lt;<http://www.apache.org/licenses/>&gt;_

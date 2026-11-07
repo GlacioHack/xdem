@@ -26,6 +26,24 @@ passed any external variables (e.g., land cover type, processing metric) to atte
 Still, many methods rely either on coordinates (e.g., deramping, along-track corrections) or terrain
 (e.g., curvature- or elevation-dependant corrections), derived solely from the elevation data.
 
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+#################################################################################
+# This a temporary trick to allow vertical referencing to work in other notebooks
+#################################################################################
+# Somehow, only on Readthedocs (locally works fine), the first notebook to run (in alphabetical order) fails
+# to download from PROJ... while all other notebook render normally.
+# The first alphabetical notebook is "biascorr", so adding this trick here
+
+import xdem
+dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+# Define the vertical CRS as the 3D ellipsoid of the 2D CRS
+dem.set_vcrs("Ellipsoid")
+# Transform to the EGM96 geoid
+dem.to_vcrs("EGM96")
+```
+
 ## Quick use
 
 Bias-correction methods are **used the same way as coregistrations**:
@@ -81,7 +99,7 @@ corrected_dem = biascorr.fit_and_apply(ref_dem, tba_dem)
 
 Additionally, **bias corrections can be customized to use any number of variables to correct simultaneously**,
 by defining `bias_var_names` in {class}`~xdem.coreg.BiasCorr`  and passing a `bias_vars` dictionary arrays or rasters
-to {func}`~xdem.coreg.Coreg.fit` and  {func}`~xdem.coreg.Coreg.apply`. See {ref}`custom-biascorr` for more details.
+to {func}`~xdem.coreg.Coreg.fit` and {func}`~xdem.coreg.Coreg.apply`. See {ref}`custom-biascorr` for more details.
 
 
 ## The modular {class}`~xdem.coreg.BiasCorr` object
@@ -100,7 +118,7 @@ applied in a block-wise manner through {class}`~xdem.coreg.BlockwiseCoreg`.
 ```
 
 The main difference with {class}`~xdem.coreg.Coreg` is that a {class}`~xdem.coreg.BiasCorr` has a new `bias_var_names`
-argument which allows to declare the names of N bias-correction variables that will be passed, which **corresponds to the
+argument which allows declaring the names of N bias-correction variables that will be passed, which **corresponds to the
 number of simultaneous dimensions in which the bias correction is performed**.
 This step is implicit for predefined methods such as {class}`~xdem.coreg.DirectionalBias`.
 
@@ -122,13 +140,13 @@ The parameters related to fitting or binning are the same for every {func}`~xdem
 
 - `fit_or_bin` to either fit a parametric model to the bias by passing **"fit"**, perform an empirical binning of the bias by passing **"bin"**, or to fit a parametric model to the binning with **"bin_and_fit" (recommended)**,
 - `fit_func` to pass any parametric function to fit to the bias,
-- `fit_optimizer` to pass any optimizer function to perform the fit minimization,
+- `fit_optimizer` to pass an optimizer function, or **"ols"** for methods that provide a linear design matrix,
 - `bin_sizes` to pass the size or edges of the bins for each variable,
 - `bin_statistic` to pass the statistic to compute in each bin,
 - `bin_apply_method` to pass the method to apply the binning for correction.
 
 For predefined methods, the default values of these parameters differ. For instance, a {class}`~xdem.coreg.Deramp` generally performs well
-with a **"fit"** estimation on a subsample, and thus has a fixed `fit_func` (2D polynomial) solved by the classic optimizer {func}`scipy.optimize.curve_fit`.
+with a **"fit"** estimation on a subsample, and thus has a fixed `fit_func` (2D polynomial) solved by direct ordinary least-squares (OLS) via {func}`numpy.linalg.lstsq`.
 In contrast, a {class}`~xdem.coreg.TerrainBias` is generally hard to model parametrically, and thus defaults to a **"bin"** estimation.
 
 Finally, each bias-correction approach has the following methods:
@@ -278,8 +296,8 @@ and keeps the best performing fit.
 :  code_prompt_show: "Show the code for adding a curvature bias"
 :  code_prompt_hide: "Hide the code for adding a curvature bias"
 
-# Get maximum curvature
-maxc = ref_dem.maximum_curvature()
+# Get max curvature
+maxc = ref_dem.max_curvature()
 
 # Create a bias depending on bins
 synthetic_bias = np.zeros(np.shape(ref_dem.data))
@@ -294,12 +312,12 @@ tbc_dem_curv = ref_dem + synthetic_bias
 
 ```{code-cell} ipython3
 # Instantiate a 1st order terrain bias correction for curvature
-terbias = xdem.coreg.TerrainBias(terrain_attribute="maximum_curvature",
-                                 bin_sizes={"maximum_curvature": np.linspace(-5, 5, 1000)},
+terbias = xdem.coreg.TerrainBias(terrain_attribute="max_curvature",
+                                 bin_sizes={"max_curvature": np.linspace(-5, 5, 1000)},
                                  bin_apply_method="per_bin")
 
 # We have to pass the original curvature here
-corrected_dem = terbias.fit_and_apply(ref_dem, tbc_dem_curv, bias_vars={"maximum_curvature": maxc})
+corrected_dem = terbias.fit_and_apply(ref_dem, tbc_dem_curv, bias_vars={"max_curvature": maxc})
 ```
 
 ```{code-cell} ipython3
@@ -347,7 +365,7 @@ glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlin
 inlier_mask = ~glacier_outlines.create_mask(ref_dem)
 
 # We align the two DEMs before doing any bias correction
-tba_dem_nk = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab())
+tba_dem_nk = tba_dem.coregister_3d(ref_dem, xdem.coreg.NuthKaab(), resample=True)
 ```
 
 ```{code-cell} ipython3

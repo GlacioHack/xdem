@@ -18,13 +18,44 @@ The technical steps to contributing to xDEM are:
 9. Push to your fork,
 10. Open a pull request from GitHub to discuss and eventually merge.
 
+These steps are detailed in sections further below!
+
+## AI-assisted contribution policy
+
+“AI” herein refers to **generative AI tools like large language models (LLMs)** that can generate, edit,
+and review software code, create and manipulate images, or generate text for communication.
+
+We welcome AI-assisted contributions under the following conditions:
+
+- **Human communication.** Write the core PR description yourself, explaining the motivation, approach,
+  and validation in your own words. AI may polish or translate your writing and help prepare supporting
+  lists, tables, or other displays, but must not replace your own explanation. The same principle
+  applies to comments during PR review, and opening an issue or discussion.
+
+- **Human review and responsibility.** Personally review, understand, and validate the entire contribution,
+  including code, tests, and documentation, before requesting review. Run relevant tests and accurately report
+  what you checked. You remain responsible for the contribution and must be able to explain your choices and address
+  review feedback.
+
+- **References and licensing (copyright).** AI-generated code may reproduce or adapt existing copyrighted implementations
+  without identifying their sources. For major features or conceptual changes to methods, algorithms, or
+  design, make a reasonable search for relevant literature and existing implementations. Verify and cite relevant
+  sources, and check for potential code reuse. Ensure that any reused or adapted material has a compatible license
+  with [xDEM's LICENSE](./LICENSE), and flag such material explicitly to maintainers.
+
+Maintainers may decline PRs whose descriptions appear predominantly AI-generated, or that do not demonstrate sufficient
+human understanding and validation, or attention to copyright and source.
+
+This AI policy was inspired from that of [NumPy](https://numpy.org/devdocs/dev/ai_policy.html) and [SciPy](https://docs.scipy.org/doc/scipy/dev/conduct/ai_policy.html) as of September 2026,
+which were themselves inspired by that of [SymPy]([https://www.sympy.org/en/index.html](https://docs.sympy.org/dev/contributing/ai-generated-code-policy.html)).
+
 ## Development environment
 
-xDEM currently supports Python versions of 3.10 to 3.12 (see `dev-environment.yml` for detailed dependencies), which are
+xDEM currently supports Python versions of 3.10 to 3.14 (see `dev-environment.yml` for detailed dependencies), which are
 tested in a continuous integration (CI) workflow running on GitHub Actions.
 
 When you open a PR on xDEM, a single linting action and 9 test actions will automatically start, corresponding to all
-supported Python versions (3.10, 3.11 and 3.12) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also
+supported Python versions (3.10, 3.11, 3.12, 3.13 and 3.14) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also
 be reported by CoverAlls.
 
 ### Setup
@@ -45,8 +76,6 @@ git clone https://github.com/GlacioHack/xdem.git
 cd xdem
 make install
 ```
-
-Please note: pip installation is currently only possible under python3.10.
 
 ### Tests
 

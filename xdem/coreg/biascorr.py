@@ -17,6 +17,7 @@
 # limitations under the License.
 
 """Bias corrections (i.e., non-affine coregistration) classes."""
+
 from __future__ import annotations
 
 import logging
@@ -26,12 +27,11 @@ import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import rasterio as rio
-import scipy
 
-import xdem.spatialstats
+import xdem.fit
 from xdem._typing import NDArrayb, NDArrayf
-from xdem.coreg.base import Coreg, fit_workflows
-from xdem.fit import polynomial_2d
+from xdem.coreg.base import Coreg, InRandomDict, _subsample_rst_pts, fit_workflows
+from xdem.fit import design_matrix_polynomial_2d, polynomial_2d
 
 BiasCorrType = TypeVar("BiasCorrType", bound="BiasCorr")
 
@@ -52,7 +52,7 @@ class BiasCorr(Coreg):
         fit_func: (
             Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
         ) = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -68,7 +68,8 @@ class BiasCorr(Coreg):
             "bin" to correct with a statistic of central tendency in defined bins, or "bin_and_fit" to perform a fit on
             the binned statistics.
         :param fit_func: Function to fit to the bias with variables later passed in .fit().
-        :param fit_optimizer: Optimizer to minimize the function.
+        :param fit_optimizer: Optimizer to minimize the function. If None, use OLS for a built-in linear model, the
+            optimizer associated with a named fit workflow, or :func:`scipy.optimize.curve_fit` otherwise.
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
@@ -87,9 +88,11 @@ class BiasCorr(Coreg):
                     "Argument `fit_func` must be a function (callable) "
                     "or the string '{}', got {}.".format("', '".join(fit_workflows.keys()), type(fit_func))
                 )
-            if not callable(fit_optimizer):
+            is_ols = isinstance(fit_optimizer, str) and fit_optimizer == "ols"
+            if fit_optimizer is not None and not is_ols and not callable(fit_optimizer):
                 raise TypeError(
-                    "Argument `fit_optimizer` must be a function (callable), " "got {}.".format(type(fit_optimizer))
+                    "Argument `fit_optimizer` must be a function (callable), 'ols' or None, "
+                    "got {}.".format(type(fit_optimizer))
                 )
 
             # If a workflow was called, override optimizer and pass proper function
@@ -126,7 +129,12 @@ class BiasCorr(Coreg):
         # Now we write the relevant attributes to the class metadata
         # For fitting
         if fit_or_bin == "fit":
-            meta_fit = {"fit_func": fit_func, "fit_optimizer": fit_optimizer, "bias_var_names": list_bias_var_names}
+            meta_fit = {
+                "fit_or_bin": fit_or_bin,
+                "fit_func": fit_func,
+                "fit_optimizer": fit_optimizer,
+                "bias_var_names": list_bias_var_names,
+            }
             # Somehow mypy doesn't understand that fit_func and fit_optimizer can only be callables now,
             # even writing the above "if" in a more explicit "if; else" loop with new variables names and typing
             super().__init__(meta=meta_fit)  # type: ignore
@@ -134,6 +142,7 @@ class BiasCorr(Coreg):
         # For binning
         elif fit_or_bin == "bin":
             meta_bin = {
+                "fit_or_bin": fit_or_bin,
                 "bin_sizes": bin_sizes,
                 "bin_statistic": bin_statistic,
                 "bin_apply_method": bin_apply_method,
@@ -144,6 +153,7 @@ class BiasCorr(Coreg):
         # For both
         else:
             meta_bin_and_fit = {
+                "fit_or_bin": fit_or_bin,
                 "fit_func": fit_func,
                 "fit_optimizer": fit_optimizer,
                 "bin_sizes": bin_sizes,
@@ -153,7 +163,6 @@ class BiasCorr(Coreg):
             super().__init__(meta=meta_bin_and_fit)  # type: ignore
 
         # Add subsample attribute
-        self._meta["inputs"]["fitorbin"]["fit_or_bin"] = fit_or_bin
         self._meta["inputs"]["random"]["subsample"] = subsample
 
         # Add number of dimensions attribute (length of bias_var_names, counted generically for iterator)
@@ -168,30 +177,42 @@ class BiasCorr(Coreg):
         ref_elev: NDArrayf | gpd.GeoDataFrame,
         tba_elev: NDArrayf | gpd.GeoDataFrame,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        ref_transform: rio.transform.Affine,  # Never None thanks to Coreg.fit() pre-process
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,  # Never None thanks to Coreg.fit() pre-process
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
+        z_name: str | None = None,
         bias_vars: None | dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         **kwargs,
     ) -> None:
         """Function for fitting raster-raster and raster-point for bias correction methods."""
 
+        # Get random parameters
+        params_random: InRandomDict = self._meta["inputs"]["random"]
+
         # Pre-process raster-point input
-        sub_ref, sub_tba, sub_bias_vars = self._preprocess_rst_pts_subsample(
+        sub_ref, sub_tba, sub_bias_vars = _subsample_rst_pts(
+            subsample=params_random["subsample"],
+            random_state=params_random["random_state"],
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
+            # Compare elevations and predictors at identical locations for bias correction
+            sampling_strategy="same_xy",
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
             aux_vars=bias_vars,
         )
 
-        # Derive difference to get dh
-        diff = sub_ref - sub_tba
+        # Write final subsample to class
+        self._meta["outputs"]["random"] = {"subsample_final": len(sub_ref)}
+
+        # Derive difference of Z axis to get dh
+        diff = sub_ref[2, :] - sub_tba[2, :]
 
         # Send to bin and fit
         self._bin_or_and_fit_nd(
@@ -206,10 +227,10 @@ class BiasCorr(Coreg):
         ref_elev: NDArrayf,
         tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -220,10 +241,10 @@ class BiasCorr(Coreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
-            z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
             **kwargs,
@@ -248,7 +269,8 @@ class BiasCorr(Coreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            transform=transform,
+            ref_transform=transform,
+            tba_transform=transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
@@ -286,21 +308,22 @@ class BiasCorr(Coreg):
         else:
             if self._meta["inputs"]["fitorbin"]["bin_apply_method"] == "linear":
                 # N-D interpolation of binning
-                bin_interpolator = xdem.spatialstats.interp_nd_binning(
-                    df=self._meta["outputs"]["fitorbin"]["bin_dataframe"],
-                    list_var_names=list(bias_vars.keys()),
+                bin_interpolator = xdem.fit.interp_binning(
+                    table=self._meta["outputs"]["fitorbin"]["bin_dataframe"],
+                    value_name="bias",
                     statistic=self._meta["inputs"]["fitorbin"]["bin_statistic"],
+                    min_count=kwargs.get("min_count", 0),
                 )
-                corr = bin_interpolator(tuple(var.flatten() for var in bias_vars.values()))
+                corr = bin_interpolator(bias_vars)
                 first_var = list(bias_vars.keys())[0]
                 corr = corr.reshape(np.shape(bias_vars[first_var]))
 
             else:
                 # Get N-D binning statistic for each pixel of the new list of variables
-                corr = xdem.spatialstats.get_perbin_nd_binning(
-                    df=self._meta["outputs"]["fitorbin"]["bin_dataframe"],
-                    list_var=list(bias_vars.values()),
-                    list_var_names=list(bias_vars.keys()),
+                corr = xdem.fit.get_perbin_binning(
+                    table=self._meta["outputs"]["fitorbin"]["bin_dataframe"],
+                    value_name="bias",
+                    predictors=bias_vars,
                     statistic=self._meta["inputs"]["fitorbin"]["bin_statistic"],
                 )
 
@@ -321,7 +344,7 @@ class DirectionalBias(BiasCorr):
         angle: float = 0,
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin_and_fit",
         fit_func: Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"] = "nfreq_sumsin",
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -336,7 +359,7 @@ class DirectionalBias(BiasCorr):
             "bin" to correct with a statistic of central tendency in defined bins, or "bin_and_fit" to perform a fit on
             the binned statistics.
         :param fit_func: Function to fit to the bias with variables later passed in .fit().
-        :param fit_optimizer: Optimizer to minimize the function.
+        :param fit_optimizer: Optimizer to minimize the function. If None, use the default for the selected fit model.
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
@@ -354,10 +377,10 @@ class DirectionalBias(BiasCorr):
         ref_elev: NDArrayf,
         tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         **kwargs,
@@ -366,7 +389,7 @@ class DirectionalBias(BiasCorr):
         logging.info("Estimating rotated coordinates.")
 
         x, _ = gu.raster.get_xy_rotated(
-            raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=transform, nodata=-9999),
+            raster=gu.Raster.from_array(data=ref_elev, crs=crs, transform=ref_transform, nodata=-9999),
             along_track_angle=self._meta["inputs"]["specific"]["angle"],
         )
 
@@ -375,10 +398,10 @@ class DirectionalBias(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"angle": x},
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
-            z_name=z_name,
             weights=weights,
             **kwargs,
         )
@@ -418,7 +441,8 @@ class DirectionalBias(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"angle": x},
-            transform=transform,
+            ref_transform=transform,
+            tba_transform=transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
@@ -460,12 +484,12 @@ class TerrainBias(BiasCorr):
 
     def __init__(
         self,
-        terrain_attribute: str = "maximum_curvature",
+        terrain_attribute: str = "max_curvature",
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "bin",
         fit_func: (
             Callable[..., NDArrayf] | Literal["norder_polynomial"] | Literal["nfreq_sumsin"]
         ) = "norder_polynomial",
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 100,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -479,7 +503,7 @@ class TerrainBias(BiasCorr):
             "bin" to correct with a statistic of central tendency in defined bins, or "bin_and_fit" to perform a fit on
             the binned statistics.
         :param fit_func: Function to fit to the bias with variables later passed in .fit().
-        :param fit_optimizer: Optimizer to minimize the function.
+        :param fit_optimizer: Optimizer to minimize the function. If None, use the default for the selected fit model.
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
@@ -506,10 +530,10 @@ class TerrainBias(BiasCorr):
         ref_elev: NDArrayf,
         tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
         bias_vars: dict[str, NDArrayf] = None,
         weights: None | NDArrayf = None,
         **kwargs,
@@ -528,7 +552,7 @@ class TerrainBias(BiasCorr):
                 attr = xdem.terrain.get_terrain_attribute(
                     dem=ref_elev,
                     attribute=self._meta["inputs"]["specific"]["terrain_attribute"],
-                    resolution=(transform[0], abs(transform[4])),
+                    resolution=(ref_transform[0], abs(ref_transform[4])),
                 )
 
         # Run the parent function
@@ -537,10 +561,10 @@ class TerrainBias(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={self._meta["inputs"]["specific"]["terrain_attribute"]: attr},
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
-            z_name=z_name,
             weights=weights,
             **kwargs,
         )
@@ -584,7 +608,8 @@ class TerrainBias(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={self._meta["inputs"]["specific"]["terrain_attribute"]: attr},
-            transform=transform,
+            ref_transform=transform,
+            tba_transform=transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,
@@ -630,7 +655,7 @@ class Deramp(BiasCorr):
         poly_order: int = 2,
         fit_or_bin: Literal["bin_and_fit"] | Literal["fit"] | Literal["bin"] = "fit",
         fit_func: Callable[..., NDArrayf] = polynomial_2d,
-        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] = scipy.optimize.curve_fit,
+        fit_optimizer: Callable[..., tuple[NDArrayf, Any]] | Literal["ols"] | None = None,
         bin_sizes: int | dict[str, int | Iterable[float]] = 10,
         bin_statistic: Callable[[NDArrayf], np.floating[Any]] = np.nanmedian,
         bin_apply_method: Literal["linear"] | Literal["per_bin"] = "linear",
@@ -644,13 +669,17 @@ class Deramp(BiasCorr):
             "bin" to correct with a statistic of central tendency in defined bins, or "bin_and_fit" to perform a fit on
             the binned statistics.
         :param fit_func: Function to fit to the bias with variables later passed in .fit().
-        :param fit_optimizer: Optimizer to minimize the function.
+        :param fit_optimizer: Optimizer to minimize the function. If None, use OLS for the standard polynomial model.
         :param bin_sizes: Size (if integer) or edges (if iterable) for binning variables later passed in .fit().
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param bin_apply_method: Method to correct with the binned statistics, either "linear" to interpolate linearly
             between bins, or "per_bin" to apply the statistic for each bin.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
         """
+
+        # Use the linear solver only for the standard polynomial model
+        self._fit_linear = fit_func is polynomial_2d
+
         super().__init__(
             fit_or_bin,
             fit_func,
@@ -662,6 +691,7 @@ class Deramp(BiasCorr):
             subsample,
         )
         self._meta["inputs"]["specific"]["poly_order"] = poly_order
+        self._design_matrix_func = design_matrix_polynomial_2d(poly_order)
         self._needs_vars = False
 
     def _fit_rst_rst(  # type: ignore
@@ -669,10 +699,10 @@ class Deramp(BiasCorr):
         ref_elev: NDArrayf,
         tba_elev: NDArrayf,
         inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
+        ref_transform: rio.transform.Affine,
+        tba_transform: rio.transform.Affine,
         crs: rio.crs.CRS,
         area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
         bias_vars: dict[str, NDArrayf] | None = None,
         weights: None | NDArrayf = None,
         **kwargs,
@@ -689,10 +719,10 @@ class Deramp(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"xx": xx, "yy": yy},
-            transform=transform,
+            ref_transform=ref_transform,
+            tba_transform=tba_transform,
             crs=crs,
             area_or_point=area_or_point,
-            z_name=z_name,
             weights=weights,
             p0=p0,
             **kwargs,
@@ -726,7 +756,8 @@ class Deramp(BiasCorr):
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
             bias_vars={"xx": xx, "yy": yy},
-            transform=transform,
+            ref_transform=transform,
+            tba_transform=transform,
             crs=crs,
             area_or_point=area_or_point,
             z_name=z_name,

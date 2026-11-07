@@ -64,7 +64,7 @@ The half difference between 84{sup}`th` and 16{sup}`th` percentiles, or the abso
 can also be used as a robust dispersion measure equivalent to the standard deviation.
 When working with weighted data, the difference between the 84{sup}`th` and 16{sup}`th` [weighted percentile](https://en.wikipedia.org/wiki/Percentile#Weighted_percentile), or the absolute 68{sup}`th` weighted percentile can be used as a robust measure of dispersion.
 
-The {func}`xdem.spatialstats.nmad` is used by default in **{ref}`coregistration`, {ref}`biascorr` and {ref}`uncertainty`**.
+The {func}`gu.stats.nmad` is used by default in **{ref}`coregistration`, {ref}`biascorr` and {ref}`uncertainty`**.
 
 (robuststats-corr)=
 
@@ -102,7 +102,7 @@ Dowd's variogram is used by default to estimate spatial auto-correlation of elev
 
 When performing least-squares linear regression, the traditional [loss functions](https://en.wikipedia.org/wiki/Loss_function) that are used are not robust to outliers.
 
-A robust soft L1 loss default is used by default to perform least-squares regression through [scipy.optimize](https://docs.scipy.org/doc/scipy/reference/optimize.html#) in **{ref}`coregistration` and {ref}`biascorr`**.
+A robust soft L1 loss default is used by default to perform least-squares regression through [scipy.optimize](https://docs.scipy.org/doc/scipy/reference/optimize.html#) in **{ref}`coregistration` and {ref}`biascorr`** for methods that require non-linear fitting. Methods with linear model structure (e.g., {class}`~xdem.coreg.NuthKaab` and {class}`~xdem.coreg.Deramp`) instead use direct ordinary least-squares (OLS) via {func}`numpy.linalg.lstsq` for improved speed and numerical stability.
 
 ### Robust estimators
 

@@ -55,8 +55,8 @@ my_coreg_pipeline = xdem.coreg.ICP() + xdem.coreg.NuthKaab()
 my_coreg_pipeline = xdem.coreg.NuthKaab()
 ```
 
-Then, coregistering a pair of elevation data can be done by calling {func}`xdem.coreg.workflows.dem_coregistration`, or
-{func}`xdem.DEM.coregister_3d` from the DEM that should be aligned.
+Then, coregistering a pair of elevation data can be done by calling {func}`~xdem.DEM.coregister_3d` from the {class}`xdem.DEM` or {class}`xdem.EPC` that
+should be aligned.
 
 ```{code-cell} ipython3
 :tags: [hide-cell]
@@ -67,7 +67,6 @@ Then, coregistering a pair of elevation data can be done by calling {func}`xdem.
 import geoutils as gu
 import numpy as np
 import matplotlib.pyplot as plt
-from xdem.coreg.workflows import dem_coregistration
 
 # Open a reference and to-be-aligned DEM
 ref_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
@@ -75,18 +74,13 @@ tba_dem = xdem.DEM(xdem.examples.get_path("longyearbyen_tba_dem"))
 ```
 
 ```{code-cell} ipython3
-# Coregister by calling the dem_coregistration function
-aligned_dem = dem_coregistration(tba_dem, ref_dem, coreg_method=my_coreg_pipeline)
-```
-
-```{code-cell} ipython3
-# Coregister by calling the DEM method
+# Coregister by calling the DEM or EPC method
 aligned_dem = tba_dem.coregister_3d(ref_dem, my_coreg_pipeline)
 ```
 
 Alternatively, the coregistration can be applied by calling {func}`~xdem.coreg.Coreg.fit_and_apply`, or sequentially
 calling the {func}`~xdem.coreg.Coreg.fit` and {func}`~xdem.coreg.Coreg.apply` steps,
-which allows a broader variety of arguments at each step, and re-using the same transformation to several objects
+which allows a broader variety of arguments at each step, and reusing the same transformation on several objects
 (e.g., horizontal shift of both a stereo DEM and its ortho-image).
 
 ```{code-cell} ipython3
@@ -100,6 +94,7 @@ Information about the coregistration inputs and outputs is summarized in {func}`
 Often, an `inlier_mask` has to be passed to {func}`~xdem.coreg.Coreg.fit` to isolate static surfaces to utilize during coregistration (for instance removing vegetation, snow, glaciers). This mask can be easily derived using {func}`~geoutils.Vector.create_mask`.
 ```
 
+(supported_coreg_method)=
 ## Summary of supported methods
 
 ```{list-table}
@@ -111,14 +106,20 @@ Often, an `inlier_mask` has to be passed to {func}`~xdem.coreg.Coreg.fit` to iso
      - Description
      - Reference
    * - {ref}`nuthkaab`
-     - Horizontal and vertical translations
+     - Translations
      - [Nuth and Kääb (2011)](https://doi.org/10.5194/tc-5-271-2011)
    * - {ref}`dh-minimize`
-     - Horizontal and vertical translations
+     - Translations
      - N/A
+   * - {ref}`lzd`
+     - Translations and rotations
+     - [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf)
    * - {ref}`icp`
-     - Translation and rotations
-     - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955)
+     - Translations and rotations
+     - [Besl and McKay (1992)](https://doi.org/10.1117/12.57955), [Chen and Medioni (1992)](https://doi.org/10.1016/0262-8856(92)90066-C)
+   * - {ref}`cpd`
+     - Translations and rotations
+     - [Myronenko and Song (2010)](https://doi.org/10.1109/TPAMI.2010.46)
    * - {ref}`vshift`
      - Vertical translation
      - N/A
@@ -227,6 +228,42 @@ plt.tight_layout()
 
 {class}`xdem.coreg.DhMinimize`
 
+````{warning}
+`DhMinimize` is deprecated, as it corresponds to a non-linearized version of `LZD`.
+Use `LZD(linearized=False, only_translation=True)` instead.
+
+Note that the minimizer defaults to `scipy.optimize.least_squares` with a linear loss.
+
+To reproduce DhMinimize's old default minimizer, provide a custom `fit_minimizer` that minimizes the NMAD
+of residuals with Nelder–Mead over the X/Y shifts, then estimates the Z shift from their median:
+```python
+import numpy as np
+from geoutils.stats import nmad
+from scipy.optimize import minimize
+
+
+def nelder_mead_nmad(residuals, x0, *, loss, **kwargs):
+
+    def horizontal_residuals(xy):
+        return residuals(np.array([xy[0], xy[1], x0[2]]))
+
+    # We initialize with (1, 1) to give Nelder–Mead a proper start-up
+    result = minimize(lambda xy: loss(horizontal_residuals(xy)), np.ones(2), method="Nelder-Mead", **kwargs)
+    z_shift = x0[2] + np.median(horizontal_residuals(result.x))
+    result.x = np.array([result.x[0], result.x[1], z_shift])
+    return result
+
+
+lzd = xdem.coreg.LZD(
+    linearized=False,
+    only_translation=True,
+    fit_minimizer=nelder_mead_nmad,
+    fit_loss_func=nmad,
+)
+aligned_dem = lzd.fit_and_apply(ref_dem, tba_dem_shifted)
+```
+````
+
 - **Performs:** Horizontal and vertical shifts.
 - **Supports weights:** Planned.
 - **Pros:** Can be used to perform both local and global registration by tuning the minimizer.
@@ -237,6 +274,9 @@ translation by minimizing any statistic on the elevation differences, typically 
 
 
 ```{code-cell} ipython3
+:mystnb:
+:  output_stderr: show
+
 # Define a coregistration based on the dh minimization approach
 dh_minimize = xdem.coreg.DhMinimize()
 # Fit to data and apply
@@ -264,7 +304,12 @@ plt.tight_layout()
 
 {class}`xdem.coreg.VerticalShift`
 
-- **Performs:** Vertical shifting using any custom function (mean, median, percentile).
+```{caution}
+Vertical shifting simply serves to refine a vertical translation over the entire elevation data.
+For transforming the 3D CRS, see the **{ref}`vertical-ref` feature page**.
+```
+
+- **Performs:** Vertical translation based on central elevation differences estimated with any custom function (mean, median).
 - **Supports weights:** Planned.
 - **Pros:** Useful to have as independent step to refine vertical alignment precisely as it is the most sensitive to outliers, by refining inliers and the central estimate function.
 - **Cons**: Always needs to be combined with another approach.
@@ -305,20 +350,21 @@ _ = ax[1].set_yticklabels([])
 plt.tight_layout()
 ```
 
-(icp)=
-### Iterative closest point
+(lzd)=
+### Least Z-difference
 
-{class}`xdem.coreg.ICP`
+{class}`xdem.coreg.LZD`
 
-- **Performs:** Rigid transform transformation (3D translation + 3D rotation).
+- **Performs:** Rigid transformation (3D translation + 3D rotation).
 - **Does not support weights.**
-- **Pros:** Efficient at estimating rotation and shifts simultaneously.
-- **Cons:** Poor sub-pixel accuracy for horizontal shifts, sensitive to outliers, and runs slowly with large samples.
+- **Pros:** Good at solving sub-pixels shifts.
+- **Cons:** Sensitive to elevation outliers.
 
-Iterative Closest Point (ICP) coregistration is an iterative point cloud registration method from [Besl and McKay (1992)](https://doi.org/10.1117/12.57955). It aims at iteratively minimizing the distance between closest neighbours by applying sequential rigid transformations. If DEMs are used as inputs, they are converted to point clouds.
-As for Nuth and Kääb (2011), the iteration stops if it reaches the maximum number of iteration limit or if the iterative transformation amplitude falls below a specified tolerance.
+Least Z-difference (LZD) coregistration is an iterative point-grid registration method from [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf).
 
-ICP is currently based on [OpenCV's implementation](https://docs.opencv.org/4.x/dc/d9b/classcv_1_1ppf__match__3d_1_1ICP.html) (an optional dependency), which includes outlier removal arguments. This may improve results significantly on outlier-prone data, but care should still be taken, as the risk of landing in [local minima](https://en.wikipedia.org/wiki/Maxima_and_minima) increases.
+Linearized fits with a linear loss use direct ordinary least squares by default. Set `linearized=False`
+to evaluate elevation residuals after an exact rigid transform using `scipy.optimize.least_squares`.
+Both variants accept a custom `fit_minimizer`; see the {ref}`dh-minimize` warning for a Nelder–Mead example.
 
 ```{code-cell} ipython3
 :tags: [hide-cell]
@@ -327,20 +373,54 @@ ICP is currently based on [OpenCV's implementation](https://docs.opencv.org/4.x/
 :  code_prompt_hide: "Hide the code for adding a shift and rotation"
 
 # Apply a rotation of 0.2 degrees in X, 0.1 in Y and 0 in Z
-e = np.deg2rad([0.2, 0.1, 0])
+rotations = np.array([0.2, 0.1, 0])
 # Add X/Y/Z shifts in meters
 shifts = np.array([10, 20, 5])
 # Affine matrix for 3D transformation
-import pytransform3d
-matrix_rot = pytransform3d.rotations.matrix_from_euler(e, i=0, j=1, k=2, extrinsic=True)
-matrix = np.diag(np.ones(4, dtype=float))
-matrix[:3, :3] = matrix_rot
-matrix[:3, 3] = shifts
+matrix = xdem.coreg.matrix_from_translations_rotations(*shifts, *rotations)
 
-centroid = [ref_dem.bounds.left + 5000, ref_dem.bounds.top - 2000, np.median(ref_dem)]
 # We create misaligned elevation data
+centroid = [ref_dem.bounds.left + 5000, ref_dem.bounds.top - 2000, np.median(ref_dem)]
 tba_dem_shifted_rotated = xdem.coreg.apply_matrix(ref_dem, matrix, centroid=centroid)
 ```
+
+```{code-cell} ipython3
+# Define a coregistration based on LZD
+lzd = xdem.coreg.LZD()
+# Fit to data and apply
+aligned_dem = lzd.fit_and_apply(ref_dem, tba_dem_shifted_rotated)
+```
+
+```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show plotting code"
+:  code_prompt_hide: "Hide plotting code"
+
+# Plot before and after
+f, ax = plt.subplots(1, 2)
+ax[0].set_title("Before LZD")
+(tba_dem_shifted_rotated - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
+ax[1].set_title("After LZD")
+(aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
+_ = ax[1].set_yticklabels([])
+plt.tight_layout()
+```
+
+(icp)=
+### Iterative closest point
+
+{class}`xdem.coreg.ICP`
+
+- **Performs:** Rigid transformation (3D translation + 3D rotation).
+- **Does not support weights.**
+- **Pros:** Efficient at estimating rotation and shifts simultaneously.
+- **Cons:** Poor sub-pixel accuracy for horizontal shifts, sensitive to outliers, and runs slowly with large samples.
+
+Iterative closest point (ICP) coregistration is an iterative point cloud registration method from [Besl and McKay (1992)](https://doi.org/10.1117/12.57955) (point-to-point) or [Chen and Medioni (1992)](https://doi.org/10.1016/0262-8856(92)90066-C) (point-to-plane).
+It aims at iteratively minimizing the distance between closest neighbours by applying sequential rigid transformations. For point-to-point, the 3D distance is used for the minimization while, for point-to-plane, the 3D distance projected on the plane normals is used instead. If DEMs are used as inputs, they are converted to point clouds.
+As for Nuth and Kääb (2011), the iteration stops if it reaches the maximum number of iteration limit or if the iterative transformation amplitude falls below a specified tolerance.
+
 
 ```{code-cell} ipython3
 # Define a coregistration based on ICP
@@ -360,6 +440,43 @@ f, ax = plt.subplots(1, 2)
 ax[0].set_title("Before ICP")
 (tba_dem_shifted_rotated - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
 ax[1].set_title("After ICP")
+(aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
+_ = ax[1].set_yticklabels([])
+plt.tight_layout()
+```
+
+(cpd)=
+### Coherent point drift
+
+{class}`xdem.coreg.CPD`
+
+- **Performs:** Rigid transformation (3D translation + 3D rotation).
+- **Does not support weights.**
+- **Pros:** Needs fewer samples to work efficiently.
+- **Cons:** Has trouble solving for horizontal translations if X/Y scale differs from Z scale, as GMM variance is the same in all dimensions.
+
+Coherent point drift (CPD) coregistration is an iterative point cloud registration method from [Myronenko and Song (2010)](https://doi.org/10.1109/TPAMI.2010.46).
+It is a probabilistic approach, iteratively fitting Gaussian mixture model (GMM) centroids for the reference point cloud on the target point cloud by maximizing the likelihood of the probability density estimation problem.
+
+
+```{code-cell} ipython3
+# Define a coregistration based on CPD
+cpd = xdem.coreg.CPD()
+# Fit to data and apply
+aligned_dem = cpd.fit_and_apply(ref_dem, tba_dem_shifted_rotated)
+```
+
+```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show plotting code"
+:  code_prompt_hide: "Hide plotting code"
+
+# Plot before and after
+f, ax = plt.subplots(1, 2)
+ax[0].set_title("Before CPD")
+(tba_dem_shifted_rotated - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
+ax[1].set_title("After CPD")
 (aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
 _ = ax[1].set_yticklabels([])
 plt.tight_layout()
@@ -459,7 +576,7 @@ For both **inputs** and **outputs**, four consistent categories of metadata are 
 
 - An input `fit_or_bin` to either fit a parametric model by passing **"fit"**, perform an empirical binning by passing **"bin"**, or to fit a parametric model to the binning with **"bin_and_fit" (only "fit" or "bin_and_fit" possible for affine methods)**,
 - An input `fit_func` to pass any parametric function to fit to the bias **(pre-defined for affine methods)**,
-- An input `fit_optimizer` to pass any optimizer function to perform the fit minimization,
+- An input `fit_optimizer` that stores the optimizer used for the fit, including **"ols"** for linear methods,
 - An input `bin_sizes` to pass the size or edges of the bins for each variable,
 - An input `bin_statistic` to pass the statistic to compute in each bin,
 - An input `bin_apply_method` to pass the method to apply the binning for correction,
@@ -476,6 +593,9 @@ For both **inputs** and **outputs**, four consistent categories of metadata are 
 
 **4. Affine metadata (common to all affine methods)**:
 
+- An input `only_translation` to define if a coregistration should solve only for translations instead of a full rigid transformation (translations and rotations),
+- An input `standardize` to define if the input data should be standardized to the unit sphere before coregistration (to improve numerical convergence),
+- An input `initial_shift` that defines the estimated initial x and y shifts in georeferenced units, applied before fit step (when used within a CoregPipeline, only the initial offset specified in the first coregistration is applied, others are ignored),
 - An output `matrix` that stores the estimated affine matrix,
 - An output `centroid` that stores the centroid coordinates with which to apply the affine transformation,
 - Outputs `shift_x`, `shift_y` and `shift_z` that store the easting, northing and vertical offsets, respectively.
@@ -493,3 +613,77 @@ These metadata are only inputs specific to a given method, outlined in the metho
 
 For instance, for {class}`xdem.coreg.Deramp`, an input `poly_order` to define the polynomial order used for the fit, and
 for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at which to do the directional correction.
+
+(blockwise)=
+## Dividing coregistration in blocks
+
+### The {class}`~xdem.coreg.BlockwiseCoreg` object
+
+```{caution}
+The {class}`~xdem.coreg.BlockwiseCoreg` feature is still experimental. Currently, it is only tested for the affine
+coregistration methods and for translation only. Rotation shifts will be soon implemented, but not yet available.
+Please set `only_translation=True` when initializing the coregistration method `ICP()`, `LZD()` or `CPD()`.
+```
+
+A {class}`~xdem.coreg.BlockwiseCoreg` splits DEMs into grids, then the selected coregistration method runs independently in each block. After this step, the results are combined (using interpolation or soon aggregation) to obtain the overall offset. The first advantage is improved detection of local errors. The second is that, by default, blocks are loaded sequentially, which helps reduce memory usage. As a result, it is possible to work with larger datasets.
+
+```{note}
+The `block_size_fit` parameter adjusts the size of the tiles over which the coregistration methods are computed.
+The `block_size_apply` parameter allows the DEM to be aligned in blocks to optimize memory usage.
+Smaller blocks during the apply step reduce memory usage but increase computing time.
+These two parameters do **not** need to be the same size.
+```
+
+In this example, processing is performed sequentially. However, it is possible to enable multiprocessing on {class}`~xdem.coreg.BlockwiseCoreg`, the configuration is described in {doc}`Blockwise coregistration example </advanced_examples/plot_blockwise_coreg>`.
+
+```{code-cell} ipython3
+blockwise = xdem.coreg.BlockwiseCoreg(xdem.coreg.NuthKaab(),
+                                      block_size_fit=500,
+                                      block_size_apply=500,
+                                      parent_path="")
+blockwise.fit(ref_dem, tba_dem_shifted)
+```
+
+To better visualize the blocks, here is how {func}`~xdem.coreg.BlockwiseCoreg.fit`, divides a DEM with a `block_size_fit` of 500.
+
+:::{figure} imgs/fit_blocks.png
+:width: 100%
+:::
+
+The results of each tile coregistration are saved in the meta parameters, they will be used to estimate the overall offset.
+
+```{code-cell} ipython3
+blockwise.meta
+```
+
+Once this first step has been completed, you can proceed to the {func}`~xdem.coreg.BlockwiseCoreg.apply` step. At this step, an interpolation method will be used to estimate the overall offset. The result obtained is then applied to the entire DEM, also by blocks, but this time with an overlap to avoid edge effects. This overlap corresponds to the maximum offset obtained during the {func}`~xdem.coreg.BlockwiseCoreg.fit`.
+
+```{code-cell} ipython3
+aligned_dem = blockwise.apply(tba_dem_shifted)
+```
+
+```{code-cell} ipython3
+:tags: [remove-cell]
+import os
+aligned_dem.load()
+os.remove("aligned_dem.tif")
+```
+Here are the blocks for the {func}`~xdem.coreg.BlockwiseCoreg.apply`, but this time with the overlap.
+
+:::{figure} imgs/apply_blocks.png
+:width: 100%
+:::
+
+```{code-cell} ipython3
+:tags: [hide-input]
+:mystnb:
+:  code_prompt_show: "Show plotting code"
+:  code_prompt_hide: "Hide plotting code"
+# Plot before and after
+f, ax = plt.subplots(1, 2)
+ax[0].set_title("Before block NK")
+(tba_dem_shifted - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[0])
+ax[1].set_title("After block NK")
+(aligned_dem - ref_dem).plot(cmap='RdYlBu', vmin=-30, vmax=30, ax=ax[1], cbar_title="Elevation differences (m)")
+_ = ax[1].set_yticklabels([])
+```

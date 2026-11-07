@@ -1,0 +1,307 @@
+---
+file_format: mystnb
+mystnb:
+  execution_timeout: 150
+jupytext:
+  formats: md:myst
+  text_representation:
+    extension: .md
+    format_name: myst
+kernelspec:
+  display_name: xdem-env
+  language: python
+  name: xdem
+---
+
+(cli-topo)=
+# Topography workflow
+
+The `topo` workflow of xDEM performs a **topographical summary of an elevation dataset**.
+
+This summary derives a series of terrain attributes (e.g. slope, hillshade, aspect, etc.) with statistics (e.g. mean, max, min, etc.).
+
+
+```{caution}
+This workflow is still in development and its interface may thus change rapidly. It currently includes only classical terrain attributes.
+```
+
+## Basic usage
+
+Below is an example of basic usage for the `topo` workflow, including how to build your **configuration file**, and how to run `xdem topo` and interpret its **logging output and report**.
+
+### Configuration file
+
+The configuration file of the `topo` workflow contains four categories: `inputs`, `outputs`, `statistics` and `terrain_attributes`.
+Only the **path to the elevation dataset** in the `inputs` section is a **required** parameter. All others can be left out, in which case they default to pre-defined parameters.
+
+By default, the `topo` workflow derives **slope, aspect and max. curvature**, computes **9 different statistics**, and saves **level-1 (intermediate) outputs in `./outputs`** .
+
+In the example of configuration file below, we define:
+- The **path to the elevation dataset** which is **required**,
+- The **path to a mask**, to exclude terrain during the analysis,
+- The **path to an output directory** where the results will be written,
+- The **specific list of terrain attributes** to derive,
+- The **specific list of statistics** to compute after/before coregistration.
+
+```{code-cell} bash
+:tags: [remove-cell]
+cd _workflows/
+```
+```{literalinclude} _workflows/topo_config.yaml
+:language: yaml
+```
+For details on the individual parameters, see {ref}`params-topo` further below. For generic information on the YAML configuration file, see the {ref}`cli` page.
+
+
+```{tip}
+To display a template of all available configuration options for the YAML file, use the `--template-config` argument
+```
+
+### Running the workflow
+
+Now that we have this configuration file, we run the workflow.
+
+```{code-cell} python
+:tags: [hide-output]
+:mystnb:
+:  code_prompt_show: "Show logging output"
+:  code_prompt_hide: "Hide logging output"
+
+!xdem topo --config topo_config.yaml
+```
+
+The logging output is printed in the terminal, showing the different steps.
+
+Finally, a report is created (both in HTML and PDF formats) in the output directory.
+
+We can visualize the report of our workflow above:
+
+```{raw} html
+<iframe src="_static/outputs_topo/report.pdf" width="100%" height="800"></iframe>
+```
+
+## Workflow details
+
+This section describes in detail the steps for the `topo` workflow, including a summary chart and all parameters of its CLI interface.
+
+### Chart of steps
+
+The `topo` workflow, including its **inputs**, **outputs**, **processing steps** and **output detail level**, are described on the following chart:
+
+:::{figure} imgs/topo_workflow_pipeline.png
+:width: 100%
+:::
+
+(params-topo)=
+### Configuration parameters
+
+The parameters to pass to the `topo` workflow are divided into five categories:
+- The `inputs` defines file opening and pre-processing, including **one required path to elevation data**, but also optional masking, CRS, nodata over-riding, and downsampling factor,
+- The `reprojection` defines the reprojection behaviour information if input(s) are geographic(s) and terrain_attributes needed reprojected CRS.
+- The `outputs` defines file writing and report generation, with various **levels** of detail for the produced outputs,
+- The `terrain_attributes` defines steps for coregistration, directly **interfacing with the {ref}`terrain-attributes` module** of xDEM,
+- The `statistics` defines steps for computing statistics before/after coregistration, directly **interfacing with the [Statistics](https://geoutils.readthedocs.io/en/stable/stats.html) module** of GeoUtils.
+
+These categories and detailed parameter values are further detailed below:
+
+:::::{tab-set}
+::::{tab-item} `inputs`
+
+**Required:** Yes
+
+List of elevation inputs information.
+
+:::{table} Inputs parameters for elevation
+:widths: 20, 35, 17, 18, 10
+
+| Name                  | Description                               | Type       | Default | Required |
+|-----------------------|-------------------------------------------|------------|---------|----------|
+| `path_to_elev`        | Path to elevation                         | str        |         | Yes      |
+| `force_source_nodata` | No data elevation                         | int        |         | No       |
+| `path_to_mask`        | Path to mask associated to the elevation  | str        |         | No       |
+| `force_vcrs`          | Vertical CRS                              | int, str   |         | No       |
+| `downsample`          | Downsampling elevation factor >= 1        | int, float | 1       | No       |
+:::
+
+:::{note}
+The `path_to_mask` parameter accepts both vector and raster masks.
+For the second case, pixels with a value of 0 are considered part of the mask, while any non-zero and nodata values are considered valid.
+
+To set the vertical CRS or to override one that might exist in the metadata with ``force_vcrs``,
+please refer to {ref}`vertical-ref`.
+
+The ``downsample`` parameter allows the user to resample the elevation by a round factor.
+The default value of 1 means no downsampling.
+
+And, if you want to test the CLI with xDEM example data, they can also refer to data alias.
+Please refer to {ref}`data-example` to have more information.
+:::
+
+:::{code-block} yaml
+inputs:
+  - path_to_elev: "path_to/first_elev.tif"
+    path_to_mask: "path_to/first_mask.tif"
+    force_source_nodata: -32768
+    force_vcrs: null
+  - path_to_elev: "path_to/second_elev.tif"
+    path_to_mask: null
+    force_source_nodata: -32768
+    force_vcrs: "EGM96"
+:::
+
+:::{note}
+The `null` and `None` values are both accepted in YAML files, which correspond to `None` in the Python API.
+:::
+
+::::
+
+
+::::{tab-item} `reprojection`
+
+**Required:** No
+
+List of parameters to complete input reprojection if needed.
+
+
+:::{table} Inputs parameters for reprojection
+:widths: 20, 35, 17, 18, 10
+
+| Name                 | Description                                                | Type            | Default | Required |
+|----------------------|------------------------------------------------------------|-----------------|---------|--------|
+| `crs`                | CRS projection used when the terrain attributes require it | int/str/boolean |         | No     |
+:::
+
+
+:::{note}
+If the CRS of the input elevation is geographic, most attributes fail (unsupported), or give erroneous units.
+So it will be reproject by default to the local UTM (̀`crs: None` or `crs: True`) but it is possible to refuse
+(̀`crs: False`) or personalize this step  (̀`crs: [CRS]`).
+:::
+
+::::
+
+
+::::{tab-item} `statistics`
+
+**Required:** No
+
+Statistics step information. This section relates to the computed statistics:
+
+1. If no block is specified, a list of statistics are calculated by default:
+   [mean, median, max, min, nmad, standard deviation, valid count, total count, percentage valid points]
+
+2. If a block is specified but no statistics are provided, then no statistics will be computed.
+
+3. If a block is specified and some statistics are provided, then only these statistics are computed.
+
+:::{code-block} yaml
+statistics:
+  - min
+  - max
+  - mean
+:::
+
+If a mask is provided, the statistics are also computed inside the mask.
+
+::::
+
+::::{tab-item} `terrain_attributes`
+
+**Required:** No
+
+List or set of dictionaries for extra information.
+
+:::{note}
+- If no block is specified: slope, aspect and curvature attributes are calculated by default.
+- If the block is specified but empty, no attributes will be calculated.
+:::
+
+:::{code-block} yaml
+terrain_attributes:
+  - slope
+  - aspect
+:::
+
+or
+
+:::{code-block} yaml
+terrain_attributes:
+  slope:
+  aspect:
+    degrees: False
+:::
+
+:::{note}
+The parameters provided for each terrain attributes are not checked for errors before executing the code.
+Its use is entirely the responsibility of the user.
+:::
+
+::::
+
+::::{tab-item} `outputs`
+
+**Required:** No
+
+Outputs information. Operates by levels:
+
+1. Level 1 → saves report(s) (HTML and PDF if activated), stats (CSV) and plots (PNG)
+2. Level 2 → saves raster terrain attributes (TIFF) and temporary rasters (TIFF)
+
+:::{table} Output parameters
+:widths: 20, 40, 10, 10, 10, 10
+
+| Name           | Description                | Type    | Default value | Available Value | Required |
+|----------------|----------------------------|---------|---------------|-----------------|---------|
+| `path`         | Path for outputs           | str     | outputs       |                 | No      |
+| `level`        | Level for detailed outputs | int     | 1             | 1 or 2          | No      |
+| `generate_pdf` | Generate PDF report(s)     | boolean | True          |                 | No      |
+:::
+
+:::{code-block} yaml
+outputs:
+  level: 1
+  path: "path_to/outputs"
+:::
+
+Tree of outputs for level 1:
+
+:::{code-block} text
+path_to/outputs
+  ├─ [dem_X]  (if several inputs)
+  │   ├─ tables
+  │   │   ├─ elev_stats.csv
+  │   │   └─ [elev_with_mask_stats.csv] (if `path_to_mask` is given in input)
+  │   ├─ plots
+  │   │   ├─ elev_map.png
+  │   │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
+  │   │   └─ [terrain_attributes_map.png] (if terrain attributes to compute)
+  │   ├─ report.html
+  │   └─ [report.pdf] (if `generate_pdf` if `True`)
+  └─ used_config.yaml
+:::
+
+Tree of outputs for level 2:
+
+:::{code-block} text
+path_to/outputs
+  ├─ dem_[X]  (if several inputs)
+  │   ├─ tables
+  │   │   ├─ elev_stats.csv
+  │   │   └─ [elev_with_mask_stats.csv] (if `path_to_mask` is given in input)
+  │   ├─ plots
+  │   │   ├─ elev_map.png
+  │   │   ├─ [masked_elev_map.png] (if `path_to_mask` is given in input)
+  │   │   └─ [terrain_attributes_map.png] (if terrain attributes to compute)
+  │   ├─ rasters
+  │   │   ├─ [elev_reprojected.tif] (if reprojection needed)
+  │   │   ├─ [aspect.tif] (if aspect attribute to compute)
+  │   │   ├─ [slope.tif] (if slope attribute to compute)
+  │   │   └─ [...] (if other attributes to compute)
+  │   ├─ report.html
+  │   └─ [report.pdf] (if `generate_pdf` if `True`)
+  └─ used_config.yaml
+:::
+
+::::
+
+:::::

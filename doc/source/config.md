@@ -64,3 +64,43 @@ To change the configuration at the package level regarding operations for raster
 For instance, this allows to define a preferred resampling algorithm used when interpolating and reprojecting
 (e.g., bilinear, cubic), or the default behaviour linked to pixel interpretation during point–raster comparison.
 These changes will then apply to all your operations in xDEM, such as coregistration.
+
+## Profiling
+
+GeoUtils has a built-in profiling tool to provide more insight on the memory and computing time of
+a function (see [GeoUtils' profiling](https://geoutils.readthedocs.io/en/stable/profiling.html) for details).
+
+The functions to monitor can be decoratored by `profile`:
+
+```{code-cell} ipython3
+from geoutils.profiler import profile
+
+@profile("my profiled function name", memprof=True, interval=0.5)
+def my_xdem_function():
+  ...
+```
+
+Some functions are already profiled automatically when the Profiler is enabled, with a memory consumption report each 0.05 seconds.
+Those are:
+- DEM loading through {class}`~xdem.DEM`,
+- All terrain attributes such as {func}`~xdem.DEM.slope`,
+- Co-registration through {func}`~xdem.coreg.Coreg.fit_and_apply` and {func}`~xdem.DEM.coregister_3d`.
+
+Finally, in any other script, the profiler can be activated and the output directory defined:
+
+```{code-cell} ipython3
+from geoutils.profiler import Profiler
+
+Profiler.enable(save_graphs=True, save_raw_data=True)
+
+# ...
+# Code calling decorated functions, such as terrain attribute
+import xdem
+dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
+slope = dem.slope()
+# ...
+
+# Generate the output summary
+my_output_directory="./profile_output/"
+Profiler.generate_summary(my_output_directory)
+```

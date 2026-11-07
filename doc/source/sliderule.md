@@ -1,7 +1,7 @@
 ---
 file_format: mystnb
 mystnb:
-  execution_timeout: 150
+  execution_timeout: 300
 jupytext:
   formats: md:myst
   text_representation:
@@ -12,89 +12,78 @@ kernelspec:
   language: python
   name: xdem
 ---
-(cheatsheet)=
+(pair-reference-data)=
 
 # Pair with reference data
 
 Most analysis of **xDEM relies on independent, high-precision elevation data to use as reference**, whether for
-coregistration, bias-corrections or uncertainty analysis.
+coregistration, bias corrections or uncertainty analysis.
 
-[SlideRule](https://slideruleearth.io/) provides the ideal way to retrieve such data by accessing big data archives
-of high-precision elevations, such as ICESat-2 or GEDI, efficiently in the cloud.
-
-Below, a short example to coregister our example DEM with ICESat-2 ATL06 reference data.
+[SlideRule](https://slideruleearth.io/) provides access to elevation archives such as ICESat-2 and GEDI.
+Here, we use **saved ICESat-2 ATL06 points** near Longyearbyen to coregister a DEM and estimate its error structure.
+The example downloads the saved file from [xdem-data](https://github.com/GlacioHack/xdem-data),
+so **SlideRule is not required** to run it or build this page.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
 # To get a good resolution for displayed figures
-from matplotlib import pyplot
-pyplot.rcParams['figure.dpi'] = 600
-pyplot.rcParams['savefig.dpi'] = 600
-pyplot.rcParams['font.size'] = 9  # Default 10 is a bit too big for coregistration plots
+from matplotlib import pyplot as plt
+
+plt.rcParams["figure.dpi"] = 600
+plt.rcParams["savefig.dpi"] = 600
+plt.rcParams["font.size"] = 9  # Default 10 is a bit too big for coregistration plots
 ```
 
-## Retrieving reference data
+## Loading reference data
 
-We load our example DEM data, and define the region of interest from its footprint.
+The saved file contains 176,022 ATL06 land elevation points from 2019–2020, with finite elevations and
+`atl06_quality_summary == 0`. The query and a script to retrieve the points are in
+[xdem-data's download script](https://github.com/GlacioHack/xdem-data/blob/main/download_data.py).
+SlideRule is needed only to repeat that query.
+
+We open the file as an {class}`~xdem.EPC`, selecting `h_li` as the elevation column.
+ICESat-2 heights are relative to the ellipsoid, whereas the example DEM heights are relative to EGM96.
+We first convert the DEM to ellipsoidal heights, then project the point coordinates to the DEM CRS.
+See {ref}`vertical-ref` for details on vertical referencing and geoid grids.
 
 ```{code-cell} ipython3
-from sliderule import sliderule, icesat2
 import geoutils as gu
-import xdem
 import numpy as np
+import xdem
 
 # Open example DEM
-dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-dem.set_vcrs("EGM96")
+dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"), vcrs="EGM96")
 dem = dem.to_vcrs("Ellipsoid")
 
-# Derive inlier mask as glaciers
+# Open saved ICESat-2 points and project their coordinates
+points = xdem.EPC(xdem.examples.get_path("longyearbyen_epc"), data_name="h_li")
+points = points.reproject(crs=dem.crs)
+
+# Exclude glaciers, whose elevation changes are not DEM errors
 glacier_outlines = gu.Vector(xdem.examples.get_path("longyearbyen_glacier_outlines"))
 inlier_mask = ~glacier_outlines.create_mask(dem)
-
-# Define region of interest as DEM footprint
-bounds = list(dem.get_bounds_projected(4326))
-region = sliderule.toregion(bounds)["poly"]
-```
-
-We can then initialize the SlideRule client, and fetch the ICESat-2 ATL06 reference data in the region of interest
-using {func}`icesat2.atl06sp`.
-
-```{code-cell} ipython3
-# Initialize SlideRule client
-sliderule.init("slideruleearth.io")
-
-# Define desired parameters for ICESat-2 ATL06
-params = {
-    "poly": region,
-    "srt": icesat2.SRT_LAND,  # Surface-type
-    "cnf": icesat2.CNF_SURFACE_HIGH,  # Confidence level
-    "ats": 20.0,  # Minimum along-track spread
-    "cnt": 10,  # Minimum count
-}
-
-# Request ATL06 subsetting in parallel
-gdf = icesat2.atl06sp(params)
-gdf = gdf[np.isfinite(gdf["h_li"])] # Keep valid data
-gdf = gdf[gdf["atl06_quality_summary"]==0]  # Keep very high-confidence data
 ```
 
 ## Coregistration
 
-Running the coregistration is as simple as passing the geodataframe to {func}`~xdem.coreg.Coreg.fit_and_apply`,
-specifying the name of the column to use.
+Running the coregistration is as simple as passing the elevation point cloud to
+{meth}`~xdem.coreg.Coreg.fit_and_apply`.
 
 ```{code-cell} ipython3
 # Run a translation coregistration
 nk = xdem.coreg.NuthKaab()
-aligned_dem = nk.fit_and_apply(reference_elev=gdf, to_be_aligned_elev=dem, inlier_mask=inlier_mask, z_name="h_li", random_state=42)
+aligned_dem = nk.fit_and_apply(
+    reference_elev=points, to_be_aligned_elev=dem,
+    inlier_mask=inlier_mask, random_state=42,
+)
 
 # Print the estimated translation parameters
-print([k+f': {nk.meta["outputs"]["affine"][k]:.2f} meters' for k in ["shift_x", "shift_y", "shift_z"]])
+for name in ["shift_x", "shift_y", "shift_z"]:
+    print(f"{name}: {nk.meta['outputs']['affine'][name]:.2f} m")
 ```
 
-Let's visualize the improvement in elevation differences after coregistration.
+Let's visualize the improvement in elevation differences after coregistration, using only points on static surfaces.
 
 ```{code-cell} ipython3
 :tags: [hide-input]
@@ -104,36 +93,30 @@ Let's visualize the improvement in elevation differences after coregistration.
 
 # Derive hillshade for background
 hs = dem.hillshade()
-# Convert to same CRS
-gdf = gdf.to_crs(dem.crs)
-vect = gu.Vector(gdf)
-# Mask areas not in inlier mask (glaciers here)
-pc_mask = inlier_mask.astype("uint8").interp_points((gdf.geometry.x.values, gdf.geometry.y.values), method="nearest")
-vect.ds = vect.ds[pc_mask == 1]
+static_points = inlier_mask.interp_at_points(points, method="nearest", as_array=True) == 1
+
 # Get point differences before and after
-z_pc = dem.interp_points((vect.ds.geometry.x.values, vect.ds.geometry.y.values))
-z_pc_aligned = aligned_dem.interp_points((vect.ds.geometry.x.values, vect.ds.geometry.y.values))
-import warnings
-# GeoPandas raising unexpected warning
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    vect["dh_bef"] = vect["h_li"] - z_pc
-    vect["dh_aft"] = vect["h_li"] - z_pc_aligned
+comparison = points.gdf.loc[static_points].copy()
+comparison["dh_before"] = points.data[static_points] - dem.interp_at_points(points, as_array=True)[static_points]
+comparison["dh_after"] = points.data[static_points] - aligned_dem.interp_at_points(points, as_array=True)[static_points]
 
 # Plot before and after
-import matplotlib.pyplot as plt
-f, ax = plt.subplots(1, 2)
-ax[0].set_title("Before\ncoregistration")
-hs.plot(cmap="Greys_r", add_cbar=False)
-vect.plot(column="dh_bef", cmap='RdYlBu', vmin=-10, vmax=10, ax=ax[0], markersize=0.5, cbar_title="Elevation differences (m)")
-ax[1].set_title("After\ncoregistration")
-hs.plot(cmap="Greys_r", add_cbar=False)
-vect.plot(column="dh_aft", cmap='RdYlBu', vmin=-10, vmax=10, ax=ax[1], markersize=0.5, legend=True, cbar_title="Elevation differences (m)")
-_ = ax[1].set_yticklabels([])
-plt.tight_layout()
+fig, axes = plt.subplots(1, 2, figsize=(10, 4), layout="constrained")
+for ax, column, title in zip(axes, ["dh_before", "dh_after"], ["Before coregistration", "After coregistration"]):
+    hs.plot(ax=ax, cmap="Greys_r", add_cbar=False)
+    gu.Vector(comparison).plot(
+        column=column, cmap="RdYlBu", vmin=-10, vmax=10, ax=ax,
+        markersize=0.5, cbar_title="ICESat-2 − DEM (m)",
+    )
+    ax.set_title(title)
+plt.show()
+
+for column in ["dh_before", "dh_after"]:
+    values = comparison[column].to_numpy()
+    print(f"{column}: median = {np.nanmedian(values):.2f} m, NMAD = {gu.stats.nmad(values):.2f} m")
 ```
 
-We can print a coregistration summary using {func}`~xdem.coreg.Coreg.info`.
+We can print a coregistration summary using {meth}`~xdem.coreg.Coreg.info`.
 
 ```{code-cell} ipython3
 # Show full coregistration information
