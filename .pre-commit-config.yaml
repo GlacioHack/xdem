@@ -125,11 +125,14 @@ repos:
                   pass_filenames: false
                   additional_dependencies: [tomli, pyyaml]
 
-#        # Add license header to the source files
-#        - repo: local
-#          hooks:
-#            - id: add-license-header
-#              name: Add License Header
-#              entry: python .github/scripts/apply_license_header.py
-#              language: python
-#              files: \.py$
+        # Check license headers in source files without changing them
+        # Accept xDEM developers and CNES copyrights with any year
+        - repo: local
+          hooks:
+            - id: check-license-header
+              name: Check license headers
+              entry: python .github/scripts/check_license_header.py
+              language: python
+              types: [python]
+              files: ^xdem/
+              exclude: ^xdem/_version\.py$
