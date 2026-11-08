@@ -167,7 +167,6 @@ def _process_longyearbyen_coreg_examples(output_dir: str, overwrite: bool = Fals
 
     # If the tba_dem_coreg file does not exist, create it
     if overwrite or not op.isfile(op.join(output_dir, _FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"])):
-
         dem_2009 = xdem.DEM(get_path("longyearbyen_ref_dem", output_dir), silent=True)
         ddem = xdem.DEM(ddem_path, silent=True)  # absolute path to avoid recursivity
 
@@ -220,7 +219,6 @@ def _crop_lonyearbyen_test_examples(output_dir: str, overwrite: bool = False) ->
     :param overwrite: Whether to overwrite the files if they already exist.
     """
     for k in _FILEPATHS_TEST.keys():
-
         # Verify if data is longyearbyen and need to be computed
         if not k.lower().startswith("longyearbyen") or (
             op.exists(op.join(output_dir, _FILEPATHS_TEST[k])) and not overwrite

@@ -97,26 +97,23 @@ def _check_inputs_bin_before_fit(
     is_ols = isinstance(fit_optimizer, str) and fit_optimizer == "ols"
     if fit_optimizer is not None and not is_ols and not callable(fit_optimizer):
         raise TypeError(
-            "Argument `fit_optimizer` must be a function (callable), 'ols' or None, "
-            "got {}.".format(type(fit_optimizer))
+            f"Argument `fit_optimizer` must be a function (callable), 'ols' or None, got {type(fit_optimizer)}."
         )
 
     if bin_before_fit:
-
         # Check input types for "bin" to raise user-friendly errors
         if not (
             isinstance(bin_sizes, int)
             or (isinstance(bin_sizes, dict) and all(isinstance(val, (int, Iterable)) for val in bin_sizes.values()))
         ):
             raise TypeError(
-                "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, "
-                "got {}.".format(type(bin_sizes))
+                "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, got {}.".format(
+                    type(bin_sizes)
+                )
             )
 
         if not callable(bin_statistic):
-            raise TypeError(
-                "Argument `bin_statistic` must be a function (callable), " "got {}.".format(type(bin_statistic))
-            )
+            raise TypeError(f"Argument `bin_statistic` must be a function (callable), got {type(bin_statistic)}.")
 
 
 def _resolve_fit_minimizer(
@@ -190,7 +187,6 @@ def _iterate_method(
         range(max_iterations), disable=logging.getLogger().getEffectiveLevel() > logging.INFO, desc="   Progress"
     )
     for i in pbar:
-
         # Apply method and get new statistics to compare to tolerances, new inputs for next iterations, and
         # outputs in case this is the final one
         new_inputs, new_statistics, static_outputs = method(new_inputs, *constant_inputs)
@@ -252,7 +248,6 @@ def _subsample_on_mask_interpolator(
 
     # For two rasters
     if isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
-
         # Derive coordinates and interpolator
         assert ref_transform is not None and tba_transform is not None
         coords = _coords(transform=ref_transform, shape=ref_elev.shape, grid=True)
@@ -409,7 +404,6 @@ def _get_centroid_scale(
 
     # For a DEM
     if isinstance(ref_elev, np.ndarray):
-
         # Derive centroid from the middle of the grid
         assert transform is not None
         centroid_x, centroid_y = transform * (
@@ -2839,7 +2833,6 @@ def icp(
     # and we wanted a fixed valid data size for subsampling)
     invert_output = False
     if method == "point-to-plane":
-
         # Fixed reference must be an array to derive normals
         if isinstance(ref_elev, np.ndarray):
             fixed_elev = "ref"
@@ -2897,7 +2890,6 @@ def icp(
     tba_elev_orig = tba_elev.copy()
     tba_transform_orig = tba_transform
     for i in range(out_loop_max_it):
-
         # Pre-process point-raster inputs to the same subsampled points
         ref_epc, tba_epc, sub_aux = _subsample_rst_pts(
             subsample=params_random["subsample"],
@@ -3371,7 +3363,6 @@ def _cpd_mstep_classic_fit_minimizer(
 
     # With rotation (and maybe scale)
     if not only_translation:
-
         if scale is True:
 
             def fit_func(params: NDArrayf) -> NDArrayf:
@@ -3409,7 +3400,6 @@ def _cpd_mstep_classic_fit_minimizer(
 
     # Without rotation: translate only (and maybe scale)
     else:
-
         if scale is True:
 
             def fit_func(params: NDArrayf) -> NDArrayf:
@@ -3511,7 +3501,6 @@ def _cpd_mstep_classic_fit_minimizer_fast(
     w_sqrt = np.sqrt(P1_safe)  # (M,)
 
     if not only_translation:
-
         if scale is True:
 
             def fit_func(params: NDArrayf) -> NDArrayf:
@@ -3539,7 +3528,6 @@ def _cpd_mstep_classic_fit_minimizer_fast(
             init_offsets = np.zeros(6, dtype=float)
 
     else:
-
         if scale is True:
 
             def fit_func(params: NDArrayf) -> NDArrayf:
@@ -3942,7 +3930,6 @@ def _cpd_fit(
 
     # Classic CPD
     if not lsg:
-
         w = cache["classic"]["w"]
 
         # 1/ Expectation step
@@ -4174,7 +4161,6 @@ def cpd(
     new_q = init_q
     new_sigma2 = init_sigma2
     for i in range(out_loop_max_it):
-
         # Pre-process point-raster inputs to the same subsampled points
         ref_epc, tba_epc, sub_aux = _subsample_rst_pts(
             subsample=params_random["subsample"],
@@ -4330,22 +4316,18 @@ def _lzd_aux_vars(
 
     # If inputs are both point clouds, raise an error
     if isinstance(ref_elev, gpd.GeoDataFrame) and isinstance(tba_elev, gpd.GeoDataFrame):
-
         raise TypeError(
-            "The LZD coregistration does not support two point clouds, one elevation "
-            "dataset in the pair must be a DEM."
+            "The LZD coregistration does not support two point clouds, one elevation dataset in the pair must be a DEM."
         )
 
     # If inputs are both rasters, derive terrain attributes from ref and get 2D dh interpolator
     elif isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
-
         # Derive slope and aspect from the reference as default
         ref_arr = np.asarray(np.ma.filled(ref_elev, np.nan))
         gradient_y, gradient_x = np.gradient(ref_arr)
 
     # If inputs are one raster and one point cloud, derive terrain attribute from raster and get 1D dh interpolator
     else:
-
         if isinstance(ref_elev, gpd.GeoDataFrame):
             rst_elev = tba_elev
         else:
@@ -4851,7 +4833,6 @@ def _lzd_fit_gls_tls(
     # 1/ GENERALIZED LEAST SQUARES: Only error in dependent variable Y, no errors in the independent variable X
     # In our case, if only the secondary (not necessarily gridded) elevation has significant errors
     if force_opti == "gls" or (force_opti is None and sig_h_grid is None):
-
         if force_opti == "gls":
             logging.info("Forcing method optimization method 'gls' for LZD.")
         logging.info("No error passed for gridded elevation, using GLS for LZD error propagation.")
@@ -4919,7 +4900,6 @@ def _lzd_fit_gls_tls(
     # 2/ TOTAL LEAST SQUARES: Errors in both dependent variable Y and independent variable X
     # In our case, if the gridded elevation and its gradient have significant errors
     else:
-
         if force_opti == "tls":
             logging.info("Forcing method optimization method 'tls' for LZD.")
 
@@ -5080,7 +5060,6 @@ def _lzd_fit_linearized(
 
     # Run optimizer on function
     if force_opti == "ols" or (force_opti is None and errors is None and error_structure is None):
-
         if force_opti == "ols":
             logging.info("Forcing method optimization method 'ols' for LZD.")
         fit_minimizer = params_fit_or_bin["fit_minimizer"]

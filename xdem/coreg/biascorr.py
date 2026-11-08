@@ -81,18 +81,19 @@ class BiasCorr(Coreg):
 
         # Pass the arguments to the class metadata
         if fit_or_bin in ["fit", "bin_and_fit"]:
-
             # Check input types for "fit" to raise user-friendly errors
             if not (callable(fit_func) or (isinstance(fit_func, str) and fit_func in fit_workflows.keys())):
                 raise TypeError(
-                    "Argument `fit_func` must be a function (callable) "
-                    "or the string '{}', got {}.".format("', '".join(fit_workflows.keys()), type(fit_func))
+                    "Argument `fit_func` must be a function (callable) or the string '{}', got {}.".format(
+                        "', '".join(fit_workflows.keys()), type(fit_func)
+                    )
                 )
             is_ols = isinstance(fit_optimizer, str) and fit_optimizer == "ols"
             if fit_optimizer is not None and not is_ols and not callable(fit_optimizer):
                 raise TypeError(
-                    "Argument `fit_optimizer` must be a function (callable), 'ols' or None, "
-                    "got {}.".format(type(fit_optimizer))
+                    "Argument `fit_optimizer` must be a function (callable), 'ols' or None, got {}.".format(
+                        type(fit_optimizer)
+                    )
                 )
 
             # If a workflow was called, override optimizer and pass proper function
@@ -102,26 +103,25 @@ class BiasCorr(Coreg):
                 fit_func = fit_workflows[fit_func]["func"]  # type: ignore
 
         if fit_or_bin in ["bin", "bin_and_fit"]:
-
             # Check input types for "bin" to raise user-friendly errors
             if not (
                 isinstance(bin_sizes, int)
                 or (isinstance(bin_sizes, dict) and all(isinstance(val, (int, Iterable)) for val in bin_sizes.values()))
             ):
                 raise TypeError(
-                    "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, "
-                    "got {}.".format(type(bin_sizes))
+                    "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, got {}.".format(
+                        type(bin_sizes)
+                    )
                 )
 
             if not callable(bin_statistic):
-                raise TypeError(
-                    "Argument `bin_statistic` must be a function (callable), " "got {}.".format(type(bin_statistic))
-                )
+                raise TypeError(f"Argument `bin_statistic` must be a function (callable), got {type(bin_statistic)}.")
 
             if not isinstance(bin_apply_method, str):
                 raise TypeError(
-                    "Argument `bin_apply_method` must be the string 'linear' or 'per_bin', "
-                    "got {}.".format(type(bin_apply_method))
+                    "Argument `bin_apply_method` must be the string 'linear' or 'per_bin', got {}.".format(
+                        type(bin_apply_method)
+                    )
                 )
 
         list_bias_var_names = list(bias_var_names) if bias_var_names is not None else None

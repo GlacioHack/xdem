@@ -548,7 +548,6 @@ def _make_attribute_from_coefs(
     ) = make_attrs
 
     if surface_fit_id == 0:
-
         # Extract surface derivatives based on Horn (1981).
         # http://dx.doi.org/10.1109/PROC.1981.11918.
 
@@ -556,7 +555,6 @@ def _make_attribute_from_coefs(
         z_y_idx = h1_idx
 
     elif surface_fit_id == 1:
-
         # Extract surface derivatives based on Zevenbergen and Thorne (1987).
         # http://dx.doi.org/10.1002/esp.3290120107.
 
@@ -571,7 +569,6 @@ def _make_attribute_from_coefs(
         # z_xyy = zt_c_idx
 
     elif surface_fit_id == 2:
-
         # Extract surface derivatives based on Florinsky (2017).
         # https://doi.org/10.1177/0309133317733667.
 
@@ -588,7 +585,6 @@ def _make_attribute_from_coefs(
         # z_xyy_idx = fl_c_idx
 
     if make_slope:
-
         slope = np.arctan((C[z_x_idx] ** 2 + C[z_y_idx] ** 2) ** 0.5)
 
         # In case slope is only derived for hillshade
@@ -596,7 +592,6 @@ def _make_attribute_from_coefs(
             attrs[slope_idx] = slope
 
     if make_aspect:
-
         aspect = (-np.arctan2(-C[z_x_idx], C[z_y_idx])) % (2 * np.pi)
 
         # In case aspect is only derived for hillshade
@@ -604,7 +599,6 @@ def _make_attribute_from_coefs(
             attrs[aspect_idx] = aspect
 
     if make_hillshade:
-
         # If a different z-factor was given, slopemap with exaggerated gradients.
         if hillshade_z_factor != 1.0:
             slopemap = np.arctan(np.tan(slope) * hillshade_z_factor)
@@ -626,7 +620,6 @@ def _make_attribute_from_coefs(
     # checks should have occurred prior to this private function being called.
 
     if make_curvature and surface_fit_id in [1, 2]:
-
         # THIS FUNCTION IS NOT FOLLOWING THE MINÁR ET AL (2020).
         # RETAINED FOR BACKWARD COMPATIBILITY BUT WITH A WARNING IN `curvature()`
 
@@ -636,13 +629,11 @@ def _make_attribute_from_coefs(
         attrs[curv_idx] = -2.0 * (C[z_xx_idx] + C[z_yy_idx]) * 100
 
     if make_profile_curvature and surface_fit_id in [1, 2]:
-
         # # Completely flat surfaces need to be set to zero to avoid division by zero
         # # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
         # # so we use a 1-d array and write in a 2-d array output
 
         if curv_method_id == 0:
-
             # Geometric profile curvature (normal slope line curvature) following Evans, 1979.
             # profcurv = - (z_xx * z_x**2 + 2 * z_xy * z_x * z_y + z_yy * z_y**2) /
             # ((z_x**2 + z_y**2) * sqrt((1 + z_x**2 + z_y**2)**3))
@@ -662,7 +653,6 @@ def _make_attribute_from_coefs(
             profcurv *= 100
 
         elif curv_method_id == 1:
-
             # Directional derivative slope curvature (2nd slope line derivative) following Krcho, 1973.
             # -(z_xx * z_x**2 + 2 * z_xy * z_x * z_y + z_yy * z_y**2) / (z_x**2 + z_y**2)
 
@@ -685,13 +675,11 @@ def _make_attribute_from_coefs(
             attrs[profcurv_idx] = profcurv
 
     if make_tangential_curvature and surface_fit_id in [1, 2]:
-
         # Completely flat surfaces need to be set to zero to avoid division by zero
         # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
         # so we use a 1-d array and write in a 2-d array output
 
         if curv_method_id == 0:
-
             # Geometric tangential curvature (normal contour curvature) following Krcho, 1983.
             # tancurv = - (z_xx * z_y**2 - 2 * z_xy * z_x * z_y + z_yy * z_x**2) /
             # ((z_x**2 + z_y**2) * sqrt(1 + z_x**2 + z_y**2))
@@ -711,7 +699,6 @@ def _make_attribute_from_coefs(
             tancurv *= 100
 
         if curv_method_id == 1:
-
             # Directional derivative tangential curvature: 2nd contour derivative "plan curvature",
             # following Zevenberg and Thorne, 1979.
             # tancurv = -(z_xx * z_y**2 - 2 * z_xy * z_x * z_y + z_yy * z_x**2) / (z_x**2 + z_y**2)
@@ -734,13 +721,11 @@ def _make_attribute_from_coefs(
             attrs[tancurv_idx] = tancurv
 
     if make_planform_curvature and surface_fit_id in [1, 2]:
-
         # # Completely flat surfaces need to be set to zero to avoid division by zero
         # # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
         # # so we use a 1-d array and write in a 2-d array output
 
         if curv_method_id in [0, 1]:
-
             # Geometric planform curvature following Sobolevsky, 1932
             # Planform derivation is the same in a geometric and directional derivative context
             # (see Minár et al. 2020 following Jenčo, 1992)
@@ -765,13 +750,11 @@ def _make_attribute_from_coefs(
             attrs[plancurv_idx] = plancurv
 
     if make_flowline_curvature and surface_fit_id in [1, 2]:
-
         # Completely flat surfaces need to be set to zero to avoid division by zero
         # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
         # so we use a 1-d array and write in a 2-d array output
 
         if curv_method_id == 0:
-
             # Geometric flowline curvature is geodesic slope line curvature following Minár et al. 2020
             # flowcurv = (z_x * z_y * (z_xx - z_yy) - z_xy * (z_x**2 - z_y**2)) /
             # (((z_x**2 + z_y**2)**3)**0.5 * (1 + z_x**2 + z_y**2)**0.5)
@@ -790,7 +773,6 @@ def _make_attribute_from_coefs(
             flowcurv *= 100
 
         elif curv_method_id == 1:
-
             # Directional derivative flowline curvature (projected slope line curvature) following Shary et al. 1992
             # flowcurv = (z_x * z_y * (z_xx - z_yy) - z_xy * (z_x**2 - z_y**2)) / ((z_x**2 + z_y**2)**3)**0.5
 
@@ -811,7 +793,6 @@ def _make_attribute_from_coefs(
             attrs[flowcurv_idx] = flowcurv
 
     if (make_max_curvature or make_min_curvature) and surface_fit_id in [1, 2] and curv_method_id == 0:
-
         # Mean curvature and unsphericity curvature required for maximal and minimal
         # curvature (could choose to make this explicit and exposed in future)
 
@@ -869,13 +850,11 @@ def _make_attribute_from_coefs(
         # Not converted from m-1 to 100 m-1 until post-calculation of maximal/minimal curvatures
 
     if make_max_curvature and surface_fit_id in [1, 2]:
-
         # Completely flat surfaces need to be set to zero to avoid division by zero
         # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
         # so we use a 1-d array and write in a 2-d array output
 
         if curv_method_id == 0:
-
             # maximual curvature (Shary, 1995) = minimal curvature (Euler, 1760)
             # maxcurv = mean + unsphericity
 
@@ -889,7 +868,6 @@ def _make_attribute_from_coefs(
             maxcurv *= 100
 
         elif curv_method_id == 1:
-
             # maximum curvature (Wood, 1996) is the minimum second derivative
             # maxcurv = -((z_xx + z_yy) / 2 - (((z_xx - z_yy) / 2)**2 + z_xy**2)**0.5)
 
@@ -906,13 +884,11 @@ def _make_attribute_from_coefs(
             attrs[maxcurv_idx] = maxcurv
 
     if make_min_curvature and surface_fit_id in [1, 2]:
-
         # Completely flat surfaces need to be set to zero to avoid division by zero
         # Unfortunately np.where doesn't support scalar input or 0d-array for the Numba parallel case,
         # so we use a 1-d array and write in a 2-d array output
 
         if curv_method_id == 0:
-
             # minimal curvature (Shary, 1995) = maximal curvature (Euler, 1760)
             # maxcurv = mean - unsphericity
 
@@ -926,7 +902,6 @@ def _make_attribute_from_coefs(
             mincurv *= 100
 
         elif curv_method_id == 1:
-
             # minimum curvature (Wood, 1996) is the maximum second derivative
             # mincurv = -((z_xx + z_yy) / 2 + (((z_xx - z_yy) / 2)**2 + z_xy**2)**0.5)
 
@@ -1039,7 +1014,6 @@ def _get_surface_attributes_numba(
     # Loop over every pixel concurrently by using prange
     for row in prange(row_range):
         for col in prange(col_range):
-
             # Compute coefficients from convolution
             coefs = _convolution_numba(dem, filters, row, col, out_dtype=np.float64)
 
@@ -1247,7 +1221,6 @@ def _get_surface_attributes(
     # Run convolution to compute all coefficients, then reduce those to attributes through either SciPy or Numba
     # (For Numba: Reduction is done within loop to reduce memory usage of computing dozens of full-array coefficients)
     if engine == "scipy":
-
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice.")
             warnings.filterwarnings(
@@ -1268,7 +1241,6 @@ def _get_surface_attributes(
                 **kwargs,
             )
     elif engine == "numba":
-
         # Fail and raise error if optional dependency is not installed
         numba = import_optional("numba")
 

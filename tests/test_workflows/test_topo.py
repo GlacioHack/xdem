@@ -180,7 +180,6 @@ def test_run_dico_to_show(get_topo_inputs_config_list, nb_inputs, tmp_path):
     # Check subdictionaries content, except exact stats values in case test data/algorithms slightly changes,
     # and as those are already tested separately
     for k, _ in enumerate(user_config_list["inputs"]):
-
         # 1/ Input information
         get_topo_inputs_config_list[k]["downsample"] = 1
         assert workflows.dico_to_show[k][0] == (

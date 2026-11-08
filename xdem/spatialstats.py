@@ -339,7 +339,6 @@ def interp_nd_binning(
 
     # Compute the middle values instead of bin interval if the variable is a pandas interval type
     for var in list_var_names:
-
         # Check if all value are numeric (NaN counts as integer), if yes leave as is
         if all(isinstance(x, (int, float, np.integer, np.floating)) for x in df_sub[var].values):
             pass
@@ -539,7 +538,6 @@ def get_perbin_nd_binning(
     # We perform the K-D binning by logically combining the masks
     all_ranges = [range(len(all_interval_vars[k])) for k in range(L)]
     for indices in itertools.product(*all_ranges):
-
         # Get mask of the specific bin, skip if empty
         mask_bin = np.logical_and.reduce([all_mask_vars[k][indices[k]] for k in range(L)])
         if np.count_nonzero(mask_bin) == 0:
@@ -761,7 +759,6 @@ def _preprocess_values_with_mask_to_array(
     if include_mask is None:
         include_mask_arr = np.ones(np.shape(values_arr[0]), dtype=bool)
     elif isinstance(include_mask, (Vector, gpd.GeoDataFrame)):
-
         # If the stable mask is a geopandas dataframe, wrap it in a Vector object
         if isinstance(include_mask, gpd.GeoDataFrame):
             stable_vector = Vector(include_mask)
@@ -781,7 +778,6 @@ def _preprocess_values_with_mask_to_array(
     if exclude_mask is None:
         exclude_mask_arr = np.zeros(np.shape(values_arr[0]), dtype=bool)
     elif isinstance(exclude_mask, (Vector, gpd.GeoDataFrame)):
-
         # If the unstable mask is a geopandas dataframe, wrap it in a Vector object
         if isinstance(exclude_mask, gpd.GeoDataFrame):
             unstable_vector = Vector(exclude_mask)
@@ -1053,9 +1049,7 @@ def _aggregate_pdist_empirical_variogram(
 
     # If no multi_ranges are provided, define a logical default behaviour with the pixel size and grid size
     if subsample_method in ["pdist_disk", "pdist_ring"]:
-
         if pdist_multi_ranges is None:
-
             # Define list of ranges as exponent 2 of the resolution until the maximum range
             pdist_multi_ranges = []
             # We start at 10 times the ground sampling distance
@@ -1070,7 +1064,6 @@ def _aggregate_pdist_empirical_variogram(
         list_outside_radius: list[float | None] = []
         binned_ranges = [0.0] + pdist_multi_ranges
         for i in range(len(binned_ranges) - 1):
-
             # Radiuses need to be passed as pixel sizes, dividing by ground sampling distance
             outside_radius = binned_ranges[i + 1] / gsd
             if subsample_method == "pdist_ring":
@@ -1089,7 +1082,6 @@ def _aggregate_pdist_empirical_variogram(
     # Estimate variogram with specific subsampling at multiple ranges
     list_df_range = []
     for j in range(len(pdist_multi_ranges)):
-
         values_sub, coords_sub = _subsample_wrapper(
             values,
             coords,
@@ -1250,7 +1242,6 @@ def _get_cdist_empirical_variogram(
     skg = import_optional("skgstat", package_name="scikit-gstat")
 
     if subsample_method == "cdist_equidistant":
-
         if "runs" not in kwargs.keys() and "samples" not in kwargs.keys():
             # We define subparameters for the equidistant technique to match the number of pairwise comparison
             # that would have a classic "subsample" with pdist, except if those parameters are already user-defined
@@ -1263,7 +1254,6 @@ def _get_cdist_empirical_variogram(
         kwargs.pop("subsample")
 
     elif subsample_method == "cdist_point":
-
         # We set the samples to match the subsample argument if the method is random points
         kwargs["samples"] = kwargs.pop("subsample")
 
@@ -1544,7 +1534,6 @@ def sample_empirical_variogram(
 
         list_df_run = []
         for i in range(n_variograms):
-
             argdict = {
                 "i": i,
                 "imax": n_variograms,
@@ -2335,7 +2324,6 @@ def neff_exact(
         var = 0.0
         for i in range(n):
             for j in range(n):
-
                 # For index calculation of the pairwise distance,
                 # see https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
                 if i == j:
@@ -2496,7 +2484,6 @@ def number_effective_samples(
 
     # Otherwise, run the discrete sum of covariance
     elif isinstance(area, (Vector, gpd.GeoDataFrame)):
-
         # If the input is a geopandas dataframe, put into a Vector object
         if isinstance(area, gpd.GeoDataFrame):
             V = Vector(area)
@@ -2512,7 +2499,6 @@ def number_effective_samples(
 
         # Rasterize with numeric resolution or Raster metadata
         if isinstance(rasterize_resolution, (float, int, np.floating, np.integer)):
-
             # We only need relative mask and coordinates, not absolute
             mask = V.create_mask(res=rasterize_resolution, as_array=True)
             x = rasterize_resolution * np.arange(0, mask.shape[0])
@@ -2521,7 +2507,6 @@ def number_effective_samples(
             coords_on_mask = coords[:, mask].T
 
         elif isinstance(rasterize_resolution, Raster):
-
             # With a Raster we can get the coordinates directly
             mask = V.create_mask(rasterize_resolution, as_array=True).squeeze()
             coords = np.array(rasterize_resolution.coords())
@@ -2730,7 +2715,6 @@ def convolution(imgs: NDArrayf, filters: NDArrayf, method: str = "scipy") -> NDA
     if method.lower() == "scipy":
         _scipy_convolution(imgs=imgs, filters=filters, output=output)
     elif "numba" in method.lower():
-
         import_optional("numba")
 
         half_M1 = int((M1 - 1) / 2)
@@ -2964,13 +2948,11 @@ def _patches_loop_quadrants(
     remaining_nsamp = n_patches
     list_df = []
     while len(list_quadrant) > 0 and u < n_patches:
-
         # Draw a random coordinate from the list of quadrants, select more than enough random points to avoid drawing
         # randomly and differencing lists several times
         list_idx_quadrant = rng.choice(len(list_quadrant), size=min(len(list_quadrant), 10 * remaining_nsamp))
 
         for idx_quadrant in list_idx_quadrant:
-
             logging.info("Working on a new quadrant")
 
             # Select center coordinates

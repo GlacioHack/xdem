@@ -469,7 +469,6 @@ def _fractal_roughness_func_scipy(
 
         # If vectorized is available, use it
         if _HAS_VECTORIZED_FILTER or force_backend == "vectorized":
-
             # Pre-compute scale-dependent constants
             qs, log_q, mx, SS_xx = _fractal_precompute(window_size)
 
@@ -524,7 +523,6 @@ def _rugosity_func(arr: NDArrayf, resolution: float, out_dtype: DTypeLike = np.f
     # First, the 8 connected segments from the center cells, the center cell is index 4
     for j in range(-1, 2):
         for k in range(-1, 2):
-
             # Skip if this is the center pixel
             if j == 0 and k == 0:
                 count_all += 1
@@ -786,11 +784,9 @@ def _make_windowed_indexes(
 
     # Topographic position index
     if make_tpi:
-
         attrs[tpi_idx] = _tpi_func_numba(dem_window, window_size=window_size)
 
     if make_tri:
-
         if tri_method_id == 0:
             attrs[tri_idx] = _tri_riley_func_numba(dem_window)
 
@@ -798,15 +794,12 @@ def _make_windowed_indexes(
             attrs[tri_idx] = _tri_wilson_func_numba(dem_window, window_size=window_size)
 
     if make_roughness:
-
         attrs[roughness_idx] = _roughness_func_numba(dem_window)
 
     if make_rugosity:
-
         attrs[rugosity_idx] = _rugosity_func_numba(dem_window, resolution=resolution, out_dtype=out_dtype)
 
     if make_fractal_roughness:
-
         attrs[frac_roughness_idx] = _fractal_roughness_func_numba(
             dem_window, window_size=window_size, out_dtype=out_dtype
         )
@@ -847,7 +840,6 @@ def _get_windowed_indexes_numba(
     # Loop over every pixel concurrently by using prange
     for row in prange(row_range):
         for col in prange(col_range):
-
             dem_window = dem[row : row + window_size, col : col + window_size].flatten()
             out_size = (attrs_size,)
             attrs = _make_windowed_indexes(
@@ -978,7 +970,6 @@ def _get_windowed_indexes(
             force_backend=force_scipy_backend,
         )
     elif engine == "numba":
-
         # Fail and raise error if optional dependency is not installed
         numba = import_optional("numba")
 

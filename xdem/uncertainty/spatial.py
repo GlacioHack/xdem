@@ -677,7 +677,6 @@ def _patches_loop_quadrants(
         list_idx_quadrant = rng.choice(len(list_quadrant), size=min(len(list_quadrant), 10 * remaining_nsamp))
 
         for idx_quadrant in list_idx_quadrant:
-
             logging.info("Working on a new quadrant")
 
             # Select center coordinates

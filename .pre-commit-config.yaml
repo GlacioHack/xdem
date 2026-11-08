@@ -30,28 +30,17 @@ repos:
           hooks:
                 - id: absolufy-imports
 
-        # Format the code aggressively using black
-        - repo: https://github.com/psf/black
-          rev: 26.1.0
+        # Use Ruff for Black-compatible formatting, Flake8 linting and isort
+        - repo: https://github.com/astral-sh/ruff-pre-commit
+          rev: v0.16.0
           hooks:
-                  - id: black
-                    args: [--line-length=120]
-
-        # Lint the code using flake8
-        - repo: https://github.com/pycqa/flake8
-          rev: 7.3.0
-          hooks:
-                - id: flake8
-                  # More than one argument in the second list, so need to pass arguments as below (and -- to finish)
-                  args: [
-                          '--max-line-length', '120',  # we can write dicts however we want
-                          '--extend-ignore', 'E203,C408,B028', # flake8 disagrees with black, so this should be ignored.
-                          '--'
-                  ]
-                  additional_dependencies:
-                          - flake8-comprehensions
-                          - flake8-bugbear
+                - id: ruff-format
+                - id: ruff-check
+                  name: Lint the code using Ruff
                   files: ^(xdem|tests)
+                - id: ruff-check
+                  name: Sort imports using Ruff
+                  args: [--fix, --select=I]
 
         # Lint the code using mypy
         - repo: https://github.com/pre-commit/mirrors-mypy
@@ -76,14 +65,7 @@ repos:
                   files: ^(xdem|tests|doc/code)
 
 
-        # Sort imports using isort
-        - repo: https://github.com/PyCQA/isort
-          rev: 7.0.0
-          hooks:
-                  - id: isort
-                    args: ["--profile", "black"]
-
-        # Automatically upgrade syntax to a minimum version
+        # Keep the Python 3.7 syntax upgrade target without constraining Ruff's parser
         - repo: https://github.com/asottile/pyupgrade
           rev: v3.21.2
           hooks:

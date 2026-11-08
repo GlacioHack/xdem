@@ -45,7 +45,6 @@ import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
 import scipy
 import scipy.interpolate
-import scipy.ndimage
 import scipy.optimize
 from geoutils import profiler
 from geoutils.interface.gridding import _grid_pointcloud
@@ -454,7 +453,7 @@ def _preprocess_coreg_fit(
     for elev in (reference_elev, to_be_aligned_elev):
         if not isinstance(elev, (np.ndarray, gu.Raster, gpd.GeoDataFrame, gu.PointCloud)):
             raise ValueError(
-                f"Input elevation data should be a raster, array, geodataframe or point cloud, " f"got {type(elev)}."
+                f"Input elevation data should be a raster, array, geodataframe or point cloud, got {type(elev)}."
             )
 
     # If both inputs are raster or arrays, reprojection on the same grid is needed for raster-raster methods
@@ -487,14 +486,10 @@ def _preprocess_coreg_fit(
         if isinstance(reference_elev, (np.ndarray, gu.Raster)):
             raster_elev = reference_elev
             point_elev = (
-                to_be_aligned_elev
-                if isinstance(to_be_aligned_elev, gpd.GeoDataFrame)
-                else to_be_aligned_elev.ds  # type: ignore
+                to_be_aligned_elev if isinstance(to_be_aligned_elev, gpd.GeoDataFrame) else to_be_aligned_elev.ds  # type: ignore
             )
             z_name = (
-                z_name
-                if isinstance(to_be_aligned_elev, gpd.GeoDataFrame)
-                else to_be_aligned_elev.data_name  # type: ignore
+                z_name if isinstance(to_be_aligned_elev, gpd.GeoDataFrame) else to_be_aligned_elev.data_name  # type: ignore
             )
             ref = "raster"
         else:
@@ -535,9 +530,7 @@ def _preprocess_coreg_fit(
     else:
         ref_elev = reference_elev if isinstance(reference_elev, gpd.GeoDataFrame) else reference_elev.ds  # type: ignore
         tba_elev = (
-            to_be_aligned_elev
-            if isinstance(to_be_aligned_elev, gpd.GeoDataFrame)
-            else to_be_aligned_elev.ds  # type: ignore
+            to_be_aligned_elev if isinstance(to_be_aligned_elev, gpd.GeoDataFrame) else to_be_aligned_elev.ds  # type: ignore
         )
         z_name = (
             z_name if isinstance(to_be_aligned_elev, gpd.GeoDataFrame) else to_be_aligned_elev.data_name  # type: ignore
@@ -570,7 +563,7 @@ def _preprocess_coreg_apply(
 
     if not isinstance(elev, (np.ndarray, Raster, gpd.GeoDataFrame, PointCloud)):
         raise ValueError(
-            f"Input elevation data should be a raster, array, geodataframe or point cloud, " f"got {type(elev)}."
+            f"Input elevation data should be a raster, array, geodataframe or point cloud, got {type(elev)}."
         )
 
     # If input is geodataframe or point cloud
@@ -873,16 +866,18 @@ def _bin_or_and_fit_nd(
     nd = params_fit_or_bin["nd"]
     if nd is not None and len(bias_vars) != nd:
         raise ValueError(
-            "A number of {} variable(s) has to be provided through the argument 'bias_vars', "
-            "got {}.".format(nd, len(bias_vars))
+            "A number of {} variable(s) has to be provided through the argument 'bias_vars', got {}.".format(
+                nd, len(bias_vars)
+            )
         )
 
     # If bias var names were explicitly passed at instantiation, check that they match the one from the dict
     if params_fit_or_bin["bias_var_names"] is not None:
         if not sorted(bias_vars.keys()) == sorted(params_fit_or_bin["bias_var_names"]):
             raise ValueError(
-                "The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                "instantiation: {}.".format(params_fit_or_bin["bias_var_names"])
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during instantiation: {}.".format(
+                    params_fit_or_bin["bias_var_names"]
+                )
             )
 
     # Get number of variables
@@ -1424,7 +1419,7 @@ def _iterate_affine_regrid_small_rotations(
             diff_y = y0 - y
 
             logging.debug(
-                "Residual check at iteration number %d:" "\n    Mean diff x: %f" "\n    Mean diff y: %f",
+                "Residual check at iteration number %d:\n    Mean diff x: %f\n    Mean diff y: %f",
                 niter,
                 np.nanmean(np.abs(diff_x)),
                 np.nanmean(np.abs(diff_y)),
@@ -1979,7 +1974,7 @@ class Coreg:
             for k in meta.keys():
                 if k not in all_keys:
                     raise ValueError(
-                        f"Coregistration metadata key {k} is not supported. " f"Should be one of {', '.join(all_keys)}"
+                        f"Coregistration metadata key {k} is not supported. Should be one of {', '.join(all_keys)}"
                     )
 
             # Add keys to inputs
@@ -2132,7 +2127,9 @@ class Coreg:
         for lk, lv in sublevels.items():
             if lk in self._meta["inputs"].keys():
                 existing_level_keys = [
-                    (k, v) for k, v in self._meta["inputs"][lk].items() if k in existing_deep_keys  # type: ignore
+                    (k, v)
+                    for k, v in self._meta["inputs"][lk].items()  # type: ignore
+                    if k in existing_deep_keys
                 ]
                 if len(existing_level_keys) > 0:
                     inputs_str += [f"  {lv}\n"]
@@ -2148,7 +2145,9 @@ class Coreg:
             for lk, lv in sublevels.items():
                 if lk in self._meta["outputs"].keys():
                     existing_level_keys = [
-                        (k, v) for k, v in self._meta["outputs"][lk].items() if k in existing_deep_keys  # type: ignore
+                        (k, v)
+                        for k, v in self._meta["outputs"][lk].items()  # type: ignore
+                        if k in existing_deep_keys
                     ]
                     if len(existing_level_keys) > 0:
                         outputs_str += [f"  {lv}\n"]
@@ -2657,9 +2656,7 @@ class Coreg:
 
             # If it doesn't exist, use apply_matrix()
             except NotImplementedCoregApply:
-
                 if self.is_affine:  # This only works for affine, however.
-
                     # Not resampling is only possible for translation methods, fail with warning if passed by user
                     if not self.is_translation:
                         if not kwargs["resample"]:
@@ -2690,7 +2687,6 @@ class Coreg:
             # If it doesn't exist, use apply_matrix()
             except NotImplementedCoregApply:
                 if self.is_affine:
-
                     applied_elev = _apply_matrix_pts(
                         epc=kwargs["elev"],
                         matrix=self.to_matrix(),

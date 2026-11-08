@@ -164,8 +164,8 @@ class Workflows(ABC):
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"File not found : {self.config_path}")
 
-        if not Path(self.config_path).suffix in [".yaml", ".yml"]:
-            raise ValueError("Unsupported configuration file format. " "Please use .yaml, or .yml file.")
+        if Path(self.config_path).suffix not in [".yaml", ".yml"]:
+            raise ValueError("Unsupported configuration file format. Please use .yaml, or .yml file.")
 
         with open(self.config_path) as f:
             config_dict = yaml.safe_load(f)
@@ -372,7 +372,6 @@ class Workflows(ABC):
         mask_path = None
 
         if config_dem is not None:
-
             path_to_elev = config_dem["path_to_elev"]
             # If alias, get its path
             if path_to_elev in list(_FILEPATHS_ALL.keys()):
@@ -392,7 +391,6 @@ class Workflows(ABC):
                 dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
 
             if config_dem.get("path_to_mask") is not None:
-
                 mask_path = config_dem["path_to_mask"]
 
                 # If alias, get its path
@@ -433,7 +431,6 @@ class Workflows(ABC):
         if isinstance(dico, dict):
             cleaned_dict = {}
             for k, v in dico.items():
-
                 if k == "statistics":
                     cleaned_dict[k] = v
                     continue

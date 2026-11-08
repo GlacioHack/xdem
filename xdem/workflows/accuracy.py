@@ -208,8 +208,7 @@ class Accuracy(Workflows):
             msg_error = "Reference and to-be-aligned elevation datasets do not overlap horizontally. "
             if self.compute_coreg:
                 msg_error += (
-                    "All possible coregistration methods rely on elevation differencing, and thus "
-                    "produce only NaNs. "
+                    "All possible coregistration methods rely on elevation differencing, and thus produce only NaNs. "
                 )
             else:
                 msg_error += "No differences can be calculated. "
@@ -297,7 +296,7 @@ class Accuracy(Workflows):
         plt.text(
             0.2,
             0.5,
-            f'Before:\nmedian = {self.stats_before["median"]:.2f}\nnmad = {self.stats_before["nmad"]:.2f}',
+            f"Before:\nmedian = {self.stats_before['median']:.2f}\nnmad = {self.stats_before['nmad']:.2f}",
             color="g",
             transform=ax.transAxes,
             ha="center",
@@ -306,7 +305,7 @@ class Accuracy(Workflows):
         plt.text(
             0.8,
             0.5,
-            f'After:\nmedian = {self.stats_after["median"]:.2f}\nnmad = {self.stats_after["nmad"]:.2f}',
+            f"After:\nmedian = {self.stats_after['median']:.2f}\nnmad = {self.stats_after['nmad']:.2f}",
             color="b",
             transform=ax.transAxes,
             ha="center",
@@ -346,7 +345,6 @@ class Accuracy(Workflows):
         stats_keys = ["min", "max", "nmad", "median"]
 
         if self.compute_coreg:
-
             self.diff_before = self.to_be_aligned_elev - self.reference_elev
             self.stats_before = self.diff_before.get_stats(stats_keys)
 

@@ -144,7 +144,6 @@ def vertical_unit_symbol(crs: Any) -> str | None:
     # Check axis is indeed vertical, otherwise return None
     for axis in crs.axis_info:
         if axis.direction in ("up", "down"):
-
             # Prefer EPSG unit code if it exists
             code = axis.unit_auth_code
             if code and code in _UNIT_SYMBOLS:
@@ -263,8 +262,7 @@ def _build_vcrs_from_grid(grid: str, old_way: bool = False) -> BoundCRS:
             )
         except HTTPError:
             raise ValueError(
-                "The provided grid '{}' does not exist at https://cdn.proj.org/. "
-                "Provide an existing grid.".format(grid)
+                f"The provided grid '{grid}' does not exist at https://cdn.proj.org/. Provide an existing grid."
             )
 
     # The old way: see https://gis.stackexchange.com/questions/352277/.
@@ -330,7 +328,6 @@ def _vcrs_from_crs(crs: CRS | None) -> CRS | Literal["Ellipsoid"] | None:
 
     # Check if CRS is 3D
     if len(crs.axis_info) > 2:
-
         # Check if CRS has a vertical compound
         if any(subcrs.is_vertical for subcrs in crs.sub_crs_list):
             # Then we get the first vertical CRS (should be only one anyway)
@@ -379,8 +376,9 @@ def _vcrs_from_user_input(
         # Raise errors if the CRS constructed is not vertical or has other components
         if isinstance(vcrs, CRS) and not vcrs.is_vertical:
             raise ValueError(
-                "New vertical CRS must have a vertical axis, '{}' does not "
-                "(check with `CRS.is_vertical`).".format(vcrs.name)
+                "New vertical CRS must have a vertical axis, '{}' does not (check with `CRS.is_vertical`).".format(
+                    vcrs.name
+                )
             )
         elif isinstance(vcrs, CRS) and vcrs.is_vertical and len(vcrs.axis_info) > 2:
             warnings.warn(
