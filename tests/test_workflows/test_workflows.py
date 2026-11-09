@@ -221,51 +221,6 @@ def test_pipeline_topo_default_values(get_topo_inputs_config_list, tmp_path):
     assert pipeline_topo_test["outputs"] == COMPLETE_CONFIG_TOPO["outputs"]
 
 
-@pytest.mark.parametrize("chunks", [None, {"band": 1, "x": 50, "y": 50}])
-def test_generate_graph(get_topo_inputs_config_list, tmp_path, chunks):
-    """
-    Test generate_plot function
-    """
-    dem = xdem.open_dem(xdem.examples.get_path_test("longyearbyen_tba_dem"), chunks=chunks)
-    filename = "test_generate_graph"
-    title = "Test graph"
-
-    user_config = dict()
-    user_config["inputs"] = get_topo_inputs_config_list[:1]
-    user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = Topo(user_config)
-    workflows.create_output_dir()
-    workflows.generate_plot(dem, filename=filename, title=title)
-    out = tmp_path / "plots" / f"{filename}.png"
-    assert out.exists()
-
-
-@pytest.mark.parametrize(
-    "inputs, expected",
-    [
-        pytest.param({"a": 1.2345, "b": 2.9876}, {"a": 1.23, "b": 2.99}, id="test_flat_dict"),
-        pytest.param(
-            {"a": {"b": 3.14159, "c": [1.6666, 2.5555]}}, {"a": {"b": 3.14, "c": [1.67, 2.56]}}, id="test_nested_dict"
-        ),
-        pytest.param({"a": (1.23456, 9.8765)}, {"a": (1.23, 9.88)}, id="test_tuple_values"),
-        pytest.param(
-            {"a": 5.678, "b": "string", "c": 42, "d": [3.3333, "text"]},
-            {"a": 5.68, "b": "string", "c": 42, "d": [3.33, "text"]},
-            id="test_mixed_types",
-        ),
-        pytest.param({"a": np.float64(2.71828)}, {"a": 2.72}, id="test_numpy_float"),
-    ],
-)
-def test_floats_process(get_topo_inputs_config_list, tmp_path, inputs, expected):
-    """
-    Test floats_process function
-    """
-    user_config = dict()
-    user_config["inputs"] = get_topo_inputs_config_list[:1]
-    user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = Topo(user_config)
-
-    assert workflows.floats_process(inputs) == expected
 
 
 def test_save_stat_as_csv(get_topo_inputs_config_list, tmp_path):
@@ -293,7 +248,8 @@ def test_save_stat_as_csv(get_topo_inputs_config_list, tmp_path):
 
 @pytest.mark.parametrize("data", ["longyearbyen_ref_dem", "giza_dem"])
 @pytest.mark.parametrize("force_vcrs", [None, "Ellipsoid", "EGM96"])
-def test_load_dem(data, force_vcrs):
+@pytest.mark.parametrize("dask", [None, {"chunks": {"x": 200, "y": 200}}])
+def test_load_dem(data, force_vcrs, dask):
     config_dem = dict()
     config_dem["path_to_elev"] = xdem.examples.get_path(data)
 
@@ -301,19 +257,30 @@ def test_load_dem(data, force_vcrs):
         config_dem["path_to_mask"] = "longyearbyen_glacier_outlines"
 
     config_dem["force_vcrs"] = force_vcrs
-    output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+    output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem, dask)
 
-    dem = xdem.open_dem(config_dem["path_to_elev"])
+    if dask is None:
+        assert isinstance(output_dem, xdem.DEM)
+        assert isinstance(inlier_mask, gu.Raster) if "path_to_mask" in config_dem else inlier_mask is None
+        assert isinstance(mask_path, str) if "path_to_mask" in config_dem else mask_path is None
+
+    else:
+        assert isinstance(output_dem, xr.DataArray)
+        assert isinstance(inlier_mask, xr.DataArray) if "path_to_mask" in config_dem else inlier_mask is None
+        assert isinstance(mask_path, str) if "path_to_mask" in config_dem else mask_path is None
+        output_dem = output_dem.dem
+
+    dem = xdem.DEM(config_dem["path_to_elev"])
 
     # VCRS
     if force_vcrs is None:
-        assert output_dem.dem.vcrs == dem.dem.vcrs
+        assert output_dem.vcrs == dem.vcrs
     else:
-        dem.dem.set_vcrs(force_vcrs)
-        assert output_dem.dem.vcrs == dem.dem.vcrs
+        dem.set_vcrs(force_vcrs)
+        assert output_dem.vcrs == dem.vcrs
 
     # DEM
-    assert dem.dem.georeferenced_grid_equal(output_dem)
+    assert dem.georeferenced_grid_equal(output_dem)
 
 
 def test_load_dem_alias():

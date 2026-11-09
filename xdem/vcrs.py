@@ -147,13 +147,11 @@ def vertical_unit_symbol(crs: Any) -> str | None:
 
             # Prefer EPSG unit code if it exists
             code = axis.unit_auth_code
-            print("code", code)
             if code and code in _UNIT_SYMBOLS:
                 return _UNIT_SYMBOLS[code]
 
             # Fallback to normalized unit names
             name = axis.unit_name.lower()
-            print("name", name)
 
             if name in {"metre", "meter"}:
                 return "m"

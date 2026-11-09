@@ -20,23 +20,23 @@
 Topo class from workflows.
 """
 
+import matplotlib
+matplotlib.use("Agg")
+
 import logging
-import math
 import time
-import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
+import numpy as np
 from geoutils.raster import Raster
-from pyproj import CRS
-from rasterio.warp import calculate_default_transform
 
 import xdem
 from xdem._misc import import_optional
-from xdem.vcrs import vertical_unit_symbol
 from xdem.workflows.schemas import TOPO_SCHEMA
 from xdem.workflows.workflows import _ALIAS, Workflows
+from xdem.workflows import toolbox
 
 
 class Topo(Workflows):
@@ -78,185 +78,36 @@ class Topo(Workflows):
         :param input: input info (dict) to load
         :return: None
         """
+        if "scalability" in self.config:
+            dask = self.config["scalability"]["dask"]
+        else:
+            dask = None
+        self.dem, self.inlier_mask, path_to_mask = self.load_dem(input, dask)
 
-        self.dem, self.inlier_mask, path_to_mask = self.load_dem(input)
-        self.generate_plot(
-            self.dem,
-            filename="elev_map",
+        toolbox.generate_plot(
+            self.dem if isinstance(self.dem, Raster) else self.dem.dem,
+            file_path=self.outputs_folder / "plots" / f"elev_map.png",
             title="Elevation",
         )
 
         if self.inlier_mask is not None:
-            inlier_mask_crop = self.inlier_mask.reproject(self.dem, silent=True).crop(self.dem)
-            import numpy as np
-
-            self.dem.data = np.where(inlier_mask_crop.data, self.dem.data, np.nan)
-            self.generate_plot(
-                self.dem,
-                title="Masked elevation",
-                filename="masked_elev_map",
-            )
-
-    def generate_terrain_attributes_png(self, attributes: list[Raster]) -> None:
-        """
-        Generate terrain attributes png
-        """
-
-        n = len(attributes)
-        ncols = 3 if n > 6 else 2
-        nrows = math.ceil(n / ncols)
-        unit = vertical_unit_symbol(self.dem.dem.crs)
-        attribute_params: dict[str, dict[str, Any]] = {
-            "hillshade": {"label": "Hillshade", "cmap": "Greys_r", "vlim": (0, 255)},
-            "texture_shading": {"label": "Texture shading", "cmap": "Greys_r", "vlim": (-20, 20)},
-            "slope": {"label": "Slope (°)", "cmap": "Reds", "vlim": (0, 90)},
-            "aspect": {"label": "Aspect (°)", "cmap": "twilight", "vlim": (0, 360)},
-            "profile_curvature": {"label": f"Profile curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "tangential_curvature": {"label": f"Tangential curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "planform_curvature": {"label": f"Planform curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "flowline_curvature": {"label": f"Flowline curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "max_curvature": {"label": f"Max. curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "min_curvature": {"label": f"Min. curvature (100/{unit})", "cmap": "RdGy_r", "vlim": (-2, 2)},
-            "terrain_ruggedness_index": {"label": "Terrain Ruggedness Index", "cmap": "Purples", "vlim": (None, None)},
-            "rugosity": {"label": "Rugosity", "cmap": "YlOrRd", "vlim": (None, None)},
-            "topographic_position_index": {
-                "label": f"Topographic position index ({unit})",
-                "cmap": "Spectral",
-                "vlim": (None, None),
-            },
-            "roughness": {"label": f"Roughness ({unit})", "cmap": "Oranges", "vlim": (None, None)},
-            "fractal_roughness": {"label": "Fractal roughness (dimensions)", "cmap": "Reds", "vlim": (None, None)},
-        }
-
-        import_optional("matplotlib")
-        import matplotlib.pyplot as plt
-
-        fig, axes = plt.subplots(nrows, ncols)
-        size_font = 6
-        plt.rc("font", size=size_font)
-        plt.rc("axes", titlesize=size_font)
-        plt.rc("axes", labelsize=size_font)
-        plt.rc("xtick", labelsize=size_font)
-        plt.rc("ytick", labelsize=size_font)
-        plt.rc("legend", fontsize=size_font)
-        plt.rc("figure", titlesize=size_font)
-
-        axes = axes.flatten()
-
-        for i, attr in enumerate(self.list_attributes):
-            ax = axes[i]
-            params = attribute_params[attr]
-            label = params["label"]
-            vmin, vmax = params["vlim"]
-            kwargs = {"cmap": params["cmap"]}
-            kwargs.setdefault("cbar_kwargs", {"label": f"{label}"})
-            attributes[i].plot(ax=ax, vmin=vmin, vmax=vmax, **kwargs)
-            ax.set_title(None)
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.set_xlabel(None)
-            ax.set_ylabel(None)
-
-        [fig.delaxes(ax) for ax in axes.flatten() if not ax.has_data()]
-        plt.tight_layout()
-        plt.savefig(self.outputs_folder / "plots" / "terrain_attributes_map.png", dpi=300)
-        plt.close()
-
-    def generate_terrain_attributes(self, export_tif: bool = False) -> None:
-        """
-        Generates an image png containing the plots of the terrain attributes requested by the user.
-
-        :param export_tif: export tif for each terrain attributes
-        :return: None
-        """
-
-        proj_crs = None
-        if self.dem.dem.crs.is_geographic:
-            if (
-                self.config.get("reproject", None) is None
-                or self.config["reproject"].get("crs", None) is None
-                or self.config["reproject"]["crs"] is True
-            ):
-                proj_crs = self.dem.dem.get_metric_crs()
-
-                logging.info(f"Reprojection in default projected CRS ({proj_crs})")
-
-            elif not self.config["reproject"]["crs"]:
-                warnings.warn(
-                    "As the input dem is not in a projected CRS, the following surface fit attributes might be wrong."
-                    "Please use a projected CRS or let it empty to reproject in default projected CRS.",
-                    UserWarning,
-                )
-
+            if isinstance(self.inlier_mask, Raster):
+                inlier_mask = self.inlier_mask.reproject(self.dem, silent=True)
+                inlier_mask = inlier_mask.crop(self.dem)
             else:
-                proj_crs = self.config["reproject"]["crs"]
-                logging.info(f"Reprojection with crs = {proj_crs}")
+                inlier_mask = self.inlier_mask.rst.reproject(self.dem.dem, silent=True)
+                inlier_mask = inlier_mask.rst.crop(self.dem.dem)
 
-                if CRS.from_user_input(self.config["reproject"]["crs"]).is_geographic:
-                    warnings.warn(
-                        'As the input dem is not in a projected CRS and the "reproject/crs" either,'
-                        "the following surface fit attributes might be wrong.",
-                        UserWarning,
-                    )
+            if isinstance(self.dem, Raster):
+                self.dem.set_mask(~inlier_mask)
+            else:
+                self.dem.dem.data = np.where(inlier_mask.rst.data, self.dem.dem.data, np.nan)
 
-        if proj_crs is not None:
-            # Terrain derivatives require square pixels; request GDAL's suggested spacing explicitly
-            target_transform, _, _ = calculate_default_transform(
-                self.dem.dem.crs, proj_crs, self.dem.dem.width, self.dem.dem.height, *self.dem.dem.bounds
+            toolbox.generate_plot(
+                self.dem if isinstance(self.dem, Raster) else self.dem.dem,
+                title="Masked elevation",
+                file_path=self.outputs_folder / "plots" / f"masked_elev_map.png",
             )
-            self.dem = self.dem.dem.reproject(crs=proj_crs, res=abs(target_transform.a))
-            if self.level > 1:
-                self.dem.dem.to_file(self.outputs_folder / "rasters" / "elev_reprojected.tif")
-
-        elif self.dem.dem.res[0] != self.dem.dem.res[1]:
-            # Retain the chosen CRS while regularizing a rectangular grid at its finer pixel spacing
-            self.dem = self.dem.dem.reproject(res=min(self.dem.dem.res))
-
-        attribute_extra = {}
-        from_str_to_fun = {
-            "slope": lambda: self.dem.dem.slope(**attribute_extra),
-            "aspect": lambda: self.dem.dem.aspect(**attribute_extra),
-            "hillshade": lambda: self.dem.dem.hillshade(**attribute_extra),
-            "profile_curvature": lambda: self.dem.dem.profile_curvature(**attribute_extra),
-            "tangential_curvature": lambda: self.dem.dem.tangential_curvature(**attribute_extra),
-            "planform_curvature": lambda: self.dem.dem.planform_curvature(**attribute_extra),
-            "flowline_curvature": lambda: self.dem.dem.flowline_curvature(**attribute_extra),
-            "max_curvature": lambda: self.dem.dem.max_curvature(**attribute_extra),
-            "min_curvature": lambda: self.dem.dem.min_curvature(**attribute_extra),
-            "topographic_position_index": lambda: self.dem.dem.topographic_position_index(**attribute_extra),
-            "terrain_ruggedness_index": lambda: self.dem.dem.terrain_ruggedness_index(**attribute_extra),
-            "roughness": lambda: self.dem.dem.roughness(**attribute_extra),
-            "rugosity": lambda: self.dem.dem.rugosity(**attribute_extra),
-            "texture_shading": lambda: self.dem.dem.texture_shading(**attribute_extra),
-            "fractal_roughness": lambda: self.dem.dem.fractal_roughness(**attribute_extra),
-        }
-
-        logging.info(f"Computing attributes : {self.list_attributes}")
-
-        if isinstance(self.config_attributes, list):
-            attributes = xdem.terrain.get_terrain_attribute(
-                self.dem,
-                attribute=self.list_attributes,
-            )
-
-            # if only one attribute, put it in a list
-            if len(self.list_attributes) == 1:
-                attributes = [attributes]  # type: ignore
-
-        else:
-            attributes = []
-            for attr in self.list_attributes:
-                attribute_extra = self.config_attributes.get(attr) or {}  # type: ignore
-                attributes.append(from_str_to_fun[attr]().compute())
-
-        # Generate terrain attributes png
-        self.generate_terrain_attributes_png(attributes)
-
-        # Generate terrain attributes tif
-        if export_tif:
-            for k, attr in enumerate(self.list_attributes):
-                logging.info(f"Saving {attr} as a raster file (rasters/{attr}.tif)")
-                attributes[k].rst.to_file(self.outputs_folder / "rasters" / f"{attr}.tif")
 
     def run(self) -> None:
         """
@@ -285,34 +136,37 @@ class Topo(Workflows):
             self._load_data(input)
 
             # Global information
-            dem_informations = {
-                "Driver": self.dem.dem.driver,
-                "Filename": self.dem.dem.name,
-                "Number of band": self.dem.dem.bands,
-                "Data types": str(self.dem.dem.dtype),
-                "Nodata Value": float(self.dem.dem.nodata),
-                "Pixel interpretation": self.dem.dem.area_or_point,
-                "Pixel size": self.dem.dem.res,
-                "Width": self.dem.dem.width,
-                "Height": self.dem.dem.height,
-                "Transform": self.dem.dem.transform,
-                "Bounds": self.dem.dem.bounds,
-            }
+            dem_informations = toolbox.return_info(self.dem if isinstance(self.dem, Raster) else self.dem.dem)
             self.dico_to_show[k].append(("Elevation information", dem_informations))
 
             # Statistics
             list_metrics = self.config["statistics"]
             if list_metrics is not None:
-                stats_dem = self.dem.dem.get_stats(list_metrics)
+                if isinstance(self.dem, Raster):
+                    stats_dem = self.dem.get_stats(list_metrics)
+                else:
+                    stats_dem = self.dem.dem.get_stats(list_metrics)
+
                 stats_dem = {_ALIAS.get(k, k): v for k, v in stats_dem.items()}
                 self.save_stat_as_csv(stats_dem, "stats_elev")
-                self.dico_to_show[k].append(("Statistics", self.floats_process(stats_dem)))
+                self.dico_to_show[k].append(("Statistics", toolbox.floats_process(stats_dem)))
                 logging.info(f"Computing metrics on elevation: {list_metrics}")
 
             # Terrain attributes
             if self.list_attributes is not None and len(self.list_attributes):
-                self.generate_terrain_attributes(self.level > 1)
-
+                toolbox.generate_terrain_attributes(
+                    self.dem if isinstance(self.dem, Raster) else self.dem.dem,
+                    self.list_attributes,
+                    self.outputs_folder,
+                    self.config_attributes,
+                    (
+                            self.config.get("reproject", None) is None
+                            or self.config["reproject"].get("crs", None) is None
+                            or self.config["reproject"]["crs"] is True
+                    ),
+                    self.config["reproject"]["crs"] if "reproject" in  self.config and "crs" in  self.config["reproject"] else None,
+                    self.level > 1
+                )
             else:
                 logging.info("No terrain attributes to compute")
 

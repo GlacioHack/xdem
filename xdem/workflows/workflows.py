@@ -21,7 +21,9 @@ Workflow class
 
 import csv
 import logging
+import math
 import os
+import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Union
@@ -32,11 +34,14 @@ import pyogrio.errors
 import rasterio.errors
 from geoutils import Raster
 from geoutils.raster import RasterType
+from pyproj import CRS
+from rasterio.warp import calculate_default_transform
 
 import xdem
 from xdem import DEM
 from xdem._misc import import_optional
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
+
 from xdem.examples import _FILEPATHS_ALL
 from xdem.vcrs import vertical_unit_symbol
 from xdem.workflows.schemas import validate_configuration
@@ -138,7 +143,7 @@ class Workflows(ABC):
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
 
         self.dask = None
-        self.multiprocess = None
+        self.mp_config = None
         if self.config.get("scalability", None) is not None:
             sca = self.config["scalability"]
             self.dask = sca.get("dask", None)
@@ -152,9 +157,9 @@ class Workflows(ABC):
                 cluster = None
                 if nb_workers:
                     cluster = ClusterGenerator("multi", nb_workers)
-                self.multiprocess = MultiprocConfig(chunk_size=chunk_size, cluster=cluster)
+                self.mp_config = MultiprocConfig(chunk_size=chunk_size, cluster=cluster)
             else:
-                self.multiprocess = None
+                self.mp_config = None
                 self.dask["chunks"]["band"] = 1
 
     class NoAliasDumper(SafeDumper):  # type: ignore
@@ -203,195 +208,12 @@ class Workflows(ABC):
 
             return replace_none_str_with_none_type(config_dict)
 
-    def generate_plot(
-        self,
-        dem: RasterType,
-        title: str,
-        filename: str,
-        dem_right: str = None,
-        title_dem_right: str = None,
-        **kwargs: Any,
-    ) -> None:
-        """
-        Generate plot from a DEM.
 
-        :param dem: Input digital elevation model (left)
-        :param title: Title of dem plot (left)
-        :param filename: Filename of figure.
-        :param dem_right: Input digital elevation model (right)
-        :param title_dem_right: Title of dem_right plot (right)
-        :param mask_path: Path to mask file.
-        :return: None
-        """
-        import_optional("matplotlib")
-        import matplotlib.pyplot as plt
-
-        size_font = 6
-        plt.rc("font", size=size_font)
-        plt.rc("axes", titlesize=size_font)
-        plt.rc("axes", labelsize=size_font)
-        plt.rc("xtick", labelsize=size_font)
-        plt.rc("ytick", labelsize=size_font)
-        plt.rc("legend", fontsize=size_font)
-        plt.rc("figure", titlesize=size_font)
-
-        # Apply default cmap if not given in inputs
-        if "cmap" in kwargs:
-            cmap = plt.get_cmap(name=kwargs["cmap"])
-        else:
-            cmap = plt.get_cmap(name="terrain")
-        cmap.set_bad(color="k", alpha=None)
-        kwargs["cmap"] = cmap
-
-        # Add colormap
-        vunit = vertical_unit_symbol(dem.dem.crs)
-        kwargs.setdefault(
-            "cbar_kwargs", {"label": f"Elevation differences ({vunit})" if vunit else "Elevation differences"}
-        )
-        # Force figsize with the good ratio to prevent larger right axe if not filled
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
-
-        # Add the first image to the figure (left position)
-        dem.plot(ax=ax1, **kwargs)
-        ax1.set_title(title)
-
-        # If exists, add the second image to the figure
-        if dem_right is not None:
-            dem_right.plot(ax=ax2, **kwargs)
-            ax2.set_title(title_dem_right)
-        else:
-            ax2.set_axis_off()
-
-        plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
-        plt.close()
-
-    def generate_plot_with_profiles(
-        self,
-        dem: RasterType,
-        title: str,
-        filename: str,
-        **kwargs: Any,
-    ) -> None:
-        """
-        Generate plot from a DEM with profiles.
-
-        :param dem: Input digital elevation model
-        :param title: Title of dem plot
-        :param filename: Filename of figure
-        """
-
-        import_optional("matplotlib")
-        import matplotlib.pyplot as plt
-        from matplotlib.gridspec import GridSpec
-
-        vunit = vertical_unit_symbol(dem.dem.crs)
-        unit_label = f" ({vunit})" if vunit else ""
-
-        # Raster data
-        data = dem.dem.data
-        ny, nx = data.shape
-
-        # Initial min/max for mean profiles
-        profile_cols = np.nanmean(data, axis=0)
-        profile_cols_stats = [profile_cols.min(), profile_cols.max()]
-        profile_rows = np.nanmean(data, axis=1)
-        profile_rows_stats = [profile_rows.min(), profile_rows.max()]
-
-        # Keep profiles with at least more than 50% of valid values
-        nb_valid_rows = np.sum(~np.isnan(data), axis=1)  # todo
-        nb_valid_cols = np.sum(~np.isnan(data), axis=0)
-        # min_valid_rows, min_valid_cols = data.shape[1] / 2.0, data.shape[0] / 2.0
-
-        # Update profiles values according to valid values
-        profile_rows = np.ma.masked_where(
-            nb_valid_rows < data.shape[1] / 2,
-            profile_rows,
-        )
-
-        profile_cols = np.ma.masked_where(
-            nb_valid_cols < data.shape[0] / 2,
-            profile_cols,
-        )
-        # Force figsize with the same size as generate_plot function
-        size_font = 6
-        plt.rc("font", size=size_font)
-        plt.rc("axes", titlesize=size_font)
-        plt.rc("axes", labelsize=size_font)
-        plt.rc("xtick", labelsize=size_font)
-        plt.rc("ytick", labelsize=size_font)
-        plt.rc("legend", fontsize=size_font)
-        plt.rc("figure", titlesize=size_font)
-
-        gs = GridSpec(2, 3, width_ratios=[1.2, 4, 0.3], height_ratios=[4, 1.2])  # 1 for the colobar
-
-        fig = plt.figure()
-        ax_left = fig.add_subplot(gs[0, 0])
-        ax_map = fig.add_subplot(gs[0, 1])
-        cax = fig.add_subplot(gs[0, 2])
-        ax_bottom = fig.add_subplot(gs[1, 1])
-
-        # Apply default cmap if not given in inputs
-        if "cmap" in kwargs:
-            cmap = plt.get_cmap(name=kwargs["cmap"])
-        else:
-            cmap = plt.get_cmap(name="terrain")
-        cmap.set_bad(color="k", alpha=None)
-        kwargs["cmap"] = cmap
-
-        # Plot DEM with colorbar
-        im = ax_map.imshow(data, aspect="auto", **kwargs)
-        ax_map.text(0.5, 1.12, title, transform=ax_map.transAxes, ha="center", va="top")
-        fig.colorbar(im, cax=cax).set_label(f"Elevation differences{unit_label}")
-
-        # Lines profiles
-        y = np.arange(ny)
-        ax_left.plot(profile_rows, y, color="black")
-        ax_left.set_ylim(ax_map.get_ylim())
-        ax_left.invert_xaxis()
-        ax_left.yaxis.tick_left()
-        ax_left.yaxis.set_label_position("left")
-        ax_left.set_xlabel(
-            f"Mean along lines{unit_label}\n"
-            f"Min: {np.round(profile_rows_stats[0], 2)} / Max: {np.round(profile_rows_stats[1], 2)}"
-        )
-
-        # Columns profiles
-        x = np.arange(nx)
-        ax_bottom.plot(x, profile_cols, color="black")
-        ax_bottom.set_xlim(ax_map.get_xlim())
-        ax_bottom.yaxis.tick_left()
-        ax_bottom.xaxis.set_label_position("bottom")
-        ax_bottom.set_xlabel(
-            f"Mean along columns{unit_label}\n"
-            f"Min: {np.round(profile_cols_stats[0], 2)} / Max: {np.round(profile_cols_stats[1], 2)}"
-        )
-
-        plt.savefig(self.outputs_folder / "plots" / f"{filename}.png", dpi=300, bbox_inches="tight")
-        plt.close()
-
-    def floats_process(
-        self, dict_with_floats: Dict[str, Any] | InputCoregDict | OutputCoregDict | Any
-    ) -> Dict[str, Any]:  # type: ignore
-        """
-        Allows rounding all floats present in a dictionary to two decimal places
-        :param dict_with_floats: Dictionary with float
-        :return: Dictionary with floats
-        """
-        if isinstance(dict_with_floats, dict):
-            return {k: self.floats_process(v) for k, v in dict_with_floats.items()}
-        elif isinstance(dict_with_floats, list):
-            return [self.floats_process(elem) for elem in dict_with_floats]  # type: ignore
-        elif isinstance(dict_with_floats, tuple):
-            return tuple(self.floats_process(elem) for elem in dict_with_floats)  # type: ignore
-        elif isinstance(dict_with_floats, (float, np.floating)):
-            return round(float(dict_with_floats), 2)  # type: ignore
-        else:
-            return dict_with_floats
 
     @staticmethod
     def load_dem(
-        config_dem: Dict[str, Any] | None, dask: Dict[str, Any] | None = None
-    ) -> tuple[DEM, Raster, str | None]:
+        config_dem: Dict[str, Any], dask: Dict[str, Any] | None = None
+    ) -> tuple[RasterType, RasterType | None, str | None]:
         """
         Generate DEM from user configuration dictionary.
 
@@ -399,64 +221,80 @@ class Workflows(ABC):
 
         :return: DEM.
         """
-        mask_path = None
 
-        if config_dem is not None:
+        logging.info("Read data with Xarray" if dask is not None else "Read data without Xarray")
+        path_to_elev = config_dem["path_to_elev"]
 
-            path_to_elev = config_dem["path_to_elev"]
-            # If alias, get its path
-            if path_to_elev in list(_FILEPATHS_ALL.keys()):
-                path_to_elev = xdem.examples.get_path(path_to_elev)
+        # If alias, get its path
+        if path_to_elev in list(_FILEPATHS_ALL.keys()):
+            path_to_elev = xdem.examples.get_path(path_to_elev)
 
-            # Get default value
-            config_dem["downsample"] = config_dem.get("downsample", 1)
-            from xdem import open_dem
+        # Get default value
+        config_dem["downsample"] = config_dem.get("downsample", 1)
+        from xdem import open_dem
 
-            if dask is not None:
-                chunks = dask["chunks"]
-                dem = open_dem(path_to_elev, chunks=chunks, downsample=config_dem.get("downsample", 1))
-            else:
-                dem = open_dem(path_to_elev)
+        force_vcrs = config_dem.get("force_vcrs", None)
 
-            inlier_mask = None
-
-            force_vcrs = config_dem.get("force_vcrs", None)
+        if dask is not None:
+            chunks = dask["chunks"]
+            dem = open_dem(path_to_elev, chunks=chunks, downsample=config_dem.get("downsample", 1))
             if force_vcrs:
                 dem.dem.set_vcrs(force_vcrs)
-
             if config_dem.get("force_source_nodata") is not None:
                 dem.dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
 
-            if config_dem.get("path_to_mask") is not None:
+        else:
+            dem = DEM(path_to_elev)
+            if force_vcrs:
+                dem.set_vcrs(force_vcrs)
+            if config_dem.get("force_source_nodata") is not None:
+                dem.set_nodata(config_dem["force_source_nodata"], update_array=False, update_mask=False)
 
-                mask_path = config_dem["path_to_mask"]
+        inlier_mask = None
+        mask_path = None
 
-                # If alias, get its path
-                if mask_path in list(_FILEPATHS_ALL.keys()):
-                    mask_path = xdem.examples.get_path(mask_path)
 
-                # Treat the mask according to its type (Vector or Raster)
-                try:
+
+        if config_dem.get("path_to_mask") is not None:
+
+            mask_path = config_dem["path_to_mask"]
+
+            # If alias, get its path
+            if mask_path in list(_FILEPATHS_ALL.keys()):
+                mask_path = xdem.examples.get_path(mask_path)
+
+            # Treat the mask according to its type (Vector or Raster)
+            try:
+                if dask is not None:
+                    mask = gu.open_vector(mask_path, chunks=1)
+                    inlier_mask = ~mask.vct.create_mask(dem.dem)
+                else:
                     mask = gu.Vector(mask_path)
                     inlier_mask = ~mask.create_mask(dem)
 
-                except pyogrio.errors.DataSourceError as vector_error:
-                    try:
-                        inlier_mask = gu.Raster(mask_path).astype(bool)
+            except pyogrio.errors.DataSourceError as vector_error:
+                try:
+                    if dask is not None:
+                        chunks = dask["chunks"]
+                        inlier_mask = gu.open_raster(
+                            mask_path, chunks=chunks, downsample=config_dem.get("downsample", 1)
+                        )
+                        inlier_mask.rst.data = inlier_mask.rst.data.astype(bool)
+                        inlier_mask.rst.data = inlier_mask.rst.data.filled(False)
+                        inlier_mask = inlier_mask.rst.reproject(dem, silent=True)
+                    else:
+                        inlier_mask = Raster(mask_path).astype(bool)
                         inlier_mask.data = inlier_mask.data.filled(False)
                         inlier_mask = inlier_mask.reproject(dem, silent=True)
 
-                    except rasterio.errors.RasterioIOError as raster_error:
-                        raise ValueError(
-                            f"You provided a 'path_to_mask' value that is not recognised as a mask. "
-                            f"Vector error: {vector_error}. "
-                            f"Raster error: {raster_error}."
-                        ) from raster_error
+                except rasterio.errors.RasterioIOError as raster_error:
+                    raise ValueError(
+                        f"You provided a 'path_to_mask' value that is not recognised as a mask. "
+                        f"Vector error: {vector_error}. "
+                        f"Raster error: {raster_error}."
+                    ) from raster_error
 
-            return dem, inlier_mask, mask_path
-        else:
-            logging.warning("No DEM provided")
-            return None, None, None  # type: ignore
+        return dem, inlier_mask, mask_path
 
     def remove_none(self, dico: Union[Dict[str, Any], List[Any]]) -> Union[Dict[str, Any], List[Any]]:
         """
@@ -539,3 +377,4 @@ class Workflows(ABC):
             return np.format_float_scientific(val, precision=3)
         else:
             return f"{val:.3f}"
+
