@@ -159,7 +159,7 @@ class Benchmark:
         chunks = _common_config(configs, "chunks")
         parts = []
         if shape is not None:
-            parts.append(f"{shape[0]:,} × {shape[1]:,} raster")
+            parts.append(f"{shape[0]:,} × {shape[1]:,} dem")
         if chunks is not None:
             parts.append(f"{chunks[0]:,} × {chunks[1]:,} chunks")
         return "; ".join(parts)

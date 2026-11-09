@@ -14,19 +14,19 @@ if TYPE_CHECKING:
 #########################
 
 # Default values for fixed benchmark (not parameter varying), or for when we vary another input
-DEFAULT_RASTER_SIZE = 2_000
+DEFAULT_DEM_SIZE = 2_000
 DEFAULT_CHUNK_SIZE = 1_000
 DEFAULT_MEMORY_LIMIT = "1GB"
 DEFAULT_N_WORKERS = 1
 DEFAULT_THREADS_PER_WORKER = 1
 DEFAULT_GDAL_CACHEMAX_MB = 64
 DEFAULT_PROFILE_INTERVAL = 0.05
-DEFAULT_RASTER_VALUE = 1.0
+DEFAULT_DEM_VALUE = 1.0
 DEFAULT_POINT_COUNT = 2_048
 
 # Values for variable inputs
-RASTER_SIZES = (2_000, 4_000)
-RASTER_CHUNK_SIZES = (100, 500, 1_000)
+DEM_SIZES = (2_000, 4_000)
+DEM_CHUNK_SIZES = (100, 500, 1_000)
 GROUP_COUNTS = (10, 20, 50)
 POINT_COUNTS = (1_000, 10_000, 100_000)
 INTERPOLATED_POINT_COUNTS = POINT_COUNTS
@@ -34,11 +34,11 @@ SUBSAMPLE_SIZES = POINT_COUNTS
 GRID_POINT_COUNTS = (10, 20, 40)
 POINT_CHUNK_SIZE = 100
 VECTOR_COMPARISON_OPTIONS = {"vector_features_per_axis": 51}
-WORKER_RASTER_SIZES = (1_000,)
+WORKER_DEM_SIZES = (1_000,)
 VARIOGRAM_PAIR_COUNTS = (10_000, 100_000, 1_000_000)
 VARIOGRAM_LAG_COUNTS = (10, 100, 1_000)
-VARIOGRAM_RASTER_SIZE = 1_024
-VARIOGRAM_RASTER_CHUNK_SIZE = 256
+VARIOGRAM_DEM_SIZE = 1_024
+VARIOGRAM_DEM_CHUNK_SIZE = 256
 VARIOGRAM_SAMPLE_PAIRS = 10_000
 VARIOGRAM_LAG_PAIRS = 100_000
 VARIOGRAM_POINT_PAIRS = 2_000
@@ -55,14 +55,14 @@ DASK_CUTOFF_SIZES = (262_145, 524_288, 1_048_576)
 class RuntimeConfig:
     """Collect settings shared by worker management, I/O and profiling."""
 
-    shape: tuple[int, int] = (DEFAULT_RASTER_SIZE, DEFAULT_RASTER_SIZE)
+    shape: tuple[int, int] = (DEFAULT_DEM_SIZE, DEFAULT_DEM_SIZE)
     chunks: tuple[int, int] = (DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_SIZE)
     memory_limit: str = DEFAULT_MEMORY_LIMIT
     n_workers: int = DEFAULT_N_WORKERS
     threads_per_worker: int = DEFAULT_THREADS_PER_WORKER
     gdal_cachemax_mb: int = DEFAULT_GDAL_CACHEMAX_MB
     profile_interval: float = DEFAULT_PROFILE_INTERVAL
-    raster_value: float = DEFAULT_RASTER_VALUE
+    dem_value: float = DEFAULT_DEM_VALUE
     directory: str | None = None
     workload: Mapping[str, Any] = field(default_factory=dict)
 
@@ -85,15 +85,15 @@ def fixed_config(parameter: int | float | None, case: Case) -> Mapping[str, Any]
     """Return the common fixed workload used when no input parameter varies."""
 
     return {
-        "shape": (DEFAULT_RASTER_SIZE, DEFAULT_RASTER_SIZE),
+        "shape": (DEFAULT_DEM_SIZE, DEFAULT_DEM_SIZE),
         "chunks": (DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_SIZE),
         "subsample_size": DEFAULT_POINT_COUNT,
         "ninterp": DEFAULT_POINT_COUNT,
     }
 
 
-def raster_size_config(parameter: int | float | None, case: Case) -> Mapping[str, Any]:
-    """Set a square raster size around the shared scheduled chunk size."""
+def dem_size_config(parameter: int | float | None, case: Case) -> Mapping[str, Any]:
+    """Set a square dem size around the shared scheduled chunk size."""
 
     assert parameter is not None
     size = int(parameter)

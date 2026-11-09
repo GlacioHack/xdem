@@ -44,7 +44,7 @@ def build_pdal_command(
     operation: PdalComparisonOperation,
     case: Case,
     config: RuntimeConfig,
-    raster_file: str,
+    dem_file: str,
 ) -> PdalCommand:
     """Build one PDAL raster-to-point pipeline and write its JSON definition."""
 
@@ -55,7 +55,7 @@ def build_pdal_command(
     stages: list[dict[str, Any]] = [
         {
             "type": "readers.gdal",
-            "filename": raster_file,
+            "filename": dem_file,
             "gdalopts": [f"GDAL_CACHEMAX={config.gdal_cachemax_mb}"],
         }
     ]
@@ -141,11 +141,11 @@ def execute_pdal(runner: Any, case: Case) -> float:
         runner.operation.name,
         case,
         runner.config,
-        raster_file=runner.path("source-raster.tif"),
+        dem_file=runner.path("source-raster.tif"),
     )
     execute_command("PDAL", command.command, command.output_file)
     runner._last_output_file = command.output_file
     value = _read_value(runner, command.output_file)
-    if value != runner.config.raster_value:
+    if value != runner.config.dem_value:
         raise RuntimeError(f"Unexpected PDAL {runner.operation.name} validation value: {value}")
     return value

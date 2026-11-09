@@ -16,8 +16,6 @@ from inspect import signature
 from pathlib import Path
 from typing import Any, Literal
 
-from geoutils.raster.base import RasterBase
-
 from benchmarks.workflows.core import (
     IMPLEMENTATION_LABELS,
     Case,
@@ -31,6 +29,7 @@ from benchmarks.workflows.operations import (
     COMPARISONS,
     OPERATIONS,
 )
+from xdem.dem.base import DEMBase
 
 GDAL_CLI_LABEL = IMPLEMENTATION_LABELS["gdal"]
 PDAL_CLI_LABEL = IMPLEMENTATION_LABELS["pdal"]
@@ -44,12 +43,12 @@ PARAMETER_REPORT_PAGE = "parameters.html"
 HISTORY_REPORT_PAGE = "history.html"
 DOCUMENTATION_TIME_PLOT = "time_relative_to_gdal.svg"
 DOCUMENTATION_MEMORY_PLOT = "memory_increase_by_operation.svg"
-DOCUMENTATION_MEMORY_SCALING_PLOT = "memory_increase_by_raster_size.svg"
+DOCUMENTATION_MEMORY_SCALING_PLOT = "memory_increase_by_dem_size.svg"
 DOCUMENTATION_PDAL_PLOT = "time_relative_to_pdal.svg"
 DOCUMENTATION_DATA = "benchmark_snapshot.json"
 PERFORMANCE_CHANGE_REPORT = "performance-change.md"
 PREVIEW_WEBSITE_DIRECTORY = Path("benchmarks/results/asv/preview")
-SUMMARY_RASTER_SIZE = 10_000
+SUMMARY_DEM_SIZE = 10_000
 SUMMARY_POINT_COUNT = 100_000_000
 
 # Colors stay consistent between the detailed ASV plots and the concise documentation snapshot
@@ -88,70 +87,69 @@ COMPARISON_SECTION_DETAILS: dict[ComparisonDimension, tuple[str, str]] = {
 
 # Scaling sections answer which input grows, independently of the GeoUtils choices represented by plot lines
 SCALING_SECTION_DETAILS = {
-    "Size of raster (pixels per side)": (
-        "Scaling with raster size",
-        "Raster width and height vary together; other inputs remain fixed.",
+    "Size of dem (pixels per side)": (
+        "Scaling with dem size",
+        "DEM width and height vary together; other inputs remain fixed.",
     ),
     "Size of chunks (pixels per side)": (
         "Scaling with chunk size",
-        "Chunk width and height vary while the complete raster remains fixed.",
+        "Chunk width and height vary while the complete dem remains fixed.",
     ),
     "Number of interpolated points": (
         "Scaling with the number of interpolated points",
-        "The number of requested point locations varies while the source raster remains fixed.",
+        "The number of requested point locations varies while the source dem remains fixed.",
     ),
     "Number of source points per axis": (
         "Scaling with the number of source points",
-        "The number of source points varies while the output raster remains fixed.",
+        "The number of source points varies while the output dem remains fixed.",
     ),
     "Number of sampled values": (
         "Scaling with the number of sampled values",
-        "The returned sample size varies while the source raster remains fixed.",
+        "The returned sample size varies while the source dem remains fixed.",
     ),
     "Number of output points": (
         "Scaling with the number of output points",
-        "The point cloud size varies while the source raster remains fixed.",
+        "The point cloud size varies while the source dem remains fixed.",
     ),
     "Number of groups per axis": (
         "Scaling with the number of groups",
-        "The number of rectangular groups varies while raster and chunk dimensions remain fixed.",
+        "The number of rectangular groups varies while dem and chunk dimensions remain fixed.",
     ),
 }
 
 # Group operations by input and output type, using the same data-flow labels as the scalability documentation
 OPERATION_GROUP_ORDER = (
-    "Raster ⟶ Raster",
+    "DEM ⟶ DEM",
     "Point ⟶ Point",
-    "Raster ⟶ Point",
-    "Raster ⟶ Vector",
-    "Point ⟶ Raster",
-    "Vector ⟶ Raster",
-    "Raster ⟶ Other",
+    "DEM ⟶ Point",
+    "DEM ⟶ Vector",
+    "Point ⟶ DEM",
+    "Vector ⟶ DEM",
+    "DEM ⟶ Other",
     "Point ⟶ Other",
 )
 OPERATION_GROUPS: dict[str, str] = {
-    "crop": "Raster ⟶ Raster",
-    "clip": "Raster ⟶ Raster",
-    "translate": "Raster ⟶ Raster",
-    "copy": "Raster ⟶ Raster",
-    "filter": "Raster ⟶ Raster",
-    "reproject": "Raster ⟶ Raster",
-    "random_field": "Raster ⟶ Raster",
-    "subsample": "Raster ⟶ Point",
-    "to_pointcloud": "Raster ⟶ Point",
-    "interp_points": "Raster ⟶ Point",
-    "polygonize": "Raster ⟶ Vector",
-    "grid": "Point ⟶ Raster",
-    "rasterize": "Vector ⟶ Raster",
-    "create_mask": "Vector ⟶ Raster",
-    "statistics": "Raster ⟶ Other",
-    "grouped_stats": "Raster ⟶ Other",
-    "mergeable_grouped_stats": "Raster ⟶ Other",
-    "topo": "Raster ⟶ Raster",
-    "raster_variogram": "Raster ⟶ Other",
-    "raster_pairsample": "Raster ⟶ Other",
+    "crop": "DEM ⟶ DEM",
+    "clip": "DEM ⟶ DEM",
+    "translate": "DEM ⟶ DEM",
+    "copy": "DEM ⟶ DEM",
+    "filter": "DEM ⟶ DEM",
+    "reproject": "DEM ⟶ DEM",
+    "random_field": "DEM ⟶ DEM",
+    "subsample": "DEM ⟶ Point",
+    "to_pointcloud": "DEM ⟶ Point",
+    "interp_points": "DEM ⟶ Point",
+    "polygonize": "DEM ⟶ Vector",
+    "grid": "Point ⟶ DEM",
+    "rasterize": "Vector ⟶ DEM",
+    "create_mask": "Vector ⟶ DEM",
+    "statistics": "DEM ⟶ Other",
+    "grouped_stats": "DEM ⟶ Other",
+    "mergeable_grouped_stats": "DEM ⟶ Other",
+    "dem_variogram": "DEM ⟶ Other",
+    "dem_pairsample": "DEM ⟶ Other",
     "variogram_from_pairs": "Point ⟶ Other",
-    "write": "Raster ⟶ Other",
+    "write": "DEM ⟶ Other",
 }
 
 
@@ -193,12 +191,11 @@ class _PreviewResult:
         # Create all keys normally read from saved ASV results so every report section can render
         for comparison in COMPARISONS:
             parameter_values = comparison.benchmark.values
-            if comparison.benchmark.parameter_name == "raster_size" and SUMMARY_RASTER_SIZE not in parameter_values:
-                parameter_values = (*parameter_values, SUMMARY_RASTER_SIZE)
+            if comparison.benchmark.parameter_name == "dem_size" and SUMMARY_DEM_SIZE not in parameter_values:
+                parameter_values = (*parameter_values, SUMMARY_DEM_SIZE)
             parameter_count = len(parameter_values)
 
             for series_index, (_, class_name) in enumerate(comparison.series, start=1):
-
                 prefix = f"{COMPARISON_BENCHMARK_MODULE}.{class_name}"
                 if f"{prefix}.time_operation" in self.values:
                     continue
@@ -213,7 +210,6 @@ class _PreviewResult:
                 self.values[f"{prefix}.time_operation"] = [
                     scale * series_index * 0.05 * 2**index for index in range(parameter_count)
                 ]
-
                 self.values[f"{prefix}.track_end_to_end_time_s"] = [
                     scale * series_index * 0.10 * 2**index for index in range(parameter_count)
                 ]
@@ -283,7 +279,6 @@ def _select_complete_result(
     required_keys = _required_benchmark_keys()
     candidates = []
     for result in results:
-
         # Machine and commit filters make local multi-machine histories predictable
         if machine is not None and result.params.get("machine") != machine:
             continue
@@ -346,7 +341,6 @@ def _result_series(result: Any, key: str) -> tuple[list[int], list[float]]:
 
     # Ask ASV to align values against the parameter order stored with this result
     values = result.get_result_value(key, params)
-
     if not isinstance(values, list):
         values = [values]
     if len(parameters) != len(values) or any(value is None for value in values):
@@ -363,7 +357,6 @@ def collect_comparison_measurements(
     # Convert each saved ASV series into one record per numeric input value
     records = []
     available = set(result.get_all_result_keys())
-
     for comparison in comparisons:
         for series_label, class_name in comparison.series:
             selected_case = BENCHMARK_CASE_BY_CLASS[class_name]
@@ -376,7 +369,6 @@ def collect_comparison_measurements(
                 "end_to_end": _benchmark_key(class_name, "track_end_to_end_time_s"),
                 "memory": _benchmark_key(class_name, "track_process_tree_mem_increase_mb"),
             }
-
             missing = set(keys.values()) - available
             if missing:
                 raise ValueError(f"Missing comparison results: {', '.join(sorted(missing))}")
@@ -474,7 +466,7 @@ def _plot_comparison(
 
 
 def _gdal_comparisons() -> tuple[Comparison, ...]:
-    """Return raster-size comparisons that provide a GDAL CLI reference line."""
+    """Return dem-size comparisons that provide a GDAL CLI reference line."""
 
     return tuple(
         comparison
@@ -550,7 +542,6 @@ def _documentation_operation_name(comparison: Comparison) -> str:
         "grid": "Nearest gridding",
         "subsample": "Subsampling",
         "to_pointcloud": "Point cloud conversion",
-        "topo": "Workflow Topo",
     }
     return operation_labels[comparison.operation]
 
@@ -690,7 +681,7 @@ def _plot_time_relative_to_gdal(
     records: list[ComparisonMeasurement],
     output: Path,
 ) -> None:
-    """Compare elapsed execution-mode time with the GDAL CLI on the largest shared raster."""
+    """Compare elapsed execution-mode time with the GDAL CLI on the largest shared dem."""
 
     # Import plotting only for an explicit rendering command
     import matplotlib.pyplot as plt
@@ -782,11 +773,11 @@ def _plot_memory_increase_by_operation(
     plt.close(figure)
 
 
-def _plot_memory_increase_by_raster_size(
+def _plot_memory_increase_by_dem_size(
     records: list[ComparisonMeasurement],
     output: Path,
 ) -> None:
-    """Compare additional process-tree memory as the raster size increases."""
+    """Compare additional process-tree memory as the dem size increases."""
 
     # Import plotting only for an explicit rendering command
     import matplotlib.pyplot as plt
@@ -794,7 +785,6 @@ def _plot_memory_increase_by_raster_size(
     comparisons = _gdal_comparisons()
     column_count = 3
     row_count = math.ceil(len(comparisons) / column_count)
-
     figure, axes = plt.subplots(
         row_count,
         column_count,
@@ -822,7 +812,7 @@ def _plot_memory_increase_by_raster_size(
             )
 
         axis.set_title(_documentation_operation_name(comparison))
-        axis.set_xlabel("Size of raster (pixels per side)")
+        axis.set_xlabel("Size of dem (pixels per side)")
         axis.set_ylabel("Additional combined memory (MB)")
         axis.grid(alpha=0.3)
 
@@ -865,7 +855,7 @@ def _plot_time_relative_to_pdal(
             ).end_to_end_time_s
             ratios.append(geoutils_time / pdal_time)
 
-        # Center both GeoUtils modes around each raster-to-point operation
+        # Center both GeoUtils modes around each dem-to-point operation
         offset = (execution_mode_index - 0.5) * bar_width
         bars = axis.bar(
             [position + offset for position in positions],
@@ -923,7 +913,7 @@ def render_documentation_snapshot(
     # Documentation uses concise summaries while the ASV site retains every detailed panel
     _plot_time_relative_to_gdal(records, output_directory / DOCUMENTATION_TIME_PLOT)
     _plot_memory_increase_by_operation(records, output_directory / DOCUMENTATION_MEMORY_PLOT)
-    _plot_memory_increase_by_raster_size(records, output_directory / DOCUMENTATION_MEMORY_SCALING_PLOT)
+    _plot_memory_increase_by_dem_size(records, output_directory / DOCUMENTATION_MEMORY_SCALING_PLOT)
     _plot_time_relative_to_pdal(records, output_directory / DOCUMENTATION_PDAL_PLOT)
     (output_directory / DOCUMENTATION_DATA).write_text(
         json.dumps(_result_payload(result, records), indent=2) + "\n",
@@ -985,15 +975,24 @@ def _group_operation_rows(rows: list[tuple[Comparison, str]], *, column_count: i
 
     bodies = []
     rendered_rows = 0
+    print("_group_operation_rows", len(rows), column_count)
+    for comparison, row in rows:
+        print(OPERATION_GROUPS.get(comparison.operation))
+        print(comparison)
+        print(row)
+
     for group in OPERATION_GROUP_ORDER:
+        print("#", group)
         selected = [row for comparison, row in rows if OPERATION_GROUPS.get(comparison.operation) == group]
         if not selected:
             continue
+        print("selected", selected)
         rendered_rows += len(selected)
         bodies.append(
             f'<tbody><tr class="operation-group"><th colspan="{column_count}" scope="rowgroup">{group}</th></tr>'
             f"{''.join(selected)}</tbody>"
         )
+
     if rendered_rows != len(rows):
         raise ValueError("Every benchmark operation must belong to one input/output group")
     return "".join(bodies)
@@ -1108,7 +1107,7 @@ def _engine_summary_comparisons() -> tuple[Comparison, ...]:
             continue
         priority = 0
         if comparison.by == "engine":
-            priority = 2 if comparison.parameter_label == "Size of raster (pixels per side)" else 1
+            priority = 2 if comparison.parameter_label == "Size of dem (pixels per side)" else 1
         elif comparison.by == "execution" and any(label == "In memory" for label, _ in comparison.series):
             priority = 1
         if priority == 0:
@@ -1125,7 +1124,9 @@ def _engine_summary_table(records: list[ComparisonMeasurement]) -> str:
 
     rows: list[tuple[Comparison, str]] = []
     columns = ("rasterio", "scipy", "numba", "numpy", "gdal_cli")
+
     for comparison in _engine_summary_comparisons():
+        print(comparison)
         parameter = _summary_reference_parameter(comparison, records)
         _, by_implementation = _inmem_implementation_measurements(comparison, records, parameter)
         gdal = by_implementation.get("gdal_cli")
@@ -1151,6 +1152,7 @@ def _engine_summary_table(records: list[ComparisonMeasurement]) -> str:
                 + "</tr>",
             )
         )
+    print(len(rows))
     return "".join(
         [
             '<div class="table-wrap"><table><thead>',
@@ -1226,9 +1228,9 @@ def _execution_summary_table(records: list[ComparisonMeasurement]) -> str:
 
 
 def _summary_reference_parameter(comparison: Comparison, records: list[ComparisonMeasurement]) -> int:
-    """Use the common raster size for summary rows and the largest value on other input axes."""
+    """Use the common dem size for summary rows and the largest value on other input axes."""
 
-    if comparison.parameter_label == "Size of raster (pixels per side)" and all(
+    if comparison.parameter_label == "Size of dem (pixels per side)" and all(
         any(
             record.comparison == comparison.slug and record.series_label == series_label and record.parameter == 2048
             for record in records
@@ -1249,7 +1251,7 @@ def _default_cases(comparison: Comparison, *, execution: ExecutionMode | None = 
 
         # These operations also benchmark choices that differ from their public defaults
         if comparison.operation == "random_field":
-            backend = signature(RasterBase.random_field).parameters["backend"].default
+            backend = signature(DEMBase.random_field).parameters["backend"].default
             if case.engine not in (None, backend):
                 continue
         if comparison.operation == "grouped_stats":
@@ -1271,7 +1273,7 @@ def _default_comparisons() -> tuple[Comparison, ...]:
         key = (comparison.operation, comparison.method)
         current = selected.get(key)
         preferred_axis = (
-            "Number of source points per axis" if comparison.operation == "grid" else "Size of raster (pixels per side)"
+            "Number of source points per axis" if comparison.operation == "grid" else "Size of dem (pixels per side)"
         )
         priority = (bool(_default_cases(comparison, execution="dask")), comparison.parameter_label == preferred_axis)
         if current is None:
@@ -1286,11 +1288,10 @@ def _default_comparisons() -> tuple[Comparison, ...]:
 
 
 def _scaling_comparisons() -> tuple[Comparison, ...]:
-    """Choose raster-size comparisons of execution modes with other settings at their defaults."""
-
+    """Choose dem-size comparisons of execution modes with other settings at their defaults."""
     selected: dict[str, Comparison] = {}
     for comparison in COMPARISONS:
-        if comparison.by != "execution" or comparison.benchmark.parameter_name != "raster_size":
+        if comparison.by != "execution" or comparison.benchmark.parameter_name != "dem_size":
             continue
 
         # Use the usual method for each operation, rather than repeating every alternative
@@ -1316,6 +1317,8 @@ def _headline_summary_table(records: list[ComparisonMeasurement]) -> str:
     comparisons = _default_comparisons()
     represented = {comparison.operation for comparison in comparisons}
     rows: list[tuple[int, str]] = []
+    print("records", records)
+
     for operation in OPERATIONS:
         if operation.name not in represented and any(case.execution == "dask" for case in operation.large_data_cases):
             rows.append(
@@ -1324,7 +1327,6 @@ def _headline_summary_table(records: list[ComparisonMeasurement]) -> str:
                     f'<tr><th scope="row">{html.escape(operation.display_name)}</th><td>—</td><td>—</td></tr>',
                 )
             )
-
     # Use explicit size parameters so older runs with different fixed defaults cannot be mislabelled
     for comparison in comparisons:
         operation = comparison.benchmark.operation
@@ -1337,7 +1339,9 @@ def _headline_summary_table(records: list[ComparisonMeasurement]) -> str:
             case = BENCHMARK_CASE_BY_CLASS[class_name]
             if case not in default_cases:
                 continue
+
             for record in records:
+
                 if record.comparison != comparison.slug or record.series_label != series_label:
                     continue
                 if operation.name == "grid":
@@ -1347,9 +1351,10 @@ def _headline_summary_table(records: list[ComparisonMeasurement]) -> str:
                     )
                 else:
                     matches = (
-                        comparison.parameter_label == "Size of raster (pixels per side)"
-                        and record.parameter == SUMMARY_RASTER_SIZE
+                        comparison.parameter_label == "Size of dem (pixels per side)"
+                        and record.parameter == SUMMARY_DEM_SIZE
                     )
+                    print(comparison.parameter_label, record.parameter, SUMMARY_DEM_SIZE, matches)
                 if matches:
                     measurements.append(record)
         measurement = max(measurements, key=lambda item: item.parameter) if measurements else None
@@ -1583,7 +1588,7 @@ def _gdal_reference_note() -> str:
 def _pdal_reference_note() -> str:
     """Explain the purpose and limits of the external PDAL comparison."""
 
-    return '<p class="comparison-note">PDAL pipelines perform the same raster sampling and point cloud conversion.</p>'
+    return '<p class="comparison-note">PDAL pipelines perform the same dem sampling and point cloud conversion.</p>'
 
 
 def _comparison_parameters() -> str:
@@ -1596,7 +1601,7 @@ def _comparison_parameters() -> str:
             "<li><strong>Numerical backend:</strong> Rasterio/GDAL, SciPy, Numba, NumPy, GSTools or GPyTorch.</li>",
             "<li><strong>Method:</strong> the algorithm used for each operation.</li>",
             "<li><strong>Chunk strategy:</strong> how results from separate chunks are combined.</li>",
-            "<li><strong>Input size:</strong> raster dimensions and point counts.</li>",
+            "<li><strong>Input size:</strong> dem dimensions and point counts.</li>",
             "<li><strong>Chunk size:</strong> pixels or points processed together.</li>",
             "<li><strong>Operation settings:</strong> sample size, group count, pair count and variogram lags.</li>",
             "<li><strong>External tools:</strong> equivalent GDAL and PDAL commands.</li>",
@@ -1688,6 +1693,7 @@ def _comparison_html(
             '<a href="comparisons.csv">Download CSV</a> · <a href="comparisons.json">Download JSON</a></p>',
         ]
     )
+
     return _html_page(
         "Compare GeoUtils options",
         "options",
@@ -1698,7 +1704,7 @@ def _comparison_html(
 
 
 def _scaling_html(result: Any, *, include_asv_history: bool = True) -> str:
-    """Show collapsible raster-size plots comparing execution modes with default options."""
+    """Show collapsible dem-size plots comparing execution modes with default options."""
 
     toc = []
     plots = []
@@ -1709,15 +1715,15 @@ def _scaling_html(result: Any, *, include_asv_history: bool = True) -> str:
         plots.append(
             f'<details class="plot-card" id="{slug}"><summary><strong>{label}</strong></summary>'
             f'<img loading="lazy" src="default-{slug}.svg" '
-            f'alt="Time and peak additional RAM for {label} as raster size grows"></details>'
+            f'alt="Time and peak additional RAM for {label} as dem size grows"></details>'
         )
     body = "".join(
         [
-            "<h1>Scaling with raster size</h1>",
-            "<p>These plots show how execution time and peak additional RAM grow with raster size, comparing "
+            "<h1>Scaling with dem size</h1>",
+            "<p>These plots show how execution time and peak additional RAM grow with dem size, comparing "
             "in-memory, Dask and Multiprocessing execution with default options.</p>",
             _run_metadata(result),
-            "<p>Raster width and height vary together; chunk size stays fixed. Select an operation to show its plot.</p>",
+            "<p>DEM width and height vary together; chunk size stays fixed. Select an operation to show its plot.</p>",
             '<div class="scaling-layout"><nav class="plot-toc" aria-label="Scaling operations">',
             "<strong>Operations</strong><ul>",
             *toc,
@@ -1849,7 +1855,7 @@ def _site_index(
     # Link detailed results in the same order as the page navigation
     links = [
         f'<li><a href="comparisons/{REFERENCE_REPORT_PAGE}">Comparison with GDAL and PDAL</a></li>',
-        f'<li><a href="comparisons/{SCALING_REPORT_PAGE}">Scaling with raster size</a></li>',
+        f'<li><a href="comparisons/{SCALING_REPORT_PAGE}">Scaling with dem size</a></li>',
         '<li><a href="comparisons/index.html">Comparison with options</a></li>',
     ]
     if include_asv_history:
@@ -1875,7 +1881,7 @@ def _site_index(
             _comparison_parameters(),
             '<h2 id="performance-summary">Summary</h2>',
             "<p>Dask execution with the default numerical backend and chunk strategy, on a "
-            "10,000 × 10,000 raster or 100,000,000 input points. Substantially different methods have separate rows.</p>",
+            "10,000 × 10,000 dem or 100,000,000 input points. Substantially different methods have separate rows.</p>",
             "<p>Time includes completed output. Peak additional RAM is the combined process-tree peak minus its "
             "initialized baseline. A dash means that this workload has not been measured.</p>",
             _headline_summary_table(records),
@@ -1989,7 +1995,6 @@ def _render_preview(website_directory: Path) -> None:
     # Two fake revisions also exercise the generated before/after performance table
     current_result = _PreviewResult()
     baseline_result = _PreviewResult(commit_hash="preview-baseline", geoutils_scale=1.25)
-
     render_comparisons(
         current_result,
         website_directory,
@@ -2022,6 +2027,7 @@ def main() -> None:
     if args.preview:
         website_directory = args.website_directory or PREVIEW_WEBSITE_DIRECTORY
         _render_preview(website_directory)
+        print(f"Benchmark preview written to {website_directory / 'index.html'}")
         return
 
     # Optional filters select a reproducible record from histories with several machines
@@ -2030,13 +2036,10 @@ def main() -> None:
         machine=args.machine,
         commit=args.commit,
         environment=args.environment,
-        require_complete=False,
     )
 
     baseline_result = None
-
     if args.baseline_commit is not None:
-
         baseline_result = select_asv_result(
             args.results_directory,
             machine=str(result.params.get("machine", "")),
@@ -2044,7 +2047,6 @@ def main() -> None:
             environment=str(getattr(result, "_env_name", "")),
             require_complete=False,
         )
-
     if not args.doc_only:
         website_directory = args.website_directory or Path("benchmarks/results/asv/html")
         render_comparisons(result, website_directory, baseline_result=baseline_result)

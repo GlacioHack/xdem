@@ -56,7 +56,7 @@ from benchmarks.comparisons.pdal import (
 )
 from benchmarks.workflows.config import RuntimeConfig
 from benchmarks.workflows.core import Case
-from benchmarks.workflows.io import materialize_raster_output
+from benchmarks.workflows.io import materialize_dem_output
 from benchmarks.workflows.operations import (
     BENCHMARK_BY_CLASS,
     BENCHMARK_BY_ID,
@@ -81,7 +81,7 @@ class TestComparisonReport:
     Even if ASV runs quick checks of the benchmarking setup through CI, it's easier to have a detailed traceback here
     through Pytest for some aspects.
     We especially tests our custom routines/rendering for the benchmark webpage, comparisons to external refs (e.g.
-    GDAL CLI), and across variables (raster/point size, chunk size, etc) and categories (e.g. in-memory/Dask/MP, method,
+    GDAL CLI), and across variables (dem/point size, chunk size, etc) and categories (e.g. in-memory/Dask/MP, method,
     etc) of interest.
     """
 
@@ -105,7 +105,7 @@ class TestComparisonReport:
             benchmark.benchmark_class(case)
             for benchmark in BENCHMARKS
             if benchmark.parameter_name is not None
-            if benchmark.id != "reproject-operator-raster-size"
+            if benchmark.id != "reproject-operator-dem-size"
             for case in benchmark.cases
             if "read_strategy" not in case.options
         )
@@ -164,6 +164,7 @@ class TestComparisonReport:
         assert len(by_operation) == len(comparisons)
         assert all(comparison.by == "execution" for comparison in comparisons)
         assert all(case.implementation == "geoutils" for comparison in comparisons for case in comparison.cases)
+
         assert by_operation["grid"].method == "nearest"
         assert by_operation["random_field"].calculation_engine == "gpytorch"
 
@@ -178,8 +179,10 @@ class TestComparisonReport:
         pytest.importorskip("matplotlib")
 
         # Render the complete preview from the small fake ASV result bundled with the renderer
+        print("tmp_path", ":", tmp_path)
         _render_preview(tmp_path)
         report_directory = tmp_path / COMPARISON_REPORT_DIRECTORY
+        print("report_directory", ":", report_directory)
 
         # Keep this list to files used directly by the published benchmark site or downloaded result data
         expected_files = (
@@ -192,6 +195,7 @@ class TestComparisonReport:
             report_directory / "comparisons.json",
             report_directory / PERFORMANCE_CHANGE_REPORT,
         )
+
         assert all(path.is_file() for path in expected_files)
         assert any(report_directory.glob("*.svg"))
 
@@ -209,40 +213,40 @@ class TestComparisonReport:
 
         # Scaling has a TOC and collapsible plots; other parameters have a separate page
         scaling = (report_directory / SCALING_REPORT_PAGE).read_text(encoding="utf-8")
-        assert "default-reproject-raster-size.svg" in scaling
+        assert "default-reproject-dem-size.svg" in scaling
         assert 'src="filter-chunk-size.svg"' not in scaling
-        assert '<a href="#reproject-raster-size">' in scaling
-        assert '<details class="plot-card" id="reproject-raster-size">' in scaling
+        assert '<a href="#reproject-dem-size">' in scaling
+        assert '<details class="plot-card" id="reproject-dem-size">' in scaling
 
         # The simplified scaling plot includes all three execution modes and excludes the external GDAL reference
-        plot = (report_directory / "default-reproject-raster-size.svg").read_text(encoding="utf-8")
+        plot = (report_directory / "default-reproject-dem-size.svg").read_text(encoding="utf-8")
         assert all(label in plot for label in ("In memory", "Dask", "Multiprocessing"))
         assert "GDAL CLI" not in plot
 
         # Option tables link to the detailed plots, since scaling now shows only default options
         options = (report_directory / "index.html").read_text(encoding="utf-8")
-        assert f'href="{PARAMETER_REPORT_PAGE}#gridding-method-raster-size"' in options
-        assert 'href="scaling.html#gridding-method-raster-size"' not in options
+        assert f'href="{PARAMETER_REPORT_PAGE}#gridding-method-dem-size"' in options
+        assert 'href="scaling.html#gridding-method-dem-size"' not in options
 
     def test_summary__exact_size_and_dask(self) -> None:
-        """Checks that the summary uses the requested raster size and Dask execution only."""
+        """Checks that the summary uses the requested dem size and Dask execution only."""
 
-        # Use a small-run result to check that smaller rasters do not fill the standard-size table
+        # Use a small-run result to check that smaller dems do not fill the standard-size table
         records = collect_comparison_measurements(_PreviewResult())
         records = [record for record in records if record.parameter != 10_000]
         empty_summary = _headline_summary_table(records)
         assert set(re.findall(r"<td>(.*?)</td>", empty_summary)) == {"—"}
+        print("empty_summary", empty_summary)
 
         # Add distinct Dask and in-memory results at 10,000 × 10,000 so a wrong choice is easy to see
         source = next(
-            record
-            for record in records
-            if record.comparison == "reproject-raster-size" and record.series_label == "Dask"
+            record for record in records if record.comparison == "reproject-dem-size" and record.series_label == "Dask"
         )
         dask = replace(source, parameter=10_000, end_to_end_time_s=7.25, process_tree_mem_increase_mb=482.5)
         eager = replace(dask, series_label="In memory", execution_mode="inmem", end_to_end_time_s=999)
         summary = _headline_summary_table([*records, dask, eager])
-
+        print("")
+        print("summary", summary)
         # Check the displayed measurements and exclude the in-memory timing
         assert "<td>482</td><td>7.25</td>" in summary
         assert "<td>999</td>" not in summary
@@ -251,7 +255,7 @@ class TestComparisonReport:
         "default_comparison, default_series, other_comparison",
         [
             ("random-field-gpytorch", "Dask", "random-field-gstools"),
-            ("grouped-stats-raster-size", "Automatic", "grouped-stats-execution-size"),
+            ("grouped-stats-dem-size", "Automatic", "grouped-stats-execution-size"),
         ],
     )
     def test_summary__default_choices(
@@ -301,11 +305,11 @@ class TestBenchmarkScenarios:
         """Checks representative updates for strategy, grouped and point sweeps."""
 
         # Select cases whose configuration depends on their method, layout or point count
-        gridding = BENCHMARK_BY_ID["grid-raster-size"]
+        gridding = BENCHMARK_BY_ID["grid-dem-size"]
         idw_case = next(case for case in gridding.cases if case.method == "idw" and case.execution == "inmem")
         interleaved = BENCHMARK_BY_ID["grouped-stats-interleaved-chunk-size"]
         grouped_case = interleaved.cases[0]
-        pointcloud = BENCHMARK_BY_ID["to-pointcloud-raster-size"]
+        pointcloud = BENCHMARK_BY_ID["to-pointcloud-dem-size"]
         point_case = pointcloud.cases[0]
 
         # These values cover method-specific support, uneven chunks, repeated groups and point inputs
@@ -327,14 +331,14 @@ class TestBenchmarkScenarios:
     def test_comparison__derived_identity_and_workload(self) -> None:
         """Checks that sweep cases provide report metadata and workload sizes without duplicate text."""
 
-        # Select a comparison with raster, chunk and vector fixture dimensions
-        comparison = next(item for item in COMPARISONS if item.slug == "clip-raster-size")
+        # Select a comparison with dem, chunk and vector fixture dimensions
+        comparison = next(item for item in COMPARISONS if item.slug == "clip-dem-size")
 
         # The operation and parameter axis name the sweep, while its config supplies every displayed workload value
-        assert comparison.benchmark.id == "clip-raster-size"
+        assert comparison.benchmark.id == "clip-dem-size"
         assert comparison.operation == "clip"
         assert comparison.by == "execution"
-        assert comparison.workload(8_000) == ("8,000 × 8,000 raster; 1,000 × 1,000 chunks; 51 × 51 vector features")
+        assert comparison.workload(8_000) == ("8,000 × 8,000 dem; 1,000 × 1,000 chunks; 51 × 51 vector features")
 
     def test_comparison__output_formats_group_matching_implementations(self) -> None:
         """Checks that each GeoUtils point format stays beside the matching PDAL format in report series."""
@@ -354,10 +358,10 @@ class TestBenchmarkScenarios:
         ("class_name", "expected_label"),
         (
             ("write_dask", ".to_file()"),
-            ("reproject_nearest_rasterio_inmem__rastersize", ".reproject(resampling='nearest')"),
-            ("polygonize_rasterio_labelstitch_dask__rastersize", ".polygonize(strategy='label_stitch')"),
+            ("reproject_nearest_rasterio_inmem__demsize", ".reproject(resampling='nearest')"),
+            ("polygonize_rasterio_labelstitch_dask__demsize", ".polygonize(strategy='label_stitch')"),
             (
-                "stats_moments_numpy_dense_dask__rastersize",
+                "stats_moments_numpy_dense_dask__demsize",
                 "stats(statistics=['mean', 'std', 'min', 'max'], method='map-reduce', reindex=True)",
             ),
         ),
@@ -377,9 +381,9 @@ class TestBenchmarkScenarios:
         """Checks that Flox, GDAL and PDAL references are normal benchmark cases."""
 
         # Flox measures prepared arrays directly; GDAL and PDAL execute through their command runners
-        flox_benchmark = BENCHMARK_BY_ID["grouped-flox-raster-size"]
-        gdal_benchmark = BENCHMARK_BY_ID["rasterize-raster-size"]
-        pdal_benchmark = BENCHMARK_BY_ID["to-pointcloud-raster-size"]
+        flox_benchmark = BENCHMARK_BY_ID["grouped-flox-dem-size"]
+        gdal_benchmark = BENCHMARK_BY_ID["rasterize-dem-size"]
+        pdal_benchmark = BENCHMARK_BY_ID["to-pointcloud-dem-size"]
 
         # Flox is a public stats() backend, while GDAL and PDAL remain external command references
         assert {case.implementation for case in flox_benchmark.cases} == {"geoutils", "flox"}
@@ -397,7 +401,7 @@ class TestBenchmarkRunner:
         execution_mode: Literal["inmem", "dask", "multiprocessing"],
         tmp_path: Path,
     ) -> None:
-        """Checks that the clipping benchmark keeps polygon interiors and masks the surrounding raster."""
+        """Checks that the clipping benchmark keeps polygon interiors and masks the surrounding dem."""
 
         if execution_mode == "dask":
             pytest.importorskip("distributed")
@@ -420,19 +424,19 @@ class TestBenchmarkRunner:
             values = dataset.read(1)
             nodata = dataset.nodata
 
-        # The odd polygon grid covers the raster center, while every fixture polygon stays away from the corners
-        assert result.value == config.raster_value
-        assert values[values.shape[0] // 2, values.shape[1] // 2] == config.raster_value
+        # The odd polygon grid covers the dem center, while every fixture polygon stays away from the corners
+        assert result.value == config.dem_value
+        assert values[values.shape[0] // 2, values.shape[1] // 2] == config.dem_value
         assert not np.isfinite(values[0, 0]) or values[0, 0] == nodata
 
 
 @pytest.mark.skipif(find_spec("dask_geopandas") is None, reason="Only runs if dask-geopandas is installed.")
 class TestBenchmarkOutputsChunked:
-    """Test module for complete raster and point files written by Dask benchmark workflows."""
+    """Test module for complete dem and point files written by Dask benchmark workflows."""
 
     @pytest.mark.parametrize("dtype", ["float32", "bool"])
-    def test_to_file__raster_chunks(self, dtype: str, tmp_path: Path) -> None:
-        """Checks that Dask benchmark files match in-memory raster writes without loading the original arrays."""
+    def test_to_file__dem_chunks(self, dtype: str, tmp_path: Path) -> None:
+        """Checks that Dask benchmark files match in-memory dem writes without loading the original arrays."""
 
         pytest.importorskip("distributed")
         da = pytest.importorskip("dask.array")
@@ -457,9 +461,9 @@ class TestBenchmarkOutputsChunked:
         assert not lazy.rst.is_loaded and eager.is_loaded
         operation = OPERATION_BY_NAME["write"]
         with BenchmarkRunner(operation, Case(execution="dask", options={"operation": "write"}), config) as runner:
-            runner._compute_raster(lazy)
+            runner._compute_dem(lazy)
             actual_file = runner._last_output_file
-            expected_file = materialize_raster_output(eager, "inmem", str(tmp_path / "expected.tif"), config)
+            expected_file = materialize_dem_output(eager, "inmem", str(tmp_path / "expected.tif"), config)
 
         # Compare every saved pixel and its grid, including the shorter final row and column chunks
         assert actual_file is not None
@@ -482,7 +486,7 @@ class TestBenchmarkOutputsChunked:
         if driver in ("LAS", "LAZ"):
             laspy = import_optional("laspy")
 
-        # A shorter final raster chunk exposes dropped rows in complete conversion and fixed-size sampling
+        # A shorter final dem chunk exposes dropped rows in complete conversion and fixed-size sampling
         config = RuntimeConfig(shape=(35, 49), chunks=(16, 32), directory=str(tmp_path))
         case = Case(
             execution="dask",
@@ -492,7 +496,7 @@ class TestBenchmarkOutputsChunked:
         )
         operation = OPERATION_BY_NAME[operation_name]
         with BenchmarkRunner(operation, case, config) as runner:
-            source = runner.make_raster()
+            source = runner.make_dem()
             assert not source.rst.is_loaded
             eager_source = source.compute()
             options = dict(operation.option_builder(case, runner.config))
@@ -509,7 +513,7 @@ class TestBenchmarkOutputsChunked:
         # Compare complete coordinates and values, including LAS integer encoding and LAZ compression
         assert result.output_file is not None
         assert Path(result.output_file).suffix == f".{driver.lower()}"
-        assert result.value == config.raster_value
+        assert result.value == config.dem_value
         expected_count = 37 if operation_name == "subsample" else int(np.prod(config.shape))
         if driver == "GPKG":
             actual = gpd.read_file(result.output_file)
@@ -576,7 +580,7 @@ class TestGdalCommands:
 
         # Resolve the registered operator and its GDAL reference on the same benchmark grid
         monkeypatch.setattr("benchmarks.comparisons.gdal._require_command", lambda name: name)
-        benchmark = BENCHMARK_BY_ID["reproject-operator-raster-size"]
+        benchmark = BENCHMARK_BY_ID["reproject-operator-dem-size"]
         operator_case = next(case for case in benchmark.cases if case.method == method and case.engine == "operator")
         reference_case = next(
             case for case in benchmark.cases if case.method == method and case.implementation == "gdal"
@@ -586,11 +590,12 @@ class TestGdalCommands:
 
         # The source size, target size, and GDAL -r choice must describe one comparable calculation
         options = benchmark.operation.option_builder(operator_case, config)
+
         command = build_gdal_command(
             "reproject",
             reference_case,
             config,
-            raster_file="source-raster.tif",
+            dem_file="source-raster.tif",
             vector_file="source-vector.gpkg",
             point_file="source-points.gpkg",
         ).command
@@ -629,7 +634,7 @@ class TestGdalCommands:
             operation,  # type: ignore[arg-type]
             Case(method="nearest" if operation in ("reproject", "grid") else None),
             config,
-            raster_file="source-raster.tif",
+            dem_file="source-raster.tif",
             vector_file="source-vector.gpkg",
             point_file="source-points.gpkg",
         )
@@ -674,7 +679,7 @@ class TestPdalCommands:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Checks that each PDAL comparison reads the raster and writes the expected point output."""
+        """Checks that each PDAL comparison reads the dem and writes the expected point output."""
 
         # Return the command name directly because this test checks the pipeline without running PDAL
         monkeypatch.setattr("benchmarks.comparisons.pdal._require_command", lambda name: name)
@@ -690,7 +695,7 @@ class TestPdalCommands:
             operation,
             Case(output_driver=driver),
             config,
-            raster_file="source-raster.tif",
+            dem_file="source-raster.tif",
         )
         pipeline = json.loads(Path(comparison.pipeline_file).read_text(encoding="utf-8"))["pipeline"]
         stage_types = [stage["type"] for stage in pipeline]
@@ -708,7 +713,7 @@ class TestPdalCommands:
             assert pipeline[-2]["count"] == config.value("subsample_size")
         assert stage_types == expected_stages
 
-        # Both paths use the configured cache, source raster and point output
+        # Both paths use the configured cache, source dem and point output
         assert comparison.command == ["pdal", "pipeline", comparison.pipeline_file]
         assert pipeline[0]["filename"] == "source-raster.tif"
         assert pipeline[0]["gdalopts"] == [f"GDAL_CACHEMAX={config.gdal_cachemax_mb}"]

@@ -36,7 +36,7 @@ from geoutils.interface.gridding import GriddingMethod
 
 from benchmarks.workflows.config import RuntimeConfig
 from benchmarks.workflows.core import Case
-from benchmarks.workflows.io import logical_raster_size_mb, memory_limit_mb
+from benchmarks.workflows.io import logical_dem_size_mb, memory_limit_mb
 from benchmarks.workflows.operations import (
     LARGE_DATA_CASES,
 )
@@ -47,19 +47,19 @@ pytestmark = [pytest.mark.large_data, pytest.mark.memory, pytest.mark.allow_logg
 
 
 def _shape_from_env(name: str, default: tuple[int, int]) -> tuple[int, int]:
-    """Read raster shape from environment variable."""
+    """Read dem shape from environment variable."""
 
     # Keep the documented default when no override is requested
     value = os.environ.get(name)
     if value is None:
         return default
 
-    # Accept separate row and column sizes for non-square test rasters
+    # Accept separate row and column sizes for non-square test dems
     if "," in value:
         rows, cols = value.split(",", maxsplit=1)
         return int(rows), int(cols)
 
-    # A single value is a convenient square-raster shorthand
+    # A single value is a convenient square-dem shorthand
     size = int(value)
     return size, size
 
@@ -68,11 +68,11 @@ def _shape_from_env(name: str, default: tuple[int, int]) -> tuple[int, int]:
 def large_data_config(tmp_path_factory: pytest.TempPathFactory) -> RuntimeConfig:
     """Create one larger-than-memory fixture configuration shared by all operations."""
 
-    # Reusing sources avoids writing the same large raster for every backend case
+    # Reusing sources avoids writing the same large dem for every backend case
     directory = tmp_path_factory.mktemp("geoutils-large-data")
     return RuntimeConfig(
         shape=_shape_from_env("GEOUTILS_LARGE_DATA_SHAPE", (12288, 12288)),
-        # Larger chunks retain 144 tasks while keeping the canonical raster above memory
+        # Larger chunks retain 144 tasks while keeping the canonical dem above memory
         chunks=_shape_from_env("GEOUTILS_LARGE_DATA_CHUNKS", (1024, 1024)),
         memory_limit=os.environ.get("GEOUTILS_LARGE_DATA_MEMORY_LIMIT", "512MB"),
         profile_interval=float(os.environ.get("GEOUTILS_LARGE_DATA_PROFILE_INTERVAL", "0.1")),
@@ -97,23 +97,23 @@ def _execute_operation(case_name: str, config: RuntimeConfig, case: Case | None 
             ),
             None,
         )
-        raster = runner.make_raster(source_file) if source_file is not None else None
+        dem = runner.make_dem(source_file) if source_file is not None else None
 
         # Inputs must point to chunks or their source file before any operation graph is built
-        if backend == "dask" and raster is not None:
-            assert raster.data.chunks is not None
-            assert not raster._in_memory
-        elif raster is not None:
-            assert not raster.is_loaded
+        if backend == "dask" and dem is not None:
+            assert dem.data.chunks is not None
+            assert not dem._in_memory
+        elif dem is not None:
+            assert not dem.is_loaded
 
         # One execution provides correctness, worker health and memory metrics
         result = runner.run()
 
         # Input objects must still be lazy or file-backed after the operation completes
-        if backend == "dask" and raster is not None:
-            assert not raster._in_memory
-        elif raster is not None:
-            assert not raster.is_loaded
+        if backend == "dask" and dem is not None:
+            assert not dem._in_memory
+        elif dem is not None:
+            assert not dem.is_loaded
     return result
 
 
@@ -188,7 +188,7 @@ class TestLargeData:
                 pytest.importorskip(dependency)
 
         # The uncompressed input must exceed the configured limit before claiming a large data test
-        logical_mb = logical_raster_size_mb(large_data_config)
+        logical_mb = logical_dem_size_mb(large_data_config)
         configured_limit_mb = memory_limit_mb(large_data_config.memory_limit)
         assert logical_mb > configured_limit_mb
 
@@ -203,7 +203,7 @@ class TestLargeData:
             # Remove each checked output before the next large operation starts
             os.remove(result.output_file)
 
-        # The client must not build a temporary array as large as the complete raster
+        # The client must not build a temporary array as large as the complete dem
         client_trace = result.metrics.client_mem_mb
         assert client_trace
         baseline_client_mb = client_trace[0][1]
@@ -219,21 +219,21 @@ class TestLargeData:
             peak_worker_mb = result.metrics.peak_dask_worker_process_mem_mb
             assert peak_worker_mb is not None
 
-            # Additional worker memory must remain below the complete logical raster
+            # Additional worker memory must remain below the complete logical dem
             assert peak_worker_mb - baseline_worker_mb < logical_mb
         else:
             # Multiprocessing normally recycles workers to release native-library caches
             assert result.worker_pids_before
             assert result.worker_pids_after
 
-            # Native imports form a fixed baseline that is unrelated to raster loading
+            # Native imports form a fixed baseline that is unrelated to dem loading
             child_trace = result.metrics.child_process_mem_mb
             assert child_trace
             baseline_child_mb = child_trace[0][1]
             peak_child_mb = result.metrics.peak_child_process_mem_mb
             assert peak_child_mb is not None
 
-            # Additional worker memory must remain below the complete logical raster
+            # Additional worker memory must remain below the complete logical dem
             assert peak_child_mb - baseline_child_mb < logical_mb
 
             # Aggregate process-tree memory is retained for reports and diagnostics
@@ -241,9 +241,9 @@ class TestLargeData:
 
     @pytest.mark.parametrize("case_name", LARGE_DATA_CASES)
     def test_operation_stays_out_of_core(self, case_name: str, large_data_config: RuntimeConfig) -> None:
-        """Complete one larger-than-memory operation without loading its full raster."""
+        """Complete one larger-than-memory operation without loading its full dem."""
 
-        # Request more point rows than one raster chunk so point operations check their bounded cutoff paths
+        # Request more point rows than one dem chunk so point operations check their bounded cutoff paths
         config = large_data_config
         _, case = LARGE_DATA_CASES[case_name]
         sample_size = int(np.prod(large_data_config.chunks)) + 1
@@ -281,7 +281,7 @@ class TestLargeData:
     def test_grouped_stats_stays_out_of_core(
         self, strategy: str, chunk_scale: int, large_data_config: RuntimeConfig
     ) -> None:
-        """Checks that grouped summaries and exact local medians finish below full-raster worker memory."""
+        """Checks that grouped summaries and exact local medians finish below full-dem worker memory."""
 
         # Keep regions fixed when changing chunks so group boundaries cross at least one tested partition layout
         # Sixty-four regions per axis bound each complete group needed for exact median and NMAD

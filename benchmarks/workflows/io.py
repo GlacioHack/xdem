@@ -20,8 +20,8 @@ from benchmarks.workflows.core import ExecutionMode
 ############################
 
 
-def logical_raster_size_mb(config: RuntimeConfig) -> float:
-    """Return a float32 raster size in MBs."""
+def logical_dem_size_mb(config: RuntimeConfig) -> float:
+    """Return a float32 dem size in MBs."""
 
     return config.shape[0] * config.shape[1] * np.dtype("float32").itemsize / 1_000_000
 
@@ -45,13 +45,13 @@ def memory_limit_mb(memory_limit: str) -> float:
 def tiff_block_size(size: int, requested: int) -> int:
     """Return a valid GeoTIFF block size to write with."""
 
-    # The GeoTIFF tile must be divisible by 16 (to allow factors of 2), and smaller than raster size
+    # The GeoTIFF tile must be divisible by 16 (to allow factors of 2), and smaller than dem size
     block_size = min(size, requested, 512)
     return max(16, block_size // 16 * 16)
 
 
-def read_raster_center(filename: str) -> float:
-    """Read one central output pixel without loading the complete raster, to validate outputs values without loading."""
+def read_dem_center(filename: str) -> float:
+    """Read one central output pixel without loading the complete dem, to validate outputs values without loading."""
 
     with rio.open(filename) as dataset:
         row = dataset.height // 2
@@ -77,19 +77,18 @@ def read_point_file_sample(filename: str, column: str) -> tuple[int, float]:
     return int(info["features"]), float(sample[column].iloc[0])
 
 
-def open_raster_input(filename: str, backend: ExecutionMode, config: RuntimeConfig) -> Any:
-    """Open one raster through the interface used by an execution backend."""
-
+def open_dem_input(filename: str, backend: ExecutionMode, config: RuntimeConfig) -> Any:
+    """Open one dem through the interface used by an execution backend."""
     if backend == "dask":
-        from geoutils.raster.xr_accessor import open_raster
+        from xdem.dem.xr_accessor import open_dem
 
         # Raster chunks remain lazy until the output values are computed
-        return open_raster(filename, chunks={"y": config.chunks[0], "x": config.chunks[1]})
+        return open_dem(filename, chunks={"y": config.chunks[0], "x": config.chunks[1]})
 
-    from geoutils import Raster
+    from xdem import DEM
 
     # In-memory comparisons load the complete input while multiprocessing reads windows
-    return Raster(filename, load_data=backend == "inmem")
+    return DEM(filename, load_data=backend == "inmem")
 
 
 def prepare_output_file(
@@ -106,30 +105,30 @@ def prepare_output_file(
     return filename
 
 
-def materialize_raster_output(
-    raster: Any,
+def materialize_dem_output(
+    dem: Any,
     backend: ExecutionMode,
     filename: str | None,
     config: RuntimeConfig,
 ) -> str:
-    """Write a complete raster output and return its file path."""
+    """Write a complete dem output and return its file path."""
 
     if backend == "multiprocessing":
         # Multiprocessing operations already wrote their returned Raster to disk
-        return str(raster.name)
+        return str(dem.name)
     if filename is None:
-        raise ValueError("A raster output path is required outside multiprocessing")
+        raise ValueError("A dem output path is required outside multiprocessing")
 
     # Match the tiled, uncompressed output used by the external commands
     block_y = tiff_block_size(config.shape[0], config.chunks[0])
     block_x = tiff_block_size(config.shape[1], config.chunks[1])
     if backend == "dask":
-        if raster.chunks is None:
+        if dem.chunks is None:
             raise ValueError("Dask benchmark output must remain chunked before writing")
 
         # GeoTIFF stores boolean masks as bytes
-        dtype = "uint8" if np.issubdtype(raster.dtype, np.bool_) else raster.dtype
-        raster.rst.to_file(
+        dtype = "uint8" if np.issubdtype(dem.dtype, np.bool_) else dem.dtype
+        dem.rst.to_file(
             filename,
             driver="GTiff",
             dtype=dtype,
@@ -139,13 +138,13 @@ def materialize_raster_output(
             blockxsize=block_x,
             compress="NONE",
             BIGTIFF="IF_NEEDED",
-        )
-        if raster.rst.is_loaded:
-            raise AssertionError("Writing a Dask raster must leave its source array lazy.")
+        )  # TODO
+        if dem.rst.is_loaded:  # TODO
+            raise AssertionError("Writing a Dask dem must leave its source array lazy.")
         return filename
 
     # In-memory results use the same tiled output contract
-    raster.to_file(
+    dem.to_file(
         filename,
         co_opts={
             "TILED": "YES",
@@ -162,8 +161,8 @@ def materialize_raster_output(
 ##############################
 
 
-def write_constant_raster(filename: str, config: RuntimeConfig) -> None:
-    """Write a deterministic constant raster one storage block at a time."""
+def write_constant_dem(filename: str, config: RuntimeConfig) -> None:
+    """Write a deterministic constant dem one storage block at a time."""
 
     if os.path.exists(filename):
         return
@@ -192,9 +191,9 @@ def write_constant_raster(filename: str, config: RuntimeConfig) -> None:
         compress="DEFLATE",
         BIGTIFF="IF_NEEDED",
     ) as destination:
-        # Allocate only the current storage block instead of the complete raster
+        # Allocate only the current storage block instead of the complete dem
         for _, window in destination.block_windows(1):
-            block = np.full((int(window.height), int(window.width)), config.raster_value, dtype=np.float32)
+            block = np.full((int(window.height), int(window.width)), config.dem_value, dtype=np.float32)
             destination.write(block, indexes=1, window=window)
 
 

@@ -35,10 +35,10 @@ from geoutils.profiler import ProfileMetrics, profile_call
 from benchmarks.workflows.config import RuntimeConfig
 from benchmarks.workflows.core import Case, ExecutionMode, Operation
 from benchmarks.workflows.io import (
-    materialize_raster_output,
-    open_raster_input,
+    materialize_dem_output,
+    open_dem_input,
     prepare_output_file,
-    read_raster_center,
+    read_dem_center,
 )
 
 ####################
@@ -271,15 +271,15 @@ class BenchmarkRunner:
             return ()
         return self.mp_cluster.worker_pids()
 
-    def make_raster(self, filename: str | None = None) -> Any:
-        """Open one prepared raster through the selected GeoUtils interface."""
+    def make_dem(self, filename: str | None = None) -> Any:
+        """Open one prepared dem through the selected GeoUtils interface."""
 
         # Most operations use the constant source while polygonization uses regions
         source_file = self.path("source-raster.tif") if filename is None else filename
-        raster = open_raster_input(source_file, self.backend, self.config)
+        dem = open_dem_input(source_file, self.backend, self.config)
         if self.backend == "dask":
-            self._opened_inputs.append(raster)
-        return raster
+            self._opened_inputs.append(dem)
+        return dem
 
     def run(self, *, profile: bool = True) -> BenchmarkResult:
         """Compute one operation while measuring its complete backend."""
@@ -317,7 +317,6 @@ class BenchmarkRunner:
         worker_pids_after = self.worker_pids()
 
         # Return one small value while leaving large output on disk
-        print(value)
         return BenchmarkResult(
             value=float(value),
             metrics=metrics,
@@ -344,17 +343,17 @@ class BenchmarkRunner:
             cluster=self.mp_cluster,
         )
 
-    def _compute_raster(self, raster: Any) -> float:
-        """Write or inspect the complete raster produced by one implementation."""
+    def _compute_dem(self, dem: Any) -> float:
+        """Write or inspect the complete dem produced by one implementation."""
 
         output_file = None if self.backend == "multiprocessing" else self._output_path()
-        self._last_output_file = materialize_raster_output(
-            raster,
+        self._last_output_file = materialize_dem_output(
+            dem,
             self.backend,
             output_file,
             self.config,
         )
-        return read_raster_center(self._last_output_file)
+        return read_dem_center(self._last_output_file)
 
     def _execute(self) -> float:
         """Fully compute the selected operation and case."""

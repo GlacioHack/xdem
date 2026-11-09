@@ -13,7 +13,7 @@ import geopandas as gpd
 from benchmarks.comparisons.subprocess import execute_command
 from benchmarks.workflows.config import RuntimeConfig
 from benchmarks.workflows.core import Case
-from benchmarks.workflows.io import read_raster_center
+from benchmarks.workflows.io import read_dem_center
 
 # Only these GeoUtils operations have an equivalent GDAL CLI command for the external comparison
 ComparisonOperation = Literal["clip", "reproject", "polygonize", "rasterize", "grid"]
@@ -78,7 +78,7 @@ def build_gdal_grid_command(
     output_crs: str | None = None,
     creation_options: list[str] | None = None,
 ) -> GdalCommand:
-    """Build one GDAL gridding command for a defined raster grid."""
+    """Build one GDAL gridding command for a defined dem grid."""
 
     # Linear interpolation has one fallback radius while other methods use an ellipse
     if algorithm == "linear":
@@ -98,7 +98,7 @@ def build_gdal_grid_command(
         algorithm_options.append(f"nodata={nodata}")
     algorithm_definition = ":".join((algorithm, *algorithm_options))
 
-    # Bounds describe raster edges while GeoUtils grid coordinates describe cell centers
+    # Bounds describe dem edges while GeoUtils grid coordinates describe cell centers
     left, bottom, right, top = bounds
     height, width = shape
     command = [
@@ -148,7 +148,7 @@ def build_gdal_command(
     operation: ComparisonOperation,
     case: Case,
     config: RuntimeConfig,
-    raster_file: str,
+    dem_file: str,
     vector_file: str,
     point_file: str,
 ) -> GdalCommand:
@@ -165,7 +165,7 @@ def build_gdal_command(
     common_creation = ["-co", "TILED=YES", "-co", "BLOCKXSIZE=512", "-co", "BLOCKYSIZE=512"]
 
     if operation == "clip":
-        # Keep the source extent and mask cells outside the cutline, matching Raster.clip()
+        # Keep the source extent and mask cells outside the cutline, matching DEM.clip()
         output_file = os.path.join(config.directory, "output-gdal-clip.tif")
         command = [
             _require_command("gdalwarp"),
@@ -202,7 +202,7 @@ def build_gdal_command(
             "-wo",
             "YSCALE=1",
             *common_creation,
-            raster_file,
+            dem_file,
             output_file,
         ]
         return GdalCommand(command, output_file)
@@ -239,18 +239,18 @@ def build_gdal_command(
             "-wo",
             "YSCALE=1",
             *common_creation,
-            raster_file,
+            dem_file,
             output_file,
         ]
         return GdalCommand(command, output_file)
 
     if operation == "polygonize":
-        # The patterned raster lets feature count validate the complete vector output
+        # The patterned dem lets feature count validate the complete vector output
         output_file = os.path.join(config.directory, "output-gdal-polygonize.gpkg")
         command = [
             _require_command("gdal_polygonize.py"),
             *common_config,
-            raster_file,
+            dem_file,
             output_file,
             "polygons",
             "value",
@@ -343,25 +343,25 @@ def execute_gdal(runner: Any, case: Case) -> float:
     """Run and validate the GDAL command matching the selected operation."""
 
     operation = runner.operation.name
-    raster_file = runner.path("source-polygonize.tif" if operation == "polygonize" else "source-raster.tif")
+    dem_file = runner.path("source-polygonize.tif" if operation == "polygonize" else "source-raster.tif")
     command = build_gdal_command(
         operation,
         case,
         runner.config,
-        raster_file=raster_file,
+        dem_file=dem_file,
         vector_file=runner.path("source-vector.gpkg"),
         point_file=runner.path("source-points.gpkg"),
     )
     execute_command("GDAL", command.command, command.output_file)
     runner._last_output_file = command.output_file
 
-    # Feature count validates vector output, raster workflows use one deterministic central pixel
+    # Feature count validates vector output, dem workflows use one deterministic central pixel
     if operation == "polygonize":
         value = float(len(gpd.read_file(command.output_file)))
         expected = int(runner.config.value("polygon_regions_per_axis", 1)) ** 2
     else:
-        value = read_raster_center(command.output_file)
-        expected = runner.config.raster_value
+        value = read_dem_center(command.output_file)
+        expected = runner.config.dem_value
     if operation == "reproject" and case.method == "sum":
         valid_value = math.isfinite(value)
     else:

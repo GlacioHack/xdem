@@ -1,4 +1,4 @@
-"""Define raster reprojection benchmarks."""
+"""Define dem reprojection benchmarks."""
 
 from __future__ import annotations
 
@@ -27,9 +27,9 @@ from geoutils.operators.reducer import (
 )
 
 from benchmarks.workflows.config import (
-    RASTER_SIZES,
+    DEM_SIZES,
     RuntimeConfig,
-    raster_size_config,
+    dem_size_config,
 )
 from benchmarks.workflows.core import (
     Case,
@@ -39,7 +39,7 @@ from benchmarks.workflows.core import (
     parameter_config,
     reference_case,
 )
-from benchmarks.workflows.io import write_constant_raster
+from benchmarks.workflows.io import write_constant_dem
 
 ORDER = 40
 
@@ -104,12 +104,12 @@ def reproject_options(case: Case, config: RuntimeConfig) -> Mapping[str, Any]:
 
 
 def prepare_reproject(runner: Any, case: Case) -> None:
-    """Prepare the raster to be reprojected."""
+    """Prepare the dem to be reprojected."""
 
-    write_constant_raster(runner.path("source-raster.tif"), runner.config)
+    write_constant_dem(runner.path("source-raster.tif"), runner.config)
     if case.engine == "operator" and find_spec("numba") is not None:
         if case.method in ("cubic", "cubic_spline", "lanczos"):
-            # Compile the selected raster kernel outside the measured operation
+            # Compile the selected dem kernel outside the measured operation
             RasterConvolution(case.method)._interpolate_grid(np.ones((1, 1)), np.array([0.0]), np.array([0.0]), "gdal")
         elif case.method not in ("nearest", "bilinear"):
             # Compile polygon clipping outside the measured operation
@@ -128,17 +128,13 @@ def run_reproject(runner: Any, case: Case) -> float:
 
         return execute_gdal(runner, case)
 
-    raster = runner.make_raster()
+    dem = runner.make_dem()
     options = reproject_options(case, runner.config)
 
     # Fix the target size so GeoUtils and GDAL references write the same pixel count
     mp_config = runner._multiproc_config() if runner.backend == "multiprocessing" else None
-    output = (
-        raster.rst.reproject(**options)
-        if runner.backend == "dask"
-        else raster.reproject(**options, mp_config=mp_config)
-    )
-    return runner._compute_raster(output)
+    output = dem.dem.reproject(**options) if runner.backend == "dask" else dem.reproject(**options, mp_config=mp_config)
+    return runner._compute_dem(output)
 
 
 REPROJECT = Operation(
@@ -190,23 +186,23 @@ OPERATOR_REFERENCES = tuple(
 
 BENCHMARKS = (
     parameter_config(
-        "raster_size",
-        RASTER_SIZES,
+        "dem_size",
+        DEM_SIZES,
         REPROJECT,
         (*CASES, REFERENCE),
-        raster_size_config,
-        parameter_label="Size of raster (pixels per side)",
-        parameter_title="raster size",
+        dem_size_config,
+        parameter_label="Size of dem (pixels per side)",
+        parameter_title="dem size",
     ),
     parameter_config(
-        "raster_size",
+        "dem_size",
         (128, 256),
         REPROJECT,
         (*OPERATOR_CASES, *OPERATOR_REFERENCES),
-        raster_size_config,
+        dem_size_config,
         name="reproject-operator",
-        parameter_label="Size of raster (pixels per side)",
-        parameter_title="raster size",
+        parameter_label="Size of dem (pixels per side)",
+        parameter_title="dem size",
     ),
 )
 COMPARISONS = (
