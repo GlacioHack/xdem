@@ -26,5 +26,6 @@ addopts = "--import-mode=importlib --doctest-modules --doctest-ignore-import-err
 log_level = "INFO"
 testpaths = [
 	"tests",
-	"xdem"
+	"xdem",
+    "benchmarks/test_large_data.py"
 ]

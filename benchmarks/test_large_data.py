@@ -1,14 +1,14 @@
 """
 Large data tests for every Dask and multiprocessing operation.
 
-Each operation and backend (Dask, multiprocessing) runs in a separate process with an input raster size that
+Each operation and backend (Dask, multiprocessing) runs in a separate process with an input dem size that
 exceeds the memory limit.
 
 This file runs pass/fail computation and memory tests (not a benchmark like the ASV suite).
 
 A test fails if the input opens eagerly, the operation raises an error or times out, its result or
 output file is incorrect, a Dask worker is replaced, multiprocessing workers disappear, or additional worker memory
-reaches the size of the full raster.
+reaches the size of the full dem.
 Otherwise, it passes.
 
 Default Pytest runs skip this module. To run it, use ``python -m pytest --large-data -m large_data -ra``.

@@ -1,6 +1,6 @@
-# GeoUtils benchmarks
+# xDEM benchmarks
 
-This directory contains benchmarking tools to assess, record, compare and publish performance (compute time and memory usage) for GeoUtils main operations.
+This directory contains benchmarking tools to assess, record, compare and publish performance (compute time and memory usage) for xDEM main operations.
 
 Mainly, it contains tools for running:
 - Repeatable performance measurements (=benchmarking) that monitor and improve performance using [ASV](https://github.com/airspeed-velocity/asv),
@@ -10,16 +10,16 @@ Mainly, it contains tools for running:
 
 ## Organization
 
-- `comparisons/` contains GDAL commands, PDAL pipelines, and more, to perform comparisons of external operations equivalent to those in GeoUtils,
+- `comparisons/` contains GDAL commands, PDAL pipelines, and more, to perform comparisons of external operations equivalent to those in xDEM,
 - `workflows/config.py` defines the configuration of input sizes and worker parameters shared by all benchmarks,
 - `workflows/io.py` defines low-level input opening, output writing and fixtures shared by most operations,
-- `workflows/operations/` contains individual files defining GeoUtils benchmarked **operations** (e.g. ``reproject()``, ``grid()``); its **cases**, which are combinations of
+- `workflows/operations/` contains individual files defining xDEM benchmarked **operations** (e.g. ``reproject()``, ``grid()``); its **cases**, which are combinations of
   methods (e.g. ``resampling="linear"``), calculation engines (e.g., SciPy, Numba), chunk strategies (e.g., "dense" or "sparse" for grouped stats),
   execution modes (in-memory, Dask, multiprocessing), and input data ranges (e.g., raster or point size); and finally defines **comparisons**,
   which selects chosen benchmark cases for generating comparison plots, including comparisons with external implementations (GDAL, PDAL, etc),
 - `workflows/operations/__init__.py` automatically collects the operations, benchmarks and comparisons defined in the ``operations/`` directory,
 - `workflows/core.py` contains the `Operation`, `Case`, `Benchmark` and `Comparison` objects that facilitate the definitions of benchmarks,
-- `workflows/runner.py` contains the logic about worker execution (in-memory vs Dask vs multiprocessing) and links to GeoUtils profiling,
+- `workflows/runner.py` contains the logic about worker execution (in-memory vs Dask vs multiprocessing) and links to xDEM profiling,
 - `asv_suite/benchmarks.py` defines a small class to register required ASV methods on all benchmarks,
 - `asv_suite/render_results.py` renders the raw measurements into HTML/graphics used by the GitHub pages and documentation,
 - `test_large_data.py` is a Pytest module to verify that every supported Dask/Multiprocessing operation computes correctly without
@@ -28,7 +28,7 @@ Mainly, it contains tools for running:
 ## Adding a benchmark
 
 Benchmarks are defined in `workflows/operations/`, with one file per functionality (e.g., ``reprojection.py`` or ``filters.py``).
-Each file describes which GeoUtils function to call (e.g., ``reproject()``), which cases to compare (e.g., Dask/Multiproc, varying raster
+Each file describes which xDEM function to call (e.g., ``reproject()``), which cases to compare (e.g., Dask/Multiproc, varying raster
 input size) and finally if/how to compare to other implementations (e.g., GDAL/PDAL).
 
 The benchmarks rely on four objects:
@@ -127,7 +127,7 @@ Three workflows are related to ASV benchmark in our continuous integration.
 environment variable to run only the smallest test case of every benchmark, and otherwise relies on ``asv check``).
 
 2. For every PR merge into `main`, or on weekly schedule, `benchmark-asv` runs the full suite (1h+) and records
-the performance results to an `asv-results` branch on the GeoUtils repository (relying on ``asv run``).
+the performance results to an `asv-results` branch on the xDEM repository (relying on ``asv run``).
 
 3. After a successful run of the previous `benchmark-asv`, `benchmark-publish` automatically rebuilds the
 saved history from `asv-results`, re-renders the graphics, and deploys the benchmarking webpage to GitHub Pages.
