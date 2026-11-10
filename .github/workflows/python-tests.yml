@@ -64,6 +64,17 @@ jobs:
     # processing packages very much like geo-packages; not a problem for docs, dev installs where all is done at once)
     - name: Install base environment with a fixed Python version
       if: steps.cache.outputs.cache-hit != 'true'
+      env:
+        # Fiona 1.10.1 has no Python 3.14 wheels, so install it with Conda
+        # Use Conda's OpenMP runtime for PyTorch and its numerical dependencies
+        # PDAL 2.8 shares compatible PROJ and GDAL versions with Python 3.10's PyProj and Fiona
+        # Share Conda's HDF5 and Arrow libraries with GDAL/PDAL on Windows
+        CI_EXTRA_DEPS: >-
+          gdal<3.13.3,pdal${{ matrix.python-version == '3.10' && '=2.8' || '>=2.10' }},python-pdal${{
+          runner.os == 'Windows' && ',netcdf4' || '' }}${{
+          runner.os == 'Windows' && matrix.dep-level != 'base' && ',pyarrow>=14' || '' }}${{
+          matrix.dep-level != 'base' && ',fiona>=1.10' || '' }}${{
+          runner.os != 'Linux' && matrix.dep-level != 'base' && ',pytorch-cpu>=2,gpytorch>=1.11' || '' }}
       run: |
         mamba install pyyaml python=${{ matrix.python-version }}
         python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "${{ matrix.dep-level == 'opt' && 'pip,pytorch-cpu,gpytorch,linear_operator' || 'pip' }}" "environment.yml"
