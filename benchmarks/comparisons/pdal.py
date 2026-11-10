@@ -17,7 +17,7 @@ from benchmarks.workflows.config import RuntimeConfig
 from benchmarks.workflows.core import Case
 from benchmarks.workflows.io import read_point_file_sample
 
-# Only these GeoUtils operations have an equivalent PDAL pipeline
+# Only these xDEM operations have an equivalent PDAL pipeline
 PdalComparisonOperation = Literal["subsample", "to_pointcloud"]
 PDAL_COMPARISON_OPERATIONS: tuple[PdalComparisonOperation, ...] = ("subsample", "to_pointcloud")
 
@@ -60,7 +60,7 @@ def build_pdal_command(
         }
     ]
     if case.output_driver in ("LAS", "LAZ"):
-        # Store the first raster band in the native elevation dimension used by the GeoUtils output
+        # Store the first raster band in the native elevation dimension used by the xDEM output
         stages.append({"type": "filters.ferry", "dimensions": "band_1=>Z"})
     if operation == "subsample":
         # Randomize the complete point view before keeping the requested fixed-size sample
@@ -71,7 +71,7 @@ def build_pdal_command(
             )
         )
 
-    # Write using the same point format used by GeoUtils multiprocessing
+    # Write using the same point format used by xDEM multiprocessing
     suffix = case.output_driver.lower()
     output_file = os.path.join(config.directory, f"output-pdal-{operation}.{suffix}")
     if case.output_driver == "GPKG":
@@ -141,7 +141,7 @@ def execute_pdal(runner: Any, case: Case) -> float:
         runner.operation.name,
         case,
         runner.config,
-        dem_file=runner.path("source-raster.tif"),
+        dem_file=runner.path("source-dem.tif"),
     )
     execute_command("PDAL", command.command, command.output_file)
     runner._last_output_file = command.output_file

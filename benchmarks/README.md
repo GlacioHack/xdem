@@ -123,7 +123,7 @@ python -m benchmarks.asv_suite.render_results --doc-only --doc-dir benchmarks/re
 
 Three workflows are related to ASV benchmark in our continuous integration.
 
-1. For every PR commit, `benchmark-asv-check` runs a quick check (~10min) of benchmark setups (it uses the `GEOUTILS_ASV_PR_CHECK=1`
+1. For every PR commit, `benchmark-asv-check` runs a quick check (~10min) of benchmark setups (it uses the `XDEM_ASV_PR_CHECK=1`
 environment variable to run only the smallest test case of every benchmark, and otherwise relies on ``asv check``).
 
 2. For every PR merge into `main`, or on weekly schedule, `benchmark-asv` runs the full suite (1h+) and records

@@ -36,7 +36,7 @@ class Case:
     output_driver: str = "GPKG"
     options: Mapping[str, Any] = field(default_factory=dict)
     labels: Mapping[str, str] = field(default_factory=dict)
-    implementation: str = "geoutils"
+    implementation: str = "xdem"
     variant: str | None = None
 
 
@@ -132,7 +132,7 @@ class Benchmark:
         implementation: str | None = {"gdal": "gdal_cli", "pdal": "pdal_cli"}.get(
             case.implementation, case.implementation
         )
-        implementation = case.engine if case.implementation == "geoutils" else implementation
+        implementation = case.engine if case.implementation == "xdem" else implementation
         function = self.operation.benchmark_name or self.operation.name
         values = (function, case.method, implementation, case.strategy, output_driver, case.execution, case.variant)
         implementation_name = "_".join(_class_token(value) for value in values if value is not None)
@@ -219,11 +219,11 @@ class Comparison:
         return self._fixed("execution")
 
     def _fixed(self, attribute: str) -> Any | None:
-        """Return one non-varied case value when all GeoUtils cases share it."""
+        """Return one non-varied case value when all xDEM cases share it."""
 
         if self.by == attribute:
             return None
-        values = {getattr(case, attribute) for case in self.cases if case.implementation == "geoutils"}
+        values = {getattr(case, attribute) for case in self.cases if case.implementation == "xdem"}
         values.discard(None)
         return next(iter(values)) if len(values) == 1 else None
 
@@ -231,7 +231,7 @@ class Comparison:
         """Return operation-local display text for one case choice."""
 
         for case in self.cases:
-            if case.implementation == "geoutils" and getattr(case, attribute) == value:
+            if case.implementation == "xdem" and getattr(case, attribute) == value:
                 return case.labels.get(attribute, _display_value(value))
         return _display_value(value)
 
@@ -265,15 +265,15 @@ class Comparison:
 
         cases = self.cases
         if self.by == "output_driver":
-            # Keep each GeoUtils format beside implementation cases writing the same format
+            # Keep each xDEM format beside implementation cases writing the same format
             drivers = tuple(dict.fromkeys(case.output_driver for case in cases))
             cases = tuple(case for driver in drivers for case in cases if case.output_driver == driver)
 
         series = []
         for case in cases:
             label = IMPLEMENTATION_LABELS.get(case.implementation)
-            if self.by == "output_driver" and case.implementation == "geoutils":
-                label = case.labels.get("output_driver", f"GeoUtils {case.output_driver}")
+            if self.by == "output_driver" and case.implementation == "xdem":
+                label = case.labels.get("output_driver", f"xDEM {case.output_driver}")
             elif label is None:
                 label = case.labels.get(self.by, _display_value(getattr(case, self.by)))
             elif self.by == "output_driver":
@@ -385,7 +385,7 @@ def reference_case(
     implementation: str,
     execution: ExecutionMode | None = None,
 ) -> Case:
-    """Define one reference implementation equivalent to a GeoUtils case."""
+    """Define one reference implementation equivalent to a xDEM case."""
 
     case = benchmark[0] if isinstance(benchmark, tuple) else benchmark
     if isinstance(benchmark, tuple):

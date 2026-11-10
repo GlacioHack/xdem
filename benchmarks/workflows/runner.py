@@ -148,14 +148,14 @@ class BenchmarkRunner:
 
         # Use the caller directory when results must survive this runner
         if self._directory is None and self.config.directory is None:
-            self._tmpdir = tempfile.TemporaryDirectory(prefix="geoutils-benchmark-")
+            self._tmpdir = tempfile.TemporaryDirectory(prefix="xdem-benchmark-")
             self._directory = self._tmpdir.name
         elif self._directory is None:
             assert self.config.directory is not None
             os.makedirs(self.config.directory, exist_ok=True)
             self._directory = self.config.directory
 
-        # The operation owns the sources needed by its GeoUtils and implementation cases
+        # The operation owns the sources needed by its xDEM and implementation cases
         self.operation.prepare(self, self.case)
         return self
 
@@ -272,10 +272,10 @@ class BenchmarkRunner:
         return self.mp_cluster.worker_pids()
 
     def make_dem(self, filename: str | None = None) -> Any:
-        """Open one prepared dem through the selected GeoUtils interface."""
+        """Open one prepared dem through the selected xDEM interface."""
 
         # Most operations use the constant source while polygonization uses regions
-        source_file = self.path("source-raster.tif") if filename is None else filename
+        source_file = self.path("source-dem.tif") if filename is None else filename
         dem = open_dem_input(source_file, self.backend, self.config)
         if self.backend == "dask":
             self._opened_inputs.append(dem)

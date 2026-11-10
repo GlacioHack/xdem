@@ -57,7 +57,7 @@ def sampling_options(case: Case, config: RuntimeConfig) -> Mapping[str, Any]:
 def prepare_sampling(runner: Any, case: Case) -> None:
     """Prepare the dem to be sampled."""
 
-    write_constant_dem(runner.path("source-raster.tif"), runner.config)
+    write_constant_dem(runner.path("source-dem.tif"), runner.config)
 
 
 def run_sampling(runner: Any, case: Case) -> float:
@@ -333,11 +333,11 @@ class DaskTopkComparison:
 
     param_names = ["implementation", "subsample_size"]
     params = [
-        ["geoutils", "dask_argtopk"],
+        ["xdem", "dask_argtopk"],
         asv_parameter_values(SUBSAMPLE_SIZES),
     ]
 
-    def setup(self, implementation: Literal["geoutils", "dask_argtopk"], subsample_size: int) -> None:
+    def setup(self, implementation: Literal["xdem", "dask_argtopk"], subsample_size: int) -> None:
         """Prepare one lazy dem containing regular nodata cells."""
 
         import_optional("dask", extra_name="benchmark")
@@ -350,13 +350,13 @@ class DaskTopkComparison:
         values = da.where(positions % 19 == 0, np.nan, 1.0).astype(np.float32)
         self.dem = gu.DataArrayRasterAccessor.from_array(values, from_origin(0, shape[0], 1, 1), 32633)
 
-    def _run(self, implementation: Literal["geoutils", "dask_argtopk"], subsample_size: int) -> None:
+    def _run(self, implementation: Literal["xdem", "dask_argtopk"], subsample_size: int) -> None:
         """Compute selected cell numbers through one top-k implementation."""
 
         import dask
 
         with dask.config.set(scheduler="threads", num_workers=1):
-            if implementation == "geoutils":
+            if implementation == "xdem":
                 rows, columns = _subsample_values(
                     self.dem.rst,
                     subsample_size,
@@ -370,14 +370,12 @@ class DaskTopkComparison:
             # Apply the independent native Dask reduction to the same prepared values
             topk_indices(self.dem.data, subsample_size)
 
-    def time_topk(self, implementation: Literal["geoutils", "dask_argtopk"], subsample_size: int) -> None:
+    def time_topk(self, implementation: Literal["xdem", "dask_argtopk"], subsample_size: int) -> None:
         """Measure complete deterministic selection after preparing the lazy dem."""
 
         self._run(implementation, subsample_size)
 
-    def track_peak_client_mem_mb(
-        self, implementation: Literal["geoutils", "dask_argtopk"], subsample_size: int
-    ) -> float:
+    def track_peak_client_mem_mb(self, implementation: Literal["xdem", "dask_argtopk"], subsample_size: int) -> float:
         """Measure peak client memory during deterministic selection."""
 
         _, metrics = profile_call(self._run, implementation, subsample_size, dask=False, include_children=False)

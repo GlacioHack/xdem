@@ -14,9 +14,9 @@ Otherwise, it passes.
 Default Pytest runs skip this module. To run it, use ``python -m pytest --large-data -m large_data -ra``.
 
 Size/chunk parameters can be modified by defining environment variables before the above call (defaults shown below):
-``GEOUTILS_LARGE_DATA_SHAPE`` (12288), ``GEOUTILS_LARGE_DATA_CHUNKS`` (1024),
-``GEOUTILS_LARGE_DATA_MEMORY_LIMIT`` (512MB), ``GEOUTILS_LARGE_DATA_PROFILE_INTERVAL`` (0.1 seconds) and
-``GEOUTILS_LARGE_DATA_TIMEOUT`` (1800 seconds).
+``XDEM_LARGE_DATA_SHAPE`` (12288), ``XDEM_LARGE_DATA_CHUNKS`` (1024),
+``XDEM_LARGE_DATA_MEMORY_LIMIT`` (512MB), ``XDEM_LARGE_DATA_PROFILE_INTERVAL`` (0.1 seconds) and
+``XDEM_LARGE_DATA_TIMEOUT`` (1800 seconds).
 Shape and chunk variables accept one square size or ``rows,columns``.
 
 During local development, add ``--lf`` to rerun only failed cases and save time!
@@ -69,13 +69,13 @@ def large_data_config(tmp_path_factory: pytest.TempPathFactory) -> RuntimeConfig
     """Create one larger-than-memory fixture configuration shared by all operations."""
 
     # Reusing sources avoids writing the same large dem for every backend case
-    directory = tmp_path_factory.mktemp("geoutils-large-data")
+    directory = tmp_path_factory.mktemp("xdem-large-data")
     return RuntimeConfig(
-        shape=_shape_from_env("GEOUTILS_LARGE_DATA_SHAPE", (12288, 12288)),
+        shape=_shape_from_env("XDEM_LARGE_DATA_SHAPE", (12288, 12288)),
         # Larger chunks retain 144 tasks while keeping the canonical dem above memory
-        chunks=_shape_from_env("GEOUTILS_LARGE_DATA_CHUNKS", (1024, 1024)),
-        memory_limit=os.environ.get("GEOUTILS_LARGE_DATA_MEMORY_LIMIT", "512MB"),
-        profile_interval=float(os.environ.get("GEOUTILS_LARGE_DATA_PROFILE_INTERVAL", "0.1")),
+        chunks=_shape_from_env("XDEM_LARGE_DATA_CHUNKS", (1024, 1024)),
+        memory_limit=os.environ.get("XDEM_LARGE_DATA_MEMORY_LIMIT", "512MB"),
+        profile_interval=float(os.environ.get("XDEM_LARGE_DATA_PROFILE_INTERVAL", "0.1")),
         directory=str(directory),
     )
 
@@ -92,7 +92,7 @@ def _execute_operation(case_name: str, config: RuntimeConfig, case: Case | None 
         source_file = next(
             (
                 runner.path(filename)
-                for filename in ("source-raster.tif", "source-polygonize.tif")
+                for filename in ("source-dem.tif", "source-polygonize.tif")
                 if os.path.isfile(runner.path(filename))
             ),
             None,
@@ -142,7 +142,7 @@ def _run_isolated(case_name: str, config: RuntimeConfig, case: Case | None = Non
     sender.close()
 
     # The timeout turns a dead worker tree into one actionable Pytest failure
-    timeout = float(os.environ.get("GEOUTILS_LARGE_DATA_TIMEOUT", "1800"))
+    timeout = float(os.environ.get("XDEM_LARGE_DATA_TIMEOUT", "1800"))
     if not receiver.poll(timeout):
         process.terminate()
         process.join()

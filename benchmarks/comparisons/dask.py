@@ -1,5 +1,5 @@
 """
-Prepare and calculate Dask equivalent to GeoUtils topk/reduction (required to support various sampling/stats method
+Prepare and calculate Dask equivalent to xDEM topk/reduction (required to support various sampling/stats method
 while supporting them through the Multiprocessing backend).
 """
 

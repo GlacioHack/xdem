@@ -34,7 +34,7 @@ class _ASVBenchmarkBase:
         """Prepare inputs and initialize execution case."""
 
         # Input generation
-        self._tmpdir = tempfile.TemporaryDirectory(prefix="geoutils-asv-benchmark-")
+        self._tmpdir = tempfile.TemporaryDirectory(prefix="xdem-asv-benchmark-")
         config = self.benchmark.make_config(parameter, self.case)
         self.config = with_directory(config, self._tmpdir.name)
 
@@ -148,7 +148,7 @@ def _register_asv_classes() -> None:
                 method = getattr(_ASVBenchmarkBase, method_name)
                 stable_name = f"asv_suite.parameter_sweeps.{class_name}.{method_name}"
                 attributes[method_name] = _named_method(method, stable_name)
-        if case.implementation == "geoutils":
+        if case.implementation == "xdem":
             attributes["pretty_name"] = format_api_label(benchmark.operation, case)
         globals()[class_name] = type(class_name, (_ASVBenchmarkBase,), attributes)
 

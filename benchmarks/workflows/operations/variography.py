@@ -296,7 +296,7 @@ DEM_VARIOGRAM_CASES = execution_cases(
     "dowd",
     None,
     executions=("inmem", "dask"),
-    labels={"method": "Dowd", "engine": "GeoUtils"},
+    labels={"method": "Dowd", "engine": "xdem"},
 )
 PAIR_EXECUTIONS: tuple[ExecutionMode, ...] = ("inmem", "dask")
 PAIR_REDUCTION_CASES = (
@@ -305,7 +305,7 @@ PAIR_REDUCTION_CASES = (
             method=estimator,
             execution=execution,
             options={"method": "groupwise" if estimator == "dowd" else "map-reduce"},
-            labels={"method": estimator.title(), "engine": "GeoUtils"},
+            labels={"method": estimator.title(), "engine": "xdem"},
         )
         for estimator in ("matheron", "cressie", "dowd")
         for execution in PAIR_EXECUTIONS

@@ -34,7 +34,7 @@ def filter_options(case: Case, config: RuntimeConfig) -> Mapping[str, Any]:
 def prepare_filter(runner: Any, case: Case) -> None:
     """Prepare the dem to be filtered."""
 
-    write_constant_dem(runner.path("source-raster.tif"), runner.config)
+    write_constant_dem(runner.path("source-dem.tif"), runner.config)
 
 
 def run_filter(runner: Any, case: Case) -> float:

@@ -15,11 +15,11 @@ from benchmarks.workflows.config import RuntimeConfig
 from benchmarks.workflows.core import Case
 from benchmarks.workflows.io import read_dem_center
 
-# Only these GeoUtils operations have an equivalent GDAL CLI command for the external comparison
+# Only these xDEM operations have an equivalent GDAL CLI command for the external comparison
 ComparisonOperation = Literal["clip", "reproject", "polygonize", "rasterize", "grid"]
 COMPARISON_OPERATIONS: tuple[ComparisonOperation, ...] = ("clip", "reproject", "polygonize", "rasterize", "grid")
 
-# We list the GDAL gridding algorithms that the command builder can use for matching GeoUtils methods
+# We list the GDAL gridding algorithms that the command builder can use for matching xDEM methods
 GdalGridAlgorithm = Literal[
     "nearest",
     "linear",
@@ -43,7 +43,7 @@ class GdalCommand:
 
 
 def _warp_memory_limit_mb(config: RuntimeConfig) -> int:
-    """Return the GDAL warp memory closest to one GeoUtils execution chunk."""
+    """Return the GDAL warp memory closest to one xDEM execution chunk."""
 
     # GDAL holds one Float32 source and destination buffer plus their 1-bit nodata masks
     chunk_height = min(config.shape[0], config.chunks[0])
@@ -98,7 +98,7 @@ def build_gdal_grid_command(
         algorithm_options.append(f"nodata={nodata}")
     algorithm_definition = ":".join((algorithm, *algorithm_options))
 
-    # Bounds describe dem edges while GeoUtils grid coordinates describe cell centers
+    # Bounds describe dem edges while xDEM grid coordinates describe cell centers
     left, bottom, right, top = bounds
     height, width = shape
     command = [
@@ -152,13 +152,13 @@ def build_gdal_command(
     vector_file: str,
     point_file: str,
 ) -> GdalCommand:
-    """Build one GDAL command with the same input and output grid as GeoUtils."""
+    """Build one GDAL command with the same input and output grid as xDEM."""
 
     if config.directory is None:
         raise ValueError("GDAL comparison commands require an explicit output directory")
     operation_method = case.method
 
-    # Match output storage tiles and the GDAL block cache used by GeoUtils
+    # Match output storage tiles and the GDAL block cache used by xDEM
     # These settings control file access, not GDAL's internal processing chunks
     height, width = config.shape
     common_config = ["--config", "GDAL_CACHEMAX", str(config.gdal_cachemax_mb)]
@@ -208,7 +208,7 @@ def build_gdal_command(
         return GdalCommand(command, output_file)
 
     if operation == "reproject":
-        # Match the GeoUtils WGS84 to UTM zone 32N grid and selected resampling method
+        # Match the xDEM WGS84 to UTM zone 32N grid and selected resampling method
         if case.method is None:
             raise ValueError("A GDAL reprojection comparison requires a resampling method")
         resampling = {"nearest": "near", "cubic_spline": "cubicspline"}.get(case.method, case.method)
@@ -262,7 +262,7 @@ def build_gdal_command(
         return GdalCommand(command, output_file)
 
     if operation == "rasterize":
-        # Byte burn values match the GeoUtils binary rasterization output
+        # Byte burn values match the xDEM binary rasterization output
         output_file = os.path.join(config.directory, "output-gdal-rasterize.tif")
         command = [
             _require_command("gdal_rasterize"),
@@ -292,7 +292,7 @@ def build_gdal_command(
         return GdalCommand(command, output_file)
 
     if operation == "grid":
-        # Select the equivalent GDAL algorithm for each representative GeoUtils method
+        # Select the equivalent GDAL algorithm for each representative xDEM method
         output_file = os.path.join(config.directory, "output-gdal-grid.tif")
         algorithms: dict[str, GdalGridAlgorithm] = {
             "nearest": "nearest",
@@ -343,7 +343,7 @@ def execute_gdal(runner: Any, case: Case) -> float:
     """Run and validate the GDAL command matching the selected operation."""
 
     operation = runner.operation.name
-    dem_file = runner.path("source-polygonize.tif" if operation == "polygonize" else "source-raster.tif")
+    dem_file = runner.path("source-polygonize.tif" if operation == "polygonize" else "source-dem.tif")
     command = build_gdal_command(
         operation,
         case,

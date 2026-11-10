@@ -44,7 +44,7 @@ def dem_options(case: Case, config: RuntimeConfig) -> Mapping[str, Any]:
 def prepare_dem_operation(runner: Any, case: Case) -> None:
     """Prepare inputs for the dem operation."""
 
-    write_constant_dem(runner.path("source-raster.tif"), runner.config)
+    write_constant_dem(runner.path("source-dem.tif"), runner.config)
     if runner.operation.name == "clip":
         write_vector_source(
             runner.path("source-vector.gpkg"),
@@ -59,7 +59,7 @@ def run_dem_operation(runner: Any, case: Case) -> float:
         from benchmarks.comparisons.gdal import execute_gdal
 
         return execute_gdal(runner, case)
-    if case.implementation != "geoutils":
+    if case.implementation != "xdem":
         raise ValueError(f"Unsupported {runner.operation.name} implementation: {case.implementation}")
 
     operation = runner.operation.name

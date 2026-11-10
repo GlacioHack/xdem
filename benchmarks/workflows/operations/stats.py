@@ -83,7 +83,7 @@ def prepare_statistics(runner: Any, case: Case) -> None:
             runner.config.chunks,
         )
         return
-    write_constant_dem(runner.path("source-raster.tif"), runner.config)
+    write_constant_dem(runner.path("source-dem.tif"), runner.config)
 
 
 def run_statistics(runner: Any, case: Case) -> float:
@@ -176,7 +176,7 @@ def grouped_statistics(runner: Any, dem: Any, case: Case) -> float:
 def mergeable_statistics_options(case: Case, config: RuntimeConfig) -> Mapping[str, Any]:
     """Select the public reduction backend while preserving the same spatial or stratified workload."""
 
-    options: dict[str, Any] = {"statistics": ("sum", "mean", "valid count"), "backend": "geoutils"}
+    options: dict[str, Any] = {"statistics": ("sum", "mean", "valid count"), "backend": "xdem"}
     if case.engine != "native":
         options.update(backend="flox", flox_engine="numba" if case.engine == "flox_numba" else None)
     if case.method == "stratified":
@@ -393,7 +393,7 @@ MERGEABLE_CASES = tuple(
         method=method,
         engine=engine,
         execution=execution,
-        labels={"engine": {"native": "GeoUtils", "flox_default": "Flox default", "flox_numba": "Flox Numba"}[engine]},
+        labels={"engine": {"native": "xdem", "flox_default": "Flox default", "flox_numba": "Flox Numba"}[engine]},
     )
     for method in ("stratified", "fractional")
     for engine in ("native", "flox_default", "flox_numba")
@@ -401,7 +401,7 @@ MERGEABLE_CASES = tuple(
     if engine == "native" or execution != "multiprocessing"
 )
 MERGEABLE_CASES += tuple(
-    Case(method=method, engine="native", execution=execution, labels={"engine": "GeoUtils"})
+    Case(method=method, engine="native", execution=execution, labels={"engine": "xdem"})
     for method in ("center", "all_touched", "separate_bands")
     for execution in ("inmem", "dask", "multiprocessing")
 )
@@ -642,9 +642,9 @@ class GlobalDaskReduction:
     warmup_time = 0
     timeout = 300
     param_names = ["implementation", "dem_size"]
-    params = [["geoutils", "native_dask"], asv_parameter_values(DEM_SIZES)]
+    params = [["xdem", "native_dask"], asv_parameter_values(DEM_SIZES)]
 
-    def setup(self, implementation: Literal["geoutils", "native_dask"], dem_size: int) -> None:
+    def setup(self, implementation: Literal["xdem", "native_dask"], dem_size: int) -> None:
         """Prepare one finite Dask dem and the same mergeable statistic request for both implementations."""
 
         import_optional("dask", extra_name="benchmark")
@@ -658,14 +658,14 @@ class GlobalDaskReduction:
         self.aliases = {"mean", "min", "max", "sum", "sumofsquares", "rmse", "std"}
         self.statistics = _normalize_statistics(sorted(self.aliases), grouped=False)
 
-    def time_reduction(self, implementation: Literal["geoutils", "native_dask"], dem_size: int) -> None:
+    def time_reduction(self, implementation: Literal["xdem", "native_dask"], dem_size: int) -> None:
         """Compute the requested global estimates with the selected Dask reduction implementation."""
 
         import dask
 
         del dem_size
         with dask.config.set(scheduler="threads", num_workers=1):
-            if implementation == "geoutils":
+            if implementation == "xdem":
                 _reduce_values([self.values], self.statistics)
             else:
                 global_statistics(self.values)

@@ -595,7 +595,7 @@ class TestGdalCommands:
             "reproject",
             reference_case,
             config,
-            dem_file="source-raster.tif",
+            dem_file="source-dem.tif",
             vector_file="source-vector.gpkg",
             point_file="source-points.gpkg",
         ).command
@@ -634,7 +634,7 @@ class TestGdalCommands:
             operation,  # type: ignore[arg-type]
             Case(method="nearest" if operation in ("reproject", "grid") else None),
             config,
-            dem_file="source-raster.tif",
+            dem_file="source-dem.tif",
             vector_file="source-vector.gpkg",
             point_file="source-points.gpkg",
         )
@@ -649,9 +649,9 @@ class TestGdalCommands:
             "grid": "gdal_grid",
         }[operation]
         expected_source = {
-            "clip": "source-raster.tif",
-            "reproject": "source-raster.tif",
-            "polygonize": "source-raster.tif",
+            "clip": "source-dem.tif",
+            "reproject": "source-dem.tif",
+            "polygonize": "source-dem.tif",
             "rasterize": "source-vector.gpkg",
             "grid": "source-points.gpkg",
         }[operation]
@@ -695,7 +695,7 @@ class TestPdalCommands:
             operation,
             Case(output_driver=driver),
             config,
-            dem_file="source-raster.tif",
+            dem_file="source-dem.tif",
         )
         pipeline = json.loads(Path(comparison.pipeline_file).read_text(encoding="utf-8"))["pipeline"]
         stage_types = [stage["type"] for stage in pipeline]
@@ -715,7 +715,7 @@ class TestPdalCommands:
 
         # Both paths use the configured cache, source dem and point output
         assert comparison.command == ["pdal", "pipeline", comparison.pipeline_file]
-        assert pipeline[0]["filename"] == "source-raster.tif"
+        assert pipeline[0]["filename"] == "source-dem.tif"
         assert pipeline[0]["gdalopts"] == [f"GDAL_CACHEMAX={config.gdal_cachemax_mb}"]
         assert pipeline[-1]["filename"] == comparison.output_file
         assert Path(comparison.output_file).suffix == f".{driver.lower()}"

@@ -1,4 +1,4 @@
-"""Prepare and calculate equivalent GeoUtils and Flox grouped statistics."""
+"""Prepare and calculate equivalent xDEM and Flox grouped statistics."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def compute_geoutils_grouped_stats(
     *,
     mp_config: MultiprocConfig | None = None,
 ) -> pd.DataFrame:
-    """Compute the comparison statistics through public GeoUtils stats()."""
+    """Compute the comparison statistics through public xDEM stats()."""
 
     from geoutils.stats import stats
 
@@ -94,7 +94,7 @@ def grouped_stats(
     else:
         selected = np.where(mask[None, ...] & np.isfinite(values), values, np.nan)
 
-    # Ask Flox for the three public results used by the equivalent GeoUtils stats() call
+    # Ask Flox for the three public results used by the equivalent xDEM stats() call
     axes = tuple(range(-groups.ndim, 0))
     method = "map-reduce" if use_dask else None
     reductions = []
@@ -121,7 +121,7 @@ def grouped_stats(
 
         reductions = list(dask.compute(*reductions))
 
-    # Match the complete typed table returned by GeoUtils without calling any GeoUtils formatter
+    # Match the complete typed table returned by xDEM without calling any xDEM formatter
     count, mean, std = reductions
     data = np.stack((count, mean, std), axis=-1).transpose(1, 0, 2).reshape(len(categories), -1)
     columns = pd.MultiIndex.from_product(

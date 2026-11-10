@@ -106,7 +106,7 @@ def reproject_options(case: Case, config: RuntimeConfig) -> Mapping[str, Any]:
 def prepare_reproject(runner: Any, case: Case) -> None:
     """Prepare the dem to be reprojected."""
 
-    write_constant_dem(runner.path("source-raster.tif"), runner.config)
+    write_constant_dem(runner.path("source-dem.tif"), runner.config)
     if case.engine == "operator" and find_spec("numba") is not None:
         if case.method in ("cubic", "cubic_spline", "lanczos"):
             # Compile the selected dem kernel outside the measured operation
@@ -131,7 +131,7 @@ def run_reproject(runner: Any, case: Case) -> float:
     dem = runner.make_dem()
     options = reproject_options(case, runner.config)
 
-    # Fix the target size so GeoUtils and GDAL references write the same pixel count
+    # Fix the target size so xDEM and GDAL references write the same pixel count
     mp_config = runner._multiproc_config() if runner.backend == "multiprocessing" else None
     output = dem.dem.reproject(**options) if runner.backend == "dask" else dem.reproject(**options, mp_config=mp_config)
     return runner._compute_dem(output)
@@ -169,7 +169,7 @@ OPERATOR_CASES = tuple(
         engine="operator",
         execution="inmem",
         labels={
-            "engine": "GeoUtils operator",
+            "engine": "xDEM operator",
             "api_resampling": OPERATOR_CALLS[method],
         },
     )

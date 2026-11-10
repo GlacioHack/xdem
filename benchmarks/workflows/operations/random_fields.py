@@ -40,7 +40,7 @@ def random_field_options(case: Case, config: RuntimeConfig) -> Mapping[str, Any]
 def prepare_random_field(runner: Any, case: Case) -> None:
     """Write one dem and prepare the same Gaussian covariance for every case."""
 
-    write_constant_dem(runner.path("source-raster.tif"), runner.config)
+    write_constant_dem(runner.path("source-dem.tif"), runner.config)
     correlation = VariogramModel("gaussian", effective_range=FIELD_EFFECTIVE_RANGE, partial_sill=1)
     runner.random_field_structure = gu.ErrorStructure([gu.ErrorComponent("spatial", 1, correlation)])
 

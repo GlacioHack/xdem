@@ -60,7 +60,7 @@ SERIES_COLORS = {
     PDAL_CLI_LABEL: "#CC79A7",
 }
 
-# Group plots by the GeoUtils choice represented by their separate lines; every plot still scales a numeric input
+# Group plots by the xDEM choice represented by their separate lines; every plot still scales a numeric input
 COMPARISON_SECTION_DETAILS: dict[ComparisonDimension, tuple[str, str]] = {
     "execution": (
         "Execution modes",
@@ -81,7 +81,7 @@ COMPARISON_SECTION_DETAILS: dict[ComparisonDimension, tuple[str, str]] = {
     ),
     "output_driver": (
         "Point output formats",
-        "Compare file-to-file LAS and LAZ output from GeoUtils multiprocessing and PDAL CLI.",
+        "Compare file-to-file LAS and LAZ output from v multiprocessing and PDAL CLI.",
     ),
 }
 
@@ -177,7 +177,7 @@ class ComparisonMeasurement:
 class _PreviewResult:
     """Provide complete deterministic ASV-like measurements for renderer development."""
 
-    def __init__(self, commit_hash: str = "preview-current", geoutils_scale: float = 1.0) -> None:
+    def __init__(self, commit_hash: str = "preview-current", xdem_scale: float = 1.0) -> None:
         """Create sample values matching each comparison's parameter count."""
 
         self.commit_hash = commit_hash
@@ -200,9 +200,9 @@ class _PreviewResult:
                 if f"{prefix}.time_operation" in self.values:
                     continue
 
-                # Scale GeoUtils values between fake revisions while leaving optional and CLI references stable
+                # Scale xDEM values between fake revisions while leaving optional and CLI references stable
                 benchmark_case = BENCHMARK_CASE_BY_CLASS[class_name]
-                scale = geoutils_scale if benchmark_case.implementation == "geoutils" else 1.0
+                scale = xdem_scale if benchmark_case.implementation == "xdem" else 1.0
                 parameters = [[repr(value) for value in parameter_values]]
                 self.parameters[f"{prefix}.time_operation"] = parameters
                 self.parameters[f"{prefix}.track_end_to_end_time_s"] = parameters
@@ -386,8 +386,8 @@ def collect_comparison_measurements(
                     series_label=series_label,
                     operation=comparison.operation,
                     method=selected_case.method,
-                    calculation_engine=selected_case.engine if selected_case.implementation == "geoutils" else None,
-                    strategy=selected_case.strategy if selected_case.implementation == "geoutils" else None,
+                    calculation_engine=selected_case.engine if selected_case.implementation == "xdem" else None,
+                    strategy=selected_case.strategy if selected_case.implementation == "xdem" else None,
                     execution_mode=selected_case.execution,
                     external_reference={"gdal": "gdal_cli", "pdal": "pdal_cli", "flox": "flox"}.get(
                         selected_case.implementation
@@ -424,7 +424,7 @@ def _plot_comparison(
     """Plot elapsed time and peak additional RAM, optionally adding operation-only time."""
 
     # Keep Matplotlib caches in a writable disposable location under sandboxed runs
-    os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "geoutils-matplotlib-cache"))
+    os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "xdem-matplotlib-cache"))
 
     # Import plotting only for explicit rendering commands
     import matplotlib.pyplot as plt
@@ -499,7 +499,7 @@ def _largest_shared_parameter(
             for record in records
             if record.comparison == comparison.slug and record.series_label == series_label
         }
-        # Optional Flox references may be skipped while the GeoUtils measurements remain available
+        # Optional Flox references may be skipped while the xDEM measurements remain available
         case = BENCHMARK_CASE_BY_CLASS[class_name]
         if not parameters and case.implementation == "flox":
             continue
@@ -553,7 +553,7 @@ def _shared_change_parameter(
 ) -> int | None:
     """Return the largest parameter shared by every requested series in both results."""
 
-    # Compare only input sizes measured for all three GeoUtils execution modes and the GDAL CLI on both revisions
+    # Compare only input sizes measured for all three xDEM execution modes and the GDAL CLI on both revisions
     series_labels = ("In memory", "Dask", "Multiprocessing", GDAL_CLI_LABEL)
     parameters = []
     for records in (baseline_records, current_records):
@@ -652,7 +652,7 @@ def performance_change_markdown(baseline_result: Any, current_result: Any) -> st
         "The summary "
         f"is the geometric mean across {operation_names}, using the largest parameter shared by every execution mode.",
         "",
-        "| GeoUtils execution mode | Before / GDAL CLI | After / GDAL CLI | Change |",
+        "| xDEM execution mode | Before / GDAL CLI | After / GDAL CLI | Change |",
         "|---|---:|---:|---:|",
     ]
     lines.extend(
@@ -831,7 +831,7 @@ def _plot_time_relative_to_pdal(
     records: list[ComparisonMeasurement],
     output: Path,
 ) -> None:
-    """Compare GeoUtils elapsed time with PDAL CLI on the largest shared point workload."""
+    """Compare xDEM elapsed time with PDAL CLI on the largest shared point workload."""
 
     # Import plotting only for an explicit rendering command
     import matplotlib.pyplot as plt
@@ -847,13 +847,13 @@ def _plot_time_relative_to_pdal(
         for comparison in comparisons:
             parameter = _largest_shared_parameter(comparison, records)
             pdal_time = _measurement_at(records, comparison.slug, PDAL_CLI_LABEL, parameter).end_to_end_time_s
-            geoutils_time = _measurement_at(
+            xdem_time = _measurement_at(
                 records,
                 comparison.slug,
                 execution_mode,
                 parameter,
             ).end_to_end_time_s
-            ratios.append(geoutils_time / pdal_time)
+            ratios.append(xdem_time / pdal_time)
 
         # Center both GeoUtils modes around each dem-to-point operation
         offset = (execution_mode_index - 0.5) * bar_width
@@ -866,7 +866,7 @@ def _plot_time_relative_to_pdal(
         )
         axis.bar_label(bars, fmt="%.1f×", padding=3, fontsize=8)
 
-    # PDAL equals one by definition and gives both GeoUtils ratios a common reference
+    # PDAL equals one by definition and gives both xDEM ratios a common reference
     axis.axhline(
         1.0,
         color=SERIES_COLORS[PDAL_CLI_LABEL],
@@ -906,7 +906,7 @@ def render_documentation_snapshot(
     """Write the documentation graphics and their complete numeric source."""
 
     # Keep Matplotlib caches in a writable disposable location under sandboxed runs
-    os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "geoutils-matplotlib-cache"))
+    os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "xdem-matplotlib-cache"))
     output_directory.mkdir(parents=True, exist_ok=True)
     records = collect_comparison_measurements(result)
 
@@ -1044,7 +1044,7 @@ def _inmem_implementation_measurements(
     records: list[ComparisonMeasurement],
     parameter: int | None = None,
 ) -> tuple[int, dict[str, ComparisonMeasurement]]:
-    """Return in-memory GeoUtils engines and any external GDAL result at one shared workload."""
+    """Return in-memory xDEM engines and any external GDAL result at one shared workload."""
 
     selected_labels = [
         label
@@ -1076,9 +1076,7 @@ def _execution_mode_measurements(
     """Return GeoUtils execution modes at the largest workload shared by every mode."""
 
     selected_labels = [
-        label
-        for label, class_name in comparison.series
-        if BENCHMARK_CASE_BY_CLASS[class_name].implementation == "geoutils"
+        label for label, class_name in comparison.series if BENCHMARK_CASE_BY_CLASS[class_name].implementation == "xdem"
     ]
     if parameter is None:
         parameter = _largest_parameter_for_series(comparison, records, selected_labels)
@@ -1246,7 +1244,7 @@ def _default_cases(comparison: Comparison, *, execution: ExecutionMode | None = 
 
     cases = []
     for case in comparison.cases:
-        if case.implementation != "geoutils" or (execution is not None and case.execution != execution):
+        if case.implementation != "xdem" or (execution is not None and case.execution != execution):
             continue
 
         # These operations also benchmark choices that differ from their public defaults
@@ -1268,7 +1266,7 @@ def _default_comparisons() -> tuple[Comparison, ...]:
     for comparison in COMPARISONS:
         if not comparison.summary or comparison.by not in ("execution", "strategy"):
             continue
-        if not any(case.execution == "dask" and case.implementation == "geoutils" for case in comparison.cases):
+        if not any(case.execution == "dask" and case.implementation == "xdem" for case in comparison.cases):
             continue
         key = (comparison.operation, comparison.method)
         current = selected.get(key)
@@ -1994,7 +1992,7 @@ def _render_preview(website_directory: Path) -> None:
 
     # Two fake revisions also exercise the generated before/after performance table
     current_result = _PreviewResult()
-    baseline_result = _PreviewResult(commit_hash="preview-baseline", geoutils_scale=1.25)
+    baseline_result = _PreviewResult(commit_hash="preview-baseline", xdem_scale=1.25)
     render_comparisons(
         current_result,
         website_directory,
