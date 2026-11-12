@@ -102,9 +102,9 @@ dict_key_to_str = {
     "trim_central_statistic": "Central statistic for trimming",
     "trim_spread_statistic": "Spread statistic for trimming",
     "trim_spread_coverage": "Spread coverage for trimming",
-    "trim_iterative": "Trimming statistics are updated iteratively until no more value is excluded",
+    "trim_iterative": "Iterative trimming",
     "last_iteration": "Iteration at which algorithm stopped",
-    "iteration_stats": "Statistics compared to tolerances at each iteration",
+    "iteration_stats": "Statistics at each iteration",
     "converged": "All stopping tolerances satisfied",
     "terrain_attribute": "Terrain attribute used for correction",
     "angle": "Angle of directional correction",
@@ -2061,9 +2061,6 @@ class Coreg:
     def info(self, as_str: bool = False) -> None | str:
         """Summarize information about this coregistration."""
 
-        # Define max tabulation: longest name + 2 spaces
-        tab = np.max([len(v) for v in dict_key_to_str.values()]) + 2
-
         # Get list of existing deepest level keys in this coreg metadata
         def recursive_items(dictionary: Mapping[str, Any]) -> Iterable[tuple[str, Any]]:
             for key, value in dictionary.items():
@@ -2073,6 +2070,9 @@ class Coreg:
                     yield (key, value)
 
         existing_deep_keys = [k for k, v in recursive_items(self._meta)]
+
+        # Align values after the longest displayed label and two spaces
+        tab = max((len(dict_key_to_str[k]) for k in existing_deep_keys if k in dict_key_to_str), default=0) + 7
 
         # Formatting function for key values, rounding up digits for numbers and returning function names
         def format_coregdict_values(val: Any, tab: int) -> str:
@@ -2098,14 +2098,16 @@ class Coreg:
             elif isinstance(val, np.ndarray):
                 min_val = np.min(val)
                 str_val = str(np.round(val, decimals=dec_round_to_n(min_val, 3)))
+            elif isinstance(val, pd.DataFrame):
+                str_val = val.to_string(index=False)
             elif callable(val):
                 str_val = val.__name__
             else:
                 str_val = str(val)
 
-            # Add tabulation if string has a return to line
+            # Align multiline values with the value column
             if "\n" in str_val:
-                str_val = "\n".ljust(tab).join(str_val.split("\n"))
+                str_val = ("\n" + " " * tab).join(str_val.split("\n"))
 
             return str_val
 
