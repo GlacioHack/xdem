@@ -121,6 +121,7 @@ uncertainty
 
 guides
 cheatsheet
+sliderule
 ecosystem
 ```
 
