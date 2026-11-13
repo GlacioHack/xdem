@@ -64,8 +64,8 @@ See {ref}`static-surfaces` for details.
 
 We retrieve reference data using **[SlideRule](https://slideruleearth.io/)** for a chosen **area and time range**.
 
-Here, we choose all ICESat-2 ATL06 elevations from 2019–2020 intersecting the area of our example DEM in Svalbard, with quality filtering, 
-totalling 176,022 points. 
+Here, we choose all ICESat-2 ATL06 elevations from 2019–2020 intersecting the area of our example DEM in Svalbard, with quality filtering,
+totalling around 176,000 points.
 
 ```{note}
 The SlideRule code snippet below is not run when building the documentation and **may be out-of-date**.
@@ -79,17 +79,26 @@ import numpy as np
 import xdem
 from sliderule import icesat2, sliderule
 
+# Connect to SlideRule
 sliderule.init("slideruleearth.io")
+
+# Define the query area from the DEM bounds
 dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
 region = sliderule.toregion(list(dem.get_bbox_projected(out_crs=4326)))["poly"]
+
+# Select high-confidence land returns during 2019–2020
 params = {
     "poly": region,
     "srt": icesat2.SRT_LAND, "cnf": icesat2.CNF_SURFACE_HIGH,
     "ats": 20.0, "cnt": 10,
     "t0": "2019-01-01T00:00:00Z", "t1": "2021-01-01T00:00:00Z",
 }
+
+# Retrieve elevations and remove invalid or low-quality estimates
 gdf = icesat2.atl06sp(params)
 gdf = gdf[np.isfinite(gdf["h_li"]) & (gdf["atl06_quality_summary"] == 0)]
+
+# Save the point cloud
 gdf.to_file("EPC_IS2.gpkg")
 ```
 
@@ -212,10 +221,10 @@ See {ref}`coregistration` for more details.
 
 Uncertainty analysis estimates **error magnitude and spatial correlation** from differences on static surfaces.
 
-For this, we simply use {meth}`~xdem.DEM.estimate_error_structure` from the aligned DEM, defining err the short-range error component 
+For this, we simply use {meth}`~xdem.DEM.estimate_error_structure` from the aligned DEM, defining err the short-range error component
 varies with slope, while the long-range error component has constant magnitude.
 
-Importantly, we assume **errors from ICESat-2 are negligible** compared to DEM errors. 
+Importantly, we assume **errors from ICESat-2 are negligible** compared to DEM errors.
 
 ```{code-cell} ipython3
 errors = aligned_dem.estimate_error_structure(
@@ -231,7 +240,7 @@ errors.plot(magnitude_kwargs={"xlabel": "Slope (°)", "ylabel": "Elevation error
 plt.show()
 ```
 
-Snow depth and other surface changes could still affect the error proxy, even after quality filtering and using default robust estimators such as the NMAD and Dowd's. 
+Snow depth and other surface changes could still affect the error proxy, even after quality filtering and using default robust estimators such as the NMAD and Dowd's.
 
 We can then predict error magnitude across the DEM from its slope:
 
@@ -252,15 +261,13 @@ The map extrapolates errors from static surfaces to terrain with similar slopes,
 
 **Random error realizations** can account for the spatial correlation missing from the magnitude map: nearby errors vary together.
 
-To examplify those, we draw three realizations below with {meth}`~xdem.DEM.random_field`, which can be used for 
+To examplify those, we draw three realizations below with {meth}`~xdem.DEM.random_field`, which can be used for
 **numerical uncertainty propagation** through any analysis.
 
 ```{code-cell} ipython3
 field_dem = aligned_dem.reproject(res=100)
 
-# Fill missing slopes for generation over the full grid
-slope_values = predictors["slope"].reproject(field_dem).to_nanarray()
-field_predictors = {"slope": np.where(np.isfinite(slope_values), slope_values, np.nanmedian(slope_values))}
+field_predictors = {"slope": predictors["slope"].reproject(field_dem)}
 fields = field_dem.random_field(errors, predictors=field_predictors, n_fields=3, backend="gstools", random_state=42)
 perturbed_dems = [field_dem + field for field in fields]
 
@@ -272,9 +279,9 @@ for index, (field, ax) in enumerate(zip(fields, axes), start=1):
 plt.show()
 ```
 
-**Analytical propagation** is also supported for many methods, more efficiently returning uncertainties. 
+**Analytical propagation** is also supported for many methods, and generally more efficient.
 
-For instance, we can account for error magnitude and correlation during coregistration, which also **improves the fit**:
+For instance, we can propagate uncertainty during coregistration, which also **improves the fit**:
 
 ```{code-cell} ipython3
 coreg_uncertainty = xdem.uncertainty.propagate_uncertainty_coreg(
@@ -282,8 +289,10 @@ coreg_uncertainty = xdem.uncertainty.propagate_uncertainty_coreg(
     error_structure=errors, error_predictors={"tba": {"slope": dem.slope()}},
     method="analytical", random_state=42,
 )
-for name in ("tx", "ty", "tz"):
-    print(f"{name}: {coreg_uncertainty.estimate[name]:.2f} ± {coreg_uncertainty.std[name]:.2f} m")
+# We use ±2σ, roughly a 95% confidence interval for Gaussian errors
+for name, axis in zip(("tx", "ty", "tz"), "XYZ"):
+    value, sigma = coreg_uncertainty.estimate[name], coreg_uncertainty.std[name]
+    print(f"Translation in {axis}: {value:.2f} ± {2 * sigma:.2f} m")
 ```
 
 See {ref}`uncertainty-coreg` in the {ref}`uncertainty` guide for more details.
