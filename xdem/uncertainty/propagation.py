@@ -48,10 +48,10 @@ from geoutils.uncertainty.propagation import (
 
 from xdem import terrain
 from xdem._typing import NDArrayb, NDArrayf
+from xdem.coreg.affine import apply_matrix
 from xdem.coreg.base import (
     Coreg,
     _check_coreg_input_families,
-    apply_matrix,
 )
 from xdem.coreg.pipeline import CoregPipeline
 from xdem.uncertainty.error_structure import ErrorStructure

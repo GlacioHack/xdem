@@ -43,11 +43,15 @@ from scipy.integrate import quad_vec
 from scipy.stats import chi2, norm
 
 from xdem.coreg import Coreg
-from xdem.coreg.affine import ICP, LZD, _coreg_error_inputs
+from xdem.coreg.affine import (
+    ICP,
+    LZD,
+    _coreg_error_inputs,
+    translations_rotations_from_matrix,
+)
 from xdem.coreg.base import (
     _as_coreg_elevation,
     _check_coreg_input_families,
-    translations_rotations_from_matrix,
 )
 from xdem.uncertainty.propagation import _select_outputs
 
