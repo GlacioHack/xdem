@@ -66,7 +66,6 @@ def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
 
 
 class TestCoregClass:
-
     ref, tba, outlines = load_examples()  # Load example reference, to-be-aligned and mask.
     inlier_mask = ~outlines.create_mask(ref)
 
@@ -119,7 +118,7 @@ class TestCoregClass:
         list_missing_keys = [k for k in list_coregdict_keys if (k not in list_info_keys and k not in list_exceptions)]
         if len(list_missing_keys) > 0:
             raise AssertionError(
-                f"Missing keys in coreg.base.dict_key_to_str " f"for Coreg.info(): {', '.join(list_missing_keys)}"
+                f"Missing keys in coreg.base.dict_key_to_str for Coreg.info(): {', '.join(list_missing_keys)}"
             )
 
         # Check that info() contains the mapped string for an example
@@ -287,8 +286,7 @@ class TestCoregClass:
         coreg_full = coreg_class()
         argspec = inspect.getfullargspec(coreg_class)
         assert (
-            coreg_full.meta["inputs"]["random"]["subsample"]
-            == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
+            coreg_full.meta["inputs"]["random"]["subsample"] == argspec.defaults[argspec.args.index("subsample") - 1]  # type: ignore
         )
 
         # Add keyword arguments for speed on basinhopping method
@@ -563,7 +561,7 @@ class TestCoregClass:
         # Test it works with different resampling algorithms
         coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.nearest)
         coreg_method.apply(tba_dem, resample=True, resampling=rio.warp.Resampling.cubic)
-        with pytest.raises(ValueError, match="'None' is not a valid rasterio.enums.Resampling method.*"):
+        with pytest.raises(ValueError, match="Unknown gridding resampling method: None"):
             coreg_method.apply(tba_dem, resample=True, resampling=None)
 
     @pytest.mark.skipif(sys.platform != "linux", reason="Basinhopping from DirectionalBias fails on Mac")

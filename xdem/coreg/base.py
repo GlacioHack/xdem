@@ -46,7 +46,6 @@ import pandas as pd
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
 import scipy
-import scipy.ndimage
 import scipy.optimize
 from geoutils import profiler
 from geoutils._dispatch import (
@@ -869,16 +868,18 @@ def _bin_or_and_fit_nd(
     nd = params_fit_or_bin["nd"]
     if nd is not None and len(bias_vars) != nd:
         raise ValueError(
-            "A number of {} variable(s) has to be provided through the argument 'bias_vars', "
-            "got {}.".format(nd, len(bias_vars))
+            "A number of {} variable(s) has to be provided through the argument 'bias_vars', got {}.".format(
+                nd, len(bias_vars)
+            )
         )
 
     # If bias var names were explicitly passed at instantiation, check that they match the one from the dict
     if params_fit_or_bin["bias_var_names"] is not None:
         if not sorted(bias_vars.keys()) == sorted(params_fit_or_bin["bias_var_names"]):
             raise ValueError(
-                "The keys of `bias_vars` do not match the `bias_var_names` defined during "
-                "instantiation: {}.".format(params_fit_or_bin["bias_var_names"])
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during instantiation: {}.".format(
+                    params_fit_or_bin["bias_var_names"]
+                )
             )
 
     # Get number of variables
@@ -1254,7 +1255,7 @@ class Coreg:
             for k in meta.keys():
                 if k not in all_keys:
                     raise ValueError(
-                        f"Coregistration metadata key {k} is not supported. " f"Should be one of {', '.join(all_keys)}"
+                        f"Coregistration metadata key {k} is not supported. Should be one of {', '.join(all_keys)}"
                     )
 
             # Add keys to inputs
@@ -1407,7 +1408,9 @@ class Coreg:
         for lk, lv in sublevels.items():
             if lk in self._meta["inputs"].keys():
                 existing_level_keys = [
-                    (k, v) for k, v in self._meta["inputs"][lk].items() if k in existing_deep_keys  # type: ignore
+                    (k, v)
+                    for k, v in self._meta["inputs"][lk].items()  # type: ignore
+                    if k in existing_deep_keys
                 ]
                 if len(existing_level_keys) > 0:
                     inputs_str += [f"  {lv}\n"]
@@ -1423,7 +1426,9 @@ class Coreg:
             for lk, lv in sublevels.items():
                 if lk in self._meta["outputs"].keys():
                     existing_level_keys = [
-                        (k, v) for k, v in self._meta["outputs"][lk].items() if k in existing_deep_keys  # type: ignore
+                        (k, v)
+                        for k, v in self._meta["outputs"][lk].items()  # type: ignore
+                        if k in existing_deep_keys
                     ]
                     if len(existing_level_keys) > 0:
                         outputs_str += [f"  {lv}\n"]

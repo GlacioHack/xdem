@@ -19,7 +19,6 @@ import numpy as np
 import pandas as pd
 import pytest
 import rasterio as rio
-import scipy.ndimage
 import scipy.optimize
 import scipy.spatial
 import xarray as xr
@@ -294,6 +293,10 @@ def affine_elevation_input(
     geometry_z: bool,
 ) -> tuple[Any, Any, dict[str, Any]]:
     """Fixture to build small raster or point cloud inputs for the affine tests."""
+
+    # Parquet point reads use Dask for partition selection
+    if kind == "point" and execution == "mp":
+        pytest.importorskip("dask")
 
     # We create a sloping DEM with two NaNs
     rows, columns = np.indices((7, 9))

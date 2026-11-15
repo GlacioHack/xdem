@@ -1,8 +1,5 @@
 # Copyright (c) 2024 xDEM developers
-# Copyright (c) 2026 GeoUtils developers
-#
-# Adapted for xDEM from the GeoUtils uncertainty simulation module:
-# https://github.com/glaciohack/geoutils
+# Copyright (c) 2026 xDEM developers
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -19,6 +16,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Adapted for xDEM from the GeoUtils uncertainty simulation module:
+# https://github.com/glaciohack/geoutils
 
 """Estimate elevation errors and propagate them through terrain, area, and coregistration calculations."""
 

@@ -110,7 +110,7 @@ class CoregPipeline(Coreg):
         # Get the pipeline information for each step as a string
         final_str = []
         for i, step in enumerate(self.pipeline):
-            final_str.append(f"Pipeline step {i}:\n" f"################\n")
+            final_str.append(f"Pipeline step {i}:\n################\n")
             step_str = step.info(as_str=True)
             final_str.append(step_str)
 

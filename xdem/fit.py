@@ -534,7 +534,6 @@ def robust_norder_polynomial_fit(
     for deg in np.arange(1, max_order + 1):
         # If method is linear and package scipy
         if estimator_name == "Linear" and linear_pkg == "scipy":
-
             # Polynomial is linear in its coefficients; solve directly with OLS (no iteration needed).
             # np.polyfit returns highest-degree-first; polynomial_1d (via numpy.polynomial.polyval) expects
             # lowest-degree-first, so flip the output.
@@ -649,7 +648,6 @@ def robust_nfreq_sumsin_fit(
     amp_freq_phase = np.zeros((max_nb_frequency, 3 * max_nb_frequency)) * np.nan
 
     for nb_freq in np.arange(1, max_nb_frequency + 1):
-
         logging.info("Fitting with %d frequency", nb_freq)
 
         b = bounds_amp_wave_phase

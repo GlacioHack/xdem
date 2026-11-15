@@ -16,14 +16,12 @@ from pyproj import CRS
 from pyproj.transformer import Transformer
 
 import xdem
-import xdem.vcrs
 from xdem.dem import DEM
 
 DO_PLOT = False
 
 
 class TestDEM:
-
     def test_init(self) -> None:
         """Test that inputs work properly in DEM class init."""
         fn_img = xdem.examples.get_path_test("longyearbyen_ref_dem")
@@ -218,8 +216,7 @@ class TestDEM:
         with pytest.warns(UserWarning, match="Grid 'grid.tif' not found in*"):
             with pytest.raises(
                 ValueError,
-                match="The provided grid 'grid.tif' does not exist at https://cdn.proj.org/. "
-                "Provide an existing grid.",
+                match="The provided grid 'grid.tif' does not exist at https://cdn.proj.org/. Provide an existing grid.",
             ):
                 dem.set_vcrs(new_vcrs="grid.tif")
 
@@ -276,14 +273,14 @@ class TestDEM:
         # With both inputs as names
         dem.set_vcrs("EGM96")
         with pytest.warns(
-            UserWarning, match="Source and destination vertical CRS are the same, " "skipping vertical transformation."
+            UserWarning, match="Source and destination vertical CRS are the same, skipping vertical transformation."
         ):
             dem.to_vcrs("EGM96")
 
         # With one input as name, the other as CRS
         dem.set_vcrs("Ellipsoid")
         with pytest.warns(
-            UserWarning, match="Source and destination vertical CRS are the same, " "skipping vertical transformation."
+            UserWarning, match="Source and destination vertical CRS are the same, skipping vertical transformation."
         ):
             dem.to_vcrs(CRS("EPSG:4979"))
 

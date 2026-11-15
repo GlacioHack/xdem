@@ -121,8 +121,9 @@ class TestBiasCorr:
         with pytest.raises(
             TypeError,
             match=re.escape(
-                "Argument `fit_func` must be a function (callable) or the string '{}', "
-                "got <class 'str'>.".format("', '".join(biascorr.fit_workflows.keys()))
+                "Argument `fit_func` must be a function (callable) or the string '{}', got <class 'str'>.".format(
+                    "', '".join(biascorr.fit_workflows.keys())
+                )
             ),
         ):
             biascorr.BiasCorr(fit_func="yay")  # type: ignore
@@ -150,24 +151,21 @@ class TestBiasCorr:
         with pytest.raises(
             TypeError,
             match=re.escape(
-                "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, "
-                "got <class 'dict'>."
+                "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, got <class 'dict'>."
             ),
         ):
             biascorr.BiasCorr(fit_or_bin="bin", bin_sizes={"a": 1.5})  # type: ignore
 
         # For bin statistic
         with pytest.raises(
-            TypeError, match=re.escape("Argument `bin_statistic` must be a function (callable), " "got <class 'str'>.")
+            TypeError, match=re.escape("Argument `bin_statistic` must be a function (callable), got <class 'str'>.")
         ):
             biascorr.BiasCorr(fit_or_bin="bin", bin_statistic="count")  # type: ignore
 
         # For bin apply method
         with pytest.raises(
             TypeError,
-            match=re.escape(
-                "Argument `bin_apply_method` must be the string 'linear' or 'per_bin', " "got <class 'int'>."
-            ),
+            match=re.escape("Argument `bin_apply_method` must be the string 'linear' or 'per_bin', got <class 'int'>."),
         ):
             biascorr.BiasCorr(fit_or_bin="bin", bin_apply_method=1)  # type: ignore
 
@@ -177,7 +175,7 @@ class TestBiasCorr:
         fit_args = self.fit_args_rst_rst.copy()
         with pytest.raises(
             ValueError,
-            match=re.escape("A number of 1 variable(s) has to be provided through the argument 'bias_vars', " "got 2."),
+            match=re.escape("A number of 1 variable(s) has to be provided through the argument 'bias_vars', got 2."),
         ):
             bias_vars_dict = {"elevation": self.ref, "slope": xdem.terrain.slope(self.ref)}
             bcorr1d = biascorr.BiasCorr(bias_var_names=["elevation"])
@@ -185,7 +183,7 @@ class TestBiasCorr:
 
         with pytest.raises(
             ValueError,
-            match=re.escape("A number of 2 variable(s) has to be provided through the argument " "'bias_vars', got 1."),
+            match=re.escape("A number of 2 variable(s) has to be provided through the argument 'bias_vars', got 1."),
         ):
             bias_vars_dict = {"elevation": self.ref}
             bcorr2d = biascorr.BiasCorr(bias_var_names=["elevation", "slope"])
@@ -195,7 +193,7 @@ class TestBiasCorr:
         with pytest.raises(
             ValueError,
             match=re.escape(
-                "The keys of `bias_vars` do not match the `bias_var_names` defined during " "instantiation: ['ncc']."
+                "The keys of `bias_vars` do not match the `bias_var_names` defined during instantiation: ['ncc']."
             ),
         ):
             bcorr1d2 = biascorr.BiasCorr(bias_var_names=["ncc"])
@@ -224,6 +222,9 @@ class TestBiasCorr:
     )
     def test_biascorr__fit_1d(self, fit_args: Any, fit_func: Any, fit_optimizer: Any, capsys: Any) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the fit case (called by all its subclasses)."""
+
+        if fit_func == "norder_polynomial":
+            pytest.importorskip("sklearn")
 
         # Create a bias correction object
         bcorr = biascorr.BiasCorr(fit_or_bin="fit", fit_func=fit_func, fit_optimizer=fit_optimizer)
@@ -337,6 +338,9 @@ class TestBiasCorr:
         self, fit_args: Any, fit_func: Any, fit_optimizer: Any, bin_sizes: Any, bin_statistic: Any
     ) -> None:
         """Test the _fit_func and apply_func methods of BiasCorr for the bin_and_fit case (called by all subclasses)."""
+
+        if fit_func == "norder_polynomial":
+            pytest.importorskip("sklearn")
 
         # Curve fit can be unhappy in certain circumstances for numerical estimation of covariance
         # We don't care for this test
@@ -751,6 +755,10 @@ class TestBiasCorrChunked:
                 "dask",
                 0,
                 id="slope-dask",
+                # Rasterio warns before assigning the transform to temporary memory datasets
+                marks=pytest.mark.filterwarnings(
+                    "ignore:Dataset has no geotransform, gcps, or rpcs:rasterio.errors.NotGeoreferencedWarning"
+                ),
             ),
             pytest.param(
                 biascorr.TerrainBias(terrain_attribute="slope", fit_or_bin="bin", bin_sizes=5),

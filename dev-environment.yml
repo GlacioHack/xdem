@@ -42,7 +42,6 @@ dependencies:
   - pytest-socket
   - pytest-cov
   - coveralls
-  - flake8
   - pylint
   - pre-commit
 

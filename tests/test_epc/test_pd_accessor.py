@@ -42,10 +42,10 @@ class TestEPCAccessor:
 
         # 2/ Reject a table without geometry and a GeoDataFrame containing polygons
         with pytest.raises(AttributeError, match="point-cloud"):
-            pd.DataFrame({"height": [1]}).epc
+            _ = pd.DataFrame({"height": [1]}).epc
         polygons = gpd.GeoDataFrame(geometry=[Polygon([(0, 0), (1, 0), (0, 1)])], crs=32633)
         with pytest.raises(AttributeError, match="point geometries"):
-            polygons.epc
+            _ = polygons.epc
 
     @pytest.mark.parametrize("constructor", ["from_xyz", "from_array", "from_tuples"])
     @pytest.mark.parametrize("use_z", [False, True])

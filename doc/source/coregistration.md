@@ -179,7 +179,7 @@ The iteration stops if it reaches the maximum number of iteration limit, or if t
 below a specified tolerance.
 
 Terrain slopes at or below 1° are excluded by default because dividing elevation differences by a near-zero
-slope amplifies errors. Set `NuthKaab(min_slope=...)` to change this threshold in degrees. 
+slope amplifies errors. Set `NuthKaab(min_slope=...)` to change this threshold in degrees.
 
 ```{code-cell} ipython3
 :tags: [hide-cell]
