@@ -50,8 +50,8 @@ from xdem import terrain
 from xdem._typing import NDArrayb, NDArrayf
 from xdem.coreg.base import (
     Coreg,
-    _apply_affine_elevation,
     _check_coreg_input_families,
+    apply_matrix,
 )
 from xdem.coreg.pipeline import CoregPipeline
 from xdem.uncertainty.error_structure import ErrorStructure
@@ -268,11 +268,18 @@ def estimate_error_structure(
                 # Invert pipeline steps in reverse order, using each fitted rotation centroid
                 steps = fitted.pipeline if isinstance(fitted, CoregPipeline) else [fitted]
                 for step in reversed(steps):
-                    other = _apply_affine_elevation(
+                    point_config = (
+                        temporary_files.enter_context(mp_config.temporary()) if mp_config is not None else None
+                    )
+                    if point_config is not None:
+                        # Use point row counts and a point file format
+                        point_config.chunks = int(np.prod(point_config.chunks))
+                        point_config.driver = "GPKG"
+                    other = apply_matrix(
                         _get_pointcloud_interface(other),
                         matrix=np.linalg.inv(step.to_matrix()),
                         centroid=step.meta["outputs"]["affine"].get("centroid"),
-                        mp_config=mp_config,
+                        mp_config=point_config,
                     )
                 mask = None
             else:
@@ -311,6 +318,10 @@ def estimate_error_structure(
                 mp_config=sampling_config,
             )
             scale = np.sqrt(2.0) if other_precision == "same" else 1.0
+            if mp_config is not None and _get_pointcloud_interface(sampled) is not None:
+                # Use point row counts after sampling a raster at point locations
+                mp_config = mp_config.copy()
+                mp_config.chunks = int(np.prod(mp_config.chunks))
             source = _difference_proxy(sampled, scale, mp_config, temporary_files)
             if _get_raster_interface(source) is not None:
                 predictor_specs = {name: (source, index + 3) for index, name in enumerate(predictor_specs)}

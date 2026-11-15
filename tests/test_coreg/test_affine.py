@@ -66,7 +66,6 @@ from xdem.coreg.affine import (
 )
 from xdem.coreg.base import (
     InFitOrBinDict,
-    _reproject_horizontal_shift_samecrs,
     _sample_coreg_inputs,
 )
 from xdem.coreg.pipeline import CoregPipeline
@@ -330,20 +329,15 @@ class TestAffineCoreg:
         "xoff_yoff",
         [(ref.res[0], ref.res[1]), (10 * ref.res[0], 10 * ref.res[1]), (-1.2 * ref.res[0], -1.2 * ref.res[1])],
     )
-    def test_reproject_horizontal_shift_samecrs__gdal(
-        self, xoff_yoff: tuple[float, float], get_test_data_path: Callable[[str], str]
-    ) -> None:
-        """Check that the same-CRS reprojection based on SciPy (replacing Rasterio due to subpixel errors)
-        is accurate by comparing to GDAL."""
+    def test_apply_matrix__gdal(self, xoff_yoff: tuple[float, float], get_test_data_path: Callable[[str], str]) -> None:
+        """Checks that apply_matrix() reprojects shifted grids consistently with GDAL."""
 
         ref = load_examples()[0]
 
         # Reproject with SciPy
         xoff, yoff = xoff_yoff
         dst_transform = _translate(transform=ref.transform, xoff=xoff, yoff=yoff, distance_unit="georeferenced")
-        output = _reproject_horizontal_shift_samecrs(
-            raster_arr=ref.data, src_transform=ref.transform, dst_transform=dst_transform
-        )
+        output = coreg.apply_matrix(ref, np.eye(4), out_transform=dst_transform).to_nanarray()
 
         # Reproject with GDAL
         path_output2 = get_test_data_path(os.path.join("gdal", f"shifted_reprojected_xoff{xoff}_yoff{yoff}.tif"))

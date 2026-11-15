@@ -47,6 +47,7 @@ import scipy.spatial
 from geoutils._dispatch import (
     _get_pointcloud_interface,
     _get_raster_interface,
+    _is_pointcloud,
     _is_raster,
     is_dask_array,
 )
@@ -70,12 +71,12 @@ from xdem.coreg.base import (
     InRandomDict,
     OutAffineDict,
     OutIterativeDict,
-    _apply_affine_elevation,
     _apply_matrix_pts_mat,
     _bin_or_and_fit_nd,
     _make_matrix_valid,
     _ols_fit,
     _sample_coreg_inputs,
+    apply_matrix,
     invert_matrix,
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
@@ -2852,7 +2853,7 @@ def icp(
             owners[f"sigma_{side}"] = side
     for side, values in predictors.items():
         for name, value in values.items():
-            if isinstance(value, (gu.Raster, gu.PointCloud)) or np.ndim(value):
+            if _is_raster(value) or _is_pointcloud(value) or np.ndim(value):
                 auxiliary[f"error_{side}_{name}"] = value
                 owners[f"error_{side}_{name}"] = side
     pixel_size = ref_elev.res if _is_raster(ref_elev) else 1.0
@@ -2964,7 +2965,11 @@ def icp(
             # Update the to-be-aligned elevation before subsampling so each iteration uses the transformed X/Y positions
             assert temporary_files is not None
             config = temporary_files.enter_context(mp_config.temporary()) if mp_config is not None else None
-            moved = _apply_affine_elevation(tba_elev_orig, final_matrix, centroid, mp_config=config)
+            if config is not None and not _is_raster(tba_elev_orig):
+                # Use point row counts and a point file format
+                config.chunks = int(np.prod(config.chunks))
+                config.driver = "GPKG"
+            moved = apply_matrix(tba_elev_orig, final_matrix, centroid=centroid, resample=False, mp_config=config)
             tba_elev = _get_raster_interface(moved) if _is_raster(tba_elev_orig) else _get_pointcloud_interface(moved)
             # We update the iterative output with the outside loop iteration number
             it_stats = output_iterative["iteration_stats"]
@@ -4216,7 +4221,11 @@ def cpd(
             # Update the to-be-aligned elevation before subsampling so each iteration uses the transformed X/Y positions
             assert temporary_files is not None
             config = temporary_files.enter_context(mp_config.temporary()) if mp_config is not None else None
-            moved = _apply_affine_elevation(tba_elev_orig, final_matrix, centroid, mp_config=config)
+            if config is not None and not _is_raster(tba_elev_orig):
+                # Use point row counts and a point file format
+                config.chunks = int(np.prod(config.chunks))
+                config.driver = "GPKG"
+            moved = apply_matrix(tba_elev_orig, final_matrix, centroid=centroid, resample=False, mp_config=config)
             tba_elev = _get_raster_interface(moved) if _is_raster(tba_elev_orig) else _get_pointcloud_interface(moved)
             # We update the iterative output with the outside loop iteration number
             it_stats = output_iterative["iteration_stats"]
@@ -5406,7 +5415,7 @@ def lzd(
             owners[f"sigma_{name}"] = name
     for side, values in predictors.items():
         for name, values_at_source in values.items():
-            if isinstance(values_at_source, (gu.Raster, gu.PointCloud)) or np.ndim(values_at_source):
+            if _is_raster(values_at_source) or _is_pointcloud(values_at_source) or np.ndim(values_at_source):
                 auxiliaries[f"error_{side}_{name}"] = values_at_source
                 owners[f"error_{side}_{name}"] = side
 

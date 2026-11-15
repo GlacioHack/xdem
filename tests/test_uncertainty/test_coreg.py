@@ -1084,6 +1084,7 @@ class TestCoregistrationPropagationChunked:
         "backend, coreg_method, fit_options",
         [
             pytest.param("dask", xdem.coreg.ICP, {"force_opti": "gls", "gls_method": "approximate"}, id="gls-dask"),
+            pytest.param("dask", xdem.coreg.LZD, {"force_opti": "gls", "gls_method": "approximate"}, id="lzd-gls-dask"),
             pytest.param("mp", xdem.coreg.LZD, {"force_opti": "tls", "tls_method": "spatial"}, id="tls-mp"),
         ],
     )

@@ -1186,6 +1186,38 @@ class TestElevationErrorEstimationChunked:
                 interface = _get_pointcloud_interface(array)
             assert not interface.is_loaded
 
+    @pytest.mark.parametrize("chunks", [35, (5, 7)])
+    def test_estimate_error_structure__chunk_invariance_inverse(
+        self, curved_dem: xdem.DEM, tmp_path: Path, chunks: int | tuple[int, int]
+    ) -> None:
+        """Checks that inverse point transforms accept raster tile sizes during multiprocessing estimation."""
+
+        from geoutils.multiproc import MultiprocConfig
+
+        # Create noisy reference points
+        reference = curved_dem.to_pointcloud(force_pixel_offset="center")
+        noise = np.random.default_rng(42).normal(0, 0.01, reference.point_count)
+        reference = reference.copy(new_array=reference.data + 1 + noise)
+        options: dict[str, Any] = dict(
+            coreg_method=xdem.coreg.VerticalShift(),
+            predictors={},
+            random_state=4,
+            components={"measurement": {"magnitude": "constant", "correlation": None}},
+        )
+        expected = xdem.uncertainty.estimate_error_structure(curved_dem, reference, **options)
+
+        # Estimate errors from an unloaded raster
+        path = tmp_path / "source.tif"
+        curved_dem.to_file(path)
+        source = xdem.DEM(path)
+        config = MultiprocConfig(chunks=chunks)
+        assert not source.is_loaded
+        actual = xdem.uncertainty.estimate_error_structure(source, reference, mp_config=config, **options)
+
+        assert not source.is_loaded and reference.is_loaded
+        assert config.chunks == chunks
+        assert actual.predict_magnitude() == pytest.approx(expected.predict_magnitude(), rel=0, abs=1e-12)
+
 
 class TestElevationErrorEstimationErrors:
     """Test module for grid validation during error estimation."""

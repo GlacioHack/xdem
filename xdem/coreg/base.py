@@ -27,6 +27,9 @@ import warnings
 from collections import OrderedDict
 from collections.abc import Mapping
 from contextlib import ExitStack
+from functools import partial
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -47,7 +50,6 @@ import pandas as pd
 import rasterio as rio
 import rasterio.warp  # pylint: disable=unused-import
 import scipy
-import scipy.interpolate
 import scipy.ndimage
 import scipy.optimize
 from geoutils import profiler
@@ -58,22 +60,37 @@ from geoutils._dispatch import (
     is_dask_array,
     is_dask_dataframe,
 )
-from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.interface.resampling import _interp_points_base
+from geoutils.interface.gridding import _grid_pointcloud, _source_support_pixels
 from geoutils.multiproc import MultiprocConfig
-from geoutils.multiproc.chunked import GeoGrid
-from geoutils.operators.interpolator import _interpn_interpolator
+from geoutils.multiproc.chunked import ChunkedGeoGrid, GeoGrid, normalize_chunks
+from geoutils.multiproc.cluster import _map_bounded
+from geoutils.multiproc.mparray import _write_multiproc_result
+from geoutils.operators.interpolator import Interpolator, _interpn_interpolator
+from geoutils.operators.methods import _resampling_operator
+from geoutils.operators.neighbours import _compute_resampling_overlap
+from geoutils.operators.reducer import Reducer
+from geoutils.pointcloud.dataframe import _get_dataframe_attrs, _set_dataframe_attrs
+from geoutils.pointcloud.io import (
+    _load_pointcloud_rows,
+    _resolve_pointcloud_output,
+    _stage_pointcloud_partition,
+    _write_pointcloud_partitions,
+)
+from geoutils.pointcloud.las import _point_partition_size
 from geoutils.pointcloud.pointcloud import PointCloud, PointCloudType
+from geoutils.pointcloud.transformation import _cast_multiproc_output
+from geoutils.projtools import _affine_matmul
 from geoutils.raster import Raster, RasterType, raster
 from geoutils.raster.array import get_array_and_mask
 from geoutils.raster.referencing import _cast_pixel_interpretation, _coords
 from geoutils.raster.transformation import (
-    _crop_window,
+    _reproject_grid_operator,
     _resampling_method_from_str,
     _translate,
 )
 from geoutils.sampling.support import _raster_from_input
 
+from xdem._misc import import_optional
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.fit import (
     polynomial_1d,
@@ -183,7 +200,7 @@ def _check_coreg_input_families(*values: Any, mp_config: MultiprocConfig | None 
         # We raise an error if Dask and multiprocessing are passed together
         if mp_config is not None and (is_dask_array(value) or is_dask_dataframe(value)):
             raise ValueError("Cannot use multiprocessing and Dask simultaneously. Remove mp_config for Dask inputs.")
-        if isinstance(value, xr.Dataset):
+        if isinstance(value, xr.Dataset) or isinstance(getattr(value, "_obj", None), xr.Dataset):
             raise TypeError(
                 "Select an elevation DataArray from the Dataset before coregistration or uncertainty analysis."
             )
@@ -234,17 +251,23 @@ def _as_coreg_elevation(
         raise TypeError("Select an elevation DataArray from the Dataset before coregistration or uncertainty analysis.")
 
     # Select the point elevation column
-    selected_column = elev.attrs.get("data_name") if isinstance(elev, gpd.GeoDataFrame) else None
-    selected_metadata = isinstance(elev, gpd.GeoDataFrame) and "data_name" in elev.attrs
+    dataframe_input = isinstance(elev, gpd.GeoDataFrame) or is_dask_dataframe(elev)
+    if is_dask_dataframe(elev):
+        from geoutils.pointcloud.pd_accessor import _register_dask_pointcloud_accessor
+
+        _register_dask_pointcloud_accessor()
+    attributes = _get_dataframe_attrs(elev) if dataframe_input else {}
+    selected_column = attributes.get("data_name")
+    selected_metadata = "data_name" in attributes
     if (
-        isinstance(elev, gpd.GeoDataFrame)
+        dataframe_input
         and z_name is not None
         and not (selected_metadata and (selected_column is None or selected_column in elev.columns))
     ):
         if z_name not in elev:
             raise ValueError(f"'z_name' {z_name} is not a column of the elevation point cloud dataframe.")
         selected = elev.copy(deep=False)
-        selected.attrs["data_name"] = z_name
+        _set_dataframe_attrs(selected, {**attributes, "data_name": z_name})
         return _get_pointcloud_interface(selected)
 
     # 2/ Use existing raster or point cloud interfaces
@@ -412,11 +435,6 @@ def _postprocess_coreg_apply_rst(
 
     # 2/ Reproject onto the original raster grid
     if resample:
-        # TODO: Use this function for a translation only, for consistency with the rest of Coreg?
-        #  (would require checking transform difference is only a translation)
-        # applied_elev = _reproject_horizontal_shift_samecrs(raster_arr=applied_elev, src_transform=out_transform,
-        #                                                    dst_transform=transform)
-
         # Reproject the DEM from its out_transform onto the transform
         applied_raster = constructor(applied_elev, out_transform, crs, nodata=nodata, area_or_point=area_or_point)
         original_grid = input_raster
@@ -1288,12 +1306,188 @@ def _apply_matrix_pts(
     return transformed_epc
 
 
+def _apply_matrix_pts_block(
+    frame: gpd.GeoDataFrame, matrix: NDArrayf, centroid: tuple[float, float, float] | None, data_name: str | None
+) -> gpd.GeoDataFrame:
+    """Apply an affine transform to a point partition (chunk)."""
+
+    if data_name is not None:
+        return _apply_matrix_pts(frame, matrix, centroid=centroid, z_name=data_name)
+    if frame.empty:
+        return frame.copy()
+
+    # Read and transform elevations stored in the point geometry
+    x, y, z = PointCloud(frame, data_name=None).to_xyz()
+    x, y, z = _apply_matrix_pts_arr(x, y, z, matrix=matrix, centroid=centroid)
+
+    # Replace the 3D geometry without changing other columns
+    result = frame.copy()
+    result.geometry = gpd.points_from_xy(x, y, z, crs=frame.crs)
+    return result
+
+
+def _wrapper_multiproc_apply_matrix_pts_block(
+    partition: Any,
+    start: int,
+    count: int,
+    data_name: str | None,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None,
+    filename: Path,
+) -> Path:
+    """Read and apply affine transform to a point partition, then save it with the GeoUtils partition writer."""
+
+    # Read only the worker's rows, including auxiliary attributes
+    if isinstance(partition, gpd.GeoDataFrame):
+        frame = partition
+    else:
+        source = _get_pointcloud_interface(partition)
+        if source._is_xr:
+            frame = source._dataset.compute().pc.to_geoutils().gdf
+        else:
+            frame = _load_pointcloud_rows(source, start, count)
+    transformed = _apply_matrix_pts_block(frame, matrix, centroid, data_name)
+    return _stage_pointcloud_partition(transformed, filename)
+
+
+def _multiproc_apply_matrix_pointcloud(
+    source: PointCloudBase,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None,
+    mp_config: MultiprocConfig,
+) -> Any:
+    """Apply an affine transform to a point cloud by partition (chunk), writing to file with multiprocessing."""
+
+    # 1/ Prepare point partitions
+    chunks = _point_partition_size(mp_config)
+    if chunks <= 0:
+        raise ValueError("Point cloud chunks must be a strictly positive integer.")
+    output_filename, driver = _resolve_pointcloud_output(
+        mp_config.outfile,
+        mp_config.driver,
+        supported_drivers=("GPKG", "LAS", "LAZ", "PARQUET"),
+        operation_name="apply_matrix()",
+    )
+    output_filename.parent.mkdir(parents=True, exist_ok=True)
+    data_name = source.data_name
+    if source._is_xr and source._dataset.attrs.get("geometry_z"):
+        data_name = None
+
+    # 2/ Transform and write point partitions
+    with TemporaryDirectory(prefix=".xdem-apply-matrix-", dir=output_filename.parent) as directory:
+
+        def partitions() -> Iterable[tuple[Any, ...]]:
+            """Yield source row slices without loading the complete point cloud."""
+            for index, start in enumerate(range(0, max(source.point_count, 1), chunks)):
+                count = min(chunks, source.point_count - start)
+                if source._is_xr:
+                    partition = source._dataset.isel({source._dataset.dims[0]: slice(start, start + count)})
+                elif source.is_loaded:
+                    partition = source._dataset.iloc[start : start + count]
+                else:
+                    partition = source
+                yield partition, start, count, data_name, matrix, centroid, Path(directory) / f"points_{index}.pkl"
+
+        results = _map_bounded(mp_config.cluster, _wrapper_multiproc_apply_matrix_pts_block, partitions())
+        output = _write_pointcloud_partitions(
+            output_filename,
+            (filename for _, filename in results),
+            driver=driver,
+            data_name=data_name,
+            geometry_type="Point Z" if data_name is None else "Point",
+            las_elevation_column=data_name,
+        )
+
+    # 3/ Construct the point output
+    if not source._is_xr:
+        return _cast_multiproc_output(source, output)
+    result = gu.open_pointcloud(output.name, data_name=output.data_name, columns="all", as_object_type="dataarray")
+    if result.dims != source._dataset.dims:
+        result = result.rename({result.dims[0]: source._dataset.dims[0]})
+    result.attrs.update(source._dataset.attrs)
+    for name in result.coords:
+        if name in source._dataset.coords:
+            result.coords[name].attrs = source._dataset.coords[name].attrs.copy()
+    return result
+
+
+def _apply_matrix_pointcloud(
+    source: PointCloudBase,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    mp_config: MultiprocConfig | None = None,
+) -> Any:
+    """Apply affine transform to an elevation point cloud."""
+
+    # 1/ Check inputs
+    if mp_config is not None and source._is_dask:
+        raise ValueError("Cannot use multiprocessing and Dask simultaneously. Remove mp_config for Dask inputs.")
+
+    # 2/ Run depending on chunked execution
+    # 2.1/ Multiprocessing (early return, as writes to file)
+    if mp_config is not None:
+        return _multiproc_apply_matrix_pointcloud(source, matrix, centroid, mp_config)
+
+    # 2.2/ Dask
+    if source._is_dask:
+        # If points use Xarray accessor
+        if source._is_xr:
+            import_optional("dask")
+            import dask.array as da
+
+            x, y, z = source.to_xyz()
+            points = da.stack((x, y, z)).rechunk({0: 3})
+            dtype = np.result_type(points.dtype, matrix.dtype, float)
+            transformed = da.map_blocks(
+                _apply_matrix_pts_mat,
+                points,
+                matrix=matrix,
+                centroid=centroid,
+                dtype=dtype,
+                meta=np.empty((0, 0), dtype=dtype),
+            )
+        # If points use GeoPandas accessor
+        else:
+            frame = source._dataset
+            meta = _apply_matrix_pts_block(frame._meta, matrix, centroid, source.data_name)
+            result = frame.map_partitions(_apply_matrix_pts_block, matrix, centroid, source.data_name, meta=meta)
+
+    # 2.3/ In-memory
+    else:
+        if source._is_xr:
+            x, y, z = source.to_xyz()
+            transformed = _apply_matrix_pts_mat(np.stack((x, y, z)), matrix, centroid)
+        else:
+            result = _apply_matrix_pts_block(source._dataset, matrix, centroid, source.data_name)
+
+    # 3/ Build output
+    # If Xarray point input
+    if source._is_xr:
+        result = source.copy(new_array=transformed[2])
+        coordinates = {
+            name: source._dataset.coords[name].variable.copy(data=values)
+            for name, values in zip(("x", "y"), transformed[:2])
+        }
+        return result.assign_coords(coordinates)
+
+    # If GeoPandas point input
+    output = source._cast_pointcloud_output(result)
+    if source.data_name is None and is_dask_dataframe(output):
+        # Geometry elevations remain three-dimensional after transformation
+        attributes = {**_get_dataframe_attrs(output), "geometry_type": "Point Z"}
+        _set_dataframe_attrs(output, attributes)
+    return output
+
+
 def _iterate_affine_regrid_small_rotations(
     dem: NDArrayf,
     transform: rio.transform.Affine,
     matrix: NDArrayf,
     centroid: tuple[float, float, float] | None = None,
     resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    grid_meta: dict[str, Any] | None = None,
 ) -> tuple[NDArrayf, rio.transform.Affine]:
     """
     Iterative process to find the best reprojection of affine transformation for small rotations.
@@ -1301,14 +1495,19 @@ def _iterate_affine_regrid_small_rotations(
     Faster than regridding point cloud by triangulation of points (for instance with scipy.interpolate.griddata).
     """
 
-    # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
-    dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
-    epc = dem_rst.to_pointcloud(data_column_name="z", skip_nodata=False).ds
-
-    # Exact affine transform of elevation point cloud (which yields irregular coordinates in 2D)
-    tz0 = _apply_matrix_pts_arr(
-        x=epc.geometry.x.values, y=epc.geometry.y.values, z=epc.z.values, matrix=matrix, centroid=centroid
-    )[2]
+    # First, we locate destination pixel centers using global indices (for identical calculations across chunks)
+    out_transform = transform if out_transform is None else out_transform
+    out_shape = (dem.shape[0], dem.shape[1]) if out_shape is None else out_shape
+    grid_meta = {} if grid_meta is None else grid_meta
+    src_offset = grid_meta.get("src_offset", (0, 0))
+    dst_offset = grid_meta.get("dst_offset", (0, 0))
+    # Start with full array of X/Y regular coordinates (subset during iterations to improve computational efficiency)
+    rows, columns = np.indices(out_shape)
+    x, y = _affine_matmul(
+        grid_meta.get("global_dst_transform", out_transform),
+        (columns.ravel() + dst_offset[1] + 0.5, rows.ravel() + dst_offset[0] + 0.5),
+    )
+    source_inverse = ~grid_meta.get("global_src_transform", transform)
 
     # We need to find the elevation Z of a transformed DEM at the exact grid coordinates X,Y
     # Which means we need to find coordinates X',Y',Z' of the original DEM that, after the exact affine transform,
@@ -1316,13 +1515,16 @@ def _iterate_affine_regrid_small_rotations(
 
     # 1/ The elevation of the original DEM, Z', is simply a 2D interpolator function of X',Y' (bilinear, typically)
     # (We create the interpolator only once here for computational speed, instead of using Raster.interp_points)
-    xycoords = dem_rst.coords(grid=False)
-    z_interp = scipy.interpolate.RegularGridInterpolator(
-        points=(np.flip(xycoords[1], axis=0), xycoords[0]), values=dem, method=resampling, bounds_error=False
+    z_interp = _interpn_interpolator(
+        points=(np.arange(dem.shape[0]) + src_offset[0], np.arange(dem.shape[1]) + src_offset[1]),
+        values=dem,
+        method=resampling,
+        nodata_propagation="propagate",
+        bounds_error=False,
     )
 
     # 2/ As a first guess of a transformed DEM elevation Z near the grid coordinates, we initialize with the elevations
-    # of the nearest point from the transformed elevation point cloud
+    # of a horizontal plane halfway through the source elevation range
 
     # OLD METHOD
     # (Longest step computationally)
@@ -1333,41 +1535,62 @@ def _iterate_affine_regrid_small_rotations(
     # # In case several points are found at exactly the same distance, take the mean of their elevations
     # new_z = nearest.groupby(by=nearest.index)["z_left"].mean().values
 
-    # NEW METHOD: Use the transformed elevation instead of searching for a nearest neighbour,
-    # is close enough for small rotations! (and only creates a couple more iterations instead of a full search)
-    new_z = tz0
+    # NEW METHOD: Use a horizontal plane instead of searching for a nearest neighbour,
+    # so the first guess is defined even outside the source grid
+    z_range = grid_meta.get("z_range")
+    zmin, zmax = _zmin_zmax(dem) if z_range is None else z_range
+    center = np.zeros(3) if centroid is None else np.asarray(centroid)
+    inverse = invert_matrix(matrix)
+    if abs(inverse[2, 2]) < np.finfo(float).eps:
+        raise ValueError("Iterative regridding requires a surface that is not vertical.")
+    new_z = (
+        center[2]
+        + (
+            (zmin + zmax) / 2
+            - center[2]
+            - inverse[2, 0] * (x - center[0])
+            - inverse[2, 1] * (y - center[1])
+            - inverse[2, 3]
+        )
+        / inverse[2, 2]
+    )
 
     # 3/ We then iterate between two steps until convergence:
     # a/ Use the Z guess to derive invert affine transform X',Y' coordinates for the original DEM,
     # b/ Interpolate Z' at new coordinates X',Y' on the original DEM, and apply affine transform to get updated Z guess
 
-    # Start with full array of X/Y regular coordinates (subset during iterations to improve computational efficiency)
-    x = epc.geometry.x.values
-    y = epc.geometry.y.values
-
     # Initialize output z array, and array to store points that have converged
-    zfinal = np.ones(len(x), dtype=dem.dtype)
+    zfinal = np.full(len(x), np.nan, dtype=dem.dtype)
     ind_converged = np.zeros(len(x), dtype=bool)
 
     # For small rotations, and large DEMs (elevation range smaller than the DEM extent), this converges fast
     max_niter = 20  # Maximum iteration number
     niter_check = 5  # Number of iterations between residual checks
     tolerance = 10 ** (-4)  # Tolerance in X/Y relative to resolution of X/Y
-    res_x = dem_rst.res[0]  # Resolution in X
-    res_y = dem_rst.res[1]  # Resolution in Y
+    res_x = np.hypot(transform.a, transform.d)  # Resolution in X
+    res_y = np.hypot(transform.b, transform.e)  # Resolution in Y
     niter = 1  # Starting iteration
     while niter < max_niter:
         # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
         tx, ty = _apply_matrix_pts_arr(x=x, y=y, z=new_z, matrix=matrix, invert=True, centroid=centroid)[:2]
 
         # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
-        tz = z_interp((ty, tx))
+        source_columns, source_rows = _affine_matmul(source_inverse, (tx, ty))
+        query_rows, query_columns = source_rows - 0.5, source_columns - 0.5
+        if niter == 1:
+            # Seed outside-source guesses with edge elevations before checking the actual source domain
+            query_rows = np.clip(query_rows, src_offset[0], src_offset[0] + dem.shape[0] - 1)
+            query_columns = np.clip(query_columns, src_offset[1], src_offset[1] + dem.shape[1] - 1)
+            seed_clipped = (source_rows - 0.5 != query_rows) | (source_columns - 0.5 != query_columns)
+        tz = z_interp((query_rows, query_columns))
 
         # Transform to see if we fall back on our feet (on the regular grid), or if we need to iterate more
         x0, y0, z0 = _apply_matrix_pts_arr(x=tx, y=ty, z=tz, matrix=matrix, centroid=centroid)
 
+        zfinal[~ind_converged] = z0
+
         # Only check residuals after first iteration (to remove NaNs) then every 5 iterations to reduce computing time
-        if niter == 1 or niter == niter_check:
+        if niter == 1 or niter % niter_check == 0:
             # Compute difference between exact grid coordinates and current coordinates, and stop if tolerance reached
             diff_x = x0 - x
             diff_y = y0 - y
@@ -1375,8 +1598,8 @@ def _iterate_affine_regrid_small_rotations(
             logging.debug(
                 "Residual check at iteration number %d:" "\n    Mean diff x: %f" "\n    Mean diff y: %f",
                 niter,
-                np.nanmean(np.abs(diff_x)),
-                np.nanmean(np.abs(diff_y)),
+                np.mean(np.abs(diff_x[np.isfinite(diff_x)])) if np.any(np.isfinite(diff_x)) else np.nan,
+                np.mean(np.abs(diff_y[np.isfinite(diff_y)])) if np.any(np.isfinite(diff_y)) else np.nan,
             )
 
             # Get index of points below tolerance in both X/Y for this subsample (all points before convergence update)
@@ -1384,6 +1607,9 @@ def _iterate_affine_regrid_small_rotations(
             subind_diff_x = np.logical_or(np.abs(diff_x) < (tolerance * res_x), ~np.isfinite(diff_x))
             subind_diff_y = np.logical_or(np.abs(diff_y) < (tolerance * res_y), ~np.isfinite(diff_y))
             subind_converged = np.logical_and(subind_diff_x, subind_diff_y)
+            if niter == 1:
+                # Check clipped seeds at their actual source coordinates before accepting convergence
+                subind_converged &= ~seed_clipped
 
             logging.debug(
                 "    Points not within tolerance: %d for X; %d for Y",
@@ -1410,12 +1636,7 @@ def _iterate_affine_regrid_small_rotations(
         niter += 1
 
     # 4/ Write the regular-grid point cloud back into a raster
-    epc.z = zfinal  # We just replace the Z of the original grid to ensure exact coordinates
-    transformed_dem = dem_rst.from_pointcloud_regular(
-        epc, transform=transform, shape=dem.shape, data_column_name="z", nodata=-99999
-    )
-
-    return transformed_dem.data.filled(np.nan), transform
+    return zfinal.reshape(out_shape), out_transform
 
 
 def _apply_matrix_rst(
@@ -1424,8 +1645,12 @@ def _apply_matrix_rst(
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
-    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    resampling: str | Interpolator | Reducer = "linear",
     force_regrid_method: Literal["iterative", "griddata"] | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    grid_meta: dict[str, Any] | None = None,
 ) -> tuple[NDArrayf, rio.transform.Affine]:
     """
     Apply a 3D affine transformation matrix to a 2.5D DEM.
@@ -1438,12 +1663,22 @@ def _apply_matrix_rst(
     :param invert: Whether to invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
         Defaults to the midpoint (Z=0).
-    :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more
-    information, see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
+    :param resampling: GeoUtils interpolation or gridding method name, or an Interpolator/Reducer object.
+    :param gridding_options: Additional options passed to GeoUtils gridding.
     :param force_regrid_method: Force re-gridding method to convert 3D point cloud to 2.5 DEM, only for testing.
+    :param out_transform: Destination grid transform. Defaults to the input grid for rotations, or the translated
+        grid for translations.
+    :param out_shape: Destination rows and columns. Defaults to the input shape.
+    :param grid_meta: Global grid coordinates and elevation range shared by chunked calculations.
 
     :returns: Transformed DEM, Transform.
     """
+
+    # Validate destination dimensions before any resampling
+    out_shape = (dem.shape[0], dem.shape[1]) if out_shape is None else out_shape
+    if len(out_shape) != 2 or any(not isinstance(size, (int, np.integer)) or size <= 0 for size in out_shape):
+        raise ValueError("'out_shape' must contain two positive integers.")
+    dem = np.asarray(np.ma.filled(np.ma.asarray(dem, dtype=np.result_type(dem.dtype, np.float32)), np.nan))
 
     # Invert matrix if required
     if invert:
@@ -1460,105 +1695,539 @@ def _apply_matrix_rst(
     shift_only_matrix[:3, 3] = matrix[:3, 3]
 
     # 1/ Check if the matrix only contains a Z correction, in that case only shift the DEM values by the vertical shift
-    if np.array_equal(shift_z_only_matrix, matrix) and force_regrid_method is None:
+    if (
+        np.array_equal(shift_z_only_matrix, matrix)
+        and force_regrid_method is None
+        and out_shape == dem.shape
+        and (out_transform is None or out_transform == transform)
+    ):
         return dem + matrix[2, 3], transform
 
     # 2/ Check if the matrix contains only translations, in that case only shift the DEM only by translation
     if np.array_equal(shift_only_matrix, matrix) and force_regrid_method is None:
         new_transform = _translate(transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
-        return dem + matrix[2, 3], new_transform
+        new_dem = dem + matrix[2, 3]
+
+        # Reproject onto a different output grid with GeoUtils
+        if out_shape != dem.shape or (out_transform is not None and out_transform != new_transform):
+            out_transform = new_transform if out_transform is None else out_transform
+            new_dem = _reproject_grid_operator(
+                new_dem,
+                src_transform=new_transform,
+                src_crs=None,
+                dst_transform=out_transform,
+                dst_crs=None,
+                dst_shape=out_shape,
+                operator=_resampling_operator(resampling),
+                source_nodata=np.nan,
+                nodata_propagation="nearest",
+            )
+            new_transform = out_transform
+        return new_dem, new_transform
 
     # 3/ If matrix contains only small rotations (less than 20 degrees), use the fast iterative reprojection
     rotations = translations_rotations_from_matrix(matrix)[3:]
     if all(np.abs(rot) < 20 for rot in rotations) and force_regrid_method is None or force_regrid_method == "iterative":
         new_dem, transform = _iterate_affine_regrid_small_rotations(
-            dem=dem, transform=transform, matrix=matrix, centroid=centroid, resampling=resampling
+            dem=dem,
+            transform=transform,
+            matrix=matrix,
+            centroid=centroid,
+            resampling=cast(Literal["nearest", "linear", "cubic", "quintic"], resampling),
+            out_transform=out_transform,
+            out_shape=out_shape,
+            grid_meta=grid_meta,
         )
         return new_dem, transform
 
-    # 4/ Otherwise, use a delauney triangulation interpolation of the transformed point cloud
+    # 4/ Otherwise, we grid the transformed point cloud
     # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
     dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
-    epc = dem_rst.to_pointcloud(data_column_name="z").ds
+    epc = dem_rst.to_pointcloud(data_name="z").gdf
     trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
 
-    new_dem = _grid_pointcloud(trans_epc, grid_coords=dem_rst.coords(grid=False), data_name="z", resampling=resampling)[
-        0
-    ]
+    out_transform = transform if out_transform is None else out_transform
+    new_dem = _grid_pointcloud(
+        trans_epc,
+        grid_coords=_coords(out_transform, out_shape, grid=False),
+        data_name="z",
+        resampling=resampling,
+        grid_res=(abs(out_transform.a), abs(out_transform.e)),
+        **dict(gridding_options or {}),
+    )[0]
 
-    return new_dem, transform
-
-
-@overload
-def _reproject_horizontal_shift_samecrs(
-    raster_arr: NDArrayf,
-    src_transform: rio.transform.Affine,
-    dst_transform: rio.transform.Affine = None,
-    *,
-    return_interpolator: Literal[False] = False,
-    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
-    area_or_point: Literal["Area", "Point"] | None = "Area",
-) -> NDArrayf: ...
+    return new_dem, out_transform
 
 
-@overload
-def _reproject_horizontal_shift_samecrs(
-    raster_arr: NDArrayf,
-    src_transform: rio.transform.Affine,
-    dst_transform: rio.transform.Affine = None,
-    *,
-    return_interpolator: Literal[True],
-    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
-    area_or_point: Literal["Area", "Point"] | None = "Area",
-) -> Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]: ...
+############################################################
+# Affine transforms for raster chunks and point partitions
+############################################################
 
 
-def _reproject_horizontal_shift_samecrs(
-    raster_arr: NDArrayf,
-    src_transform: rio.transform.Affine,
-    dst_transform: rio.transform.Affine = None,
-    return_interpolator: bool = False,
-    resampling: Literal["nearest", "linear", "cubic", "quintic", "slinear", "pchip", "splinef2d"] = "linear",
-    area_or_point: Literal["Area", "Point"] | None = "Area",
-) -> NDArrayf | Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf]:
+def _zmin_zmax(arr: NDArrayf) -> tuple[float, float]:
+    """Calculate min/max elevation in a source chunk."""
+
+    values = np.ma.asarray(arr)
+    values = values.compressed()
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return np.nan, np.nan
+    return float(values.min()), float(values.max())
+
+
+def _wrapper_multiproc_zmin_zmax_per_block(rst: RasterBase | NDArrayf, tile_idx: dict[str, int]) -> tuple[float, float]:
+    """Extract altitude min and max in a block, for multiprocessing."""
+    if isinstance(rst, np.ndarray):
+        return _zmin_zmax(rst)
+    rst_block = rst.icrop((tile_idx["xs"], tile_idx["ys"], tile_idx["xe"], tile_idx["ye"]))
+    return _zmin_zmax(_get_raster_interface(rst_block).data)
+
+
+def _delayed_zmin_zmax(arr_chunk: NDArrayf) -> tuple[float, float]:
+    """Extract altitude min and max in a block for Dask."""
+    return _zmin_zmax(arr_chunk)
+
+
+def _build_geotiling_and_meta_apply_matrix(
+    src_geotiling: ChunkedGeoGrid,
+    dst_geotiling: ChunkedGeoGrid,
+    elevation_bounds: list[tuple[float, float]],
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    resampling: str | Interpolator | Reducer = "linear",
+    force_regrid_method: Literal["iterative", "griddata"] | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
+) -> tuple[list[list[int]], list[tuple[dict[str, Any], list[dict[str, int]]]]]:
     """
-    Reproject a raster only for a horizontal shift (transform update) in the same CRS.
+    Map destination chunks to source chunks using their transformed elevation bounds.
 
-    This function exists independently of Raster.reproject() because Rasterio has unexplained reprojection issues
-    that can create non-negligible sub-pixel shifts that should be crucially avoided for coregistration.
-    See https://github.com/rasterio/rasterio/issues/2052#issuecomment-2078732477.
+    Each source chunk bounds a 3D box (xmin/xmax, ymin/ymax and zmin/zmax). We transform the 8 corners of that 3D
+    box to ensure we cover any transformation that could happen within the chunk.
 
-    Here we use SciPy interpolation instead, modified for nodata propagation in geoutils.interp_points().
+    This requires a first quick pass reading zmax/zmin in each chunk (so not entirely "lazy", although the computation
+    of the result is).
+
+    Other than these steps, this function has similar logic than chunk mapping for reproject() in GeoUtils.
     """
 
-    # Preserve the continuous linear interpolator used by iterative coregistration
-    if return_interpolator and resampling == "linear" and src_transform.b == 0 and src_transform.d == 0:
-        x, y = _coords(transform=src_transform, shape=raster_arr.shape, grid=False)
-        values = np.ma.filled(raster_arr, np.nan) if np.ma.isMaskedArray(raster_arr) else raster_arr
-        return _interpn_interpolator((np.flip(y), x), values, method="linear")
+    from shapely.geometry import MultiPoint, Polygon
+    from shapely.strtree import STRtree
 
-    # Reproject the raster relative to its pixel centers
-    if not return_interpolator:
-        coords_dst = _coords(transform=dst_transform, shape=raster_arr.shape)
-        # Flatten the arrays (only 1D supported in rowcol/xy after Rasterio 1.4)
-        coords_dst = (coords_dst[0].ravel(), coords_dst[1].ravel())
-    # If we just want the interpolator, we don't need to coordinates of destination points
+    # 1/ Get bounds of source tiles after the affine transform at both elevation extremes
+    src_block_ids = src_geotiling.get_block_locations()
+    src_boxes = []
+    for block_id, (zmin, zmax) in zip(src_block_ids, elevation_bounds):
+        block = GeoGrid(
+            _affine_matmul(src_geotiling.grid.transform, affine.Affine.translation(block_id["xs"], block_id["ys"])),
+            (block_id["ye"] - block_id["ys"], block_id["xe"] - block_id["xs"]),
+            src_geotiling.grid.crs,
+        )
+        if not np.isfinite(zmin):
+            src_boxes.append(Polygon())
+            continue
+        columns = np.array([0, block.width, block.width, 0])
+        rows = np.array([0, 0, block.height, block.height])
+        xx, yy = _affine_matmul(block.transform, (columns, rows))
+        corners = np.vstack((np.tile(xx, 2), np.tile(yy, 2), np.repeat([zmin, zmax], 4)))
+        moved = _apply_matrix_pts_mat(corners, matrix=matrix, centroid=centroid)
+        src_boxes.append(MultiPoint(moved[:2].T).convex_hull)
+
+    # 2/ Get bounds of tiles in CRS of destination array, with an interpolation buffer for destination ones to ensure
+    # overlap, then map indexes of source blocks that intersect a given destination block
+    tree = STRtree(src_boxes)
+    if force_regrid_method == "griddata":
+        options = dict(gridding_options or {})
+        depth = _source_support_pixels(
+            dst_geotiling.grid,
+            resampling=resampling,
+            radius=options.get("radius", 1.0),
+            nodata_handling=options.get("nodata_handling"),
+        )
     else:
-        coords_dst = None
+        depth = _compute_resampling_overlap(resampling)
+    dst_block_geogrids = [
+        GeoGrid(
+            _affine_matmul(dst_geotiling.grid.transform, affine.Affine.translation(block["xs"], block["ys"])),
+            (block["ye"] - block["ys"], block["xe"] - block["xs"]),
+            dst_geotiling.grid.crs,
+        )
+        for block in dst_geotiling.get_block_locations()
+    ]
+    # Build mapping: for each destination box, list intersecting source indices
+    dest2source = []
+    row_edges = np.cumsum((0, *src_geotiling.chunks[0]))
+    column_edges = np.cumsum((0, *src_geotiling.chunks[1]))
+    for block in dst_block_geogrids:
+        columns = np.array([0, block.width, block.width, 0])
+        rows = np.array([0, 0, block.height, block.height])
+        xx, yy = _affine_matmul(block.transform, (columns, rows))
+        # Adjacent source cells can contribute even when their centers fall just outside the output block
+        if np.isfinite(depth):
+            footprint = Polygon(zip(xx, yy)).buffer(depth * max(block.res))
+            indices = sorted(int(index) for index in tree.query(footprint, predicate="intersects"))
+        else:
+            # An unbounded point neighborhood must search every source chunk
+            indices = [index for index, footprint in enumerate(src_boxes) if not footprint.is_empty]
+        if indices and np.isfinite(depth):
+            # Read a rectangle around the contributors, including the interpolation buffer on every side
+            selected = [src_block_ids[index] for index in indices]
+            xs = min(block_id["xs"] for block_id in selected) - depth
+            xe = max(block_id["xe"] for block_id in selected) + depth
+            ys = min(block_id["ys"] for block_id in selected) - depth
+            ye = max(block_id["ye"] for block_id in selected) + depth
+            # Locate intersecting source rows and columns without scanning every source block
+            first_row = max(0, int(np.searchsorted(row_edges, ys, side="right")) - 1)
+            last_row = min(len(row_edges) - 1, int(np.searchsorted(row_edges, ye, side="left")))
+            first_column = max(0, int(np.searchsorted(column_edges, xs, side="right")) - 1)
+            last_column = min(len(column_edges) - 1, int(np.searchsorted(column_edges, xe, side="left")))
+            indices = [
+                src_geotiling.flat_block_index((row, column))
+                for row in range(first_row, last_row)
+                for column in range(first_column, last_column)
+            ]
+        dest2source.append(indices)
 
-    output = _interp_points_base(
-        array=raster_arr,
-        transform=src_transform,
-        points=coords_dst,
-        method=resampling,
-        return_interpolator=return_interpolator,
+    # 3/ To reconstruct a square source array during chunked reprojection, we need to derive the combined shape and
+    # transform of each tuples of source blocks
+    finite_bounds = np.asarray(elevation_bounds)
+    finite_bounds = finite_bounds[np.isfinite(finite_bounds)]
+    z_range = (float(finite_bounds.min()), float(finite_bounds.max())) if finite_bounds.size else (0.0, 0.0)
+    meta_params = []
+    for indices, destination, dst_id in zip(dest2source, dst_block_geogrids, dst_geotiling.get_block_locations()):
+        if indices:
+            selected = [src_block_ids[index] for index in indices]
+            src_offset = (min(block["ys"] for block in selected), min(block["xs"] for block in selected))
+            src_end = (max(block["ye"] for block in selected), max(block["xe"] for block in selected))
+            combined = {"src_shape": (src_end[0] - src_offset[0], src_end[1] - src_offset[1])}
+            relative = [
+                {
+                    "rys": block["ys"] - src_offset[0],
+                    "rye": block["ye"] - src_offset[0],
+                    "rxs": block["xs"] - src_offset[1],
+                    "rxe": block["xe"] - src_offset[1],
+                }
+                for block in selected
+            ]
+            combined["src_transform"] = tuple(
+                _affine_matmul(src_geotiling.grid.transform, affine.Affine.translation(*src_offset[::-1]))
+            )
+        else:
+            combined, relative, src_offset = {}, [], (0, 0)
+        # Append dst shape/transform to metadata
+        combined.update(
+            dst_shape=destination.shape,
+            dst_transform=destination.transform,
+            global_src_transform=src_geotiling.grid.transform,
+            global_dst_transform=dst_geotiling.grid.transform,
+            src_offset=src_offset,
+            dst_offset=(dst_id["ys"], dst_id["xs"]),
+            z_range=z_range,
+        )
+        meta_params.append((combined, relative))
+    return dest2source, meta_params
+
+
+def _apply_matrix_per_block(
+    *src_arrs: NDArrayf,
+    block_ids: list[dict[str, int]],
+    combined_meta: dict[str, Any],
+    src_nodata: int | float | None,
+    output_dtype: Any,
+    **kwargs: Any,
+) -> NDArrayf:
+    """
+    Apply affine transform per destination block (also rebuilds a square array from intersecting source blocks).
+    """
+
+    # If no source chunk intersects, we return a chunk of destination nodata values
+    dst_shape = combined_meta["dst_shape"]
+    if len(src_arrs) == 0:
+        return np.full(dst_shape, np.nan, dtype=output_dtype)
+
+    # First, we build an empty array with the combined shape, only with nodata values
+    working_dtype = np.result_type(src_arrs[0].dtype, np.float32)
+    comb_src_arr = np.full(combined_meta["src_shape"], np.nan, dtype=working_dtype)
+    # Then fill it with the source chunks values
+    for arr, bid in zip(src_arrs, block_ids):
+        values = np.asarray(np.ma.getdata(arr), dtype=working_dtype).copy()
+        invalid = np.ma.getmaskarray(arr) | ~np.isfinite(values)
+        if src_nodata is not None:
+            invalid |= values == src_nodata
+        values[invalid] = np.nan
+        comb_src_arr[bid["rys"] : bid["rye"], bid["rxs"] : bid["rxe"]] = values
+    if not np.any(np.isfinite(comb_src_arr)):
+        return np.full(dst_shape, np.nan, dtype=output_dtype)
+
+    # Apply matrix directly on the destination grid
+    dst_arr, _ = _apply_matrix_rst(
+        dem=comb_src_arr,
+        transform=affine.Affine(*combined_meta["src_transform"]),
+        out_transform=combined_meta["dst_transform"],
+        out_shape=dst_shape,
+        grid_meta=combined_meta,
+        **kwargs,
+    )
+    return np.asarray(dst_arr, dtype=output_dtype)
+
+
+def _wrapper_multiproc_apply_matrix_per_block(
+    rst: RasterBase | None,
+    src_block_ids: Mapping[int, dict[str, int]],
+    dst_block_id: dict[str, int],
+    idx_d2s: list[int],
+    block_ids: list[dict[str, int]],
+    combined_meta: dict[str, Any],
+    source_arrays: tuple[NDArrayf, ...] | None = None,
+    **kwargs: Any,
+) -> tuple[NDArrayf, tuple[int, int, int, int]]:
+    """Wrapper of affine transform for multiprocessing."""
+
+    # Get source array block for each destination block
+    src_arrs = list(source_arrays) if source_arrays is not None else []
+    if source_arrays is None:
+        assert rst is not None
+        for index in idx_d2s:
+            block = src_block_ids[index]
+            cropped = rst.icrop((block["xs"], block["ys"], block["xe"], block["ye"]))
+            src_arrs.append(
+                _get_raster_interface(cropped).data.reshape((block["ye"] - block["ys"], block["xe"] - block["xs"]))
+            )
+    # Call apply matrix per block
+    dst_block_arr = _apply_matrix_per_block(*src_arrs, block_ids=block_ids, combined_meta=combined_meta, **kwargs)
+
+    # Preserve missing cells in integer-nodata files as well as NaN-nodata files
+    dst_block_arr = np.ma.masked_invalid(dst_block_arr)
+    if kwargs["src_nodata"] is not None:
+        dst_block_arr = dst_block_arr.filled(kwargs["src_nodata"])
+    return dst_block_arr, (dst_block_id["ys"], dst_block_id["ye"], dst_block_id["xs"], dst_block_id["xe"])
+
+
+def _multiproc_apply_matrix(
+    rst: RasterBase,
+    mp_config: MultiprocConfig,
+    dst_transform: affine.Affine,
+    dst_shape: tuple[int, int],
+    **kwargs: Any,
+) -> Raster:
+    """Apply affine transform to raster chunks with multiprocessing and write to a file."""
+
+    # Prepare geotiling and reprojection metadata for source and destination grids
+    src_chunks = normalize_chunks(mp_config.chunks, rst.shape)
+    src_geotiling = ChunkedGeoGrid(GeoGrid(rst.transform, rst.shape, rst.crs), src_chunks)
+    dst_chunks = normalize_chunks(tuple(max(axis) for axis in src_chunks), dst_shape)
+    dst_geotiling = ChunkedGeoGrid(GeoGrid(dst_transform, dst_shape, rst.crs), dst_chunks)
+    src_block_ids = src_geotiling.get_block_locations()
+    # Send loaded source slices rather than serializing the complete raster for every task
+    loaded_values = rst.data.reshape(rst.shape) if rst.is_loaded else None
+    bounds_arguments = (
+        (
+            rst if loaded_values is None else loaded_values[block["ys"] : block["ye"], block["xs"] : block["xe"]],
+            block,
+        )
+        for block in src_block_ids
+    )
+    elevation_bounds = [
+        result
+        for _, result in _map_bounded(mp_config.cluster, _wrapper_multiproc_zmin_zmax_per_block, bounds_arguments)
+    ]
+    if not np.any(np.isfinite(elevation_bounds)):
+        raise ValueError("Input DEM has all nans.")
+    dest2source, meta_params = _build_geotiling_and_meta_apply_matrix(
+        src_geotiling,
+        dst_geotiling,
+        elevation_bounds,
+        kwargs["matrix"],
+        kwargs["centroid"],
+        resampling=kwargs["resampling"],
+        force_regrid_method=kwargs.get("force_regrid_method"),
+        gridding_options=kwargs.get("gridding_options"),
     )
 
-    # Reshape output
-    if coords_dst is not None:
-        output = output.reshape(np.shape(raster_arr))
+    # Get location of destination blocks to write file
+    dst_block_ids = np.array(dst_geotiling.get_block_locations())
 
-    return output
+    # Create tasks for multiprocessing
+    def arguments() -> Iterable[tuple[Any, ...]]:
+        """Yield only the source blocks needed by each output tile."""
+        for index, indices in enumerate(dest2source):
+            blocks = {source_index: src_block_ids[source_index] for source_index in indices}
+            source_arrays = None
+            if loaded_values is not None:
+                source_arrays = tuple(
+                    loaded_values[block["ys"] : block["ye"], block["xs"] : block["xe"]] for block in blocks.values()
+                )
+            yield (
+                rst if source_arrays is None else None,
+                blocks,
+                dst_block_ids[index],
+                indices,
+                meta_params[index][1],
+                meta_params[index][0],
+                source_arrays,
+            )
+
+    tasks = _map_bounded(mp_config.cluster, partial(_wrapper_multiproc_apply_matrix_per_block, **kwargs), arguments())
+
+    # Retrieve metadata for saving file
+    file_metadata = {
+        "width": dst_shape[1],
+        "height": dst_shape[0],
+        "count": 1,
+        "crs": rst.crs,
+        "transform": dst_transform,
+        "dtype": kwargs["output_dtype"],
+        "nodata": kwargs["src_nodata"],
+    }
+    # Create a new raster file to save the processed results
+    return _write_multiproc_result(tasks, mp_config, file_metadata, tags=rst.tags)
+
+
+def _delayed_apply_matrix_per_block(
+    *src_arrs: NDArrayf, block_ids: list[dict[str, int]], combined_meta: dict[str, Any], **kwargs: Any
+) -> NDArrayf:
+    """
+    Delayed apply matrix per destination block (also rebuilds a square array combined from intersecting source blocks).
+    """
+    return _apply_matrix_per_block(*src_arrs, block_ids=block_ids, combined_meta=combined_meta, **kwargs)
+
+
+def _dask_apply_matrix(
+    darr: Any,
+    src_grid: GeoGrid,
+    dst_grid: GeoGrid,
+    **kwargs: Any,
+) -> Any:
+    """Apply affine transform per source chunk with Dask."""
+
+    # To raise appropriate error on missing optional dependency
+    import_optional("dask")
+    import dask.array as da
+    from dask import compute, delayed
+
+    # Create a delayed object for each block, and flatten the blocks into a 1d shape
+    blocks_delayed = darr.to_delayed().ravel()
+    # Read elevation bounds together
+    elevation_bounds = list(compute(*(delayed(_delayed_zmin_zmax)(block) for block in blocks_delayed)))
+    if not np.any(np.isfinite(elevation_bounds)):
+        raise ValueError("Input DEM has all nans.")
+    src_geotiling = ChunkedGeoGrid(src_grid, darr.chunks)
+    dst_chunks = darr.chunks if dst_grid.shape == src_grid.shape else normalize_chunks(darr.chunksize, dst_grid.shape)
+    dst_geotiling = ChunkedGeoGrid(dst_grid, dst_chunks)
+    dest2source, meta_params = _build_geotiling_and_meta_apply_matrix(
+        src_geotiling,
+        dst_geotiling,
+        elevation_bounds,
+        kwargs["matrix"],
+        kwargs["centroid"],
+        resampling=kwargs["resampling"],
+        force_regrid_method=kwargs.get("force_regrid_method"),
+        gridding_options=kwargs.get("gridding_options"),
+    )
+
+    # Output data type
+    out_dtype = np.dtype(kwargs.get("output_dtype", darr.dtype))
+
+    # Run the delayed apply matrix, looping for each destination block
+    list_reproj_da = []
+    for indices, (combined, relative) in zip(dest2source, meta_params):
+        r = delayed(_delayed_apply_matrix_per_block)(
+            *(blocks_delayed[index] for index in indices), block_ids=relative, combined_meta=combined, **kwargs
+        )
+        # We define the expected output shape and dtype to simplify things for Dask
+        list_reproj_da.append(da.from_delayed(r, shape=combined["dst_shape"], dtype=out_dtype))
+
+    # Array comes out as flat blocks x chunksize0 (varying) x chunksize1 (varying), so we can't reshape directly
+    # We concatenate all columns, then rows to align X/Y
+    nx_dst = len(dst_chunks[1])
+    rows = [
+        da.concatenate(list_reproj_da[start : start + nx_dst], axis=1)
+        for start in range(0, len(list_reproj_da), nx_dst)
+    ]
+    concat_all = da.concatenate(rows, axis=0)
+
+    return concat_all
+
+
+def _apply_matrix_raster(
+    source: RasterBase,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    mp_config: MultiprocConfig | None = None,
+    resample: bool = False,
+    resampling: str | Interpolator | Reducer = "linear",
+    output_dtype: Any = None,
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    force_regrid_method: Literal["iterative", "griddata"] | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
+) -> Any:
+    """Select the raster output grid and transform it in memory, with Dask, or with multiprocessing."""
+
+    # 1/ Check inputs
+    chunked = source._chunks is not None
+    if mp_config is not None and chunked:
+        raise ValueError("Cannot use multiprocessing and Dask simultaneously. Remove mp_config for Dask inputs.")
+
+    if source.count != 1:
+        raise ValueError("apply_matrix() requires a single elevation band.")
+    out_shape = source.shape if out_shape is None else out_shape
+    if len(out_shape) != 2 or any(not isinstance(size, (int, np.integer)) or size <= 0 for size in out_shape):
+        raise ValueError("'out_shape' must contain two positive integers.")
+    if out_transform is None:
+        out_transform = source.transform
+        if not resample and np.array_equal(matrix[:3, :3], np.eye(3)):
+            out_transform = _translate(source.transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
+    if force_regrid_method not in (None, "iterative", "griddata"):
+        raise ValueError("'force_regrid_method' must be 'iterative', 'griddata' or None.")
+    regular_interpolation = isinstance(resampling, str) and resampling in ("nearest", "linear", "cubic", "quintic")
+    if force_regrid_method == "iterative" and (not regular_interpolation or gridding_options is not None):
+        raise ValueError("Iterative regridding requires a regular interpolation name and no gridding_options.")
+    rotations = translations_rotations_from_matrix(matrix)[3:]
+    if force_regrid_method is None and (
+        not regular_interpolation or gridding_options is not None or any(abs(rotation) >= 20 for rotation in rotations)
+    ):
+        force_regrid_method = "griddata"
+
+    # 2/ Run depending on chunked execution
+    dtype = np.dtype(output_dtype if output_dtype is not None else np.result_type(source.dtype, np.float32))
+    nodata = source.nodata if source.nodata is not None else np.nan
+    options: dict[str, Any] = dict(
+        matrix=matrix,
+        centroid=centroid,
+        resampling=resampling,
+        force_regrid_method=force_regrid_method,
+        gridding_options=gridding_options,
+    )
+
+    # 2.1/ Multiprocessing
+    if mp_config is not None:
+        result = _multiproc_apply_matrix(
+            source, mp_config, out_transform, out_shape, src_nodata=nodata, output_dtype=dtype, **options
+        )
+        return source._cast_raster_output(result)
+
+    # 2.2/ Dask
+    if chunked:
+        values = _dask_apply_matrix(
+            source.data.reshape(source.shape),
+            GeoGrid(source.transform, source.shape, source.crs),
+            GeoGrid(out_transform, out_shape, source.crs),
+            src_nodata=nodata,
+            output_dtype=dtype,
+            **options,
+        )
+
+    # 2.3/ In-memory
+    else:
+        values, _ = _apply_matrix_rst(
+            source.to_nanarray(), source.transform, out_transform=out_transform, out_shape=out_shape, **options
+        )
+        values = values.astype(dtype)
+
+    # 3/ Build output
+    return source.from_array(
+        values, out_transform, source.crs, nodata=nodata, area_or_point=source.area_or_point, tags=source.tags.copy()
+    )
 
 
 @overload
@@ -1568,40 +2237,54 @@ def apply_matrix(
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
     resample: bool = True,
-    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    resampling: str | Interpolator | Reducer = "linear",
     transform: rio.transform.Affine = None,
-    z_name: str = "z",
+    z_name: str | None = "z",
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    mp_config: MultiprocConfig | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
     **kwargs: Any,
 ) -> tuple[NDArrayf, affine.Affine]: ...
 
 
 @overload
 def apply_matrix(
-    elev: gu.Raster | gpd.GeoDataFrame,
+    elev: RasterLike | PointCloudLike,
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
     resample: bool = True,
-    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    resampling: str | Interpolator | Reducer = "linear",
     transform: rio.transform.Affine = None,
-    z_name: str = "z",
+    z_name: str | None = "z",
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    mp_config: MultiprocConfig | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
     **kwargs: Any,
-) -> gu.Raster | gpd.GeoDataFrame: ...
+) -> RasterLike | PointCloudLike: ...
 
 
 def apply_matrix(
-    elev: gu.Raster | NDArrayf | gpd.GeoDataFrame,
+    elev: RasterLike | PointCloudLike | NDArrayf,
     matrix: NDArrayf,
     invert: bool = False,
     centroid: tuple[float, float, float] | None = None,
     resample: bool = True,
-    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    resampling: str | Interpolator | Reducer = "linear",
     transform: rio.transform.Affine = None,
-    z_name: str = "z",
+    z_name: str | None = "z",
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    mp_config: MultiprocConfig | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
     **kwargs: Any,
-) -> tuple[NDArrayf, affine.Affine] | gu.Raster | gpd.GeoDataFrame:
+) -> tuple[NDArrayf, affine.Affine] | RasterLike | PointCloudLike:
     """
     Apply a 3D affine transformation matrix to a 3D elevation point cloud or 2.5D DEM.
+
+    Chunked datasets are supported through Dask or multiprocessing.
 
     For an elevation point cloud, the transformation is exact.
 
@@ -1614,280 +2297,83 @@ def apply_matrix(
     2. For transformations with a small rotation (20 degrees or less for all axes), this function maps which 2D
     point coordinates will fall back exactly onto the original DEM grid coordinates after affine transformation by
     searching iteratively using the invert affine transformation and 2D point regular-grid interpolation on the
-    original DEM (see geoutils.Raster.interp_points, or scipy.interpolate.interpn),
+    original DEM with GeoUtils,
 
-    3. For transformations with large rotations (20 degrees or more), scipy.interpolate.griddata is used to
-    re-grid the irregular affine-transformed 3D point cloud using Delauney triangulation interpolation (slower).
+    3. For transformations with large rotations (20 degrees or more), or when gridding is requested, GeoUtils
+    re-grids the irregular affine-transformed 3D point cloud using the selected method.
 
-    :param elev: Elevation point cloud or DEM to transform, either a 2D array (requires transform) or
-        geodataframe (requires z_name).
+    :param elev: Elevation point cloud or DEM, including GeoUtils objects, Xarray/GeoPandas objects or accessors,
+        or a 2D array (requires transform).
     :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
     :param invert: Whether to invert the transformation matrix.
     :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
         Defaults to the midpoint (Z=0).
     :param resample: (For translations) If set to True, will resample output on the translated grid to match the input
         transform. Otherwise, only the transform will be updated and no resampling is done.
-    :param resampling: Point interpolation method, one of 'nearest', 'linear', 'cubic', or 'quintic'. For more
-        information, see scipy.ndimage.map_coordinates and scipy.interpolate.interpn. Default is linear.
+    :param resampling: GeoUtils resampling, or Interpolator/Reducer object.
+        The names 'nearest', 'linear', 'cubic' and 'quintic' use iterative regridding for small rotations by default.
+        Other methods grid the transformed points. Defaults to linear.
     :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
     :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+    :param out_transform: Destination grid transform, overriding the grid selected by resample.
+    :param out_shape: Destination rows and columns. Defaults to the input shape.
+    :param mp_config: Worker, chunk and output file settings for raster tiles or point partitions.
+    :param gridding_options: Additional GeoUtils grid() options, such as radius, nodata_handling,
+        distance_power, min_points or max_points. Supplying this mapping selects point gridding.
     :param kwargs: Keywords passed to _apply_matrix_rst for testing.
 
     :return: Affine transformed elevation point cloud or DEM.
     """
 
-    # Apply matrix to elevation point cloud
-    if isinstance(elev, gpd.GeoDataFrame):
-        return _apply_matrix_pts(epc=elev, matrix=matrix, invert=invert, centroid=centroid, z_name=z_name)
-    # Or apply matrix to raster (often requires re-gridding)
+    # 1/ Check inputs
+    # Identify point clouds and rasters before handling array input
+    _check_coreg_input_families(elev, mp_config=mp_config)
+    array_input = isinstance(elev, np.ndarray) or is_dask_array(elev)
+
+    # Wrap NumPy and Dask arrays with their geotransform
+    if array_input:
+        if transform is None:
+            raise ValueError("'transform' must be given if the DEM is array-like.")
+        constructor = Raster.from_array
+        if is_dask_array(elev):
+            from geoutils.raster.xr_accessor import DataArrayRasterAccessor
+
+            constructor = DataArrayRasterAccessor.from_array
+        nodata = np.nan if np.issubdtype(elev.dtype, np.floating) else None
+        source = _get_raster_interface(constructor(elev, transform, crs=None, nodata=nodata))
     else:
-        # First, we apply the affine matrix for the array/transform
-        if isinstance(elev, gu.Raster):
-            transform = elev.transform
-            dem = elev.data.filled(np.nan)
-        else:
-            dem = elev
-        applied_dem, out_transform = _apply_matrix_rst(
-            dem=dem,
-            transform=transform,
-            matrix=matrix,
-            invert=invert,
-            centroid=centroid,
-            resampling=resampling,
-            **kwargs,
-        )
+        source = _as_coreg_elevation(elev, z_name=z_name)
 
-        # Then, if resample is True, we reproject the DEM from its out_transform onto the transform
-        if resample:
-            applied_dem = _reproject_horizontal_shift_samecrs(
-                applied_dem, src_transform=out_transform, dst_transform=transform, resampling=resampling
-            )
-            out_transform = transform
+    # 2/ Dispatch to the point cloud or raster function
+    if invert:
+        matrix = invert_matrix(matrix)
 
-        # We return a raster if input was a raster
-        if isinstance(elev, gu.Raster):
-            applied_dem = gu.Raster.from_array(
-                applied_dem,
-                out_transform,
-                elev.crs,
-                elev.nodata,
-                area_or_point=elev.area_or_point,
-            )
-            return applied_dem
-        return applied_dem, out_transform
-
-
-############################################################
-# Affine transforms for raster chunks and point partitions
-############################################################
-
-
-def _apply_affine_raster_block(
-    raster: Raster,
-    matrix: NDArrayf,
-    centroid: tuple[float, float, float] | None,
-    resampling: str,
-    output_dtype: Any = None,
-) -> Raster:
-    """Apply a rigid transformation to an overlapping raster tile."""
-
-    # Use consistent metadata for empty tiles
-    values = np.ma.filled(raster.data, np.nan).reshape(raster.shape)
-    if np.any(np.isfinite(values)):
-        transformed, transform = _apply_matrix_rst(
-            values,
-            raster.transform,
-            matrix,
-            centroid=centroid,
-            resampling=cast(Literal["nearest", "linear", "cubic", "quintic"], resampling),
-        )
-    else:
-        transformed, transform = values, raster.transform
-    if output_dtype is not None:
-        transformed = transformed.astype(output_dtype)
-    return Raster.from_array(
-        transformed, transform, raster.crs, nodata=raster.nodata, area_or_point=raster.area_or_point
+    if not _is_raster(source):
+        return _apply_matrix_pointcloud(source, matrix, centroid, mp_config)
+    applied = _apply_matrix_raster(
+        source,
+        matrix,
+        centroid,
+        mp_config=mp_config,
+        resample=resample,
+        resampling=resampling,
+        out_transform=out_transform,
+        out_shape=out_shape,
+        gridding_options=gridding_options,
+        **kwargs,
     )
 
+    # 3/ Forma outputs
+    # We return a raster if input was a raster
+    if not array_input:
+        return applied
 
-def _apply_affine_array_block(
-    array: NDArrayf,
-    grid: GeoGrid,
-    starts: tuple[tuple[int, ...], tuple[int, ...]],
-    halo: int,
-    matrix: NDArrayf,
-    centroid: tuple[float, float, float] | None,
-    resampling: str,
-    block_id: tuple[int, int] = (0, 0),
-) -> NDArrayf:
-    """Apply a rigid transformation to a Dask block at its original grid location."""
-
-    row = max(0, starts[0][block_id[0]] - halo)
-    column = max(0, starts[1][block_id[1]] - halo)
-    window = rio.windows.Window(column, row, array.shape[1], array.shape[0])
-    (row_start, row_stop), (col_start, col_stop) = window.toranges()
-    _, tile_transform = _crop_window(grid, (col_start, row_start, col_stop, row_stop), distance_unit="pixel")
-    raster = Raster.from_array(array, tile_transform, grid.crs, nodata=np.nan)
-    return _apply_affine_raster_block(raster, matrix, centroid, resampling).data.filled(np.nan)
-
-
-def _apply_affine_point_block(
-    frame: gpd.GeoDataFrame, matrix: NDArrayf, centroid: tuple[float, float, float] | None, data_name: str | None
-) -> gpd.GeoDataFrame:
-    """Transform a point partition without changing its other columns."""
-
-    if data_name is not None:
-        return _apply_matrix_pts(frame, matrix, centroid=centroid, z_name=data_name)
-
-    # Read and transform elevations stored in the point geometry
-    x, y, z = PointCloud(frame, data_name=None).to_xyz()
-    x, y, z = _apply_matrix_pts_arr(x, y, z, matrix=matrix, centroid=centroid)
-
-    # Replace the 3D geometry without changing other columns
-    result = frame.copy()
-    result.geometry = gpd.points_from_xy(x, y, z, crs=frame.crs)
-    return result
-
-
-def _apply_affine_elevation(
-    elev: RasterBase | PointCloudBase,
-    matrix: NDArrayf,
-    centroid: tuple[float, float, float] | None = None,
-    mp_config: MultiprocConfig | None = None,
-    resample: bool = False,
-    resampling: str = "linear",
-    output_dtype: Any = None,
-) -> Any:
-    """
-    Apply an affine transformation to raster tiles or point partitions.
-
-    _apply_affine_raster_block() transforms overlapping raster tiles with _apply_matrix_rst().
-    _apply_affine_point_block() transforms point partitions with the existing point functions.
-    Raster outputs use reproject() when the original grid is requested.
-    """
-
-    # 1/ Prepare inputs and handle point clouds
-    source = elev
-    chunked = source._chunks is not None if _is_raster(source) else source._is_dask
-    if mp_config is not None and chunked:
-        raise ValueError("Cannot use multiprocessing and Dask simultaneously. Remove mp_config for Dask inputs.")
-
-    translated_grid = np.array_equal(matrix[:3, :3], np.eye(3)) and np.any(matrix[:2, 3] != 0)
-    if mp_config is not None and resample and _is_raster(source) and translated_grid:
-        with mp_config.temporary() as config:
-            moved = _apply_affine_elevation(
-                source, matrix, centroid, config, resampling=resampling, output_dtype=output_dtype
-            )
-            return _get_raster_interface(moved).reproject(
-                source, resampling=resampling, mp_config=mp_config, silent=True
-            )
-    if not _is_raster(source):
-        if source._is_xr:
-            x, y, z = source.to_xyz()
-            transformed = _apply_matrix_pts_mat(np.stack((x, y, z)), matrix, centroid)
-            result = source.copy(new_array=transformed[2])
-            coordinates = {
-                name: source._dataset.coords[name].variable.copy(data=values)
-                for name, values in zip(("x", "y"), transformed[:2])
-            }
-            return result.assign_coords(coordinates)
-        frame = source._dataset
-        if source._is_dask:
-            # Infer output dtypes without reading points
-            meta = _apply_affine_point_block(frame._meta, matrix, centroid, source.data_name)
-            result = frame.map_partitions(_apply_affine_point_block, matrix, centroid, source.data_name, meta=meta)
-        else:
-            result = _apply_affine_point_block(frame, matrix, centroid, source.data_name)
-        return source._cast_pointcloud_output(result)
-
-    # 2/ Transform raster values and coordinates
-    # Translations change the grid metadata and add a height offset
-    if np.array_equal(matrix[:3, :3], np.eye(3)):
-        if mp_config is not None:
-            from geoutils.multiproc import map_overlap
-
-            result = map_overlap(
-                _apply_affine_raster_block, source, mp_config, matrix, centroid, resampling, output_dtype=output_dtype
-            )
-            result = result.translate(matrix[0, 3], matrix[1, 3])
-        else:
-            result = source.copy(new_array=source.data + matrix[2, 3])
-            result = _get_raster_interface(result).translate(matrix[0, 3], matrix[1, 3])
-    else:
-        # Include neighboring cells reached by the rotation
-        limits = source.stats(["min", "max"], mp_config=mp_config)
-        bounds = source.bounds
-        corners = np.array(
-            [
-                (x, y, z)
-                for x in (bounds.left, bounds.right)
-                for y in (bounds.bottom, bounds.top)
-                for z in (limits["min"], limits["max"])
-            ]
-        ).T
-        moved = _apply_matrix_pts_mat(corners, matrix, centroid)
-        displacement = np.max(np.abs(moved[:2] - corners[:2]), axis=1)
-        # Add three cells for the widest interpolation window
-        depth = int(np.ceil(max(displacement / np.asarray(source.res)))) + 3
-        if mp_config is not None:
-            from geoutils.multiproc import map_overlap
-
-            result = map_overlap(
-                _apply_affine_raster_block,
-                source,
-                mp_config,
-                matrix,
-                centroid,
-                resampling,
-                depth=depth,
-                output_dtype=output_dtype,
-            )
-        elif source._chunks is not None:
-            from xdem._misc import import_optional
-
-            import_optional("dask")
-            import dask.array as da
-            from dask.array.overlap import ensure_minimum_chunksize
-
-            array = source.data.reshape(source.shape)
-            depth = min(depth, min(source.shape) - 1)
-            chunks = tuple(ensure_minimum_chunksize(depth, axis_chunks) for axis_chunks in array.chunks)
-            array = array.rechunk(chunks)
-            starts = tuple(tuple(np.cumsum((0, *axis_chunks[:-1])).tolist()) for axis_chunks in chunks)
-            # Placeholder for affine sampling across chunks
-            values = da.map_overlap(
-                _apply_affine_array_block,
-                array,
-                grid=GeoGrid(source.transform, source.shape, source.crs),
-                starts=starts,
-                depth=depth,
-                boundary="none",
-                halo=depth,
-                matrix=matrix,
-                centroid=centroid,
-                resampling=resampling,
-                dtype=source.dtype,
-                meta=np.empty((0, 0), dtype=source.dtype),
-            )
-            result = source.copy(new_array=values.reshape(source.data.shape))
-        else:
-            result = _apply_affine_raster_block(source, matrix, centroid, resampling)
-
-    # 3/ Cast and resample the raster output
-    # Cast public raster outputs to float32
-    if output_dtype is not None and mp_config is None:
-        result_raster = _get_raster_interface(result)
-        if result_raster._is_xr:
-            result = result_raster.copy(new_array=result_raster.data.astype(output_dtype))
-        else:
-            result = result_raster.astype(output_dtype)
-
-    # Resample onto the original grid
-    if resample:
-        result_raster = _get_raster_interface(result)
-        nodata = np.nan if result_raster.nodata is None else result_raster.nodata
-        result = result_raster.reproject(source, resampling=resampling, mp_config=mp_config, nodata=nodata, silent=True)
-    return result
+    # Return arrays in their original family with the destination geotransform
+    result = _get_raster_interface(applied)
+    values = result.data if is_dask_array(elev) else result.to_nanarray()
+    if np.ma.isMaskedArray(elev):
+        values = np.ma.masked_invalid(values)
+    return values, result.transform
 
 
 ###########################################
@@ -2471,7 +2957,7 @@ class Coreg:
         elev: MArrayf,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
+        resampling: str | rio.warp.Resampling | Interpolator | Reducer = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         z_name: str | None = None,
@@ -2484,7 +2970,7 @@ class Coreg:
         elev: NDArrayf,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
+        resampling: str | rio.warp.Resampling | Interpolator | Reducer = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         z_name: str | None = None,
@@ -2497,7 +2983,7 @@ class Coreg:
         elev: RasterType | gpd.GeoDataFrame | PointCloudType,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
+        resampling: str | rio.warp.Resampling | Interpolator | Reducer = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         z_name: str | None = None,
@@ -2509,7 +2995,7 @@ class Coreg:
         elev: MArrayf | NDArrayf | RasterType | gpd.GeoDataFrame | PointCloudType,
         bias_vars: dict[str, NDArrayf | MArrayf | RasterType] | None = None,
         resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
+        resampling: str | rio.warp.Resampling | Interpolator | Reducer = "bilinear",
         transform: rio.transform.Affine | None = None,
         crs: rio.crs.CRS | None = None,
         z_name: str | None = None,
@@ -2528,11 +3014,14 @@ class Coreg:
         :param bias_vars: Only for some bias correction classes. 2D array of bias variables used.
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
             only the transform might be updated and no resampling is done.
-        :param resampling: Resampling method if resample is used. Defaults to "bilinear".
+        :param resampling: Resampling method if resample is used. Affine methods also accept GeoUtils gridding
+            names and Interpolator/Reducer objects. Defaults to "bilinear".
         :param transform: Geotransform of the elevation, only if provided as 2D array.
         :param crs: CRS of elevation, only if provided as 2D array.
         :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
-        :param kwargs: Any optional arguments to be passed to either self._apply_rst or apply_matrix.
+        :param kwargs: Any optional arguments to be passed to either self._apply_rst or apply_matrix. Affine raster
+            calls accept out_transform and out_shape to select the destination grid, and gridding_options
+            to configure GeoUtils grid().
 
         :returns: The transformed DEM.
         """
@@ -2542,25 +3031,32 @@ class Coreg:
         spatial, transform, crs, z_name = _preprocess_coreg_apply(
             elev, transform, crs, z_name, bias_vars=bias_vars, mp_config=kwargs.get("mp_config")
         )
-        raster_input = _is_raster(spatial)
-        chunked = spatial._chunks is not None if raster_input else spatial._is_dask
 
         if self._is_affine and bias_vars is not None:
             warnings.warn("This coregistration method is affine, ignoring `bias_vars` passed to apply().")
             bias_vars = None
 
-        # Transform point clouds and chunked rasters without loading all values
-        if self._is_affine and (not raster_input or chunked or kwargs.get("mp_config") is not None):
-            interpolation = "linear" if resampling == "bilinear" else resampling
-            result = _apply_affine_elevation(
-                spatial,
-                self.to_matrix(),
-                getattr(self, "centroid", lambda: None)(),
+        # Transform affine rasters and point clouds through the same functions
+        if self._is_affine:
+            if _is_raster(spatial) and not self.is_translation and not resample:
+                raise NotImplementedError(
+                    f"Option `resample=False` not supported by {self.__class__},"
+                    " only available for translation coregistrations such as NuthKaab."
+                )
+            interpolation = resampling.name if isinstance(resampling, rio.warp.Resampling) else resampling
+            interpolation = "linear" if interpolation == "bilinear" else interpolation
+            apply_options: dict[str, Any] = dict(
+                centroid=getattr(self, "centroid", lambda: None)(),
                 mp_config=kwargs.get("mp_config"),
                 resample=resample,
                 resampling=interpolation,
                 output_dtype="float32",
+                out_transform=kwargs.get("out_transform"),
+                out_shape=kwargs.get("out_shape"),
+                force_regrid_method=kwargs.get("force_regrid_method"),
+                gridding_options=kwargs.get("gridding_options"),
             )
+            result: Any = apply_matrix(spatial, self.to_matrix(), **apply_options)
             applied_elev, out_transform = result, transform
         else:
             main_args = {"elev": spatial, "transform": transform, "crs": crs, "resample": resample}
@@ -2574,7 +3070,7 @@ class Coreg:
             if isinstance(elev, np.ndarray) or is_dask_array(elev):
                 raster_result = _get_raster_interface(applied_elev)
                 values = raster_result.data if is_dask_array(elev) else raster_result.to_nanarray()
-                values = values.reshape(elev.shape)
+                values = values.reshape(raster_result.shape if kwargs.get("out_shape") is not None else elev.shape)
                 if np.ma.isMaskedArray(elev):
                     values = np.ma.masked_invalid(values)
                 return values, raster_result.transform
@@ -2607,7 +3103,7 @@ class Coreg:
         area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
+        resampling: str | rio.warp.Resampling | Interpolator | Reducer = "bilinear",
         random_state: int | np.random.Generator | None = None,
         fit_kwargs: dict[str, Any] | None = None,
         apply_kwargs: dict[str, Any] | None = None,
@@ -2628,7 +3124,7 @@ class Coreg:
         area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
+        resampling: str | rio.warp.Resampling | Interpolator | Reducer = "bilinear",
         random_state: int | np.random.Generator | None = None,
         fit_kwargs: dict[str, Any] | None = None,
         apply_kwargs: dict[str, Any] | None = None,
@@ -2649,7 +3145,7 @@ class Coreg:
         area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
+        resampling: str | rio.warp.Resampling | Interpolator | Reducer = "bilinear",
         random_state: int | np.random.Generator | None = None,
         fit_kwargs: dict[str, Any] | None = None,
         apply_kwargs: dict[str, Any] | None = None,
@@ -2670,7 +3166,7 @@ class Coreg:
         area_or_point: Literal["Area", "Point"] | None = None,
         z_name: str = "z",
         resample: bool = True,
-        resampling: str | rio.warp.Resampling = "bilinear",
+        resampling: str | rio.warp.Resampling | Interpolator | Reducer = "bilinear",
         random_state: int | np.random.Generator | None = None,
         fit_kwargs: dict[str, Any] | None = None,
         apply_kwargs: dict[str, Any] | None = None,
@@ -2691,7 +3187,8 @@ class Coreg:
         :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
         :param resample: If set to True, will reproject output Raster on the same grid as input. Otherwise, \
             only the transform might be updated and no resampling is done.
-        :param resampling: Resampling method if resample is used. Defaults to "bilinear".
+        :param resampling: Resampling method if resample is used. Affine methods also accept GeoUtils gridding
+            names and Interpolator/Reducer objects. Defaults to "bilinear".
         :param random_state: Random state or seed number to use for calculations (to fix random sampling).
         :param fit_kwargs: Keyword arguments to be passed to fit.
         :param apply_kwargs: Keyword argument to be passed to apply.
@@ -2814,7 +3311,7 @@ class Coreg:
             except NotImplementedCoregApply:
                 if self.is_affine:
 
-                    applied_elev = _apply_affine_elevation(
+                    applied_elev = apply_matrix(
                         source,
                         self.to_matrix(),
                         centroid=self._meta["outputs"]["affine"].get("centroid"),
