@@ -182,7 +182,7 @@ def write_constant_dem(filename: str, config: RuntimeConfig) -> None:
         width=width,
         count=1,
         dtype="float32",
-        crs=4326,
+        crs="EPSG:32632",
         transform=transform,
         nodata=-99999,
         tiled=True,

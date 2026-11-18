@@ -191,4 +191,4 @@ BENCHMARKS = (
         describe_workload=clip_workload,
     ),
 )
-COMPARISONS = (comparison(BENCHMARKS[0], by="execution"),)
+# COMPARISONS = (comparison(BENCHMARKS[0], by="execution"),)
