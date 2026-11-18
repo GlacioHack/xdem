@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES)
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -44,8 +44,7 @@ def main(arg_list: list[str] | None = None) -> None:
 
     subparsers = parser.add_subparsers(
         dest="command",
-        help="Available workflows as subcommand (see xdem [workflow] -h"
-        " for more information on the specific workflow)",
+        help="Available workflows as subcommand (see xdem [workflow] -h for more information on the specific workflow)",
     )
 
     # Subcommand: info

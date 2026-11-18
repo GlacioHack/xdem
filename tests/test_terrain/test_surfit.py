@@ -83,7 +83,6 @@ class TestTerrainAttribute:
                 assert np.nanpercentile(diff_zt_horn, 80) < 0.25 * magnitude
 
         except Exception as exception:
-
             if PLOT:
                 import matplotlib.pyplot as plt
 
@@ -262,7 +261,6 @@ class TestTerrainAttribute:
         list_dem_concavity = ["convex", "convex", "concave", "concave"]
 
         for i, dem in enumerate(list_dems_v):
-
             # Define a sign to test inequality based on convexity
             conc = list_dem_concavity[i]
             if conc == "convex":
@@ -323,7 +321,6 @@ class TestTerrainAttribute:
         list_dem_concavity = ["convex", "convex", "concave", "concave"]
 
         for i, dem in enumerate(list_dems_v):
-
             # Define a sign to test inequality based on convexity
             conc = list_dem_concavity[i]
             if conc == "convex":
@@ -520,7 +517,6 @@ class TestTerrainAttribute:
 
 
 class TestConvolution:
-
     # Get all coefficients
     coef_names = list(all_coefs.keys())
     coef_names_h = [n for n in coef_names if n in ["h1", "h2"]]

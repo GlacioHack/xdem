@@ -54,7 +54,6 @@ class TestSpatialstatsDeprecation:
         # Evaluate interpolation with the original positional predictor interface
         assert np.isfinite(interpolator((np.array([10, 50]),))).all()
         with pytest.warns(DeprecationWarning):
-
             # Look up the two-dimensional group statistic for each observation
             result = xdem.spatialstats.get_perbin_nd_binning(
                 table, [values, values / 10], ["x", "y"], statistic="nanmedian"
@@ -64,7 +63,6 @@ class TestSpatialstatsDeprecation:
         assert result.shape == values.shape
         np.testing.assert_array_equal(result[:33], np.full(33, 16.0))
         with pytest.warns(DeprecationWarning):
-
             # Check that the original NMAD entry point still delegates to GeoUtils
             assert xdem.spatialstats.nmad(values) == gu.stats.nmad(values)
 
@@ -88,7 +86,6 @@ class TestSpatialstatsDeprecation:
         structure = xdem.ErrorStructure([xdem.ErrorComponent("error", 2, VariogramModel("spherical", 20, 1))])
         assert value == pytest.approx(xdem.uncertainty.number_effective_samples(100, structure))
         with pytest.warns(DeprecationWarning):
-
             # Exercise the original sampler controls and explicit distance bins
             empirical = xdem.spatialstats.sample_empirical_variogram(
                 np.random.default_rng(0).normal(size=(12, 12)),

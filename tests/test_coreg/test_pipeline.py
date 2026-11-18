@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, Callable
 
 import geopandas as gpd
 import numpy as np
-import pandas as pd
 import pytest
+from affine import Affine
 from geoutils import Raster, Vector
+from geoutils.multiproc import MultiprocConfig
 from geoutils.raster import RasterType
 
 import xdem
-from xdem import coreg, examples
+from tests.test_coreg.test_base import assert_coreg_meta_equal
+from xdem import DEM, coreg, examples, open_dem
 from xdem.coreg.base import Coreg
 
 
@@ -25,25 +28,6 @@ def load_examples() -> tuple[RasterType, RasterType, Vector]:
     glacier_mask = Vector(examples.get_path_test("longyearbyen_glacier_outlines"))
 
     return ref_dem, tba_dem, glacier_mask
-
-
-def assert_coreg_meta_equal(input1: Any, input2: Any) -> bool:
-    """Short test function to check equality of coreg dictionary values."""
-
-    # Different equality check based on input: number, callable, array, dataframe
-    if not isinstance(input1, type(input2)):
-        return False
-    elif isinstance(input1, (str, float, int, np.floating, np.integer, tuple, list)) or callable(input1):
-        return input1 == input2
-    elif isinstance(input1, np.ndarray):
-        return np.array_equal(input1, input2, equal_nan=True)
-    elif isinstance(input1, pd.DataFrame):
-        return input1.equals(input2)
-    # If input is a dictionary, we recursively call this function to check equality of all its sub-keys
-    elif isinstance(input1, dict):
-        return all(assert_coreg_meta_equal(input1[k], input2[k]) for k in input1.keys())
-    else:
-        raise TypeError(f"Input type {type(input1)} not supported for this test function.")
 
 
 class _CoregPipelineInputs:
@@ -65,7 +49,7 @@ class _CoregPipelineInputs:
 
 
 class TestCoregPipeline(_CoregPipelineInputs):
-    """Test module for construction, fitting, application and composition of eager pipelines."""
+    """Test module for construction, fitting, application and composition of in-memory pipelines."""
 
     @pytest.mark.parametrize("coreg_class", [coreg.VerticalShift, coreg.ICP, coreg.NuthKaab])  # type: ignore
     def test_copy(self, coreg_class: Callable[[], Coreg]) -> None:
@@ -261,20 +245,156 @@ class TestCoregPipeline(_CoregPipelineInputs):
         aligned_and = coreg_fit_and_apply.fit_and_apply(**self.fit_params, subsample=10000, random_state=42)
 
         assert aligned_and.raster_equal(aligned_then, warn_failure_reason=True)
-        assert list(coreg_fit_and_apply.pipeline[0].meta.keys()) == list(coreg_fit_then_apply.pipeline[0].meta.keys())
-        assert all(
-            assert_coreg_meta_equal(
-                coreg_fit_and_apply.pipeline[0].meta[k], coreg_fit_then_apply.pipeline[0].meta[k]  # type: ignore
-            )
-            for k in coreg_fit_and_apply.pipeline[0].meta.keys()
+        for combined, separate in zip(coreg_fit_and_apply.pipeline, coreg_fit_then_apply.pipeline):
+            assert list(combined.meta) == list(separate.meta)
+            assert assert_coreg_meta_equal(combined.meta, separate.meta)
+
+    @pytest.mark.parametrize("masked", [False, True])
+    @pytest.mark.parametrize("shape", [(5, 6), (1, 5, 6)])
+    def test_apply__array_representation(self, masked: bool, shape: tuple[int, ...]) -> None:
+        """Checks that pipeline application preserves array shape, masks and updated grid metadata."""
+
+        # Create elevations and a fitted pipeline
+        values = np.arange(30.0).reshape(shape)
+        values.reshape(-1)[8] = np.nan
+        if masked:
+            values = np.ma.masked_invalid(values)
+        raster = Raster.from_array(values, Affine(2, 0, 500000, 0, -2, 7000000), 32632, nodata=np.nan)
+        pipeline = (coreg.VerticalShift() + coreg.VerticalShift()).fit(raster, raster + 2)
+        expected = pipeline.apply(raster, resample=False)
+
+        # Apply the pipeline to the array
+        actual, transform = pipeline.apply(values, transform=raster.transform, crs=raster.crs, resample=False)
+
+        # Check values, masks and grid metadata
+        assert actual.shape == shape and transform == expected.transform
+        assert np.ma.isMaskedArray(actual) == masked
+        np.testing.assert_array_equal(np.ma.filled(actual, np.nan), expected.to_nanarray().reshape(shape))
+        np.testing.assert_array_equal(np.ma.filled(values, np.nan), raster.to_nanarray().reshape(shape))
+
+    def test_apply__dataframe_elevation_column(self) -> None:
+        """Checks that a pipeline applies a named elevation column while preserving other point attributes."""
+
+        # Create a fitted pipeline and points
+        raster = Raster.from_array(np.ones((5, 6)), Affine(2, 0, 500000, 0, -2, 7000000), 32632)
+        pipeline = (coreg.VerticalShift() + coreg.VerticalShift()).fit(raster, raster + 2)
+        frame = gpd.GeoDataFrame(
+            {"height": [10.0, 20.0], "quality": [1, 2]},
+            geometry=gpd.points_from_xy([0, 1], [2, 3]),
+            index=[4, 7],
+            crs=32632,
         )
-        assert list(coreg_fit_and_apply.pipeline[1].meta.keys()) == list(coreg_fit_then_apply.pipeline[1].meta.keys())
-        assert all(
-            assert_coreg_meta_equal(
-                coreg_fit_and_apply.pipeline[1].meta[k], coreg_fit_then_apply.pipeline[1].meta[k]  # type: ignore
-            )
-            for k in coreg_fit_and_apply.pipeline[1].meta.keys()
+
+        # Apply the named elevation column
+        actual = pipeline.apply(frame, z_name="height")
+
+        # Check corrected heights and unchanged attributes
+        np.testing.assert_array_equal(actual.height, frame.height - 2)
+        np.testing.assert_array_equal(actual.quality, frame.quality)
+        np.testing.assert_array_equal(actual.index, frame.index)
+        np.testing.assert_array_equal(actual.geometry, frame.geometry)
+
+
+@pytest.fixture
+def pipeline_dem_paths(tmp_path: Path, bias_correction: bool) -> tuple[Path, ...]:
+    """Write curved DEMs with a ramp or horizontal shift for pipeline comparisons."""
+
+    # Create terrain with a known shift
+    rows, columns = np.indices((20, 25))
+    values = (100 + 5 * np.sin(columns / 4) + 3 * np.cos(rows / 5)).astype("float32")
+    reference: Any = Raster.from_array(values, Affine(2, 0, 500000, 0, -2, 7000000), 32632, nodata=np.nan)
+    source: Any
+    if bias_correction:
+        source = reference + 0.5 + 0.03 * rows + 0.02 * columns
+    else:
+        source = reference.translate(0.3, -0.2) + 0.5
+
+    paths = tuple(tmp_path / f"input-{index}.tif" for index in range(2))
+    for raster, path in zip((reference, source), paths):
+        raster.to_file(path)
+    return paths
+
+
+class TestCoregPipelineChunked:
+    """Test module for pipeline fit_and_apply() with Dask or multiprocessing."""
+
+    @pytest.mark.parametrize(
+        "backend, bias_correction",
+        [("dask", True), ("mp", False), ("dask_array", False)],
+    )
+    def test_fit_and_apply__chunk_invariance(
+        self, backend: str, bias_correction: bool, pipeline_dem_paths: tuple[Path, ...], tmp_path: Path
+    ) -> None:
+        """Checks that chunked pipelines match in-memory steps, values and transforms without loading inputs."""
+
+        from geoutils.multiproc import MpCluster
+
+        # 1/ Open inputs and select the pipeline
+        reference: Any
+        source: Any
+        reference, source = (DEM(path, load_data=True) for path in pipeline_dem_paths)
+        estimator = (
+            coreg.VerticalShift(subsample=80) + coreg.Deramp(poly_order=1, subsample=80)
+            if bias_correction
+            else coreg.VerticalShift(subsample=100) + coreg.ICP(subsample=100) + coreg.VerticalShift(subsample=100)
         )
+        options: dict[str, Any] = dict(random_state=42)
+        # 2/ Fit and apply the chunked pipeline
+        if backend in ("dask", "dask_array"):
+            # 2.1/ If using Dask
+            pytest.importorskip("dask")
+            if backend == "dask_array":
+                import dask.array as da
+
+                estimator = coreg.VerticalShift(subsample=20) + coreg.VerticalShift(subsample=20)
+                values = reference.to_nanarray()
+                reference, source = values, values + 0.5
+                inputs = [da.from_array(reference, chunks=(7, 9)), da.from_array(source, chunks=(6, 8))]
+                options.update(transform=Affine(2, 0, 500000, 0, -2, 7000000), crs=32632)
+            else:
+                # Use different layouts and shorter final tiles
+                inputs = [
+                    open_dem(path, chunks={"y": rows, "x": columns}).dem
+                    for path, (rows, columns) in zip(pipeline_dem_paths, ((7, 9), (6, 8)))
+                ]
+                assert all(not value.is_loaded for value in inputs)
+            expected = estimator.copy()
+            in_memory = expected.fit_and_apply(reference, source, **options)
+            actual = estimator.copy()
+            output = actual.fit_and_apply(inputs[0], inputs[1], **options)
+            if backend == "dask_array":
+                values, transform = output
+                assert isinstance(values, da.Array) and transform == in_memory[1]
+                computed = values.compute()
+                expected_values = in_memory[0]
+                assert all(isinstance(value, da.Array) for value in inputs)
+            else:
+                assert not output.dem.is_loaded
+                computed = output.compute().data.squeeze()
+                expected_values = in_memory.to_nanarray()
+                assert output.dem.transform == in_memory.transform and output.dem.crs == in_memory.crs
+                assert not output.dem.is_loaded and all(not value.is_loaded for value in inputs)
+        else:
+            # 2.2/ If using MP
+            inputs = [DEM(path) for path in pipeline_dem_paths]
+            config = MultiprocConfig(chunks=(7, 9), outfile=str(tmp_path / "output.tif"))
+            assert all(not value.is_loaded for value in inputs)
+            expected = estimator.copy()
+            in_memory = expected.fit_and_apply(reference, source, **options)
+            actual = estimator.copy()
+            with MpCluster({"nb_workers": 2, "max_tasks_per_child": None}) as workers:
+                config.cluster = workers
+                output = actual.fit_and_apply(inputs[0], inputs[1], mp_config=config, **options)
+            assert not output.is_loaded
+            computed = output.to_nanarray()
+            expected_values = in_memory.to_nanarray()
+            assert output.transform == in_memory.transform and output.crs == in_memory.crs
+            assert all(not value.is_loaded for value in inputs)
+
+        # 3/ Check equality of step metadata and corrected values
+        for actual_step, expected_step in zip(actual.pipeline, expected.pipeline):
+            assert assert_coreg_meta_equal(actual_step.meta["outputs"], expected_step.meta["outputs"])
+        np.testing.assert_array_equal(computed, expected_values)
 
 
 class TestCoregPipelineErrors(_CoregPipelineInputs):

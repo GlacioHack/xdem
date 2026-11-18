@@ -19,7 +19,6 @@ from xdem import DEM, EPC
 
 
 class TestEPC:
-
     # 1/ Elevation point cloud with 3D points
     rng = np.random.default_rng(42)
     arr_points = rng.integers(low=1, high=1000, size=(100, 3)) + rng.normal(0, 0.15, size=(100, 3))
@@ -288,14 +287,14 @@ class TestEPC:
         # With both inputs as names
         epc.set_vcrs("EGM96")
         with pytest.warns(
-            UserWarning, match="Source and destination vertical CRS are the same, " "skipping vertical transformation."
+            UserWarning, match="Source and destination vertical CRS are the same, skipping vertical transformation."
         ):
             epc.to_vcrs("EGM96")
 
         # With one input as name, the other as CRS
         epc.set_vcrs("Ellipsoid")
         with pytest.warns(
-            UserWarning, match="Source and destination vertical CRS are the same, " "skipping vertical transformation."
+            UserWarning, match="Source and destination vertical CRS are the same, skipping vertical transformation."
         ):
             epc.to_vcrs(CRS("EPSG:4979"))
 

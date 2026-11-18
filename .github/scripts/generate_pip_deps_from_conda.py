@@ -145,6 +145,6 @@ if __name__ == "__main__":
         compare=args.compare,
     )
     if res:
-        msg = f"`{pip_fname}` has to be generated with `{__file__}` after " f"`{conda_fname}` is modified.\n"
+        msg = f"`{pip_fname}` has to be generated with `{__file__}` after `{conda_fname}` is modified.\n"
         sys.stderr.write(msg)
     sys.exit(res)

@@ -54,9 +54,8 @@ which were themselves inspired by that of [SymPy]([https://www.sympy.org/en/inde
 xDEM currently supports Python versions of 3.10 to 3.14 (see `dev-environment.yml` for detailed dependencies), which are
 tested in a continuous integration (CI) workflow running on GitHub Actions.
 
-When you open a PR on xDEM, a single linting action and 9 test actions will automatically start, corresponding to all
-supported Python versions (3.10, 3.11, 3.12, 3.13 and 3.14) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also
-be reported by CoverAlls.
+When you open a PR on xDEM, GitHub Actions checks linting, documentation and tests across supported Python versions
+and operating systems (Ubuntu, Mac, Windows), with base and optional dependencies. Coveralls reports test coverage changes.
 
 ### Setup
 
@@ -82,9 +81,10 @@ make install
 At least one test per feature (in the associated `tests/test_*.py` file) should be included in the PR, using `pytest` (see existing tests for examples).
 The structure of test modules and functions in `tests/` largely mirrors that of the package modules and functions in `xdem/`.
 
-To run the entire test suite, run `pytest` from the root of the repository:
+To run the entire test suite from the repository root:
+
 ```bash
-pytest
+python -m pytest
 ```
 
 Running `pytest` will trigger a script that automatically downloads test data from [https://github.com/GlacioHack/xdem-data](https://github.com/GlacioHack/xdem-data) used to run all tests.
@@ -93,9 +93,19 @@ RichDEM should only be used for testing purposes within the xDEM project. The fu
 
 ### Documentation
 
-If your changes need to be reflected in the documentation, update the related pages located in `doc/source/`. The documentation is written in MyST markdown syntax, similar to GitHub's default Markdown (see [MyST-NB](https://myst-nb.readthedocs.io/en/latest/authoring/text-notebooks.html) for details).
+Update pages in `doc/source/` when your PR affects the documentation.
 
-To ensure that the documentation is building properly after your changes, if you are on Linux, you can run `pytest tests/test_doc.py`, which is equivalent to building directly calling `sphinx-build source/ build/html/` from the `doc/` folder. On Windows and Mac, the documentation is not maintained, so you can wait to open the PR for it to be checked on Linux by the CI.
+These pages are written in [MyST Markdown](https://myst-nb.readthedocs.io/en/latest/authoring/text-notebooks.html),
+with executable code cells. Gallery examples are Python scripts in `examples/`.
+
+With the development environment activated, build the HTML documentation from the repository root:
+
+```bash
+sphinx-build -T -b html doc/source doc/build
+```
+
+Then open `doc/build/index.html` to review the generated pages.
+The documentation also builds in a separate GitHub Actions workflow on every PR.
 
 ### Formatting and linting
 
@@ -103,7 +113,7 @@ Install and run `pre-commit` from the root of the repository (such as with `mamb
 which will use `.pre-commit-config.yaml` to verify spelling errors, import sorting, type checking, formatting and linting:
 
 ```bash
-pre-commit run --all
+pre-commit run --all-files
 ```
 
 You can then commit and push those changes.

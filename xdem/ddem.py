@@ -68,11 +68,11 @@ def _mask_as_array(reference_raster: gu.Raster, mask: str | gu.Vector | gu.Raste
         mask_array = mask.create_mask(reference_raster, as_array=True)
     elif isinstance(mask, gu.Raster):
         # The true value is the maximum value in the raster, unless the maximum value is 0 or False
-        true_value = np.nanmax(mask.data) if not np.nanmax(mask.data) in [0, False] else True
+        true_value = np.nanmax(mask.data) if np.nanmax(mask.data) not in [0, False] else True
         mask_array = (mask.data == true_value).squeeze()
     else:
         raise TypeError(
-            f"Raster has invalid type: {type(mask)}. Expected one of: " f"{[gu.Raster, gu.Vector, str, type(None)]}"
+            f"Raster has invalid type: {type(mask)}. Expected one of: {[gu.Raster, gu.Vector, str, type(None)]}"
         )
 
     return mask_array
@@ -134,9 +134,9 @@ class dDEM(Raster):  # type: ignore
     def filled_data(self, array: NDArrayf) -> None:
         """Set the filled_data attribute and make sure that it is valid."""
 
-        assert (
-            self.data.size == array.size
-        ), f"Array shape '{array.shape}' differs from the data shape '{self.data.shape}'"
+        assert self.data.size == array.size, (
+            f"Array shape '{array.shape}' differs from the data shape '{self.data.shape}'"
+        )
 
         self._filled_data = np.asarray(array).reshape(self.data.shape)
 

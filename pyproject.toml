@@ -14,8 +14,14 @@ fallback_version = "0.0.1"
 # Use no-local-version by default for CI builds
 local_scheme = "no-local-version"
 
-[tool.black]
-target_version = ['py310']
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+ignore = ["B028", "B9", "C408", "E203", "E226", "E24"]
+preview = true
+select = ["B", "C4", "E", "F", "W"]
 
 [tool.mypy]
 allow_untyped_decorators = true

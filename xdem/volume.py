@@ -101,7 +101,6 @@ def hypsometric_binning(
     values = np.full(shape=nb_bins, fill_value=np.nan, dtype=ddem.dtype)
     counts = np.zeros_like(values, dtype=int)
     for i in range(nb_bins):
-
         values_in_bin = ddem[indices == i + 1]
 
         # Remove possible Nans
@@ -211,7 +210,6 @@ def fit_hypsometric_bins_poly(
     valids = np.isfinite(np.asarray(bins[value_column]))
 
     for _k in range(iterations):
-
         # Fit polynomial
         x = bins.index[valids]
         y = bins[value_column][valids]
@@ -480,7 +478,6 @@ for areas filling the min_coverage criterion.
     idealized_ddem = nodata * np.ones_like(dem)
 
     for _k, index in enumerate(valid_geometry_index):
-
         # Raster of valid pixel within geometry
         local_mask = mask == index
         local_inlier_mask = inlier_mask & (local_mask)
@@ -557,7 +554,8 @@ for areas filling the min_coverage criterion.
     corrected_ddem[~np.isfinite(corrected_ddem)] = nodata
 
     output = np.ma.masked_array(
-        corrected_ddem, mask=(corrected_ddem == nodata)  # mask=((mask != 0) & (ddem_mask | dem_mask))
+        corrected_ddem,
+        mask=(corrected_ddem == nodata),  # mask=((mask != 0) & (ddem_mask | dem_mask))
     ).reshape(orig_shape)
 
     assert output is not None
