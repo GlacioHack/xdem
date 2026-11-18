@@ -10,7 +10,9 @@ from benchmarks.workflows.config import RuntimeConfig, runtime_config
 
 ExecutionMode = Literal["inmem", "dask", "multiprocessing"]
 
-ComparisonDimension = Literal["method", "engine", "strategy", "execution", "output_driver"]
+ComparisonDimension = Literal[
+    "method", "engine", "strategy", "execution", "output_driver", "terrain_attribute", "coreg_method", "surface_fit"
+]
 
 EXECUTION_MODE_LABELS: dict[ExecutionMode, str] = {
     "inmem": "In memory",
@@ -34,6 +36,9 @@ class Case:
     execution: ExecutionMode | None = "inmem"
     strategy: str | None = None
     output_driver: str = "GPKG"
+    terrain_attribute: str | None = None
+    coreg_method: str | None = None
+    surface_fit: str | None = None
     options: Mapping[str, Any] = field(default_factory=dict)
     labels: Mapping[str, str] = field(default_factory=dict)
     implementation: str = "xdem"
@@ -134,7 +139,18 @@ class Benchmark:
         )
         implementation = case.engine if case.implementation == "xdem" else implementation
         function = self.operation.benchmark_name or self.operation.name
-        values = (function, case.method, implementation, case.strategy, output_driver, case.execution, case.variant)
+        values = (
+            function,
+            case.method,
+            case.terrain_attribute,
+            case.coreg_method,
+            case.surface_fit,
+            implementation,
+            case.strategy,
+            output_driver,
+            case.execution,
+            case.variant,
+        )
         implementation_name = "_".join(_class_token(value) for value in values if value is not None)
         if self.parameter_name is None:
             return implementation_name
@@ -201,6 +217,24 @@ class Comparison:
         return self._fixed("method")
 
     @property
+    def terrain_attribute(self) -> str | None:
+        """Return the terrain attribute fixed across selected cases, if any."""
+
+        return self._fixed("terrain_attribute")
+
+    @property
+    def coreg_method(self) -> str | None:
+        """Return the coregistration method fixed across selected cases, if any."""
+
+        return self._fixed("coreg_method")
+
+    @property
+    def surface_fit(self) -> str | None:
+        """Return the surface fit fixed across selected cases, if any."""
+
+        return self._fixed("surface_fit")
+
+    @property
     def calculation_engine(self) -> str | None:
         """Return the engine fixed across selected cases, if any."""
 
@@ -250,12 +284,26 @@ class Comparison:
         subject = self.benchmark.operation.display_name
         if self.method is not None:
             subject = f"{self.choice_label('method', self.method)} {subject.lower()}"
+        if self.terrain_attribute is not None:
+            subject = f"{self.choice_label('terrain_attribute', self.terrain_attribute)} {subject.lower()}"
+        if self.coreg_method is not None:
+            subject = f"{self.choice_label('coreg_method', self.coreg_method)} {subject.lower()}"
+        if self.surface_fit is not None:
+            subject = f"{subject} — {self.choice_label('surface_fit', self.surface_fit)}"
+        if (
+            self.by in ("terrain_attribute", "coreg_method", "surface_fit", "engine")
+            and self.execution_mode is not None
+        ):
+            subject += f" ({self.choice_label('execution', self.execution_mode)})"
         choice = {
             "execution": "",
             "engine": " engines",
             "method": " methods",
             "strategy": " strategies",
             "output_driver": " formats",
+            "terrain_attribute": "",
+            "coreg_method": " methods",
+            "surface_fit": " surface fits",
         }[self.by]
         return f"{subject}{choice} by {self.benchmark.parameter_title}"
 
@@ -335,6 +383,9 @@ def execution_cases(
     options: Mapping[str, Any] | None = None,
     labels: Mapping[str, str] | None = None,
     variant: str | None = None,
+    terrain_attribute: str | None = None,
+    coreg_method: str | None = None,
+    surface_fit: str | None = None,
 ) -> tuple[Case, ...]:
     """Generate an execution comparison around fixed numerical choices."""
 
@@ -345,6 +396,9 @@ def execution_cases(
             execution=execution,
             strategy=strategy if execution != "inmem" else None,
             output_driver=output_driver,
+            terrain_attribute=terrain_attribute,
+            coreg_method=coreg_method,
+            surface_fit=surface_fit,
             options=options or {},
             labels=labels or {},
             variant=variant,
@@ -389,11 +443,24 @@ def reference_case(
 
     case = benchmark[0] if isinstance(benchmark, tuple) else benchmark
     if isinstance(benchmark, tuple):
-        choices = {(item.method, item.output_driver, repr(item.options)) for item in benchmark}
+        choices = {
+            (
+                item.method,
+                item.terrain_attribute,
+                item.coreg_method,
+                item.surface_fit,
+                item.output_driver,
+                repr(item.options),
+            )
+            for item in benchmark
+        }
         if len(choices) != 1:
             raise ValueError(f"Expected equivalent benchmark cases for one reference implementation, got: {choices}")
     return Case(
         method=case.method,
+        terrain_attribute=case.terrain_attribute,
+        coreg_method=case.coreg_method,
+        surface_fit=case.surface_fit,
         execution=execution,
         output_driver=case.output_driver,
         options=case.options,

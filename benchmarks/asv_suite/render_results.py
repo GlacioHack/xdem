@@ -83,6 +83,18 @@ COMPARISON_SECTION_DETAILS: dict[ComparisonDimension, tuple[str, str]] = {
         "Point output formats",
         "Compare file-to-file LAS and LAZ output from v multiprocessing and PDAL CLI.",
     ),
+    "terrain_attribute": (
+        "Terrain attributes",
+        "Compare terrain attributes XXXX",
+    ),
+    "coreg_method": (
+        "Coregistration methods",
+        "Compare coregistration methods XXX",
+    ),
+    "surface_fit": (
+        "Surface fitting methods",
+        "Compare surface fitting methods XXX",
+    ),
 }
 
 # Scaling sections answer which input grows, independently of the GeoUtils choices represented by plot lines
@@ -150,6 +162,10 @@ OPERATION_GROUPS: dict[str, str] = {
     "dem_pairsample": "DEM ⟶ Other",
     "variogram_from_pairs": "Point ⟶ Other",
     "write": "DEM ⟶ Other",
+    "attributes": "DEM ⟶ DEM",
+    "coreg_fit_and_apply": "DEM ⟶ DEM",
+    "topo": "DEM ⟶ DEM",  # todo
+    "accuracy": "DEM ⟶ DEM",  # todo
 }
 
 
@@ -167,6 +183,9 @@ class ComparisonMeasurement:
     execution_mode: ExecutionMode | None
     external_reference: str | None
     output_driver: str
+    terrain_attribute: str | None
+    coreg_method: str | None
+    surface_fit: str | None
     series_dimension: str
     parameter: int
     operation_time_s: float
@@ -290,6 +309,10 @@ def _select_complete_result(
         if environment is not None and result_environment != environment:
             continue
         if require_complete and not required_keys.issubset(result.get_all_result_keys()):
+            print("DEBUG missings keys")
+            for key in required_keys:
+                if key not in result.get_all_result_keys():
+                    print("  -> missing ", key)
             continue
         candidates.append(result)
 
@@ -393,10 +416,16 @@ def collect_comparison_measurements(
                         selected_case.implementation
                     ),
                     output_driver=selected_case.output_driver,
+                    terrain_attribute=selected_case.terrain_attribute,
+                    coreg_method=selected_case.coreg_method,
+                    surface_fit=selected_case.surface_fit,
                     series_dimension={
                         "engine": "calculation_engine",
                         "execution": "execution_mode",
                         "output_driver": "output_format",
+                        "terrain_attribute": "terrain_attribute",
+                        "coreg_method": "coreg_method",
+                        "surface_fit": "surface_fit",
                     }.get(comparison.by, comparison.by),
                     parameter=parameter,
                     operation_time_s=operation_time,
@@ -929,6 +958,12 @@ def _operation_and_method_label(comparison: Comparison) -> str:
     if comparison.method is not None:
         method = comparison.choice_label("method", comparison.method)
         label = f"{label} — {method}"
+    if comparison.terrain_attribute is not None:
+        label = f"{label} — {comparison.choice_label('terrain_attribute', comparison.terrain_attribute)}"
+    if comparison.coreg_method is not None:
+        label = f"{label} — {comparison.choice_label('coreg_method', comparison.coreg_method)}"
+    if comparison.surface_fit is not None:
+        label = f"{label} — {comparison.choice_label('surface_fit', comparison.surface_fit)}"
     if comparison.strategy is not None:
         label = f"{label} — {comparison.choice_label('strategy', comparison.strategy)}"
     return label
@@ -975,18 +1010,11 @@ def _group_operation_rows(rows: list[tuple[Comparison, str]], *, column_count: i
 
     bodies = []
     rendered_rows = 0
-    print("_group_operation_rows", len(rows), column_count)
-    for comparison, row in rows:
-        print(OPERATION_GROUPS.get(comparison.operation))
-        print(comparison)
-        print(row)
 
     for group in OPERATION_GROUP_ORDER:
-        print("#", group)
         selected = [row for comparison, row in rows if OPERATION_GROUPS.get(comparison.operation) == group]
         if not selected:
             continue
-        print("selected", selected)
         rendered_rows += len(selected)
         bodies.append(
             f'<tbody><tr class="operation-group"><th colspan="{column_count}" scope="rowgroup">{group}</th></tr>'
@@ -1110,7 +1138,7 @@ def _engine_summary_comparisons() -> tuple[Comparison, ...]:
             priority = 1
         if priority == 0:
             continue
-        key = (comparison.operation, comparison.method)
+        key = (comparison.operation, comparison.method, comparison.terrain_attribute, comparison.coreg_method)
         current = selected.get(key)
         if current is None or priority > current[0]:
             selected[key] = (priority, comparison)
@@ -1124,7 +1152,6 @@ def _engine_summary_table(records: list[ComparisonMeasurement]) -> str:
     columns = ("rasterio", "scipy", "numba", "numpy", "gdal_cli")
 
     for comparison in _engine_summary_comparisons():
-        print(comparison)
         parameter = _summary_reference_parameter(comparison, records)
         _, by_implementation = _inmem_implementation_measurements(comparison, records, parameter)
         gdal = by_implementation.get("gdal_cli")
@@ -1150,7 +1177,6 @@ def _engine_summary_table(records: list[ComparisonMeasurement]) -> str:
                 + "</tr>",
             )
         )
-    print(len(rows))
     return "".join(
         [
             '<div class="table-wrap"><table><thead>',
@@ -1262,13 +1288,13 @@ def _default_cases(comparison: Comparison, *, execution: ExecutionMode | None = 
 def _default_comparisons() -> tuple[Comparison, ...]:
     """Choose one comparison per operation and method, preferring default Dask cases."""
 
-    selected: dict[tuple[str, str | None], Comparison] = {}
+    selected: dict[tuple[str, str | None, str | None, str | None], Comparison] = {}
     for comparison in COMPARISONS:
         if not comparison.summary or comparison.by not in ("execution", "strategy"):
             continue
         if not any(case.execution == "dask" and case.implementation == "xdem" for case in comparison.cases):
             continue
-        key = (comparison.operation, comparison.method)
+        key = (comparison.operation, comparison.method, comparison.terrain_attribute, comparison.coreg_method)
         current = selected.get(key)
         preferred_axis = (
             "Number of source points per axis" if comparison.operation == "grid" else "Size of dem (pixels per side)"
@@ -1315,7 +1341,6 @@ def _headline_summary_table(records: list[ComparisonMeasurement]) -> str:
     comparisons = _default_comparisons()
     represented = {comparison.operation for comparison in comparisons}
     rows: list[tuple[int, str]] = []
-    print("records", records)
 
     for operation in OPERATIONS:
         if operation.name not in represented and any(case.execution == "dask" for case in operation.large_data_cases):
@@ -1328,9 +1353,7 @@ def _headline_summary_table(records: list[ComparisonMeasurement]) -> str:
     # Use explicit size parameters so older runs with different fixed defaults cannot be mislabelled
     for comparison in comparisons:
         operation = comparison.benchmark.operation
-        label = operation.display_name
-        if comparison.method is not None:
-            label += f" — {comparison.choice_label('method', comparison.method)}"
+        label = _operation_and_method_label(comparison)
         measurements = []
         default_cases = _default_cases(comparison, execution="dask")
         for series_label, class_name in comparison.series:
@@ -1375,14 +1398,27 @@ def _headline_summary_table(records: list[ComparisonMeasurement]) -> str:
 
 
 def _choice_tables(
-    dimension: Literal["method", "strategy", "output_driver"], records: list[ComparisonMeasurement]
+    dimension: Literal[
+        "method", "strategy", "output_driver", "terrain_attribute", "coreg_method", "surface_fit", "engine"
+    ],
+    records: list[ComparisonMeasurement],
 ) -> str:
     """Render representative time and memory for methods, strategies or point output formats."""
 
     articles = []
-    choice_name = {"method": "method", "strategy": "chunk strategy", "output_driver": "output and writer"}[dimension]
+    choice_name = {
+        "method": "method",
+        "strategy": "chunk strategy",
+        "output_driver": "output and writer",
+        "terrain_attribute": "terrain attribute",
+        "coreg_method": "coregistration method",
+        "surface_fit": "surface fit",
+        "engine": "calculation engine",
+    }[dimension]
     choice_title = choice_name.title() if dimension == "output_driver" else f"GeoUtils {choice_name}"
-    for comparison in (item for item in COMPARISONS if item.by == dimension):
+    for comparison in (
+        item for item in COMPARISONS if item.by == dimension and (dimension != "engine" or not item.summary)
+    ):
         parameter = _summary_reference_parameter(comparison, records)
         measurements = [
             _measurement_at(records, comparison.slug, series_label, parameter) for series_label, _ in comparison.series
@@ -1660,6 +1696,9 @@ def _comparison_html(
             '<div class="local-links"><a href="#execution-modes">Execution modes</a>',
             '<a href="#calculation-engines">Calculation engines</a><a href="#operation-methods">Methods</a>',
             '<a href="#chunk-strategies">Chunk strategies</a><a href="#point-output-formats">Point output formats</a>',
+            '<a href="#coregistration-methods">Coregistration methods</a>',
+            '<a href="#terrain-attributes">Terrain attributes</a>',
+            '<a href="#surface-fitting">Surface fitting</a>',
             "</div></section>",
             _metric_guide(),
             '<section class="option-section" id="execution-modes">',
@@ -1672,6 +1711,7 @@ def _comparison_html(
             f'<p class="section-intro">{html.escape(COMPARISON_SECTION_DETAILS["engine"][1])} GDAL CLI '
             "is shown separately where an equivalent external command exists.</p>",
             _engine_summary_table(records),
+            f'<div class="choice-grid">{_choice_tables("engine", records)}</div>',
             "</section>",
             '<section class="option-section" id="operation-methods">',
             f"<h2>{html.escape(COMPARISON_SECTION_DETAILS['method'][0])}</h2>",
@@ -1682,6 +1722,18 @@ def _comparison_html(
             f"<h2>{html.escape(COMPARISON_SECTION_DETAILS['strategy'][0])}</h2>",
             f'<p class="section-intro">{html.escape(COMPARISON_SECTION_DETAILS["strategy"][1])}</p>',
             f'<div class="choice-grid">{_choice_tables("strategy", records)}</div></section>',
+            '<section class="option-section" id="coregistration-methods">',
+            f"<h2>{html.escape(COMPARISON_SECTION_DETAILS['coreg_method'][0])}</h2>",
+            f'<p class="section-intro">{html.escape(COMPARISON_SECTION_DETAILS["coreg_method"][1])}</p>',
+            f'<div class="choice-grid">{_choice_tables("coreg_method", records)}</div></section>',
+            '<section class="option-section" id="terrain-attributes">',
+            f"<h2>{html.escape(COMPARISON_SECTION_DETAILS['terrain_attribute'][0])}</h2>",
+            f'<p class="section-intro">{html.escape(COMPARISON_SECTION_DETAILS["terrain_attribute"][1])}</p>',
+            f'<div class="choice-grid">{_choice_tables("terrain_attribute", records)}</div></section>',
+            '<section class="option-section" id="surface-fitting">',
+            f"<h2>{html.escape(COMPARISON_SECTION_DETAILS['surface_fit'][0])}</h2>",
+            f'<p class="section-intro">{html.escape(COMPARISON_SECTION_DETAILS["surface_fit"][1])}</p>',
+            f'<div class="choice-grid">{_choice_tables("surface_fit", records)}</div></section>',
             '<section class="option-section" id="point-output-formats">',
             f"<h2>{html.escape(COMPARISON_SECTION_DETAILS['output_driver'][0])}</h2>",
             f'<p class="section-intro">{html.escape(COMPARISON_SECTION_DETAILS["output_driver"][1])}</p>',
@@ -1758,6 +1810,9 @@ def _parameter_html(
         "method": "Methods",
         "strategy": "Chunk strategies",
         "output_driver": "Point output formats",
+        "terrain_attribute": "Terrain attributes",
+        "coreg_method": "Coregistration methods",
+        "surface_fit": "Surface fitting methods",
     }
     toc = []
     sections = []
