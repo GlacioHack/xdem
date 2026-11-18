@@ -73,7 +73,7 @@ jobs:
           runner.os != 'Linux' && matrix.dep-level != 'base' && ',pytorch-cpu>=2,gpytorch>=1.11' || '' }}
       run: |
         mamba install pyyaml python=${{ matrix.python-version }}
-        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "${{ matrix.dep-level == 'opt' && 'pip,pytorch-cpu,gpytorch,linear_operator' || 'pip' }}" "${{ env.CI_EXTRA_DEPS }} "environment.yml"
+        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "${{ matrix.dep-level == 'opt' && 'pip,pytorch-cpu,gpytorch,linear_operator' || 'pip' }},${{ env.CI_EXTRA_DEPS }}" "environment.yml"
         mamba env update -n xdem-dev -f environment-ci-py${{ matrix.python-version }}.yml
 
     # If/else equivalent to install base environment, or base+optional
