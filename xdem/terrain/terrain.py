@@ -21,21 +21,35 @@
 from __future__ import annotations
 
 import warnings
-from typing import Literal, Sized, overload
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal, Sized, overload
 
-import geoutils as gu
 import numpy as np
+import xarray as xr
 from geoutils import profiler
-from geoutils.raster import Raster, RasterType
-from geoutils.raster.distributed_computing import (
-    MultiprocConfig,
-    map_overlap_multiproc_save,
+from geoutils._dispatch import (
+    _get_raster_interface,
+    get_geo_attr,
+    has_geo_attr,
+    is_dask_array,
 )
+from geoutils.multiproc import (
+    MultiprocConfig,
+    map_overlap,
+)
+from geoutils.raster import Raster, RasterType
+from geoutils.raster.referencing import _res
 
-from xdem._typing import DTypeLike, MArrayf, NDArrayf
+from xdem._misc import import_optional
+from xdem._typing import DTypeLike, NDArrayf
 from xdem.terrain.freq import _texture_shading_fft
 from xdem.terrain.surfit import _get_surface_attributes
 from xdem.terrain.window import _get_windowed_indexes
+
+if TYPE_CHECKING:
+    from geoutils.raster.base import RasterLike
+
+    from xdem.dem.base import DEMLike
 
 # List available attributes
 available_attributes = [
@@ -83,10 +97,36 @@ list_requiring_windowed_fractal_index = ["fractal_roughness"]
 # 4/ Requiring fractal domain
 list_requiring_frequency_domain = ["texture_shading"]
 
+# Helpers for chunked execution
+###############################
+
+
+def _terrain_attribute_array_block(array: NDArrayf, attribute: str, **kwargs: Any) -> NDArrayf:
+    """Calculate one terrain attribute on an array block, including its overlap."""
+
+    return _get_terrain_attribute_base(array, attribute=[attribute], **kwargs)[0]
+
+
+def _terrain_attribute_raster_block(raster: RasterLike, attribute: str, **kwargs: Any) -> Raster:
+    """Calculate one terrain attribute on a georeferenced multiprocessing tile."""
+
+    interface = _get_raster_interface(raster)
+    values = _terrain_attribute_array_block(interface.data, attribute=attribute, **kwargs)
+    if interface._is_xr:
+        return Raster.from_array(
+            values,
+            interface.transform,
+            interface.crs,
+            nodata=interface.nodata,
+            area_or_point=interface.area_or_point,
+            tags=dict(interface.tags),
+        )
+    return interface.copy(new_array=values)
+
 
 @overload
 def get_terrain_attribute(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     attribute: str,
     resolution: tuple[float, float] | float | None = None,
     degrees: bool = True,
@@ -108,7 +148,7 @@ def get_terrain_attribute(
 
 @overload
 def get_terrain_attribute(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     attribute: list[str],
     resolution: tuple[float, float] | float | None = None,
     degrees: bool = True,
@@ -130,7 +170,7 @@ def get_terrain_attribute(
 
 @overload
 def get_terrain_attribute(
-    dem: RasterType,
+    dem: DEMLike,
     attribute: list[str],
     resolution: tuple[float, float] | float | None = None,
     degrees: bool = True,
@@ -152,7 +192,7 @@ def get_terrain_attribute(
 
 @overload
 def get_terrain_attribute(
-    dem: RasterType,
+    dem: DEMLike,
     attribute: str,
     resolution: tuple[float, float] | float | None = None,
     degrees: bool = True,
@@ -169,12 +209,12 @@ def get_terrain_attribute(
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
     mp_config: MultiprocConfig | None = None,
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.get_terrain_attribute", memprof=True)
 def get_terrain_attribute(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     attribute: str | list[str],
     resolution: tuple[float, float] | float | None = None,
     degrees: bool = True,
@@ -280,6 +320,10 @@ def get_terrain_attribute(
     :returns: One or multiple arrays of the requested attribute(s)
     """
 
+    # Normalize DataArrays to the shared raster interface without reading their values
+    if isinstance(dem, xr.DataArray):
+        dem = dem.rst
+
     # 0/ Deprecating slope method
     if slope_method is not None:
         warnings.warn(
@@ -294,7 +338,6 @@ def get_terrain_attribute(
 
     # Check that we're not using Horn for curvatures
     if surface_fit == "Horn":
-
         curvature_list = [
             "curvature",
             "profile_curvature",
@@ -316,9 +359,10 @@ def get_terrain_attribute(
                 "Use 'ZevenbergThorne' or 'Florinsky' instead."
             )
 
-    if isinstance(dem, gu.Raster):
-        if resolution is None:
-            resolution = dem.res
+    # Derive pixel spacing from raster metadata when available
+    if has_geo_attr(dem, "transform"):
+        transform = get_geo_attr(dem, "transform")
+        resolution = _res(transform)
 
     # Validate and format the inputs
     if isinstance(attribute, str):
@@ -400,7 +444,8 @@ def get_terrain_attribute(
         raise ValueError(f"z_factor must be a non-negative finite value (given value: {hillshade_z_factor})")
 
     # Raise warning if CRS is not projected and using a surface fit attribute
-    if isinstance(dem, gu.Raster) and not dem.crs.is_projected and len(attributes_requiring_surface_fit) > 0:
+    crs = get_geo_attr(dem, "crs") if has_geo_attr(dem, "crs") else None
+    if crs is not None and not crs.is_projected and attributes_requiring_surface_fit:
         warnings.warn(
             category=UserWarning,
             message=f"DEM is not in a projected CRS, the following surface fit attributes might be "
@@ -408,85 +453,121 @@ def get_terrain_attribute(
             f"Use DEM.reproject(crs=DEM.get_metric_crs()) to reproject in a projected CRS.",
         )
 
-    # 2/ Processing: chunked or normal depending on input
+    # 2/ Select the required neighborhood and execution backend
+
+    # Include the largest requested window so each tile has all neighboring elevations
+    window_depth = 0
+    if any(attr in list_requiring_windowed_index for attr in attribute):
+        window_depth = window_size // 2
+    if "fractal_roughness" in attribute:
+        window_depth = max(window_depth, window_size_fractal // 2)
+    surface_fit_depth = 0
+    if attributes_requiring_surface_fit:
+        surface_fit_depth = 2 if surface_fit.lower() == "florinsky" else 1
+    depth = max(window_depth, surface_fit_depth)
+
+    # Inspect chunk metadata without triggering implicit loading of file-backed rasters
+    raster: Any = dem if has_geo_attr(dem, "transform") else None
+    dask_backend = raster._chunks is not None if raster is not None else is_dask_array(dem)
+    if mp_config is not None and dask_backend:
+        raise ValueError("Cannot use multiprocessing and Dask simultaneously. Remove mp_config for Dask inputs.")
+    if mp_config is not None and raster is None:
+        raise TypeError("The DEM must be a Raster to use multiprocessing.")
+
+    # Pass identical numerical options to eager calculations and worker callbacks
+    options: dict[str, Any] = {
+        "resolution": resolution,
+        "degrees": degrees,
+        "hillshade_altitude": hillshade_altitude,
+        "hillshade_azimuth": hillshade_azimuth,
+        "hillshade_z_factor": hillshade_z_factor,
+        "surface_fit": surface_fit,
+        "curv_method": curv_method,
+        "tri_method": tri_method,
+        "window_size": window_size,
+        "window_size_fractal": window_size_fractal,
+        "engine": engine,
+        "texture_alpha": texture_alpha,
+        "out_dtype": out_dtype,
+    }
+
+    # 3/ Calculate attributes and preserve the caller's raster or array interface
     if mp_config is not None:
-
-        # Derive depth argument from method or window size/window size_fractal
-        # This is the overlap between tiles (1 for 3x3, 2 for 5x5, etc).
-        # Take the biggest window_depth need to the largest window_size/window_size_fractal
-        window_depth = 0
-        if list(set(attribute) & set(list_requiring_windowed_index)):  # window_size used
-            window_depth = window_size // 2
-        if list(set(attribute) & set(list_requiring_windowed_fractal_index)):  # window_size_fractal used
-            window_depth = max(window_depth, window_size_fractal // 2)
-
-        if any((attr in list_requiring_surface_fit) for attr in attribute):
-            if surface_fit.lower() == "florinsky":
-                surface_fit_depth = 2
-            else:
-                surface_fit_depth = 1
-        else:
-            surface_fit_depth = 0
-
-        # We take the maximum required depth
-        depth = max(window_depth, surface_fit_depth)
-
-        if not isinstance(dem, Raster):
-            raise TypeError("The DEM must be a Raster to use multiprocessing.")
-
-        list_raster = []
+        outputs = []
         for attr in attribute:
-            mp_config_copy = mp_config.copy()
-            if mp_config.outfile is not None and len(attribute) > 1:
-                mp_config_copy.outfile = mp_config_copy.outfile.split(".")[0] + "_" + attr + ".tif"
-            list_raster.append(
-                map_overlap_multiproc_save(
-                    _get_terrain_attribute,
-                    dem,
-                    mp_config_copy,
-                    [attr],
-                    resolution,
-                    degrees,
-                    hillshade_altitude,
-                    hillshade_azimuth,
-                    hillshade_z_factor,
-                    surface_fit,
-                    curv_method,
-                    tri_method,
-                    window_size,
-                    window_size_fractal,
-                    engine,
-                    texture_alpha,
-                    out_dtype,
-                    depth=depth,
-                )
-            )
-        if len(list_raster) == 1:
-            return list_raster[0]
-        return list_raster
-    else:
+            config = mp_config.copy()
+            if len(attribute) > 1:
+                outfile = Path(config.outfile)
+                config.outfile = str(outfile.with_name(outfile.stem + "_" + attr + outfile.suffix))
 
-        return _get_terrain_attribute(  # type: ignore
-            dem,
-            attribute,  # type: ignore
-            resolution,
-            degrees,
-            hillshade_altitude,
-            hillshade_azimuth,
-            hillshade_z_factor,
-            surface_fit,
-            curv_method,
-            tri_method,
-            window_size,
-            window_size_fractal,
-            engine,
-            texture_alpha,
-            out_dtype,
+            # Texture shading uses a global FFT: independent tiles would change its result
+            block_depth = depth
+            if attr in list_requiring_frequency_domain:
+                config.chunks = dem.shape
+                block_depth = 0
+            result = map_overlap(
+                _terrain_attribute_raster_block, dem, config, attribute=attr, depth=block_depth, **options
+            )
+            if raster._is_xr:
+                outputs.append(raster._cast_raster_output(result))
+            else:
+                # Restore the native raster subclass without loading the worker output file
+                outputs.append(dem.__class__(result))
+    elif dask_backend:
+        import_optional("dask")
+        import dask.array as da
+
+        array: Any = raster.data if raster is not None else dem
+        has_band_axis = array.ndim == 3 and array.shape[0] == 1
+        if has_band_axis:
+            array = array[0]
+        outputs = []
+        for attr in attribute:
+            # Defer the global FFT as one task while preserving the source's original chunks
+            if attr in list_requiring_frequency_domain:
+                result = (
+                    array.rechunk(array.shape)
+                    .map_blocks(
+                        _terrain_attribute_array_block,
+                        attribute=attr,
+                        dtype=out_dtype,
+                        meta=np.empty((0, 0), dtype=out_dtype),
+                        **options,
+                    )
+                    .rechunk(array.chunks)
+                )
+            else:
+                result = da.map_overlap(
+                    _terrain_attribute_array_block,
+                    array,
+                    attribute=attr,
+                    depth=depth,
+                    boundary="none",
+                    trim=True,
+                    dtype=out_dtype,
+                    meta=np.empty((0, 0), dtype=out_dtype),
+                    **options,
+                )
+            if has_band_axis:
+                result = result[None, ...]
+            outputs.append(raster.copy(new_array=result) if raster is not None else result)
+    else:
+        array = raster.data if raster is not None else dem
+        has_band_axis = array.ndim == 3 and array.shape[0] == 1
+        if has_band_axis:
+            array = array[0]
+        arrays = _get_terrain_attribute_base(array, attribute=attribute, **options)
+        if has_band_axis:
+            arrays = [array[None, ...] for array in arrays]
+        outputs = (
+            [raster.copy(new_array=np.ma.masked_invalid(array)) for array in arrays] if raster is not None else arrays
         )
 
+    # Return the sole attribute directly, preserving the requested order for multiple attributes
+    return outputs[0] if len(outputs) == 1 else outputs
 
-@overload
-def _get_terrain_attribute(
+
+def _get_terrain_attribute_base(
     dem: NDArrayf,
     attribute: list[str],
     resolution: float,
@@ -502,49 +583,8 @@ def _get_terrain_attribute(
     engine: Literal["scipy", "numba"] = "scipy",
     texture_alpha: float = 0.8,
     out_dtype: DTypeLike | None = None,
-) -> list[NDArrayf]: ...
-
-
-@overload
-def _get_terrain_attribute(
-    dem: RasterType,
-    attribute: list[str],
-    resolution: float,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
-    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
-    curv_method: Literal["geometric", "directional"] = "geometric",
-    tri_method: Literal["Riley", "Wilson"] = "Riley",
-    window_size: int = 3,
-    window_size_fractal: int = 13,
-    engine: Literal["scipy", "numba"] = "scipy",
-    texture_alpha: float = 0.8,
-    out_dtype: DTypeLike | None = None,
-) -> list[RasterType]: ...
-
-
-def _get_terrain_attribute(
-    dem: NDArrayf | RasterType,
-    attribute: list[str],
-    resolution: float,
-    degrees: bool = True,
-    hillshade_altitude: float = 45.0,
-    hillshade_azimuth: float = 315.0,
-    hillshade_z_factor: float = 1.0,
-    surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
-    curv_method: Literal["geometric", "directional"] = "geometric",
-    tri_method: Literal["Riley", "Wilson"] = "Riley",
-    window_size: int = 3,
-    window_size_fractal: int = 13,
-    engine: Literal["scipy", "numba"] = "scipy",
-    texture_alpha: float = 0.8,
-    out_dtype: DTypeLike | None = None,
-) -> list[NDArrayf] | list[RasterType]:
-    """
-    See description of get_terrain_attribute().
-    """
+) -> list[NDArrayf]:
+    """Calculate terrain attributes by algorithm family and return them in the requested order."""
 
     # Create list of required for each type
     attributes_requiring_surface_fit = [attr for attr in attribute if attr in list_requiring_surface_fit]
@@ -554,15 +594,16 @@ def _get_terrain_attribute(
     ]
     attributes_requiring_frequency_domain = [attr for attr in attribute if attr in list_requiring_frequency_domain]
 
-    # Get array of DEM
-    dem_arr = gu.raster.get_array_and_mask(dem)[0]
-    # We need to be able to use NaNs to propagate invalid values in attributes
-    if np.issubdtype(dem_arr.dtype, np.integer):
-        dem_arr = dem_arr.astype(np.float32)
+    # Get array of DEM, we need to be able to use NaNs to propagate invalid values in attributes
+    if np.issubdtype(dem.dtype, np.integer):
+        dem_arr = dem.astype(np.float32)
+    else:
+        dem_arr = dem
+    if np.ma.isMaskedArray(dem):
+        dem_arr = dem_arr.filled(np.nan)
 
     # Process surface attributes
     if len(attributes_requiring_surface_fit) > 0:
-
         # Keyword arguments
         surface_kwargs = {
             "hillshade_azimuth": hillshade_azimuth,
@@ -602,7 +643,6 @@ def _get_terrain_attribute(
 
     # Process windowed attributes
     if len(attributes_requiring_windowed_index) > 0:
-
         windowed_indexes = _get_windowed_indexes(
             dem=dem_arr,
             windowed_indexes=attributes_requiring_windowed_index,
@@ -618,7 +658,6 @@ def _get_terrain_attribute(
 
     # Process windowed fractal attributes
     if len(attributes_requiring_windowed_fractal_index) > 0:
-
         windowed_fractal_indexes = _get_windowed_indexes(
             dem=dem_arr,
             windowed_indexes=attributes_requiring_windowed_fractal_index,
@@ -628,9 +667,7 @@ def _get_terrain_attribute(
             tri_method=tri_method,
             engine=engine,
         )
-        windowed_fractal_indexes = [
-            windowed_fractal_indexes[i] for i in range(windowed_fractal_indexes.shape[0])
-        ]  # type: ignore
+        windowed_fractal_indexes = [windowed_fractal_indexes[i] for i in range(windowed_fractal_indexes.shape[0])]  # type: ignore
     else:
         windowed_fractal_indexes = []  # type: ignore
 
@@ -648,27 +685,20 @@ def _get_terrain_attribute(
     # Convert 3D array output to list of 2D arrays
     output_attributes = surface_attributes + windowed_indexes + windowed_fractal_indexes + frequency_attributes
 
-    order_indices = [
-        attribute.index(a)
-        for a in attributes_requiring_surface_fit
+    calculated_attributes = (
+        attributes_requiring_surface_fit
         + attributes_requiring_windowed_index
         + attributes_requiring_windowed_fractal_index
         + attributes_requiring_frequency_domain
-    ]
-    output_attributes[:] = [output_attributes[idx] for idx in order_indices]
+    )
+    output_attributes = [output_attributes[calculated_attributes.index(attr)] for attr in attribute]
 
-    if isinstance(dem, gu.Raster):
-        output_attributes = [
-            gu.Raster.from_array(attr, transform=dem.transform, crs=dem.crs, nodata=-99999)
-            for attr in output_attributes
-        ]  # type: ignore
-
-    return output_attributes if len(output_attributes) > 1 else output_attributes[0]
+    return output_attributes
 
 
 @overload
 def slope(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
@@ -680,7 +710,7 @@ def slope(
 
 @overload
 def slope(
-    dem: RasterType,
+    dem: DEMLike,
     method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
@@ -692,7 +722,7 @@ def slope(
 
 @profiler.profile("xdem.terrain.slope", memprof=True)
 def slope(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
@@ -749,7 +779,7 @@ def slope(
 
 @overload
 def aspect(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
@@ -760,18 +790,18 @@ def aspect(
 
 @overload
 def aspect(
-    dem: RasterType,
+    dem: DEMLike,
     method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.aspect", memprof=True)
 def aspect(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     degrees: bool = True,
@@ -837,7 +867,7 @@ def aspect(
 
 @overload
 def hillshade(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     azimuth: float = 315.0,
@@ -851,7 +881,7 @@ def hillshade(
 
 @overload
 def hillshade(
-    dem: RasterType,
+    dem: DEMLike,
     method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     azimuth: float = 315.0,
@@ -860,12 +890,12 @@ def hillshade(
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.hillshade", memprof=True)
 def hillshade(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     method: Literal["Horn", "ZevenbergThorne"] = None,
     surface_fit: Literal["Horn", "ZevenbergThorne", "Florinsky"] = "Florinsky",
     azimuth: float = 315.0,
@@ -874,7 +904,7 @@ def hillshade(
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
     Generate a hillshade from the given DEM. The value 0 is used for nodata, and 1 to 255 for hillshading.
 
@@ -922,7 +952,7 @@ def hillshade(
 
 @overload
 def curvature(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
@@ -932,22 +962,22 @@ def curvature(
 
 @overload
 def curvature(
-    dem: RasterType,
+    dem: DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.curvature", memprof=True)
 def curvature(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
     THIS FUNCTION IS DEPRECATED - REFER TO DOCS FOR SPECIFIC CURVATURE RECOMMENDATIONS
 
@@ -992,7 +1022,7 @@ def curvature(
 
 @overload
 def profile_curvature(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
@@ -1003,24 +1033,24 @@ def profile_curvature(
 
 @overload
 def profile_curvature(
-    dem: RasterType,
+    dem: DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.profile_curvature", memprof=True)
 def profile_curvature(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
 
     Calculates profile curvature in units of m-1 multiplied by 100. Defined as the curvature of a normal section of
@@ -1068,7 +1098,7 @@ def profile_curvature(
 
 @overload
 def tangential_curvature(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
@@ -1079,24 +1109,24 @@ def tangential_curvature(
 
 @overload
 def tangential_curvature(
-    dem: RasterType,
+    dem: DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.tangential_curvature", memprof=True)
 def tangential_curvature(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
 
     Calculates tangential curvature in units of m-1 multiplied by 100. Defined as the curvature of a normal section of
@@ -1145,7 +1175,7 @@ def tangential_curvature(
 
 @overload
 def planform_curvature(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
@@ -1156,24 +1186,24 @@ def planform_curvature(
 
 @overload
 def planform_curvature(
-    dem: RasterType,
+    dem: DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.planform_curvature", memprof=True)
 def planform_curvature(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
 
     Calculates planform (or plan) curvature in units of m-1 multiplied by 100., defined as the curvature of a
@@ -1220,7 +1250,7 @@ def planform_curvature(
 
 @overload
 def flowline_curvature(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
@@ -1231,18 +1261,18 @@ def flowline_curvature(
 
 @overload
 def flowline_curvature(
-    dem: RasterType,
+    dem: DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.flowline_curvature", memprof=True)
 def flowline_curvature(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
@@ -1296,7 +1326,7 @@ def flowline_curvature(
 
 @overload
 def max_curvature(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
@@ -1307,24 +1337,24 @@ def max_curvature(
 
 @overload
 def max_curvature(
-    dem: RasterType,
+    dem: DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.max_curvature", memprof=True)
 def max_curvature(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
     Calculate the maximal (geometric) or maximum (directional derivative) curvature in units of m-1 multiplied by 100.
     Defined as curvature of the normal section of slope with the greatest curvature value.
@@ -1372,7 +1402,7 @@ def max_curvature(
 
 @overload
 def min_curvature(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
@@ -1383,24 +1413,24 @@ def min_curvature(
 
 @overload
 def min_curvature(
-    dem: RasterType,
+    dem: DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.min_curvature", memprof=True)
 def min_curvature(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     resolution: float | tuple[float, float] | None = None,
     surface_fit: Literal["ZevenbergThorne", "Florinsky"] = "Florinsky",
     curv_method: Literal["geometric", "directional"] = "geometric",
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
     Calculate the minimal (geometric) or minimum (directional derivative) curvature in units of m-1 multiplied by 100.
     Defined as curvature of the normal section of slope with the smallest curvature value.
@@ -1448,7 +1478,7 @@ def min_curvature(
 
 @overload
 def topographic_position_index(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
@@ -1457,20 +1487,20 @@ def topographic_position_index(
 
 @overload
 def topographic_position_index(
-    dem: RasterType,
+    dem: DEMLike,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.topographic_position_index", memprof=True)
 def topographic_position_index(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
     Calculates the Topographic Position Index, the difference to the average of neighbouring pixels. Output is in the
     unit of the DEM (typically meters).
@@ -1509,7 +1539,7 @@ def topographic_position_index(
 
 @overload
 def terrain_ruggedness_index(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
@@ -1519,22 +1549,22 @@ def terrain_ruggedness_index(
 
 @overload
 def terrain_ruggedness_index(
-    dem: RasterType,
+    dem: DEMLike,
     method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.terrain_ruggedness_index", memprof=True)
 def terrain_ruggedness_index(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     method: Literal["Riley", "Wilson"] = "Riley",
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
     Calculates the Terrain Ruggedness Index, the cumulated differences to neighbouring pixels. Output is in the
     unit of the DEM (typically meters).
@@ -1580,7 +1610,7 @@ def terrain_ruggedness_index(
 
 @overload
 def roughness(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
@@ -1589,20 +1619,20 @@ def roughness(
 
 @overload
 def roughness(
-    dem: RasterType,
+    dem: DEMLike,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.roughness", memprof=True)
 def roughness(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     window_size: int = 3,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
     Calculates the roughness, the maximum difference between neighbouring pixels, for any window size. Output is in the
     unit of the DEM (typically meters).
@@ -1641,7 +1671,7 @@ def roughness(
 
 @overload
 def rugosity(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
@@ -1650,20 +1680,20 @@ def rugosity(
 
 @overload
 def rugosity(
-    dem: RasterType,
+    dem: DEMLike,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.rugosity", memprof=True)
 def rugosity(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     resolution: float | tuple[float, float] | None = None,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
     Calculates the rugosity, the ratio between real area and planimetric area. Only available for a 3x3 window. The
     output is unitless.
@@ -1702,7 +1732,7 @@ def rugosity(
 
 @overload
 def fractal_roughness(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     window_size_fractal: int = 13,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
@@ -1711,20 +1741,20 @@ def fractal_roughness(
 
 @overload
 def fractal_roughness(
-    dem: RasterType,
+    dem: DEMLike,
     window_size_fractal: int = 13,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.fractal_roughness", memprof=True)
 def fractal_roughness(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     window_size_fractal: int = 13,
     mp_config: MultiprocConfig | None = None,
     engine: Literal["scipy", "numba"] = "scipy",
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
     Calculates the fractal roughness, the local 3D fractal dimension. Can only be computed on window sizes larger or
     equal to 5x5, defaults to 13x13. Output unit is a fractal dimension between 1 and 3.
@@ -1765,7 +1795,7 @@ def fractal_roughness(
 
 @overload
 def texture_shading(
-    dem: NDArrayf | MArrayf,
+    dem: NDArrayf,
     alpha: float = 0.8,
     mp_config: MultiprocConfig | None = None,
 ) -> NDArrayf: ...
@@ -1773,18 +1803,18 @@ def texture_shading(
 
 @overload
 def texture_shading(
-    dem: RasterType,
+    dem: DEMLike,
     alpha: float = 0.8,
     mp_config: MultiprocConfig | None = None,
-) -> RasterType: ...
+) -> RasterLike: ...
 
 
 @profiler.profile("xdem.terrain.texture_shading", memprof=True)
 def texture_shading(
-    dem: NDArrayf | MArrayf | RasterType,
+    dem: NDArrayf | DEMLike,
     alpha: float = 0.8,
     mp_config: MultiprocConfig | None = None,
-) -> NDArrayf | RasterType:
+) -> NDArrayf | RasterLike:
     """
     Generate a texture shaded relief map using fractional Laplacian operator.
 

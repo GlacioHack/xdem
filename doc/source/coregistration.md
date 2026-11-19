@@ -94,6 +94,7 @@ Information about the coregistration inputs and outputs is summarized in {func}`
 Often, an `inlier_mask` has to be passed to {func}`~xdem.coreg.Coreg.fit` to isolate static surfaces to utilize during coregistration (for instance removing vegetation, snow, glaciers). This mask can be easily derived using {func}`~geoutils.Vector.create_mask`.
 ```
 
+(supported_coreg_method)=
 ## Summary of supported methods
 
 ```{list-table}
@@ -177,6 +178,9 @@ translation iteratively by solving a cosine equation between the terrain slope, 
 The iteration stops if it reaches the maximum number of iteration limit, or if the iterative shift amplitude falls
 below a specified tolerance.
 
+Terrain slopes at or below 1° are excluded by default because dividing elevation differences by a near-zero
+slope amplifies errors. Set `NuthKaab(min_slope=...)` to change this threshold in degrees.
+
 ```{code-cell} ipython3
 :tags: [hide-cell]
 :mystnb:
@@ -227,6 +231,42 @@ plt.tight_layout()
 
 {class}`xdem.coreg.DhMinimize`
 
+````{warning}
+`DhMinimize` is deprecated, as it corresponds to a non-linearized version of `LZD`.
+Use `LZD(linearized=False, only_translation=True)` instead.
+
+Note that the minimizer defaults to `scipy.optimize.least_squares` with a linear loss.
+
+To reproduce DhMinimize's old default minimizer, provide a custom `fit_minimizer` that minimizes the NMAD
+of residuals with Nelder–Mead over the X/Y shifts, then estimates the Z shift from their median:
+```python
+import numpy as np
+from geoutils.stats import nmad
+from scipy.optimize import minimize
+
+
+def nelder_mead_nmad(residuals, x0, *, loss, **kwargs):
+
+    def horizontal_residuals(xy):
+        return residuals(np.array([xy[0], xy[1], x0[2]]))
+
+    # We initialize with (1, 1) to give Nelder–Mead a proper start-up
+    result = minimize(lambda xy: loss(horizontal_residuals(xy)), np.ones(2), method="Nelder-Mead", **kwargs)
+    z_shift = x0[2] + np.median(horizontal_residuals(result.x))
+    result.x = np.array([result.x[0], result.x[1], z_shift])
+    return result
+
+
+lzd = xdem.coreg.LZD(
+    linearized=False,
+    only_translation=True,
+    fit_minimizer=nelder_mead_nmad,
+    fit_loss_func=nmad,
+)
+aligned_dem = lzd.fit_and_apply(ref_dem, tba_dem_shifted)
+```
+````
+
 - **Performs:** Horizontal and vertical shifts.
 - **Supports weights:** Planned.
 - **Pros:** Can be used to perform both local and global registration by tuning the minimizer.
@@ -237,6 +277,9 @@ translation by minimizing any statistic on the elevation differences, typically 
 
 
 ```{code-cell} ipython3
+:mystnb:
+:  output_stderr: show
+
 # Define a coregistration based on the dh minimization approach
 dh_minimize = xdem.coreg.DhMinimize()
 # Fit to data and apply
@@ -322,6 +365,10 @@ plt.tight_layout()
 
 Least Z-difference (LZD) coregistration is an iterative point-grid registration method from [Rosenholm and Torlegård (1988)](https://www.asprs.org/wp-content/uploads/pers/1988journal/oct/1988_oct_1385-1389.pdf).
 
+Linearized fits with a linear loss use direct ordinary least squares by default. Set `linearized=False`
+to evaluate elevation residuals after an exact rigid transform using `scipy.optimize.least_squares`.
+Both variants accept a custom `fit_minimizer`; see the {ref}`dh-minimize` warning for a Nelder–Mead example.
+
 ```{code-cell} ipython3
 :tags: [hide-cell]
 :mystnb:
@@ -377,6 +424,23 @@ Iterative closest point (ICP) coregistration is an iterative point cloud registr
 It aims at iteratively minimizing the distance between closest neighbours by applying sequential rigid transformations. For point-to-point, the 3D distance is used for the minimization while, for point-to-plane, the 3D distance projected on the plane normals is used instead. If DEMs are used as inputs, they are converted to point clouds.
 As for Nuth and Kääb (2011), the iteration stops if it reaches the maximum number of iteration limit or if the iterative transformation amplitude falls below a specified tolerance.
 
+ICP and CPD offer three sampling strategies through `sampling_strategy`:
+
+- `"nearest_xy"` (default) samples target X/Y coordinates, then selects the nearest valid original observations
+  from the other input. A point cloud defines the target when paired with a raster. For two rasters or two point
+  clouds, the reference defines the target. The subsample size limits target locations. Several targets may select
+  the same observation from the other input.
+- `"same_xy"` samples common X/Y coordinates and interpolates raster elevations there. It requires at least one raster.
+- `"independent"` samples each input separately.
+
+ICP and CPD use a fixed point sample by default (`iterative_sampling=False`). Set `iterative_sampling=True`
+to update the moving input and select the point samples again after each optimization step, using the chosen
+`sampling_strategy`. The same random state is used for each sample. `max_iterations` counts the total optimization
+steps with either setting.
+The default preserves original coordinates and elevations, avoiding interpolation errors during sampling.
+For larger offsets, try `"independent"` or supply an `initial_shift` estimate. Interpolation in `"same_xy"`
+can be useful for irregular point locations. Repeating the sampling can also change the selected observations
+before the fit has converged, particularly for CPD on smooth terrain.
 
 ```{code-cell} ipython3
 # Define a coregistration based on ICP
@@ -532,7 +596,7 @@ For both **inputs** and **outputs**, four consistent categories of metadata are 
 
 - An input `fit_or_bin` to either fit a parametric model by passing **"fit"**, perform an empirical binning by passing **"bin"**, or to fit a parametric model to the binning with **"bin_and_fit" (only "fit" or "bin_and_fit" possible for affine methods)**,
 - An input `fit_func` to pass any parametric function to fit to the bias **(pre-defined for affine methods)**,
-- An input `fit_optimizer` to pass any optimizer function to perform the fit minimization,
+- An input `fit_optimizer` that stores the optimizer used for the fit, including **"ols"** for linear methods,
 - An input `bin_sizes` to pass the size or edges of the bins for each variable,
 - An input `bin_statistic` to pass the statistic to compute in each bin,
 - An input `bin_apply_method` to pass the method to apply the binning for correction,
@@ -551,7 +615,7 @@ For both **inputs** and **outputs**, four consistent categories of metadata are 
 
 - An input `only_translation` to define if a coregistration should solve only for translations instead of a full rigid transformation (translations and rotations),
 - An input `standardize` to define if the input data should be standardized to the unit sphere before coregistration (to improve numerical convergence),
-- An input `initial_shift` that defines the estimated initial x and y shifts in georeferenced units, applied before fit step.
+- An input `initial_shift` that defines the estimated initial x and y shifts in georeferenced units, applied before fit step (when used within a CoregPipeline, only the initial offset specified in the first coregistration is applied, others are ignored),
 - An output `matrix` that stores the estimated affine matrix,
 - An output `centroid` that stores the centroid coordinates with which to apply the affine transformation,
 - Outputs `shift_x`, `shift_y` and `shift_z` that store the easting, northing and vertical offsets, respectively.
@@ -570,6 +634,7 @@ These metadata are only inputs specific to a given method, outlined in the metho
 For instance, for {class}`xdem.coreg.Deramp`, an input `poly_order` to define the polynomial order used for the fit, and
 for {class}`xdem.coreg.DirectionalBias`, an input `angle` to define the angle at which to do the directional correction.
 
+(blockwise)=
 ## Dividing coregistration in blocks
 
 ### The {class}`~xdem.coreg.BlockwiseCoreg` object

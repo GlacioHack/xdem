@@ -102,7 +102,7 @@ Dowd's variogram is used by default to estimate spatial auto-correlation of elev
 
 When performing least-squares linear regression, the traditional [loss functions](https://en.wikipedia.org/wiki/Loss_function) that are used are not robust to outliers.
 
-A robust soft L1 loss default is used by default to perform least-squares regression through [scipy.optimize](https://docs.scipy.org/doc/scipy/reference/optimize.html#) in **{ref}`coregistration` and {ref}`biascorr`**.
+A robust soft L1 loss default is used by default to perform least-squares regression through [scipy.optimize](https://docs.scipy.org/doc/scipy/reference/optimize.html#) in **{ref}`coregistration` and {ref}`biascorr`** for methods that require non-linear fitting. Methods with linear model structure (e.g., {class}`~xdem.coreg.NuthKaab` and {class}`~xdem.coreg.Deramp`) instead use direct ordinary least-squares (OLS) via {func}`numpy.linalg.lstsq` for improved speed and numerical stability.
 
 ### Robust estimators
 

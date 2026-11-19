@@ -134,8 +134,12 @@ Inputs information, split between reference and to-be-aligned elevation data.
 :::
 
 :::{note}
+The `path_to_mask` parameter accepts both vector and raster masks.
+For the second case, pixels with a value of 0 are considered part of the mask, while any non-zero and nodata values are considered valid.
+
 To set the vertical CRS or to override one that might exist in the metadata with ``force_vcrs``,
 please refer to {ref}`vertical-ref`.
+
 The ``downsample`` parameter allows the user to resample the elevation by a round factor.
 The default value of 1 means no downsampling.
 

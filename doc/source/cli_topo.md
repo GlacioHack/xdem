@@ -114,18 +114,22 @@ List of elevation inputs information.
 :::{table} Inputs parameters for elevation
 :widths: 20, 35, 17, 18, 10
 
-| Name                  | Description                              | Type       | Default | Required |
-|-----------------------|------------------------------------------|------------|---------|----------|
-| `path_to_elev`        | Path to elevation                        | str        |         | Yes      |
-| `force_source_nodata` | No data elevation                        | int        |         | No       |
-| `path_to_mask`        | Path to mask associated to the elevation | str        |         | No       |
-| `force_vcrs`          | Vertical CRS                             | int, str   |         | No       |
-| `downsample`          | Downsampling elevation factor >= 1       | int, float | 1       | No       |
+| Name                  | Description                               | Type       | Default | Required |
+|-----------------------|-------------------------------------------|------------|---------|----------|
+| `path_to_elev`        | Path to elevation                         | str        |         | Yes      |
+| `force_source_nodata` | No data elevation                         | int        |         | No       |
+| `path_to_mask`        | Path to mask associated to the elevation  | str        |         | No       |
+| `force_vcrs`          | Vertical CRS                              | int, str   |         | No       |
+| `downsample`          | Downsampling elevation factor >= 1        | int, float | 1       | No       |
 :::
 
 :::{note}
+The `path_to_mask` parameter accepts both vector and raster masks.
+For the second case, pixels with a value of 0 are considered part of the mask, while any non-zero and nodata values are considered valid.
+
 To set the vertical CRS or to override one that might exist in the metadata with ``force_vcrs``,
 please refer to {ref}`vertical-ref`.
+
 The ``downsample`` parameter allows the user to resample the elevation by a round factor.
 The default value of 1 means no downsampling.
 

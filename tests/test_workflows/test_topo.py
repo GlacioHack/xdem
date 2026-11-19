@@ -180,7 +180,6 @@ def test_run_dico_to_show(get_topo_inputs_config_list, nb_inputs, tmp_path):
     # Check subdictionaries content, except exact stats values in case test data/algorithms slightly changes,
     # and as those are already tested separately
     for k, _ in enumerate(user_config_list["inputs"]):
-
         # 1/ Input information
         get_topo_inputs_config_list[k]["downsample"] = 1
         assert workflows.dico_to_show[k][0] == (
@@ -195,7 +194,6 @@ def test_run_dico_to_show(get_topo_inputs_config_list, nb_inputs, tmp_path):
                 "Data types": "float32",
                 "Driver": "GTiff",
                 "Filename": get_topo_inputs_config_list[k]["path_to_elev"],
-                "Grid size": None,
                 "Height": 54,
                 "Nodata Value": -9999.0,
                 "Number of band": (1,),
@@ -345,7 +343,6 @@ def test_reprojection(input_utm, reproject_warnings_newraster, get_topo_inputs_c
         dem = xdem.DEM(input_dem_path).reproject(crs=4326)
         dem.to_file(Path(tmp_path / "dem.tif"))
         user_config["inputs"]["path_to_elev"] = str(Path(tmp_path / "dem.tif"))
-        dem.to_file("lat_lon.tif")
     user_config["terrain_attributes"] = ["slope"]
     if reproject_dict is not None:
         user_config.update(reproject_dict)

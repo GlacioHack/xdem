@@ -16,29 +16,33 @@ jobs:
 
     strategy:
       matrix:
-        os: ["ubuntu-latest", "macos-latest"]
+        os: ["ubuntu-latest", "macos-latest", "windows-latest"]
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         dep-level: ["base", "opt"]
 
     # Run all shells using bash (including Windows)
     defaults:
       run:
-        shell: bash -l {0}
+        # Use PowerShell on Windows to better work with setup-miniconda
+        shell: ${{ startsWith(matrix.os, 'windows') && 'pwsh' || 'bash -el {0}' }}
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     # We initiate the environment empty, and check if a key for this environment doesn't already exist in the cache
     - name: Initiate empty environment
       uses: conda-incubator/setup-miniconda@v4
       with:
-        miniforge-version: latest
-        auto-update-conda: true
+        # Pin Windows to the previous installer while investigating the Conda initialization failure
+        miniforge-version: ${{ runner.os == 'Windows' && '26.7.2-1' || 'latest' }}
+        auto-update-conda: ${{ runner.os != 'Windows' }}
         use-mamba: true
-        mamba-version: "2.0.5"
         channel-priority: strict
         activate-environment: xdem-dev
-        python-version:
+
+    - uses: astral-sh/setup-uv@v10.3.3
+      with:
+        enable-cache: true
 
     - name: Get month for resetting cache
       id: get-date
@@ -46,7 +50,7 @@ jobs:
       shell: bash
 
     - name: Cache conda env
-      uses: actions/cache@v5
+      uses: actions/cache@v6
       with:
         path: ${{ env.CONDA }}/envs
         key: conda-${{ matrix.os }}-${{ matrix.python-version }}-${{ matrix.dep-level }}-${{ env.cache_date }}-${{ hashFiles('dev-environment.yml') }}-${{ env.CACHE_NUMBER }}
@@ -62,17 +66,22 @@ jobs:
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         mamba install pyyaml python=${{ matrix.python-version }}
-        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} "environment.yml"
+        python .github/scripts/generate_yml_env_fixed_py.py --pyv ${{ matrix.python-version }} --add "${{ matrix.dep-level == 'opt' && 'pip,pytorch-cpu,gpytorch,linear_operator' || 'pip' }}" "environment.yml"
         mamba env update -n xdem-dev -f environment-ci-py${{ matrix.python-version }}.yml
 
     # If/else equivalent to install base environment, or base+optional
     - name: Install project environment (base)
       if: ${{ matrix.dep-level == 'base' }}
-      run: pip install -e .[test]
+      run: uv pip install -e ".[test]"
 
     - name: Install project environment (optional)
       if: ${{ matrix.dep-level != 'base'}}
-      run: conda install -c conda-forge weasyprint ; pip install -e .[test,${{ matrix.dep-level }}]
+      run: uv pip install -e ".[test,${{ matrix.dep-level }}]"
+
+    # Comment this temporary override after the GeoUtils accessor release
+    # Refresh the source even when the Conda environment was restored from cache
+    - name: Install latest GeoUtils main
+      run: uv pip install --upgrade --reinstall --no-deps "geoutils @ git+https://github.com/GlacioHack/geoutils.git@main"
 
     # This steps allows us to check the "import xdem" with the base environment provided to users, before adding
     # development-specific dependencies by differencing the env and dev-env yml files
@@ -84,6 +93,12 @@ jobs:
         conda info ; conda list
 
     - name: Test with pytest
+      env:
+        # Render plots without a GUI backend (avoid Tcl/Tk issues on Windows)
+        MPLBACKEND: Agg
+        # Record compiled Numba lines when the test suite first compiles each function
+        NUMBA_JIT_COVERAGE: "1"
+        NUMBA_CACHE_DIR: ${{ runner.temp }}
       run: pytest -ra --cov=xdem/ --cov-report=lcov --durations=0
 
     - name: Upload coverage to Coveralls

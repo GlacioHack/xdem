@@ -243,8 +243,9 @@ unscaled_dh_err_fun = xdem.spatialstats.interp_nd_binning(
 dh_err_stable = unscaled_dh_err_fun((slope_arr, maxc_arr))
 
 print(
-    "The spread of elevation difference is {:.2f} "
-    "compared to a mean predicted elevation error of {:.2f}.".format(gu.stats.nmad(dh_arr), np.nanmean(dh_err_stable))
+    "The spread of elevation difference is {:.2f} compared to a mean predicted elevation error of {:.2f}.".format(
+        gu.stats.nmad(dh_arr), np.nanmean(dh_err_stable)
+    )
 )
 
 # %%
@@ -257,8 +258,10 @@ zscores, dh_err_fun = xdem.spatialstats.two_step_standardization(
 
 for s, c in [(0.0, 0.1), (50.0, 0.1), (0.0, 20.0), (50.0, 20.0)]:
     print(
-        "Elevation measurement error for slope of {:.0f} degrees, "
-        "curvature of {:.2f} m-1: {:.1f}".format(s, c / 100, dh_err_fun((s, c))) + " meters."
+        "Elevation measurement error for slope of {:.0f} degrees, curvature of {:.2f} m-1: {:.1f}".format(
+            s, c / 100, dh_err_fun((s, c))
+        )
+        + " meters."
     )
 
 # %%

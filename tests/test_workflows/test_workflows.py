@@ -23,6 +23,7 @@ test for workflow class
 
 # mypy: disable-error-code=no-untyped-def
 import csv
+import re
 from pathlib import Path
 
 import geoutils as gu
@@ -115,8 +116,9 @@ def test_load_config(get_topo_inputs_config_list, tmp_path):
     assert workflows.load_config() == user_config
 
     # Fail
-    with pytest.raises(FileNotFoundError, match=f"{tmp_path}/tempconfig.yaml does not exist"):
-        _ = Topo(str(tmp_path / "tempconfig.yaml"))
+    missing_config = tmp_path / "tempconfig.yaml"
+    with pytest.raises(FileNotFoundError, match=re.escape(f"{missing_config} does not exist")):
+        _ = Topo(str(missing_config))
 
 
 def test_load_config_none(get_topo_inputs_config_list, get_accuracy_inputs_test, tmp_path):
@@ -311,11 +313,6 @@ def test_load_dem(data, force_vcrs):
     # DEM
     assert dem.georeferenced_grid_equal(output_dem)
 
-    # MASK
-    if "path_to_mask" in config_dem:
-        mask = gu.Vector(mask_path)
-        assert inlier_mask.georeferenced_grid_equal(~mask.create_mask(dem))
-
 
 def test_load_dem_alias():
     """
@@ -337,6 +334,64 @@ def test_load_dem_alias():
     config_dem["path_to_mask"] = "longyearbyen_glacier_outlines"
     output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
 
-    assert output_dem == xdem.DEM(xdem.examples.get_path(config_dem["path_to_elev"]))
-    assert inlier_mask == ~gu.Vector(mask_path).create_mask(output_dem)
+    assert output_dem.raster_equal(xdem.DEM(xdem.examples.get_path(config_dem["path_to_elev"])))
+    assert inlier_mask.raster_equal(~gu.Vector(mask_path).create_mask(output_dem))
     assert mask_path == xdem.examples.get_path("longyearbyen_glacier_outlines")
+
+
+def test_load_dem_mask(tmp_path):
+    """
+    Test load_dem function with different path_to_mask possibilities
+    """
+
+    # No path_to_mask
+    config_dem = dict()
+    config_dem["path_to_elev"] = "longyearbyen_ref_dem"
+    output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+    assert mask_path is None
+    assert inlier_mask is None
+
+    # path_to_mask = shapefile path
+    config_dem["path_to_mask"] = xdem.examples.get_path("longyearbyen_glacier_outlines")
+    dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+    assert inlier_mask.raster_equal(~gu.Vector(mask_path).create_mask(inlier_mask))
+    assert mask_path == config_dem["path_to_mask"]
+
+    # path_to_mask = shapefile alias
+    config_dem["path_to_mask"] = "longyearbyen_glacier_outlines"
+    _, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+    assert inlier_mask.raster_equal(~gu.Vector(mask_path).create_mask(inlier_mask))
+    assert mask_path == xdem.examples.get_path("longyearbyen_glacier_outlines")
+
+    # path_to_mask = raster path, fitting dem
+    mask = ~gu.Vector(mask_path).create_mask(dem)
+    mask.to_file(tmp_path / "mask.tif")
+    config_dem["path_to_mask"] = tmp_path / "mask.tif"
+    _, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+    assert inlier_mask.raster_equal(mask)
+    assert mask_path == config_dem["path_to_mask"]
+
+    # path_to_mask = raster path, not fitting dem
+    mask_crop = mask.icrop((0, 0, 500, 600))
+    mask_crop.to_file(tmp_path / "mask_crop.tif")
+    config_dem["path_to_mask"] = tmp_path / "mask_crop.tif"
+    _, inlier_mask, mask_path = Workflows.load_dem(config_dem)
+    assert inlier_mask.raster_equal(mask_crop.reproject(dem, silent=True))
+    assert mask_path == config_dem["path_to_mask"]
+
+    # path_to_mask  = raster that not exists
+    config_dem["path_to_mask"] = tmp_path / "notexist.tif"
+    with pytest.raises(ValueError, match="not recognised as a mask"):
+        Workflows.load_dem(config_dem)
+
+    # path_to_mask = shapefile that not exists
+    config_dem["path_to_mask"] = tmp_path / "notexist.shp"
+    with pytest.raises(ValueError, match="not recognised as a mask"):
+        Workflows.load_dem(config_dem)
+
+    # path_to_mask = text file
+    with open(tmp_path / "example.txt", "w") as f:
+        f.write("some text")
+    config_dem["path_to_mask"] = tmp_path / "example.txt"
+    with pytest.raises(ValueError, match="not recognised as a mask"):
+        Workflows.load_dem(config_dem)

@@ -1,5 +1,5 @@
 # Copyright (c) 2024 xDEM developers
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES)
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -33,19 +33,19 @@ import geoutils as gu
 import numpy as np
 import rasterio as rio
 from geoutils.interface.gridding import _grid_pointcloud
-from geoutils.raster import Raster, RasterType
-from geoutils.raster.array import get_array_and_mask
-from geoutils.raster.distributed_computing import (
+from geoutils.multiproc import (
     MultiprocConfig,
+    compute_tiling,
     map_multiproc_collect,
     map_overlap_multiproc_save,
 )
-from geoutils.raster.tiling import compute_tiling
+from geoutils.raster import Raster, RasterType
+from geoutils.raster.array import get_array_and_mask
 
 from xdem._misc import import_optional
 from xdem._typing import MArrayf, NDArrayf
 from xdem.coreg.affine import NuthKaab
-from xdem.coreg.base import Coreg, CoregPipeline
+from xdem.coreg.base import Coreg
 
 
 class BlockwiseCoreg:
@@ -56,7 +56,7 @@ class BlockwiseCoreg:
 
     def __init__(
         self,
-        step: Coreg | CoregPipeline,
+        step: Coreg,
         mp_config: MultiprocConfig | None = None,
         block_size_fit: int = 500,
         block_size_apply: int = 500,
@@ -65,7 +65,7 @@ class BlockwiseCoreg:
         """
         Instantiate a blockwise processing object for performing coregistration on subdivided DEM tiles.
 
-        :param step: An instantiated coregistration method or pipeline to apply on each tile.
+        :param step: An instantiated coregistration method to apply on each tile.
         :param mp_config: Configuration object for multiprocessing
         :param block_size_fit: Size of tiles to process per coregistration step in fit step.
         :param block_size_apply: Size of tiles to process per coregistration step in apply step.
@@ -79,7 +79,7 @@ class BlockwiseCoreg:
 
         if isinstance(step, type):
             raise ValueError(
-                "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
+                "The 'step' argument must be an instantiated Coreg subclass. Hint: write e.g. ICP() instead of ICP"
             )
         if not step.is_affine:
             raise ValueError("The blockwise coregistration only supports affine coregistration methods.")
@@ -104,7 +104,7 @@ class BlockwiseCoreg:
             self.mp_config = mp_config
             self.parent_path = Path(mp_config.outfile).parent
         else:
-            self.mp_config = MultiprocConfig(chunk_size=self.block_size_fit, outfile="aligned_dem.tif")
+            self.mp_config = MultiprocConfig(chunks=self.block_size_fit, outfile="aligned_dem.tif")
             self.parent_path = Path(parent_path)  # type: ignore
 
         os.makedirs(self.parent_path, exist_ok=True)
@@ -118,17 +118,17 @@ class BlockwiseCoreg:
     def _coreg_wrapper(
         ref_dem_tiled: RasterType,
         tba_dem: RasterType,
-        coreg_method: Coreg | CoregPipeline,
+        coreg_method: Coreg,
         inlier_mask: RasterType | None = None,
-    ) -> Coreg | CoregPipeline:
+    ) -> Coreg:
         """
          Wrapper function to apply a coregistration method (e.g., Nuth & Kääb) on a pair of DEM tiles.
 
         :param ref_dem_tiled: Reference DEM tile to align to.
         :param tba_dem: DEM tile to be aligned.
-        :param coreg_method: Coregistration method or pipeline to apply.
+        :param coreg_method: Coregistration method to apply.
         :param inlier_mask: Optional mask indicating valid data points to consider during coregistration.
-        :return: The coregistration method or pipeline with updated transformation parameters.
+        :return: The coregistration method with updated transformation parameters.
         """
         coreg_method = coreg_method.copy()
         tba_dem_tiled = tba_dem.crop(ref_dem_tiled)
@@ -142,7 +142,7 @@ class BlockwiseCoreg:
             coreg_method.meta["outputs"] = {"affine": {"shift_z": np.nan}}
             return coreg_method
         else:
-            if inlier_mask:
+            if inlier_mask is not None:
                 inlier_mask = inlier_mask.crop(ref_dem_tiled)
             try:
                 return coreg_method.fit(ref_dem_tiled, tba_dem_tiled, inlier_mask)
@@ -194,15 +194,14 @@ class BlockwiseCoreg:
         self.shifts_z = []  # type: ignore
 
         for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
-
             shift_x = coreg.meta["outputs"]["affine"].get("shift_x", np.nan)
             shift_y = coreg.meta["outputs"]["affine"].get("shift_y", np.nan)
             shift_z = coreg.meta["outputs"]["affine"].get("shift_z", np.nan)
 
-            x, y = (
+            x, y = to_be_aligned_elev.transform * (
                 tile_coords[2] + self.block_size_fit / 2,
                 tile_coords[0] + self.block_size_fit / 2,
-            ) * to_be_aligned_elev.transform  # type: ignore
+            )  # type: ignore
 
             self.x_coords.append(x)
             self.y_coords.append(y)
@@ -341,7 +340,7 @@ class BlockwiseCoreg:
             new_dem = _grid_pointcloud(
                 trans_epc,
                 grid_coords=tba_dem_tile.coords(grid=False),
-                data_column_name="z",
+                data_name="z",
                 resampling=resampling,
             )[0]
 
@@ -387,7 +386,7 @@ class BlockwiseCoreg:
         else:
             coeff_z = (0, 0, 0)
 
-        self.mp_config.chunk_size = self.block_size_apply
+        self.mp_config.chunks = self.block_size_apply
         # be careful with depth value if Out of Memory
         depth = max(np.abs(self.shifts_x).max(), np.abs(self.shifts_y).max())
         if np.isnan(depth):

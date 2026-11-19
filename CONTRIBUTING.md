@@ -18,14 +18,44 @@ The technical steps to contributing to xDEM are:
 9. Push to your fork,
 10. Open a pull request from GitHub to discuss and eventually merge.
 
+These steps are detailed in sections further below!
+
+## AI-assisted contribution policy
+
+“AI” herein refers to **generative AI tools like large language models (LLMs)** that can generate, edit,
+and review software code, create and manipulate images, or generate text for communication.
+
+We welcome AI-assisted contributions under the following conditions:
+
+- **Human communication.** Write the core PR description yourself, explaining the motivation, approach,
+  and validation in your own words. AI may polish or translate your writing and help prepare supporting
+  lists, tables, or other displays, but must not replace your own explanation. The same principle
+  applies to comments during PR review, and opening an issue or discussion.
+
+- **Human review and responsibility.** Personally review, understand, and validate the entire contribution,
+  including code, tests, and documentation, before requesting review. Run relevant tests and accurately report
+  what you checked. You remain responsible for the contribution and must be able to explain your choices and address
+  review feedback.
+
+- **References and licensing (copyright).** AI-generated code may reproduce or adapt existing copyrighted implementations
+  without identifying their sources. For major features or conceptual changes to methods, algorithms, or
+  design, make a reasonable search for relevant literature and existing implementations. Verify and cite relevant
+  sources, and check for potential code reuse. Ensure that any reused or adapted material has a compatible license
+  with [xDEM's LICENSE](./LICENSE), and flag such material explicitly to maintainers.
+
+Maintainers may decline PRs whose descriptions appear predominantly AI-generated, or that do not demonstrate sufficient
+human understanding and validation, or attention to copyright and source.
+
+This AI policy was inspired from that of [NumPy](https://numpy.org/devdocs/dev/ai_policy.html) and [SciPy](https://docs.scipy.org/doc/scipy/dev/conduct/ai_policy.html) as of September 2026,
+which were themselves inspired by that of [SymPy]([https://www.sympy.org/en/index.html](https://docs.sympy.org/dev/contributing/ai-generated-code-policy.html)).
+
 ## Development environment
 
 xDEM currently supports Python versions of 3.10 to 3.14 (see `dev-environment.yml` for detailed dependencies), which are
 tested in a continuous integration (CI) workflow running on GitHub Actions.
 
-When you open a PR on xDEM, a single linting action and 9 test actions will automatically start, corresponding to all
-supported Python versions (3.10, 3.11, 3.12, 3.13 and 3.14) and OS (Ubuntu, Mac, Windows). The coverage change of the tests will also
-be reported by CoverAlls.
+When you open a PR on xDEM, GitHub Actions checks linting, documentation and tests across supported Python versions
+and operating systems (Ubuntu, Mac, Windows), with base and optional dependencies. Coveralls reports test coverage changes.
 
 ### Setup
 
@@ -51,9 +81,10 @@ make install
 At least one test per feature (in the associated `tests/test_*.py` file) should be included in the PR, using `pytest` (see existing tests for examples).
 The structure of test modules and functions in `tests/` largely mirrors that of the package modules and functions in `xdem/`.
 
-To run the entire test suite, run `pytest` from the root of the repository:
+To run the entire test suite from the repository root:
+
 ```bash
-pytest
+python -m pytest
 ```
 
 Running `pytest` will trigger a script that automatically downloads test data from [https://github.com/GlacioHack/xdem-data](https://github.com/GlacioHack/xdem-data) used to run all tests.
@@ -62,9 +93,19 @@ RichDEM should only be used for testing purposes within the xDEM project. The fu
 
 ### Documentation
 
-If your changes need to be reflected in the documentation, update the related pages located in `doc/source/`. The documentation is written in MyST markdown syntax, similar to GitHub's default Markdown (see [MyST-NB](https://myst-nb.readthedocs.io/en/latest/authoring/text-notebooks.html) for details).
+Update pages in `doc/source/` when your PR affects the documentation.
 
-To ensure that the documentation is building properly after your changes, if you are on Linux, you can run `pytest tests/test_doc.py`, which is equivalent to building directly calling `sphinx-build source/ build/html/` from the `doc/` folder. On Windows and Mac, the documentation is not maintained, so you can wait to open the PR for it to be checked on Linux by the CI.
+These pages are written in [MyST Markdown](https://myst-nb.readthedocs.io/en/latest/authoring/text-notebooks.html),
+with executable code cells. Gallery examples are Python scripts in `examples/`.
+
+With the development environment activated, build the HTML documentation from the repository root:
+
+```bash
+sphinx-build -T -b html doc/source doc/build
+```
+
+Then open `doc/build/index.html` to review the generated pages.
+The documentation also builds in a separate GitHub Actions workflow on every PR.
 
 ### Formatting and linting
 
@@ -72,7 +113,7 @@ Install and run `pre-commit` from the root of the repository (such as with `mamb
 which will use `.pre-commit-config.yaml` to verify spelling errors, import sorting, type checking, formatting and linting:
 
 ```bash
-pre-commit run --all
+pre-commit run --all-files
 ```
 
 You can then commit and push those changes.

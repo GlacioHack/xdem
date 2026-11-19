@@ -16,7 +16,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Spatial statistical tools to estimate uncertainties related to DEMs"""
+"""Deprecated spatial statistical tools to estimate uncertainties related to DEMs.
+
+The original implementations remain available during deprecation. Each public function warns when called and
+links to https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration for its replacement.
+"""
 
 from __future__ import annotations
 
@@ -35,7 +39,7 @@ import pandas as pd
 import scipy.ndimage
 from geoutils.raster import Raster, RasterType
 from geoutils.raster.array import get_array_and_mask
-from geoutils.stats.sampling import subsample_array
+from geoutils.sampling.subsampling import _subsample_numpy
 from geoutils.vector.vector import Vector, VectorType
 from numpy.typing import ArrayLike
 from packaging.version import Version
@@ -47,6 +51,11 @@ from scipy.stats import binned_statistic, binned_statistic_2d, binned_statistic_
 
 from xdem._misc import deprecate, import_optional
 from xdem._typing import NDArrayb, NDArrayf
+
+_DEPRECATION_DETAILS = (
+    "All of xdem.spatialstats is deprecated. "
+    "See https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration for migration guidance."
+)
 
 if TYPE_CHECKING:
     import matplotlib
@@ -71,7 +80,8 @@ except ImportError:
 
 
 @deprecate(
-    removal_version=Version("0.4"), details="xdem.spatialstats.nmad is being deprecated in favor of geoutils.stats.nmad"
+    removal_version=Version("0.4"),
+    details="xdem.spatialstats.nmad is being deprecated in favor of geoutils.stats.nmad. " + _DEPRECATION_DETAILS,
 )
 def nmad(data: NDArrayf, nfact: float = 1.4826) -> np.floating[Any]:
     """
@@ -79,6 +89,11 @@ def nmad(data: NDArrayf, nfact: float = 1.4826) -> np.floating[Any]:
     Default scaling factor is 1.4826 to scale the median absolute deviation (MAD) to the dispersion of a normal
     distribution (see https://en.wikipedia.org/wiki/Median_absolute_deviation#Relation_to_standard_deviation, and
     e.g. Höhle and Höhle (2009), http://dx.doi.org/10.1016/j.isprsjprs.2009.02.003)
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param data: Input array or raster
     :param nfact: Normalization factor for the data
@@ -88,6 +103,7 @@ def nmad(data: NDArrayf, nfact: float = 1.4826) -> np.floating[Any]:
     return gu.stats.nmad(data, nfact)
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def nd_binning(
     values: NDArrayf,
     list_var: list[NDArrayf],
@@ -102,6 +118,11 @@ def nd_binning(
     is always computed, no matter user input.
     Values input is a (N,) array and variable input is a L-sized list of flattened arrays of similar dimensions (N,).
     For more details on the format of input variables, see documentation of scipy.stats.binned_statistic_dd.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param values: Values array of size (N,)
     :param list_var: List of size (L) of explanatory variables array of size (N,)
@@ -234,6 +255,7 @@ def _pandas_str_to_interval(istr: str) -> float | pd.Interval:
             return np.nan
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def interp_nd_binning(
     df: pd.DataFrame,
     list_var_names: str | list[str],
@@ -244,6 +266,11 @@ def interp_nd_binning(
     """
     Estimate an interpolant function for an N-dimensional binning. Preferably based on the output of nd_binning.
     For more details on the input dataframe, and associated list of variable name and statistic, see nd_binning.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     First, interpolates nodata values of the irregular N-D binning grid with scipy.griddata.
     Then, extrapolates nodata values on the N-D binning grid with scipy.griddata with "nearest neighbour"
@@ -312,7 +339,6 @@ def interp_nd_binning(
 
     # Compute the middle values instead of bin interval if the variable is a pandas interval type
     for var in list_var_names:
-
         # Check if all value are numeric (NaN counts as integer), if yes leave as is
         if all(isinstance(x, (int, float, np.integer, np.floating)) for x in df_sub[var].values):
             pass
@@ -422,6 +448,7 @@ def interp_nd_binning(
     return interp_fun  # type: ignore
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def get_perbin_nd_binning(
     df: pd.DataFrame,
     list_var: list[NDArrayf],
@@ -431,6 +458,11 @@ def get_perbin_nd_binning(
 ) -> NDArrayf:
     """
     Get per-bin array statistic for a list of array input variables, based on the results of an independent N-D binning.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     For example, get a 2D array of elevation uncertainty based on 2D arrays of slope and curvature and a related binning
     (for uncertainty analysis) or get a 2D array of elevation bias based on 2D arrays of rotated X coordinates (for
@@ -506,7 +538,6 @@ def get_perbin_nd_binning(
     # We perform the K-D binning by logically combining the masks
     all_ranges = [range(len(all_interval_vars[k])) for k in range(L)]
     for indices in itertools.product(*all_ranges):
-
         # Get mask of the specific bin, skip if empty
         mask_bin = np.logical_and.reduce([all_mask_vars[k][indices[k]] for k in range(L)])
         if np.count_nonzero(mask_bin) == 0:
@@ -527,6 +558,7 @@ def get_perbin_nd_binning(
     return values_out
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def two_step_standardization(
     dvalues: NDArrayf,
     list_var: list[NDArrayf],
@@ -537,6 +569,11 @@ def two_step_standardization(
     """
     Standardize the proxy differenced values using the modelled heteroscedasticity, re-scaled to the spread statistic,
     and generate the final standardization function.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param dvalues: Proxy values as array of size (N,) (i.e., differenced values where signal should be zero such as
         elevation differences on stable terrain)
@@ -722,7 +759,6 @@ def _preprocess_values_with_mask_to_array(
     if include_mask is None:
         include_mask_arr = np.ones(np.shape(values_arr[0]), dtype=bool)
     elif isinstance(include_mask, (Vector, gpd.GeoDataFrame)):
-
         # If the stable mask is a geopandas dataframe, wrap it in a Vector object
         if isinstance(include_mask, gpd.GeoDataFrame):
             stable_vector = Vector(include_mask)
@@ -742,7 +778,6 @@ def _preprocess_values_with_mask_to_array(
     if exclude_mask is None:
         exclude_mask_arr = np.zeros(np.shape(values_arr[0]), dtype=bool)
     elif isinstance(exclude_mask, (Vector, gpd.GeoDataFrame)):
-
         # If the unstable mask is a geopandas dataframe, wrap it in a Vector object
         if isinstance(exclude_mask, gpd.GeoDataFrame):
             unstable_vector = Vector(exclude_mask)
@@ -779,7 +814,7 @@ def _preprocess_values_with_mask_to_array(
 
 @overload
 def infer_heteroscedasticity_from_stable(
-    dvalues: NDArrayf,
+    dvalues: gpd.GeoDataFrame,
     list_var: list[NDArrayf | RasterType],
     stable_mask: NDArrayf | Raster | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | Raster | VectorType | gpd.GeoDataFrame = None,
@@ -788,11 +823,11 @@ def infer_heteroscedasticity_from_stable(
     list_var_bins: int | tuple[int, ...] | tuple[NDArrayf] | None = None,
     min_count: int | None = 100,
     fac_spread_outliers: float | None = 7,
-) -> tuple[NDArrayf, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]: ...
+) -> tuple[gpd.GeoDataFrame, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]: ...
 
 
 @overload
-def infer_heteroscedasticity_from_stable(
+def infer_heteroscedasticity_from_stable(  # type: ignore[overload-cannot-match]
     dvalues: RasterType,
     list_var: list[NDArrayf | RasterType],
     stable_mask: NDArrayf | Raster | VectorType | gpd.GeoDataFrame = None,
@@ -805,8 +840,9 @@ def infer_heteroscedasticity_from_stable(
 ) -> tuple[RasterType, pd.DataFrame, Callable[[tuple[NDArrayf, ...]], NDArrayf]]: ...
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def infer_heteroscedasticity_from_stable(
-    dvalues: NDArrayf | RasterType,
+    dvalues: RasterType | gpd.GeoDataFrame,
     list_var: list[NDArrayf | RasterType],
     stable_mask: NDArrayf | Raster | VectorType | gpd.GeoDataFrame = None,
     unstable_mask: NDArrayf | Raster | VectorType | gpd.GeoDataFrame = None,
@@ -819,13 +855,18 @@ def infer_heteroscedasticity_from_stable(
     """
     Infer heteroscedasticity from differenced values on stable terrain and a list of explanatory variables.
 
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
+
     This function returns an error map, a dataframe of spread values and the error function with explanatory variables.
     It is a convenience wrapper for `estimate_model_heteroscedasticity` to work on either Raster or array, compute the
     stable mask and return an error map.
 
     If no stable or unstable mask is provided to mask in or out the values, all terrain is used.
 
-    :param dvalues: Proxy values as array or Raster (i.e., differenced values where signal should be zero such as
+    :param dvalues: Proxy values as raster or point cloud (i.e., differenced values where signal should be zero such as
         elevation differences on stable terrain)
     :param list_var: List of size (L) of explanatory variables as array or Raster of same shape as dvalues
     :param stable_mask: Vector shapefile of stable terrain (if dvalues is Raster), or boolean array of same shape as
@@ -868,7 +909,8 @@ def infer_heteroscedasticity_from_stable(
 
     # Use the standardization function to get the error array for the entire input array (not only stable)
     list_var_arr = [get_array_and_mask(var)[0] if isinstance(var, Raster) else var for var in list_var]
-    error = fun(tuple(list_var_arr))
+    # Evaluate flattened coordinates so a single explanatory variable also accepts a 2D raster grid
+    error = fun(tuple(var.ravel() for var in list_var_arr)).reshape(list_var_arr[0].shape)
 
     # Return the right type, depending on dvalues input
     if isinstance(dvalues, Raster):
@@ -975,7 +1017,12 @@ def _subsample_wrapper(
         values_sp = values
         coords_sp = coords
 
-    index = subsample_array(values_sp, subsample=subsample, return_indices=True, random_state=random_state)
+    index = _subsample_numpy(
+        values_sp,
+        subsample=subsample,
+        return_indices=True,
+        random_state=random_state,
+    )
     values_sub = values_sp[index[0]]
     coords_sub = coords_sp[index[0], :]
 
@@ -1002,9 +1049,7 @@ def _aggregate_pdist_empirical_variogram(
 
     # If no multi_ranges are provided, define a logical default behaviour with the pixel size and grid size
     if subsample_method in ["pdist_disk", "pdist_ring"]:
-
         if pdist_multi_ranges is None:
-
             # Define list of ranges as exponent 2 of the resolution until the maximum range
             pdist_multi_ranges = []
             # We start at 10 times the ground sampling distance
@@ -1019,7 +1064,6 @@ def _aggregate_pdist_empirical_variogram(
         list_outside_radius: list[float | None] = []
         binned_ranges = [0.0] + pdist_multi_ranges
         for i in range(len(binned_ranges) - 1):
-
             # Radiuses need to be passed as pixel sizes, dividing by ground sampling distance
             outside_radius = binned_ranges[i + 1] / gsd
             if subsample_method == "pdist_ring":
@@ -1038,7 +1082,6 @@ def _aggregate_pdist_empirical_variogram(
     # Estimate variogram with specific subsampling at multiple ranges
     list_df_range = []
     for j in range(len(pdist_multi_ranges)):
-
         values_sub, coords_sub = _subsample_wrapper(
             values,
             coords,
@@ -1199,7 +1242,6 @@ def _get_cdist_empirical_variogram(
     skg = import_optional("skgstat", package_name="scikit-gstat")
 
     if subsample_method == "cdist_equidistant":
-
         if "runs" not in kwargs.keys() and "samples" not in kwargs.keys():
             # We define subparameters for the equidistant technique to match the number of pairwise comparison
             # that would have a classic "subsample" with pdist, except if those parameters are already user-defined
@@ -1212,7 +1254,6 @@ def _get_cdist_empirical_variogram(
         kwargs.pop("subsample")
 
     elif subsample_method == "cdist_point":
-
         # We set the samples to match the subsample argument if the method is random points
         kwargs["samples"] = kwargs.pop("subsample")
 
@@ -1292,6 +1333,7 @@ class EmpiricalVariogramKArgs(TypedDict, total=False):
     estimator: str
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def sample_empirical_variogram(
     values: NDArrayf | RasterType,
     gsd: float = None,
@@ -1309,6 +1351,11 @@ def sample_empirical_variogram(
     Sample empirical variograms with binning adaptable to multiple ranges and spatial subsampling adapted for raster
     data.
     Returns an empirical variogram (empirical variance, upper bound of spatial lag bin, count of pairwise samples).
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     If values are provided as a Raster subclass, nothing else is required.
     If values are provided as a 2D array (M,N), a ground sampling distance is sufficient to derive the pairwise
@@ -1373,7 +1420,9 @@ def sample_empirical_variogram(
     values = values.squeeze()
 
     # Then, check if the logic between values, coords and gsd is respected
-    if (gsd is not None or subsample_method in ["cdist_equidistant", "pdist_disk", "pdist_ring"]) and values.ndim == 1:
+    if (
+        (gsd is not None and coords is None) or subsample_method in ["cdist_equidistant", "pdist_disk", "pdist_ring"]
+    ) and values.ndim == 1:
         raise ValueError(
             'Values array must be 2D when using any of the "cdist_equidistant", "pdist_disk" and '
             '"pdist_ring" methods, or providing a ground sampling distance instead of coordinates.'
@@ -1485,7 +1534,6 @@ def sample_empirical_variogram(
 
         list_df_run = []
         for i in range(n_variograms):
-
             argdict = {
                 "i": i,
                 "imax": n_variograms,
@@ -1499,7 +1547,10 @@ def sample_empirical_variogram(
     else:
         logging.info("Using " + str(n_jobs) + " cores...")
 
-        pool = mp.Pool(n_jobs, maxtasksperchild=1)
+        # Forking a multi-threaded parent is deprecated and can deadlock the
+        # child, so fork from a clean process where that method exists.
+        start_method = "forkserver" if "forkserver" in mp.get_all_start_methods() else "spawn"
+        pool = mp.get_context(start_method).Pool(n_jobs, maxtasksperchild=1)
         list_argdict = [
             {"i": i, "imax": n_variograms, "random_state": list_random_state[i], **args, **kwargs}  # type: ignore
             for i in range(n_variograms)
@@ -1580,9 +1631,15 @@ def _get_skgstat_variogram_model_name(model: str | Callable[[NDArrayf, float, fl
     return model_name
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def get_variogram_model_func(params_variogram_model: pd.DataFrame) -> Callable[[NDArrayf], NDArrayf]:
     """
     Construct the sum of spatial variogram function from a dataframe of variogram parameters.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the
         model types (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for
@@ -1620,11 +1677,17 @@ def get_variogram_model_func(params_variogram_model: pd.DataFrame) -> Callable[[
     return sum_model
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def covariance_from_variogram(params_variogram_model: pd.DataFrame) -> Callable[[NDArrayf], NDArrayf]:
     """
     Construct the spatial covariance function from a dataframe of variogram parameters.
     The covariance function is the sum of partial sills "PS" minus the sum of associated variograms "gamma":
     C = PS - gamma
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the
         model types (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for
@@ -1649,10 +1712,16 @@ def covariance_from_variogram(params_variogram_model: pd.DataFrame) -> Callable[
     return cov
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def correlation_from_variogram(params_variogram_model: pd.DataFrame) -> Callable[[NDArrayf], NDArrayf]:
     """
     Construct the spatial correlation function from a dataframe of variogram parameters.
     The correlation function is the covariance function "C" divided by the sum of partial sills "PS": rho = C / PS
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param params_variogram_model: Dataframe of variogram models to sum with three to four columns, "model" for the
         model types (e.g., ["spherical", "matern"]), "range" for the correlation ranges (e.g., [2, 100]), "psill" for
@@ -1677,6 +1746,7 @@ def correlation_from_variogram(params_variogram_model: pd.DataFrame) -> Callable
     return rho
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def fit_sum_model_variogram(
     list_models: list[str | Callable[[NDArrayf, float, float], NDArrayf]],
     empirical_variogram: pd.DataFrame,
@@ -1688,6 +1758,11 @@ def fit_sum_model_variogram(
     Fit a sum of variogram models to an empirical variogram, with weighted least-squares based on sampling errors. To
     use preferably with the empirical variogram dataframe returned by the `sample_empirical_variogram` function.
 
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
+
     :param list_models: List of K variogram models to sum for the fit in order from short to long ranges. Can either be
         a 3-letter string, full string of the variogram name or SciKit-GStat model function (e.g., for a
         spherical model "Sph", "Spherical" or skgstat.models.spherical).
@@ -1697,8 +1772,7 @@ def fit_sum_model_variogram(
         lower, sill upper).
     :param p0: Initial guess of ranges and sills each model (shape K x 2 = K x range first guess, sill first guess).
     :param maxfev: Maximum number of function evaluations before the termination, passed to scipy.optimize.curve_fit().
-        Convergence problems can sometimes be fixed by changing this value (default None: automatically determine the
-        number).
+        Convergence problems can sometimes be fixed by changing this value (default 10000).
 
     :return: Function of sum of variogram, Dataframe of optimized coefficients.
     """
@@ -1754,30 +1828,50 @@ def fit_sum_model_variogram(
 
     final_bounds = np.transpose(np.array(bounds))
 
+    # Ensure sufficient evaluations for convergence; scipy's trf default (100*n_params) is often too low
+    if maxfev is None:
+        maxfev = 10000
+
+    # Build curve_fit kwargs shared by both branches
+    _fit_kwargs: dict[str, Any] = dict(method="trf", bounds=final_bounds, maxfev=maxfev)
+
+    # Generate a sequence of p0 candidates to try: original, then perturbed versions.
+    # This handles multi-modal landscapes (e.g. swapping Gaussian/Spherical roles gives
+    # equal fit quality, causing TRF to stall near saddle points).
+    _p0_candidates = [
+        p0,
+        [v * 0.5 for v in p0],
+        [v * 2.0 for v in p0],
+        [(lo + hi) / 2 for (lo, hi) in zip(final_bounds[0], final_bounds[1])],
+    ]
+
+    def _try_curve_fit(extra_kwargs: dict[str, Any]) -> tuple[NDArrayf, NDArrayf]:
+        last_err = None
+        for p0_try in _p0_candidates:
+            try:
+                return curve_fit(variogram_sum, p0=p0_try, **extra_kwargs, **_fit_kwargs)
+            except RuntimeError as e:
+                last_err = e
+        raise last_err  # type: ignore[misc]
+
     # If the error provided is all NaNs (single variogram run), or all zeros (two variogram runs), run without weights
     if np.all(np.isnan(empirical_variogram.err_exp.values)) or np.all(empirical_variogram.err_exp.values == 0):
-        cof, cov = curve_fit(
-            variogram_sum,
-            empirical_variogram.lags.values,
-            empirical_variogram.exp.values,
-            method="trf",
-            p0=p0,
-            bounds=final_bounds,
-            maxfev=maxfev,
+        cof, cov = _try_curve_fit(
+            dict(
+                xdata=empirical_variogram.lags.values,
+                ydata=empirical_variogram.exp.values,
+            )
         )
     # Otherwise, use a weighted fit
     else:
         # We need to filter for possible no data in the error
         valid = np.isfinite(empirical_variogram.err_exp.values)
-        cof, cov = curve_fit(
-            variogram_sum,
-            empirical_variogram.lags.values[valid],
-            empirical_variogram.exp.values[valid],
-            method="trf",
-            p0=p0,
-            bounds=final_bounds,
-            sigma=empirical_variogram.err_exp.values[valid],
-            maxfev=maxfev,
+        cof, cov = _try_curve_fit(
+            dict(
+                xdata=empirical_variogram.lags.values[valid],
+                ydata=empirical_variogram.exp.values[valid],
+                sigma=empirical_variogram.err_exp.values[valid],
+            )
         )
 
     # Store optimized parameters
@@ -1873,6 +1967,7 @@ def _estimate_model_spatial_correlation(
     return empirical_variogram, params_variogram_model, spatial_correlation_func
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def infer_spatial_correlation_from_stable(
     dvalues: NDArrayf | RasterType,
     list_models: list[str | Callable[[NDArrayf, float, float], NDArrayf]],
@@ -1894,6 +1989,11 @@ def infer_spatial_correlation_from_stable(
     """
     Infer spatial correlation of errors from differenced values on stable terrain and a list of variogram model to fit
     as a sum.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     This function returns a dataframe of the empirical variogram, a dataframe of optimized model parameters, and a
     spatial correlation function. The spatial correlation is returned as a function of spatial lags
@@ -2008,6 +2108,7 @@ def _check_validity_params_variogram(params_variogram_model: pd.DataFrame) -> No
                     raise ValueError("The variogram smoothness parameter must have non-zero, positive values.")
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.DataFrame) -> float:
     """
     Number of effective samples approximated from exact disk integration of a sum of any number of variogram models
@@ -2016,6 +2117,11 @@ def neff_circular_approx_theoretical(area: float, params_variogram_model: pd.Dat
     Inspired by Rolstad et al. (2009): http://dx.doi.org/10.3189/002214309789470950.
     The input variogram parameters match the format of the dataframe returned by `fit_sum_variogram_models`, also
     detailed in the parameter description to be passed manually.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     This function contains the exact integrated formulas and is mostly used for testing the numerical integration
     of any number and forms of variograms provided by the function `neff_circular_approx_numerical`.
@@ -2126,6 +2232,7 @@ def _integrate_fun(fun: Callable[[NDArrayf], NDArrayf], low_b: float, upp_b: flo
     return integrate.quad(fun, low_b, upp_b)[0]
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def neff_circular_approx_numerical(area: float | int, params_variogram_model: pd.DataFrame) -> float:
     """
     Number of effective samples derived from numerical integration for any sum of variogram models over a circular area.
@@ -2134,6 +2241,11 @@ def neff_circular_approx_numerical(area: float | int, params_variogram_model: pd
     a shape close to that of a disk.
     The input variogram parameters match the format of the dataframe returned by `fit_sum_variogram_models`, also
     detailed in the parameter description to be passed manually.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     The number of effective samples N_eff serves to convert between standard deviation and standard error
     over the area: SE = SD / sqrt(N_eff) if SE is the standard error, SD the standard deviation.
@@ -2172,12 +2284,18 @@ def neff_circular_approx_numerical(area: float | int, params_variogram_model: pd
     return neff
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def neff_exact(
     coords: NDArrayf, errors: NDArrayf, params_variogram_model: pd.DataFrame, vectorized: bool = True
 ) -> float:
     """
      Exact number of effective samples derived from a double sum of covariance with euclidean coordinates based on
      the provided variogram parameters. This method works for any shape of area.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param coords: Center coordinates with size (N,2) for each spatial support (typically, pixel)
     :param errors: Errors at the coordinates with size (N,) for each spatial support (typically, pixel)
@@ -2206,7 +2324,6 @@ def neff_exact(
         var = 0.0
         for i in range(n):
             for j in range(n):
-
                 # For index calculation of the pairwise distance,
                 # see https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.pdist.html
                 if i == j:
@@ -2236,6 +2353,7 @@ def neff_exact(
     return neff
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def neff_hugonnet_approx(
     coords: NDArrayf,
     errors: NDArrayf,
@@ -2248,6 +2366,11 @@ def neff_hugonnet_approx(
     Approximated number of effective samples derived from a double sum of covariance subsetted on one of the two sums,
     based on euclidean coordinates with the provided variogram parameters. This method works for any shape of area.
     See Hugonnet et al. (2022), https://doi.org/10.1109/jstars.2022.3188922, in particular Supplementary Fig. S16.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param coords: Center coordinates with size (N,2) for each spatial support (typically, pixel)
     :param errors: Errors at the coordinates with size (N,) for each spatial support (typically, pixel)
@@ -2308,6 +2431,7 @@ def neff_hugonnet_approx(
     return neff
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def number_effective_samples(
     area: float | int | VectorType | gpd.GeoDataFrame,
     params_variogram_model: pd.DataFrame,
@@ -2317,6 +2441,11 @@ def number_effective_samples(
     """
     Compute the number of effective samples, i.e. the number of uncorrelated samples, in an area accounting for spatial
     correlations described by a sum of variogram models.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     This function wraps two methods:
 
@@ -2355,7 +2484,6 @@ def number_effective_samples(
 
     # Otherwise, run the discrete sum of covariance
     elif isinstance(area, (Vector, gpd.GeoDataFrame)):
-
         # If the input is a geopandas dataframe, put into a Vector object
         if isinstance(area, gpd.GeoDataFrame):
             V = Vector(area)
@@ -2371,7 +2499,6 @@ def number_effective_samples(
 
         # Rasterize with numeric resolution or Raster metadata
         if isinstance(rasterize_resolution, (float, int, np.floating, np.integer)):
-
             # We only need relative mask and coordinates, not absolute
             mask = V.create_mask(res=rasterize_resolution, as_array=True)
             x = rasterize_resolution * np.arange(0, mask.shape[0])
@@ -2380,7 +2507,6 @@ def number_effective_samples(
             coords_on_mask = coords[:, mask].T
 
         elif isinstance(rasterize_resolution, Raster):
-
             # With a Raster we can get the coordinates directly
             mask = V.create_mask(rasterize_resolution, as_array=True).squeeze()
             coords = np.array(rasterize_resolution.coords())
@@ -2402,6 +2528,7 @@ def number_effective_samples(
     return neff
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def spatial_error_propagation(
     areas: list[float | VectorType | gpd.GeoDataFrame],
     errors: RasterType,
@@ -2410,6 +2537,11 @@ def spatial_error_propagation(
 ) -> list[float]:
     """
     Spatial propagation of elevation errors to an area using the estimated heteroscedasticity and spatial correlations.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     This function is based on the `number_effective_samples` function to estimate uncorrelated samples. If given a
     vector area, it uses Equation 18 of Hugonnet et al. (2022), https://doi.org/10.1109/jstars.2022.3188922. If given
@@ -2555,12 +2687,18 @@ def _numba_convolution(imgs: NDArrayf, filters: NDArrayf, output: NDArrayf) -> N
     return output
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def convolution(imgs: NDArrayf, filters: NDArrayf, method: str = "scipy") -> NDArrayf:
     """
     Convolution on a number n_N of 2D images of size N1 x N2 using a number of kernels n_M of sizes M1 x M2, using
     either scipy.signal.fftconvolve or accelerated numba loops.
     Note that the indexes on n_M and n_N correspond to first axes on the array to speed up computations (prefetching).
     Inspired by: https://laurentperrinet.github.io/sciblog/posts/2017-09-20-the-fastest-2d-convolution-in-the-world.html
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param imgs: Input array of size (n_N, N1, N2) with n_N images of size N1 x N2
     :param filters: Input array of filters of size (n_M, M1, M2) with n_M filters of size M1 x M2
@@ -2577,7 +2715,6 @@ def convolution(imgs: NDArrayf, filters: NDArrayf, method: str = "scipy") -> NDA
     if method.lower() == "scipy":
         _scipy_convolution(imgs=imgs, filters=filters, output=output)
     elif "numba" in method.lower():
-
         import_optional("numba")
 
         half_M1 = int((M1 - 1) / 2)
@@ -2594,11 +2731,17 @@ def convolution(imgs: NDArrayf, filters: NDArrayf, method: str = "scipy") -> NDA
     return output
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def mean_filter_nan(
     img: NDArrayf, kernel_size: int, kernel_shape: str = "circular", method: str = "scipy"
 ) -> tuple[NDArrayf, NDArrayf, int]:
     """
     Apply a mean filter to an image with a square or circular kernel of size p and with NaN values ignored.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param img: Input array of size (N1, N2)
     :param kernel_size: Size M of kernel, which will be a symmetrical (M, M) kernel
@@ -2805,13 +2948,11 @@ def _patches_loop_quadrants(
     remaining_nsamp = n_patches
     list_df = []
     while len(list_quadrant) > 0 and u < n_patches:
-
         # Draw a random coordinate from the list of quadrants, select more than enough random points to avoid drawing
         # randomly and differencing lists several times
         list_idx_quadrant = rng.choice(len(list_quadrant), size=min(len(list_quadrant), 10 * remaining_nsamp))
 
         for idx_quadrant in list_idx_quadrant:
-
             logging.info("Working on a new quadrant")
 
             # Select center coordinates
@@ -2917,6 +3058,7 @@ def patches_method(
 ) -> tuple[pd.DataFrame, pd.DataFrame]: ...
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def patches_method(
     values: NDArrayf | RasterType,
     areas: list[float],
@@ -2939,6 +3081,11 @@ def patches_method(
     of central tendency (e.g., the mean) is computed for each patch, then a statistic of spread (e.g., the NMAD)
     is computed on the central tendency of all the patches. This specific procedure gives an empirical estimate of the
     standard error of the mean.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     The function returns the exact areas of the patches, which might differ from the input due to rasterization of the
     shapes.
@@ -3047,6 +3194,7 @@ def patches_method(
         return df_statistic
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def plot_variogram(
     df: pd.DataFrame,
     list_fit_fun: list[Callable[[NDArrayf], NDArrayf]] = None,
@@ -3064,6 +3212,11 @@ def plot_variogram(
     Plot empirical variogram, and optionally also plot one or several model fits.
     Input dataframe is expected to be the output of xdem.spatialstats.sample_empirical_variogram.
     Input function model is expected to be the output of xdem.spatialstats.fit_sum_model_variogram.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param df: Empirical variogram, formatted as a dataframe with count (pairwise sample count), lags
         (upper bound of spatial lag bin), exp (experimental variance), and err_exp (error on experimental variance)
@@ -3238,6 +3391,7 @@ def plot_variogram(
         plt.savefig(out_fname)
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def plot_1d_binning(
     df: pd.DataFrame,
     var_name: str,
@@ -3251,6 +3405,11 @@ def plot_1d_binning(
     """
     Plot a statistic and its count along a single binning variable.
     Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param df: Output dataframe of nd_binning
     :param var_name: Name of binning variable to plot
@@ -3356,6 +3515,7 @@ def plot_1d_binning(
         plt.savefig(out_fname)
 
 
+@deprecate(details=_DEPRECATION_DETAILS)
 def plot_2d_binning(
     df: pd.DataFrame,
     var_name_1: str,
@@ -3377,6 +3537,11 @@ def plot_2d_binning(
     """
     Plot one statistic and its count along two binning variables.
     Input is expected to be formatted as the output of the xdem.spatialstats.nd_binning function.
+
+    .. note::
+        Deprecated. See the
+        `uncertainty migration guide
+        <https://xdem.readthedocs.io/en/stable/release_notes.html#uncertainty-module-migration>`_.
 
     :param df: Output dataframe of nd_binning
     :param var_name_1: Name of first binning variable to plot

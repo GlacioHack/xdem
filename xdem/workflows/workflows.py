@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES)
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -20,7 +20,6 @@ Workflow class
 """
 
 import csv
-import ctypes.util
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -29,6 +28,8 @@ from typing import Any, Dict, List, Union
 
 import geoutils as gu
 import numpy as np
+import pyogrio.errors
+import rasterio.errors
 from geoutils import Raster
 from geoutils.raster import RasterType
 
@@ -37,9 +38,10 @@ from xdem import DEM
 from xdem._misc import import_optional
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
 from xdem.examples import _FILEPATHS_ALL
+from xdem.vcrs import vertical_unit_symbol
 from xdem.workflows.schemas import validate_configuration
 
-# Inheritance of optional dependency class
+# Inheritance of optional dependencies
 try:
     from yaml.dumper import SafeDumper  # type: ignore
 
@@ -47,6 +49,14 @@ try:
 except ImportError:
     SafeDumper = object
     _HAS_YAML = False
+
+try:
+    import plutoprint
+
+    _HAS_PLUTOPRINT = True
+except ImportError:
+    _HAS_PLUTOPRINT = False
+
 
 _ALIAS = {
     "mean": "Mean",
@@ -65,16 +75,6 @@ _ALIAS = {
     "totalcount": "Total count",
     "percentagevalidpoints": "Percentage valid points",
 }
-
-
-try:
-    lib_gobject_name = ctypes.util.find_library("gobject-2.0")
-    lib_pango_name = ctypes.util.find_library("pango-1.0")
-    from weasyprint import HTML
-
-    _has_weasyprint = True
-except ImportError:
-    _has_weasyprint = False
 
 
 class Workflows(ABC):
@@ -164,8 +164,8 @@ class Workflows(ABC):
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"File not found : {self.config_path}")
 
-        if not Path(self.config_path).suffix in [".yaml", ".yml"]:
-            raise ValueError("Unsupported configuration file format. " "Please use .yaml, or .yml file.")
+        if Path(self.config_path).suffix not in [".yaml", ".yml"]:
+            raise ValueError("Unsupported configuration file format. Please use .yaml, or .yml file.")
 
         with open(self.config_path) as f:
             config_dict = yaml.safe_load(f)
@@ -224,7 +224,8 @@ class Workflows(ABC):
         kwargs["cmap"] = cmap
 
         # Add colormap
-        kwargs["cbar_title"] = f"Elevation differences ({dem.crs.linear_units})"
+        vunit = vertical_unit_symbol(dem.crs)
+        kwargs.setdefault("cbar_title", f"Elevation differences ({vunit})" if vunit else "Elevation differences")
 
         # Force figsize with the good ratio to prevent larger right axe if not filled
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
@@ -261,6 +262,9 @@ class Workflows(ABC):
         import_optional("matplotlib")
         import matplotlib.pyplot as plt
         from matplotlib.gridspec import GridSpec
+
+        vunit = vertical_unit_symbol(dem.crs)
+        unit_label = f" ({vunit})" if vunit else ""
 
         # Raster data
         data = dem.data
@@ -309,7 +313,7 @@ class Workflows(ABC):
         # Plot DEM with colorbar
         im = ax_map.imshow(data, aspect="auto", **kwargs)
         ax_map.text(0.5, 1.12, title, transform=ax_map.transAxes, ha="center", va="top")
-        fig.colorbar(im, cax=cax).set_label(f"Elevation differences ({dem.crs.linear_units})")
+        fig.colorbar(im, cax=cax).set_label(f"Elevation differences{unit_label}")
 
         # Lines profiles
         y = np.arange(ny)
@@ -319,7 +323,7 @@ class Workflows(ABC):
         ax_left.yaxis.tick_left()
         ax_left.yaxis.set_label_position("left")
         ax_left.set_xlabel(
-            f"Mean along lines ({dem.crs.linear_units})\n"
+            f"Mean along lines{unit_label}\n"
             f"Min: {np.round(profile_rows_stats[0], 2)} / Max: {np.round(profile_rows_stats[1], 2)}"
         )
 
@@ -330,7 +334,7 @@ class Workflows(ABC):
         ax_bottom.yaxis.tick_left()
         ax_bottom.xaxis.set_label_position("bottom")
         ax_bottom.set_xlabel(
-            f"Mean along columns ({dem.crs.linear_units})\n"
+            f"Mean along columns{unit_label}\n"
             f"Min: {np.round(profile_cols_stats[0], 2)} / Max: {np.round(profile_cols_stats[1], 2)}"
         )
 
@@ -368,7 +372,6 @@ class Workflows(ABC):
         mask_path = None
 
         if config_dem is not None:
-
             path_to_elev = config_dem["path_to_elev"]
             # If alias, get its path
             if path_to_elev in list(_FILEPATHS_ALL.keys()):
@@ -389,12 +392,28 @@ class Workflows(ABC):
 
             if config_dem.get("path_to_mask") is not None:
                 mask_path = config_dem["path_to_mask"]
+
                 # If alias, get its path
                 if mask_path in list(_FILEPATHS_ALL.keys()):
                     mask_path = xdem.examples.get_path(mask_path)
 
-                mask = gu.Vector(mask_path)
-                inlier_mask = ~mask.create_mask(dem)
+                # Treat the mask according to its type (Vector or Raster)
+                try:
+                    mask = gu.Vector(mask_path)
+                    inlier_mask = ~mask.create_mask(dem)
+
+                except pyogrio.errors.DataSourceError as vector_error:
+                    try:
+                        inlier_mask = gu.Raster(mask_path).astype(bool)
+                        inlier_mask.data = inlier_mask.data.filled(False)
+                        inlier_mask = inlier_mask.reproject(dem, silent=True)
+
+                    except rasterio.errors.RasterioIOError as raster_error:
+                        raise ValueError(
+                            f"You provided a 'path_to_mask' value that is not recognised as a mask. "
+                            f"Vector error: {vector_error}. "
+                            f"Raster error: {raster_error}."
+                        ) from raster_error
 
             return dem, inlier_mask, mask_path
         else:
@@ -412,7 +431,6 @@ class Workflows(ABC):
         if isinstance(dico, dict):
             cleaned_dict = {}
             for k, v in dico.items():
-
                 if k == "statistics":
                     cleaned_dict[k] = v
                     continue
@@ -445,15 +463,15 @@ class Workflows(ABC):
 
         :return: None
         """
-        if self.config["outputs"]["generate_pdf"]:
-            if not _has_weasyprint:
-                msg = (
-                    "Optional dependency 'weasyprint' required. "
-                    "Install it directly or through: pip install xdem[opt]."
-                )
-                raise ImportError(msg)
 
-            HTML(self.outputs_folder / "report.html").write_pdf(self.outputs_folder / "report.pdf")
+
+        if self.config["outputs"]["generate_pdf"] and _HAS_PLUTOPRINT:
+            book = plutoprint.Book(plutoprint.PAGE_SIZE_A4, plutoprint.PAGE_MARGINS_NARROW)
+            book.load_url((self.outputs_folder / "report.html").resolve().as_uri())
+
+            # Export the entire document to PDF
+            book.write_to_pdf(str(self.outputs_folder / "report.pdf"))
+            logging.info("Report generated in " + str(self.outputs_folder / "report.pdf"))
 
     def save_stat_as_csv(self, data: dict[str, float], file_name: str) -> None:
         """

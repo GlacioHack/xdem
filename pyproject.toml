@@ -2,7 +2,7 @@
 # Minimum requirements for the build system to execute.
 requires = [
     "setuptools>=64",
-    "setuptools_scm[toml]>=8,<9.0.0",
+    "setuptools_scm[toml]>=8",
     "wheel",
 ]
 build-backend = "setuptools.build_meta"
@@ -14,15 +14,21 @@ fallback_version = "0.0.1"
 # Use no-local-version by default for CI builds
 local_scheme = "no-local-version"
 
-[tool.black]
-target_version = ['py310']
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+ignore = ["B028", "B9", "C408", "E203", "E226", "E24"]
+preview = true
+select = ["B", "C4", "E", "F", "W"]
 
 [tool.mypy]
 allow_untyped_decorators = true
 disable_error_code = ["untyped-decorator"]
 
 [tool.pytest.ini_options]
-addopts = "--doctest-modules --doctest-ignore-import-errors -W error::UserWarning"
+addopts = "--import-mode=importlib --doctest-modules --doctest-ignore-import-errors -W error::UserWarning"
 log_level = "INFO"
 testpaths = [
 	"tests",
