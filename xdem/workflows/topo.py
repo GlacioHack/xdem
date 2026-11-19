@@ -312,6 +312,7 @@ class Topo(Workflows):
             self.elapsed = t1 - t0
 
             self.create_html(self.dico_to_show[k])
+            print ("ici")
             self.generate_pdf()
 
             # Remove empty folder

@@ -463,6 +463,8 @@ class Workflows(ABC):
 
         :return: None
         """
+
+
         if self.config["outputs"]["generate_pdf"] and _HAS_PLUTOPRINT:
             book = plutoprint.Book(plutoprint.PAGE_SIZE_A4, plutoprint.PAGE_MARGINS_NARROW)
             book.load_url((self.outputs_folder / "report.html").resolve().as_uri())

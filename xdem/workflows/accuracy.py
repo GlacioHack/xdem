@@ -23,7 +23,6 @@ Accuracy class from workflow
 import logging
 import time
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 from typing import Any, Dict
 
@@ -65,9 +64,14 @@ class Accuracy(Workflows):
         if not self.compute_coreg:
             del self.config["coregistration"]["step_one"]
         else:
-            if self.config["inputs"]["sampling_grid"] is None:
+            coreg_config = self.config["coregistration"]
+            all_methods = [coreg_config[step]["method"] for step in coreg_config.keys() if step.startswith("step")]
+            methods_needed_sg = list(
+                set(all_methods) & {"NuthKaab", "DhMinimize", "VerticalShift", "DirectionalBias", "TerrainBias", "LZD"}
+            )
+            if self.config["inputs"]["sampling_grid"] is None and len(methods_needed_sg):
                 raise ValueError(
-                    'In case of a coregistration process, "sampling grid" must be set to '
+                    'At least one the selected coregistration method need "sampling grid" to be set to '
                     '"reference_elev" or "to_be_aligned_elev"'
                 )
 
@@ -141,22 +145,13 @@ class Accuracy(Workflows):
         coreg_steps = ["step_one", "step_two", "step_three"]
         coreg_functions = []
 
-        method_map = {
-            "NuthKaab": xdem.coreg.NuthKaab,
-            "DhMinimize": xdem.coreg.DhMinimize,
-            "VerticalShift": xdem.coreg.VerticalShift,
-            "DirectionalBias": xdem.coreg.DirectionalBias,
-            "TerrainBias": xdem.coreg.TerrainBias,
-            "LZD": xdem.coreg.LZD,
-        }
-
         for step in coreg_steps:
             config_coreg = self.config["coregistration"].get(step)
             if config_coreg:
                 method_name = config_coreg.get("method")
                 coreg_extra = config_coreg.get("extra_information", {})
-                coreg_fun = partial(method_map[method_name], **coreg_extra)
-                coreg_functions.append(coreg_fun())
+                coreg_fun = getattr(xdem.coreg, method_name)(**coreg_extra)
+                coreg_functions.append(coreg_fun)
         my_coreg = sum(coreg_functions[1:], coreg_functions[0]) if len(coreg_functions) > 1 else coreg_functions[0]
 
         # Coregister
@@ -343,9 +338,16 @@ class Accuracy(Workflows):
             aligned_elev = self.to_be_aligned_elev
 
         stats_keys = ["min", "max", "nmad", "median"]
+        ref_vunit = vertical_unit_symbol(self.reference_elev.crs)
 
         if self.compute_coreg:
-            self.diff_before = self.to_be_aligned_elev - self.reference_elev
+
+            # Reproject self.to_be_aligned_elev only if needed
+            try:
+                self.diff_before = self.to_be_aligned_elev - self.reference_elev
+            except ValueError:
+                self.to_be_aligned_elev = self.to_be_aligned_elev.reproject(self.reference_elev)
+                self.diff_before = self.to_be_aligned_elev - self.reference_elev
             self.stats_before = self.diff_before.get_stats(stats_keys)
 
             self.diff_after = aligned_elev.reproject(self.reference_elev) - self.reference_elev
@@ -420,6 +422,15 @@ class Accuracy(Workflows):
                     vmax=vmax,
                     cmap="RdBu",
                 )
+            self.generate_plot(
+                self.diff,
+                title="Difference between To-be-align and Reference elevation",
+                filename="diff_elev_without_coreg_map",
+                vmin=vmin,
+                vmax=vmax,
+                cmap="RdBu",
+                cbar_title=f"Elevation ({ref_vunit})" if ref_vunit is not None else "Elevation",
+            )
         if self.compute_coreg:
             stat_items = [
                 (self.reference_elev, "reference_elev", "Reference elevation", 2),
