@@ -146,7 +146,6 @@ areas = np.linspace(20, 10000, 50) ** 2
 
 list_stderr_singlerange, list_stderr_doublerange, list_stderr_empirical = ([] for i in range(3))
 for area in areas:
-
     # Number of effective samples integrated over the area for a single-range model
     neff_singlerange = xdem.spatialstats.number_effective_samples(area, params_vgm1)
 
@@ -207,7 +206,7 @@ print(f"Difference mean/median: {diff_med_mean:.3f} meters.")
 # %%
 # If we now express it as a percentage of the dispersion:
 
-print(f"{diff_med_mean/np.nanstd(dh.data)*100:.1f} % of STD.")
+print(f"{diff_med_mean / np.nanstd(dh.data) * 100:.1f} % of STD.")
 
 # %%
 # There might be a significant bias of central tendency, i.e. almost fully correlated measurement error across the grid.
@@ -216,7 +215,6 @@ print(f"{diff_med_mean/np.nanstd(dh.data)*100:.1f} % of STD.")
 
 list_stderr_doublerange_plus_fullycorrelated = []
 for area in areas:
-
     # For a double-range model
     neff_doublerange = xdem.spatialstats.neff_circular_approx_numerical(area=area, params_variogram_model=params_vgm2)
 

@@ -59,9 +59,7 @@ def test_return_info() -> None:
         assert info["Filename"] == dem.name
         assert info["Number of band"] == dem.bands
         assert info["Data types"] == str(dem.dtype)
-        assert info["Nodata Value"] == (
-            float(dem.nodata) if dem.nodata is not None else None
-        )
+        assert info["Nodata Value"] == (float(dem.nodata) if dem.nodata is not None else None)
         assert info["Pixel interpretation"] == dem.area_or_point
         assert info["Pixel size"] == dem.res
         assert info["Width"] == dem.width
@@ -70,7 +68,7 @@ def test_return_info() -> None:
         assert info["Bounds"] == dem.bounds
 
     dem = xdem.DEM(xdem.examples.get_path("longyearbyen_ref_dem"))
-    print (dem.nodata)
+    print(dem.nodata)
     compare(toolbox.return_info(dem), dem)
 
     dem = xdem.open_dem(xdem.examples.get_path("longyearbyen_ref_dem"))
@@ -121,4 +119,3 @@ def test_generate_graph(get_topo_inputs_config_list, tmp_path, chunks):
     workflows.generate_plot(dem, filename=filename, title=title)
     out = tmp_path / "plots" / f"{filename}.png"
     assert out.exists()
-

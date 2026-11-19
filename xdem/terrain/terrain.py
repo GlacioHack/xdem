@@ -27,7 +27,12 @@ from typing import TYPE_CHECKING, Any, Literal, Sized, overload
 import numpy as np
 import xarray as xr
 from geoutils import profiler
-from geoutils._dispatch import get_geo_attr, has_geo_attr, is_dask_array
+from geoutils._dispatch import (
+    _get_raster_interface,
+    get_geo_attr,
+    has_geo_attr,
+    is_dask_array,
+)
 from geoutils.multiproc import (
     MultiprocConfig,
     map_overlap,
@@ -102,11 +107,21 @@ def _terrain_attribute_array_block(array: NDArrayf, attribute: str, **kwargs: An
     return _get_terrain_attribute_base(array, attribute=[attribute], **kwargs)[0]
 
 
-def _terrain_attribute_raster_block(raster: Raster, attribute: str, **kwargs: Any) -> Raster:
+def _terrain_attribute_raster_block(raster: RasterLike, attribute: str, **kwargs: Any) -> Raster:
     """Calculate one terrain attribute on a georeferenced multiprocessing tile."""
 
-    values = _terrain_attribute_array_block(raster.data, attribute=attribute, **kwargs)
-    return raster.copy(new_array=values)
+    interface = _get_raster_interface(raster)
+    values = _terrain_attribute_array_block(interface.data, attribute=attribute, **kwargs)
+    if interface._is_xr:
+        return Raster.from_array(
+            values,
+            interface.transform,
+            interface.crs,
+            nodata=interface.nodata,
+            area_or_point=interface.area_or_point,
+            tags=dict(interface.tags),
+        )
+    return interface.copy(new_array=values)
 
 
 @overload
@@ -323,7 +338,6 @@ def get_terrain_attribute(
 
     # Check that we're not using Horn for curvatures
     if surface_fit == "Horn":
-
         curvature_list = [
             "curvature",
             "profile_curvature",
@@ -457,7 +471,7 @@ def get_terrain_attribute(
     dask_backend = raster._chunks is not None if raster is not None else is_dask_array(dem)
     if mp_config is not None and dask_backend:
         raise ValueError("Cannot use multiprocessing and Dask simultaneously. Remove mp_config for Dask inputs.")
-    if mp_config is not None and not isinstance(dem, Raster):
+    if mp_config is not None and raster is None:
         raise TypeError("The DEM must be a Raster to use multiprocessing.")
 
     # Pass identical numerical options to eager calculations and worker callbacks
@@ -494,8 +508,11 @@ def get_terrain_attribute(
             result = map_overlap(
                 _terrain_attribute_raster_block, dem, config, attribute=attr, depth=block_depth, **options
             )
-            # Restore the native raster subclass without loading the worker output file
-            outputs.append(dem.__class__(result))
+            if raster._is_xr:
+                outputs.append(raster._cast_raster_output(result))
+            else:
+                # Restore the native raster subclass without loading the worker output file
+                outputs.append(dem.__class__(result))
     elif dask_backend:
         import_optional("dask")
         import dask.array as da
@@ -587,7 +604,6 @@ def _get_terrain_attribute_base(
 
     # Process surface attributes
     if len(attributes_requiring_surface_fit) > 0:
-
         # Keyword arguments
         surface_kwargs = {
             "hillshade_azimuth": hillshade_azimuth,
@@ -627,7 +643,6 @@ def _get_terrain_attribute_base(
 
     # Process windowed attributes
     if len(attributes_requiring_windowed_index) > 0:
-
         windowed_indexes = _get_windowed_indexes(
             dem=dem_arr,
             windowed_indexes=attributes_requiring_windowed_index,
@@ -643,7 +658,6 @@ def _get_terrain_attribute_base(
 
     # Process windowed fractal attributes
     if len(attributes_requiring_windowed_fractal_index) > 0:
-
         windowed_fractal_indexes = _get_windowed_indexes(
             dem=dem_arr,
             windowed_indexes=attributes_requiring_windowed_fractal_index,
@@ -653,9 +667,7 @@ def _get_terrain_attribute_base(
             tri_method=tri_method,
             engine=engine,
         )
-        windowed_fractal_indexes = [
-            windowed_fractal_indexes[i] for i in range(windowed_fractal_indexes.shape[0])
-        ]  # type: ignore
+        windowed_fractal_indexes = [windowed_fractal_indexes[i] for i in range(windowed_fractal_indexes.shape[0])]  # type: ignore
     else:
         windowed_fractal_indexes = []  # type: ignore
 

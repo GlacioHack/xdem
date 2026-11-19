@@ -26,13 +26,13 @@ from xdem.coreg.affine import (  # noqa
     DhMinimize,
     NuthKaab,
     VerticalShift,
-)
-from xdem.coreg.base import (  # noqa
-    Coreg,
     apply_matrix,
     invert_matrix,
     matrix_from_translations_rotations,
     translations_rotations_from_matrix,
+)
+from xdem.coreg.base import (  # noqa
+    Coreg,
 )
 from xdem.coreg.biascorr import BiasCorr, Deramp, DirectionalBias, TerrainBias  # noqa
 from xdem.coreg.blockwise import BlockwiseCoreg  # noqa

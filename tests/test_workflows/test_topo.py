@@ -169,7 +169,7 @@ def test_run_dico_to_show(get_topo_inputs_config_list, nb_inputs, tmp_path):
     else:
         user_config["inputs"] = get_topo_inputs_config_list[:nb_inputs]
     user_config["outputs"] = {"path": str(tmp_path)}
-    print(user_config["inputs"])
+
     workflows = Topo(user_config)
     workflows.run()
 
@@ -180,7 +180,6 @@ def test_run_dico_to_show(get_topo_inputs_config_list, nb_inputs, tmp_path):
     # Check subdictionaries content, except exact stats values in case test data/algorithms slightly changes,
     # and as those are already tested separately
     for k, _ in enumerate(user_config_list["inputs"]):
-        print("####", k)
         # 1/ Input information
         get_topo_inputs_config_list[k]["downsample"] = 1
         assert workflows.dico_to_show[k][0] == (
@@ -221,25 +220,19 @@ def test_run_dico_to_show(get_topo_inputs_config_list, nb_inputs, tmp_path):
                 "Bounds": BoundingBox(left=512310.0, bottom=8660950.0, right=513710.0, top=8662030.0),
             },
         )
-        print("stats")
+
         # 3/ Statistics names
         assert workflows.dico_to_show[k][2][0] == "Statistics"
         assert list(workflows.dico_to_show[k][2][1].keys()) == [_ALIAS.get(k) for k in MIN_STATS]
-        print("hh")
+
         dem = xdem.DEM(user_config_list["inputs"][k]["path_to_elev"])
         if "path_to_mask" in user_config_list["inputs"][k]:
             ref_mask = gu.Vector(user_config_list["inputs"][k]["path_to_mask"])
             dem.load()
             inlier_mask = ~ref_mask.create_mask(dem)
             dem.set_mask(~inlier_mask)
-        print("hh")
         res = workflows.floats_process(dem.get_stats(MIN_STATS))
-        print("hssh")
-        print(workflows.dico_to_show[k][2][1])
-        print({_ALIAS.get(key): res[key] for key in res.keys()})
         assert workflows.dico_to_show[k][2][1] == {_ALIAS.get(key): res[key] for key in res.keys()}
-        print("aaa")
-        print()
 
 
 @pytest.mark.parametrize("nb_inputs", [-1, 1, 2])
@@ -358,7 +351,7 @@ def test_attributes(get_topo_inputs_config_list, tmp_path):
 @pytest.mark.parametrize("level", [1, 2])
 def test_reprojection(input_utm, reproject_warnings_newraster, get_topo_inputs_config_list, tmp_path, level):
     reproject_dict, warning_if_not_utm, reprojection = reproject_warnings_newraster
-    print(reproject_dict)
+
     user_config = dict()
     user_config["inputs"] = get_topo_inputs_config_list[1]
     input_dem_path = get_topo_inputs_config_list[1]["path_to_elev"]

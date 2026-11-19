@@ -1,5 +1,5 @@
 # Copyright (c) 2025 xDEM developers
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES)
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -25,7 +25,22 @@ import logging
 import sys
 import warnings
 from collections.abc import Mapping
-from typing import Any, Callable, Iterable, Literal, Sequence, TypedDict, TypeVar
+from contextlib import ExitStack
+from functools import partial
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Literal,
+    Sequence,
+    TypedDict,
+    TypeVar,
+    cast,
+    overload,
+)
 
 import affine
 import geopandas as gpd
@@ -33,11 +48,41 @@ import geoutils as gu
 import numpy as np
 import pandas as pd
 import rasterio as rio
+import rasterio.warp  # pylint: disable=unused-import
 import scipy.optimize
 import scipy.spatial
+from geoutils._dispatch import (
+    _get_pointcloud_interface,
+    _get_raster_interface,
+    _is_pointcloud,
+    _is_raster,
+    is_dask_array,
+    is_dask_dataframe,
+)
 from geoutils._typing import Number
-from geoutils.interface.resampling import _interp_points_base
-from geoutils.raster.referencing import _coords, _res
+from geoutils.interface.gridding import _grid_pointcloud, _source_support_pixels
+from geoutils.multiproc import MultiprocConfig, map_overlap
+from geoutils.multiproc.chunked import ChunkedGeoGrid, GeoGrid, normalize_chunks
+from geoutils.multiproc.cluster import _map_bounded
+from geoutils.multiproc.mparray import _write_multiproc_result
+from geoutils.operators.interpolator import Interpolator, _interpn_interpolator
+from geoutils.operators.methods import _resampling_operator
+from geoutils.operators.neighbours import _compute_resampling_overlap
+from geoutils.operators.reducer import Reducer
+from geoutils.pointcloud.dataframe import _get_dataframe_attrs, _set_dataframe_attrs
+from geoutils.pointcloud.io import (
+    _load_pointcloud_rows,
+    _resolve_pointcloud_output,
+    _stage_pointcloud_partition,
+    _write_pointcloud_partitions,
+)
+from geoutils.pointcloud.las import _point_partition_size
+from geoutils.pointcloud.pointcloud import PointCloud
+from geoutils.pointcloud.transformation import _cast_multiproc_output
+from geoutils.projtools import _affine_matmul
+from geoutils.raster import Raster
+from geoutils.raster.referencing import _coords
+from geoutils.raster.transformation import _reproject_grid_operator, _translate
 from geoutils.stats import nmad
 from geoutils.uncertainty.error_structure import (
     _prepare_source_errors,
@@ -48,7 +93,7 @@ from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation as Rot
 
 from xdem._misc import get_progress, import_optional
-from xdem._typing import NDArrayb, NDArrayf
+from xdem._typing import NDArrayf
 from xdem.coreg.base import (
     Coreg,
     CoregDict,
@@ -56,20 +101,18 @@ from xdem.coreg.base import (
     InRandomDict,
     OutAffineDict,
     OutIterativeDict,
-    _apply_matrix_pts,
-    _apply_matrix_pts_mat,
-    _apply_matrix_rst,
+    _as_coreg_elevation,
     _bin_or_and_fit_nd,
-    _get_subsample_mask_pts_rst,
-    _make_matrix_valid,
+    _check_coreg_input_families,
     _ols_fit,
-    _reproject_horizontal_shift_samecrs,
-    _subsample_rst_pts,
-    invert_matrix,
-    matrix_from_translations_rotations,
-    translations_rotations_from_matrix,
+    _sample_coreg_inputs,
 )
 from xdem.fit import _check_fit_rank, index_trimmed
+
+if TYPE_CHECKING:
+    from geoutils.pointcloud.base import PointCloudBase
+    from geoutils.pointcloud.pointcloud import PointCloudLike
+    from geoutils.raster.base import RasterBase, RasterLike
 
 _CorrelationModel = tuple[Callable[..., NDArrayf], float]
 _SampledErrors = tuple[NDArrayf | None, _CorrelationModel | None, NDArrayf | None, _CorrelationModel | None]
@@ -97,26 +140,23 @@ def _check_inputs_bin_before_fit(
     is_ols = isinstance(fit_optimizer, str) and fit_optimizer == "ols"
     if fit_optimizer is not None and not is_ols and not callable(fit_optimizer):
         raise TypeError(
-            "Argument `fit_optimizer` must be a function (callable), 'ols' or None, "
-            "got {}.".format(type(fit_optimizer))
+            f"Argument `fit_optimizer` must be a function (callable), 'ols' or None, got {type(fit_optimizer)}."
         )
 
     if bin_before_fit:
-
         # Check input types for "bin" to raise user-friendly errors
         if not (
             isinstance(bin_sizes, int)
             or (isinstance(bin_sizes, dict) and all(isinstance(val, (int, Iterable)) for val in bin_sizes.values()))
         ):
             raise TypeError(
-                "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, "
-                "got {}.".format(type(bin_sizes))
+                "Argument `bin_sizes` must be an integer, or a dictionary of integers or iterables, got {}.".format(
+                    type(bin_sizes)
+                )
             )
 
         if not callable(bin_statistic):
-            raise TypeError(
-                "Argument `bin_statistic` must be a function (callable), " "got {}.".format(type(bin_statistic))
-            )
+            raise TypeError(f"Argument `bin_statistic` must be a function (callable), got {type(bin_statistic)}.")
 
 
 def _resolve_fit_minimizer(
@@ -146,309 +186,1483 @@ def _resolve_fit_minimizer(
     return fit_minimizer
 
 
-def _format_iteration_value(value: float | None) -> str:
-    """Format iteration statistics and tolerances with the precision used in workflow reports."""
-
-    if value is None:
-        return "None"
-    if 0 < abs(value) < 1e-3 or abs(value) > 1e5:
-        return np.format_float_scientific(value, precision=3)
-    return f"{value:.3f}"
+###############################################
+# Affine matrix manipulation and transformation
+###############################################
 
 
-def _iterate_method(
-    method: Callable[..., Any],
-    iterating_input: Any,
-    constant_inputs: tuple[Any, ...],
-    tolerances: dict[str, float | None],
-    max_iterations: int,
-) -> tuple[Any, Any, OutIterativeDict, Any]:
+def _check_matrix(matrix: NDArrayf, atol: float = 10e-8, warn_failure_reason: bool = False) -> bool:
     """
-    Function to iterate a method (e.g. ICP, Nuth and Kääb) until it reaches tolerances or maximum number of iterations.
+    Check affine matrix is valid.
 
-    :param method: Method that needs to be iterated to derive a transformation. Takes argument "inputs" as its input,
-        and outputs three terms: a "statistic" to compare to tolerance, "updated inputs" with this transformation, and
-        the parameters of the transformation.
-    :param iterating_input: Iterating input to method, should be first argument.
-    :param constant_inputs: Constant inputs to method, should be all positional arguments after first.
-    :param tolerances: Tolerances to reach for the method statistics (i.e. maximum value for the statistic).
-    :param max_iterations: Maximum number of iterations for the method.
+    :param matrix: Input affine matrix.
+    :param atol: Absolute tolerance for check.
+    :param warn_failure_reason: Whether to warn of reason of check failure.
 
-    :return: Final output of iterated method.
+    :return: True or False.
+    """
+    # Is affine, shape should be 4x4 and last row must be [0, 0, 0, 1]
+    is_affine = matrix.shape == (4, 4) and np.allclose(matrix[3], [0, 0, 0, 1], atol=atol)
+
+    # The rotation part should be invertible
+    R = matrix[:3, :3]
+    is_invertible = abs(np.linalg.det(R)) > atol
+
+    # The matrix should be finite
+    is_finite = all(np.isfinite(matrix))
+
+    # Complete validity
+    checks = np.array([is_affine, is_invertible, is_finite])
+    check_names = ["Not affine shape (4x4 with last row of [0, 0, 0, 1])", "Not invertible", "Not finite"]
+    complete_validitiy = all(checks)
+
+    if not complete_validitiy and warn_failure_reason:
+        where_fail = np.nonzero(~np.array(checks))[0]
+        warnings.warn(
+            category=UserWarning, message=f"Validity check failed: {', '.join([check_names[w] for w in where_fail])}."
+        )
+
+    return complete_validitiy
+
+
+def _make_matrix_valid(matrix: NDArrayf) -> NDArrayf:
+    """
+    Make affine matrix valid given numerical imprecisions.
+
+    :param matrix: Input affine matrix.
+    :return: Valid matrix.
     """
 
-    # Initiate inputs
-    new_inputs = iterating_input
-    converged = False
+    # Copy matrix
+    T = np.asarray(matrix).copy()
 
-    # Initiate storage of iteration statistics
-    list_df = []
+    # Enforce last row
+    T[3, :] = [0, 0, 0, 1]
 
-    # Iteratively run the analysis until the maximum iterations or until the error gets low enough
-    # If logging level <= INFO, will use progressbar and print additional statements
-    pbar = get_progress(
-        range(max_iterations), disable=logging.getLogger().getEffectiveLevel() > logging.INFO, desc="   Progress"
+    # Orthogonalize rotation
+    U, _, Vt = np.linalg.svd(T[:3, :3])
+    R_ortho = U @ Vt
+    # Enforce right-handed system
+    if np.linalg.det(R_ortho) < 0:
+        U[:, -1] *= -1
+        R_ortho = U @ Vt
+    T[:3, :3] = R_ortho
+
+    return T
+
+
+def _euler_to_matrix(alpha1: float, alpha2: float, alpha3: float) -> NDArrayf:
+    """
+    Extrinsic Euler angles to affine matrix.
+
+    :param alpha1: Angle around X in radians.
+    :param alpha2: Angle around Y in radians.
+    :param alpha3: Angle around Z in radians.
+
+    :return: Rotation matrix.
+    """
+
+    def Rx(a: float) -> NDArrayf:
+        ca, sa = np.cos(a), np.sin(a)
+        return np.array(
+            [
+                [1, 0, 0],
+                [0, ca, -sa],
+                [0, sa, ca],
+            ]
+        )
+
+    def Ry(a: float) -> NDArrayf:
+        ca, sa = np.cos(a), np.sin(a)
+        return np.array(
+            [
+                [ca, 0, sa],
+                [0, 1, 0],
+                [-sa, 0, ca],
+            ]
+        )
+
+    def Rz(a: float) -> NDArrayf:
+        ca, sa = np.cos(a), np.sin(a)
+        return np.array(
+            [
+                [ca, -sa, 0],
+                [sa, ca, 0],
+                [0, 0, 1],
+            ]
+        )
+
+    return Rz(alpha3) @ Ry(alpha2) @ Rx(alpha1)
+
+
+def _matrix_to_euler(rotation_matrix: NDArrayf, atol: float = 10e-8) -> tuple[float, float, float]:
+    """
+    Affine matrix to extrinsic Euler angles.
+
+    :param rotation_matrix: Rotation matrix.
+
+    :return: Euler extrinsic angles in radians (rotations about X, Y and Z).
+    """
+
+    if not np.allclose(rotation_matrix.T @ rotation_matrix, np.eye(3), atol=atol):
+        raise ValueError("Matrix is not orthogonal")
+
+    if abs(rotation_matrix[2, 0]) < 1 - atol:
+        beta = -np.arcsin(rotation_matrix[2, 0])
+        cb = np.cos(beta)
+
+        alpha = np.arctan2(rotation_matrix[2, 1] / cb, rotation_matrix[2, 2] / cb)
+        gamma = np.arctan2(rotation_matrix[1, 0] / cb, rotation_matrix[0, 0] / cb)
+
+    # Gimbal lock
+    else:
+        beta = np.pi / 2 if rotation_matrix[2, 0] <= -1 else -np.pi / 2
+        alpha = 0.0
+        gamma = np.arctan2(-rotation_matrix[0, 1], rotation_matrix[1, 1])
+
+    return float(alpha), float(beta), float(gamma)
+
+
+def matrix_from_translations_rotations(
+    t1: float = 0.0,
+    t2: float = 0.0,
+    t3: float = 0.0,
+    alpha1: float = 0.0,
+    alpha2: float = 0.0,
+    alpha3: float = 0.0,
+    use_degrees: bool = True,
+) -> NDArrayf:
+    """
+    Build rigid affine matrix based on 3 translations (unit of coordinates) and 3 rotations (degrees or radians).
+
+    The euler rotations use the extrinsic convention.
+
+    :param t1: Translation in the X (west-east) direction (unit of coordinates).
+    :param t2: Translation in the Y (south-north) direction (unit of coordinates).
+    :param t3: Translation in the Z (vertical) direction (unit of DEM).
+    :param alpha1: Rotation around the X (west-east) direction.
+    :param alpha2: Rotation around the Y (south-north) direction.
+    :param alpha3: Rotation around the Z (vertical) direction.
+    :param use_degrees: Whether to use degrees for input rotations, otherwise radians.
+
+    :raises ValueError: If the given translation or rotations contained invalid values.
+
+    :return: Rigid affine matrix of transformation.
+    """
+
+    # Initialize diagonal matrix
+    matrix = np.eye(4)
+    # Convert euler angles to rotation matrix
+    e = np.array([alpha1, alpha2, alpha3])
+    # If angles were given in degrees
+    if use_degrees:
+        e = np.deg2rad(e)
+    rot_matrix = _euler_to_matrix(alpha1=e[0], alpha2=e[1], alpha3=e[2])
+
+    # Add rotation matrix, and translations
+    matrix[0:3, 0:3] = rot_matrix
+    matrix[:3, 3] = [t1, t2, t3]
+
+    return matrix
+
+
+def translations_rotations_from_matrix(
+    matrix: NDArrayf, return_degrees: bool = True
+) -> tuple[float, float, float, float, float, float]:
+    """
+    Extract 3 translations (unit of coordinates) and 3 rotations (degrees or radians) from rigid affine matrix.
+
+    The extracted euler rotations use the extrinsic convention.
+
+    :param matrix: Rigid affine matrix of transformation.
+    :param return_degrees: Whether to return rotations in degrees, otherwise radians.
+
+    :return: Translations in the X, Y and Z direction and rotations around the X, Y and Z directions.
+    """
+
+    # Extract translations
+    t1, t2, t3 = matrix[:3, 3]
+
+    # Get rotations from affine matrix
+    rots = _matrix_to_euler(matrix[:3, :3])
+    if return_degrees:
+        rots = np.rad2deg(np.array(rots))
+
+    # Extract rotations
+    alpha1, alpha2, alpha3 = rots
+
+    return t1, t2, t3, alpha1, alpha2, alpha3
+
+
+def invert_matrix(matrix: NDArrayf, atol: float = 10e-8) -> NDArrayf:
+    """
+    Invert a transformation matrix.
+
+    :param matrix: Affine transformation matrix.
+
+    :return: Inverted transformation matrix.
+    """
+
+    if not np.allclose(matrix[3], [0, 0, 0, 1], atol=atol):
+        raise ValueError("Not affine")
+
+    R = matrix[:3, :3]
+    t = matrix[:3, 3]
+
+    if not np.allclose(R.T @ R, np.eye(3), atol=atol):
+        raise ValueError("Not a rigid transform")
+
+    # Make valid before inversion
+    valid_matrix = _make_matrix_valid(matrix)
+
+    R = valid_matrix[:3, :3]
+    t = valid_matrix[:3, 3]
+
+    Tinv = np.eye(4)
+    Tinv[:3, :3] = R.T
+    Tinv[:3, 3] = -R.T @ t
+
+    return Tinv
+
+
+def _apply_matrix_pts_mat(
+    mat: NDArrayf,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    invert: bool = False,
+) -> NDArrayf:
+    """Apply matrix to points as a 3D array with 3D array output (to improve speed in some functions)."""
+
+    # Invert matrix if required
+    if invert:
+        matrix = invert_matrix(matrix)
+
+    # First, get 4xN array, adding a column of ones for translations during matrix multiplication
+    points = np.concatenate((mat, np.ones((1, mat.shape[1]))))
+
+    # Temporarily subtract centroid coordinates
+    if centroid is not None:
+        points[:3, :] -= np.array(centroid)[:, None]
+
+    # Transform using matrix multiplication, and get only the first three columns
+    transformed_points = (matrix @ points)[:3, :]
+
+    # Add back centroid coordinates
+    if centroid is not None:
+        transformed_points += np.array(centroid)[:, None]
+
+    return transformed_points
+
+
+def _apply_matrix_pts_arr(
+    x: NDArrayf,
+    y: NDArrayf,
+    z: NDArrayf,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    invert: bool = False,
+) -> tuple[NDArrayf, NDArrayf, NDArrayf]:
+    """Apply matrix to points as arrays with array outputs (to improve speed in some functions)."""
+
+    transformed = _apply_matrix_pts_mat(np.vstack((x, y, z)), matrix, centroid=centroid, invert=invert)
+    return transformed[0], transformed[1], transformed[2]
+
+
+def _apply_matrix_pts(
+    epc: gpd.GeoDataFrame,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    z_name: str = "z",
+) -> gpd.GeoDataFrame:
+    """
+    Apply a 3D affine transformation matrix to a 3D elevation point cloud.
+
+    :param epc: Elevation point cloud.
+    :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
+    :param invert: Whether to invert the transformation matrix.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
+        Defaults to the midpoint (Z=0).
+    :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+
+    :return: Transformed elevation point cloud.
+    """
+
+    # Apply transformation to X/Y/Z arrays
+    tx, ty, tz = _apply_matrix_pts_arr(
+        x=epc.geometry.x.values,
+        y=epc.geometry.y.values,
+        z=epc[z_name].values,
+        matrix=matrix,
+        centroid=centroid,
+        invert=invert,
     )
-    for i in pbar:
 
-        # Apply method and get new statistics to compare to tolerances, new inputs for next iterations, and
-        # outputs in case this is the final one
-        new_inputs, new_statistics, static_outputs = method(new_inputs, *constant_inputs)
+    # Preserve auxiliary columns and the row index while updating only geometry and elevation
+    transformed_epc = epc.copy()
+    transformed_epc[z_name] = tz
+    transformed_epc.geometry = gpd.points_from_xy(x=tx, y=ty, crs=epc.crs)
 
-        # Store statistics to dataframe and append to list
-        df_iteration = pd.DataFrame(new_statistics, index=[i + 1])
-        df_iteration["iteration"] = i + 1
-        list_df.append(df_iteration)
+    return transformed_epc
 
-        # Check that all statistics have a matching tolerance, otherwise the process should fail with a dev error
-        new_statistics_keys = list(new_statistics.keys())
-        tolerance_keys = list(tolerances.keys())
-        if not all(n in tolerance_keys for n in new_statistics_keys):
-            raise NotImplementedError(
-                "Developer Error: The keys of the tolerances dictionary passed "
-                "to _iterate_method in the coregistration method call should match the keys of "
-                "the statistics return by the method's iteration_step function."
+
+def _apply_matrix_pts_block(
+    frame: gpd.GeoDataFrame, matrix: NDArrayf, centroid: tuple[float, float, float] | None, data_name: str | None
+) -> gpd.GeoDataFrame:
+    """Apply an affine transform to a point partition (chunk)."""
+
+    if data_name is not None:
+        return _apply_matrix_pts(frame, matrix, centroid=centroid, z_name=data_name)
+    if frame.empty:
+        return frame.copy()
+
+    # Read and transform elevations stored in the point geometry
+    x, y, z = PointCloud(frame, data_name=None).to_xyz()
+    x, y, z = _apply_matrix_pts_arr(x, y, z, matrix=matrix, centroid=centroid)
+
+    # Replace the 3D geometry without changing other columns
+    result = frame.copy()
+    result.geometry = gpd.points_from_xy(x, y, z, crs=frame.crs)
+    return result
+
+
+def _wrapper_multiproc_apply_matrix_pts_block(
+    partition: Any,
+    start: int,
+    count: int,
+    data_name: str | None,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None,
+    filename: Path,
+) -> Path:
+    """Read and apply affine transform to a point partition, then save it with the GeoUtils partition writer."""
+
+    # Read only the worker's rows, including auxiliary attributes
+    if isinstance(partition, gpd.GeoDataFrame):
+        frame = partition
+    else:
+        source = _get_pointcloud_interface(partition)
+        if source._is_xr:
+            frame = source._dataset.compute().pc.to_geoutils().gdf
+        else:
+            frame = _load_pointcloud_rows(source, start, count)
+    transformed = _apply_matrix_pts_block(frame, matrix, centroid, data_name)
+    return _stage_pointcloud_partition(transformed, filename)
+
+
+def _multiproc_apply_matrix_pointcloud(
+    source: PointCloudBase,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None,
+    mp_config: MultiprocConfig,
+) -> Any:
+    """Apply an affine transform to a point cloud by partition (chunk), writing to file with multiprocessing."""
+
+    # 1/ Prepare point partitions
+    chunks = _point_partition_size(mp_config)
+    if chunks <= 0:
+        raise ValueError("Point cloud chunks must be a strictly positive integer.")
+    output_filename, driver = _resolve_pointcloud_output(
+        mp_config.outfile,
+        mp_config.driver,
+        supported_drivers=("GPKG", "LAS", "LAZ", "PARQUET"),
+        operation_name="apply_matrix()",
+    )
+    output_filename.parent.mkdir(parents=True, exist_ok=True)
+    data_name = source.data_name
+    if source._is_xr and source._dataset.attrs.get("geometry_z"):
+        data_name = None
+
+    # 2/ Transform and write point partitions
+    with TemporaryDirectory(prefix=".xdem-apply-matrix-", dir=output_filename.parent) as directory:
+
+        def partitions() -> Iterable[tuple[Any, ...]]:
+            """Yield source row slices without loading the complete point cloud."""
+            for index, start in enumerate(range(0, max(source.point_count, 1), chunks)):
+                count = min(chunks, source.point_count - start)
+                if source._is_xr:
+                    partition = source._dataset.isel({source._dataset.dims[0]: slice(start, start + count)})
+                elif source.is_loaded:
+                    partition = source._dataset.iloc[start : start + count]
+                else:
+                    partition = source
+                yield partition, start, count, data_name, matrix, centroid, Path(directory) / f"points_{index}.pkl"
+
+        results = _map_bounded(mp_config.cluster, _wrapper_multiproc_apply_matrix_pts_block, partitions())
+        output = _write_pointcloud_partitions(
+            output_filename,
+            (filename for _, filename in results),
+            driver=driver,
+            data_name=data_name,
+            geometry_type="Point Z" if data_name is None else "Point",
+            las_elevation_column=data_name,
+        )
+
+    # 3/ Construct the point output
+    if not source._is_xr:
+        return _cast_multiproc_output(source, output)
+    result = gu.open_pointcloud(output.name, data_name=output.data_name, columns="all", as_object_type="dataarray")
+    if result.dims != source._dataset.dims:
+        result = result.rename({result.dims[0]: source._dataset.dims[0]})
+    result.attrs.update(source._dataset.attrs)
+    for name in result.coords:
+        if name in source._dataset.coords:
+            result.coords[name].attrs = source._dataset.coords[name].attrs.copy()
+    return result
+
+
+def _apply_matrix_pointcloud(
+    source: PointCloudBase,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    mp_config: MultiprocConfig | None = None,
+) -> Any:
+    """Apply affine transform to an elevation point cloud."""
+
+    # 1/ Check inputs
+    if mp_config is not None and source._is_dask:
+        raise ValueError("Cannot use multiprocessing and Dask simultaneously. Remove mp_config for Dask inputs.")
+
+    # 2/ Run depending on chunked execution
+    # 2.1/ Multiprocessing (early return, as writes to file)
+    if mp_config is not None:
+        return _multiproc_apply_matrix_pointcloud(source, matrix, centroid, mp_config)
+
+    # 2.2/ Dask
+    if source._is_dask:
+        # If points use Xarray accessor
+        if source._is_xr:
+            import_optional("dask")
+            import dask.array as da
+
+            x, y, z = source.to_xyz()
+            points = da.stack((x, y, z)).rechunk({0: 3})
+            dtype = np.result_type(points.dtype, matrix.dtype, float)
+            transformed = da.map_blocks(
+                _apply_matrix_pts_mat,
+                points,
+                matrix=matrix,
+                centroid=centroid,
+                dtype=dtype,
+                meta=np.empty((0, 0), dtype=dtype),
+            )
+        # If points use GeoPandas accessor
+        else:
+            frame = source._dataset
+            meta = _apply_matrix_pts_block(frame._meta, matrix, centroid, source.data_name)
+            result = frame.map_partitions(_apply_matrix_pts_block, matrix, centroid, source.data_name, meta=meta)
+
+    # 2.3/ In-memory
+    else:
+        if source._is_xr:
+            x, y, z = source.to_xyz()
+            transformed = _apply_matrix_pts_mat(np.stack((x, y, z)), matrix, centroid)
+        else:
+            result = _apply_matrix_pts_block(source._dataset, matrix, centroid, source.data_name)
+
+    # 3/ Build output
+    # If Xarray point input
+    if source._is_xr:
+        result = source.copy(new_array=transformed[2])
+        coordinates = {
+            name: source._dataset.coords[name].variable.copy(data=values)
+            for name, values in zip(("x", "y"), transformed[:2])
+        }
+        return result.assign_coords(coordinates)
+
+    # If GeoPandas point input
+    output = source._cast_pointcloud_output(result)
+    if source.data_name is None and is_dask_dataframe(output):
+        # Geometry elevations remain three-dimensional after transformation
+        attributes = {**_get_dataframe_attrs(output), "geometry_type": "Point Z"}
+        _set_dataframe_attrs(output, attributes)
+    return output
+
+
+def _iterate_affine_regrid_small_rotations(
+    dem: NDArrayf,
+    transform: rio.transform.Affine,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    resampling: Literal["nearest", "linear", "cubic", "quintic"] = "linear",
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    grid_meta: dict[str, Any] | None = None,
+) -> tuple[NDArrayf, rio.transform.Affine]:
+    """
+    Iterative process to find the best reprojection of affine transformation for small rotations.
+
+    Faster than regridding point cloud by triangulation of points (for instance with scipy.interpolate.griddata).
+    """
+
+    # First, we locate destination pixel centers using global indices (for identical calculations across chunks)
+    out_transform = transform if out_transform is None else out_transform
+    out_shape = (dem.shape[0], dem.shape[1]) if out_shape is None else out_shape
+    grid_meta = {} if grid_meta is None else grid_meta
+    src_offset = grid_meta.get("src_offset", (0, 0))
+    dst_offset = grid_meta.get("dst_offset", (0, 0))
+    # Start with full array of X/Y regular coordinates (subset during iterations to improve computational efficiency)
+    rows, columns = np.indices(out_shape)
+    x, y = _affine_matmul(
+        grid_meta.get("global_dst_transform", out_transform),
+        (columns.ravel() + dst_offset[1] + 0.5, rows.ravel() + dst_offset[0] + 0.5),
+    )
+    source_inverse = ~grid_meta.get("global_src_transform", transform)
+
+    # We need to find the elevation Z of a transformed DEM at the exact grid coordinates X,Y
+    # Which means we need to find coordinates X',Y',Z' of the original DEM that, after the exact affine transform,
+    # fall exactly on regular X,Y coordinates
+
+    # 1/ The elevation of the original DEM, Z', is simply a 2D interpolator function of X',Y' (bilinear, typically)
+    # (We create the interpolator only once here for computational speed, instead of using Raster.interp_points)
+    z_interp = _interpn_interpolator(
+        points=(np.arange(dem.shape[0]) + src_offset[0], np.arange(dem.shape[1]) + src_offset[1]),
+        values=dem,
+        method=resampling,
+        nodata_propagation="propagate",
+        bounds_error=False,
+    )
+
+    # 2/ As a first guess of a transformed DEM elevation Z near the grid coordinates, we initialize with the elevations
+    # of a horizontal plane halfway through the source elevation range
+
+    # OLD METHOD
+    # (Longest step computationally)
+    # with warnings.catch_warnings():
+    #     warnings.filterwarnings("ignore", category=UserWarning, message="Geometry is in a geographic CRS.*")
+    #     nearest = gpd.sjoin_nearest(epc, trans_epc)
+    #
+    # # In case several points are found at exactly the same distance, take the mean of their elevations
+    # new_z = nearest.groupby(by=nearest.index)["z_left"].mean().values
+
+    # NEW METHOD: Use a horizontal plane instead of searching for a nearest neighbour,
+    # so the first guess is defined even outside the source grid
+    z_range = grid_meta.get("z_range")
+    zmin, zmax = _zmin_zmax(dem) if z_range is None else z_range
+    center = np.zeros(3) if centroid is None else np.asarray(centroid)
+    inverse = invert_matrix(matrix)
+    if abs(inverse[2, 2]) < np.finfo(float).eps:
+        raise ValueError("Iterative regridding requires a surface that is not vertical.")
+    new_z = (
+        center[2]
+        + (
+            (zmin + zmax) / 2
+            - center[2]
+            - inverse[2, 0] * (x - center[0])
+            - inverse[2, 1] * (y - center[1])
+            - inverse[2, 3]
+        )
+        / inverse[2, 2]
+    )
+
+    # 3/ We then iterate between two steps until convergence:
+    # a/ Use the Z guess to derive invert affine transform X',Y' coordinates for the original DEM,
+    # b/ Interpolate Z' at new coordinates X',Y' on the original DEM, and apply affine transform to get updated Z guess
+
+    # Initialize output z array, and array to store points that have converged
+    zfinal = np.full(len(x), np.nan, dtype=dem.dtype)
+    ind_converged = np.zeros(len(x), dtype=bool)
+
+    # For small rotations, and large DEMs (elevation range smaller than the DEM extent), this converges fast
+    max_niter = 20  # Maximum iteration number
+    niter_check = 5  # Number of iterations between residual checks
+    tolerance = 10 ** (-4)  # Tolerance in X/Y relative to resolution of X/Y
+    res_x = np.hypot(transform.a, transform.d)  # Resolution in X
+    res_y = np.hypot(transform.b, transform.e)  # Resolution in Y
+    niter = 1  # Starting iteration
+    while niter < max_niter:
+        # Invert X,Y (exact grid coordinates) with Z guess to find X',Y' coordinates on original DEM
+        tx, ty = _apply_matrix_pts_arr(x=x, y=y, z=new_z, matrix=matrix, invert=True, centroid=centroid)[:2]
+
+        # Interpolate original DEM at X', Y' to get Z', and convert to point cloud
+        source_columns, source_rows = _affine_matmul(source_inverse, (tx, ty))
+        query_rows, query_columns = source_rows - 0.5, source_columns - 0.5
+        if niter == 1:
+            # Seed outside-source guesses with edge elevations before checking the actual source domain
+            query_rows = np.clip(query_rows, src_offset[0], src_offset[0] + dem.shape[0] - 1)
+            query_columns = np.clip(query_columns, src_offset[1], src_offset[1] + dem.shape[1] - 1)
+            seed_clipped = (source_rows - 0.5 != query_rows) | (source_columns - 0.5 != query_columns)
+        tz = z_interp((query_rows, query_columns))
+
+        # Transform to see if we fall back on our feet (on the regular grid), or if we need to iterate more
+        x0, y0, z0 = _apply_matrix_pts_arr(x=tx, y=ty, z=tz, matrix=matrix, centroid=centroid)
+
+        zfinal[~ind_converged] = z0
+
+        # Only check residuals after first iteration (to remove NaNs) then every 5 iterations to reduce computing time
+        if niter == 1 or niter % niter_check == 0:
+            # Compute difference between exact grid coordinates and current coordinates, and stop if tolerance reached
+            diff_x = x0 - x
+            diff_y = y0 - y
+
+            logging.debug(
+                "Residual check at iteration number %d:\n    Mean diff x: %f\n    Mean diff y: %f",
+                niter,
+                np.mean(np.abs(diff_x[np.isfinite(diff_x)])) if np.any(np.isfinite(diff_x)) else np.nan,
+                np.mean(np.abs(diff_y[np.isfinite(diff_y)])) if np.any(np.isfinite(diff_y)) else np.nan,
             )
 
-        # Print final results
-        if logging.getLogger().getEffectiveLevel() <= logging.INFO:
-            pbar.write(f"      Iteration #{i + 1:d}")
-            for name in tolerances:
-                pbar.write(f"   Last {name} offset: {_format_iteration_value(new_statistics[name])}")
+            # Get index of points below tolerance in both X/Y for this subsample (all points before convergence update)
+            # Nodata values are considered having converged
+            subind_diff_x = np.logical_or(np.abs(diff_x) < (tolerance * res_x), ~np.isfinite(diff_x))
+            subind_diff_y = np.logical_or(np.abs(diff_y) < (tolerance * res_y), ~np.isfinite(diff_y))
+            subind_converged = np.logical_and(subind_diff_x, subind_diff_y)
+            if niter == 1:
+                # Check clipped seeds at their actual source coordinates before accepting convergence
+                subind_converged &= ~seed_clipped
 
-        # Check that all statistics are below their respective tolerance
-        if all(tolerances[k] is None or new_statistics[k] < tolerances[k] for k in tolerances):
-            converged = True
-            if logging.getLogger().getEffectiveLevel() <= logging.INFO:
-                pbar.write("   The last offset(s) were all below the set tolerance(s) -> stopping")
-                all_tolerances = "; ".join(f"{k}: {_format_iteration_value(v)}" for k, v in tolerances.items())
-                pbar.write(f"   Set tolerance(s) were: {all_tolerances}.")
+            logging.debug(
+                "    Points not within tolerance: %d for X; %d for Y",
+                np.count_nonzero(~subind_diff_x),
+                np.count_nonzero(~subind_diff_y),
+            )
 
-            break
-
-    df_all_it = pd.concat(list_df)
-    output_iterative = OutIterativeDict(last_iteration=i + 1, iteration_stats=df_all_it, converged=converged)
-
-    return new_inputs, new_statistics, output_iterative, static_outputs
-
-
-def _subsample_on_mask_interpolator(
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    aux_vars: None | dict[str, NDArrayf],
-    sub_mask: NDArrayb,
-    ref_transform: rio.transform.Affine | None,
-    tba_transform: rio.transform.Affine | None,
-    area_or_point: Literal["Area", "Point"] | None,
-    z_name: str | None,
-) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf]]:
-    """
-    Mirrors coreg.base._subsample_on_mask, but returning an interpolator of elevation difference and subsampled
-    coordinates for efficiency in iterative affine methods.
-
-    Perform subsampling on mask for raster-raster or point-raster datasets on valid points of all inputs (including
-    potential auxiliary variables), returning coordinates along with an interpolator.
-    """
-
-    # For two rasters
-    if isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
-
-        # Derive coordinates and interpolator
-        assert ref_transform is not None and tba_transform is not None
-        coords = _coords(transform=ref_transform, shape=ref_elev.shape, grid=True)
-        tba_elev_interpolator = _reproject_horizontal_shift_samecrs(
-            tba_elev, src_transform=tba_transform, return_interpolator=True, area_or_point=area_or_point
-        )
-
-        # Subsample coordinates
-        sub_coords = (coords[0][sub_mask], coords[1][sub_mask])
-
-        def sub_dh_interpolator(shift_x: float, shift_y: float) -> NDArrayf:
-            """Elevation difference interpolator for shifted coordinates of the subsample."""
-
-            # TODO: Align array axes in _reproject_horizontal... ?
-            # Get interpolator of dh for shifted coordinates; Y and X are inverted here due to raster axes
-            return ref_elev[sub_mask] - tba_elev_interpolator((sub_coords[1] + shift_y, sub_coords[0] + shift_x))
-
-        # Subsample auxiliary variables with the mask
-        if aux_vars is not None:
-            sub_bias_vars = {}
-            for var in aux_vars.keys():
-                sub_bias_vars[var] = aux_vars[var][sub_mask]
-        else:
-            sub_bias_vars = None
-
-    # For one raster and one point cloud
-    else:
-        if z_name is None:
-            raise ValueError("'z_name' must be given when either elevation input is a point cloud.")
-
-        # Identify which dataset is point or raster
-        pts_elev: gpd.GeoDataFrame = ref_elev if isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-        rst_elev: NDArrayf = ref_elev if not isinstance(ref_elev, gpd.GeoDataFrame) else tba_elev
-        rst_transform = ref_transform if isinstance(ref_elev, np.ndarray) else tba_transform
-        assert rst_transform is not None
-        # Check which input is reference, to compute the dh always in the same direction (ref minus tba) further below
-        ref = "point" if isinstance(ref_elev, gpd.GeoDataFrame) else "raster"
-
-        # Subsample point coordinates
-        valid_pts = np.isfinite(pts_elev[z_name].values)
-        pts_elev = pts_elev[valid_pts]
-        coords = (pts_elev.geometry.x.values, pts_elev.geometry.y.values)
-        sub_coords = (coords[0][sub_mask], coords[1][sub_mask])
-
-        # Interpolate raster array to the subsample point coordinates
-        # Convert ref or tba depending on which is the point dataset
-        rst_elev_interpolator = _interp_points_base(
-            array=rst_elev,
-            transform=rst_transform,
-            points=sub_coords,
-            return_interpolator=True,
-        )
-
-        def sub_dh_interpolator(shift_x: float, shift_y: float) -> NDArrayf:
-            """Elevation difference interpolator for shifted coordinates of the subsample."""
-
-            # Always return ref minus tba
-            if ref == "point":
-                return pts_elev[z_name][sub_mask].values - rst_elev_interpolator(
-                    (sub_coords[1] + shift_y, sub_coords[0] + shift_x)
-                )
-            # Also invert the shift direction on the raster interpolator, so that the shift is the same relative to
-            # the reference (returns the right shift relative to the reference no matter if it is point or raster)
+            # If all points left are below convergence, update Z one final time and stop here
+            if all(subind_converged):
+                zfinal[~ind_converged] = z0
+                break
+            # Otherwise, save Z for new converged points and keep only not converged in next iterations (for speed)
             else:
-                return (
-                    rst_elev_interpolator((sub_coords[1] - shift_y, sub_coords[0] - shift_x))
-                    - pts_elev[z_name][sub_mask].values
-                )
+                zfinal[~ind_converged] = z0
+                x = x[~subind_converged]
+                y = y[~subind_converged]
+                z0 = z0[~subind_converged]
 
-        # Interpolate arrays of bias variables to the subsample point coordinates
-        if aux_vars is not None:
-            sub_bias_vars = {}
-            for var in aux_vars.keys():
-                sub_bias_vars[var] = _interp_points_base(
-                    array=aux_vars[var], transform=rst_transform, points=sub_coords
-                )
+            # Otherwise, for this check, update convergence status for points not having converged yet
+            ind_converged[~ind_converged] = subind_converged
+
+        # If another iteration is required, update Z guess and increment
+        new_z = z0
+        niter += 1
+
+    # 4/ Write the regular-grid point cloud back into a raster
+    return zfinal.reshape(out_shape), out_transform
+
+
+def _apply_matrix_rst(
+    dem: NDArrayf,
+    transform: rio.transform.Affine,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resampling: str | Interpolator | Reducer = "linear",
+    force_regrid_method: Literal["iterative", "griddata"] | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    grid_meta: dict[str, Any] | None = None,
+) -> tuple[NDArrayf, rio.transform.Affine]:
+    """
+    Apply a 3D affine transformation matrix to a 2.5D DEM.
+
+    See details in description of apply_matrix().
+
+    :param dem: DEM to transform.
+    :param transform: Geotransform of the DEM.
+    :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
+    :param invert: Whether to invert the transformation matrix.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
+        Defaults to the midpoint (Z=0).
+    :param resampling: GeoUtils interpolation or gridding method name, or an Interpolator/Reducer object.
+    :param gridding_options: Additional options passed to GeoUtils gridding.
+    :param force_regrid_method: Force re-gridding method to convert 3D point cloud to 2.5 DEM, only for testing.
+    :param out_transform: Destination grid transform. Defaults to the input grid for rotations, or the translated
+        grid for translations.
+    :param out_shape: Destination rows and columns. Defaults to the input shape.
+    :param grid_meta: Global grid coordinates and elevation range shared by chunked calculations.
+
+    :returns: Transformed DEM, Transform.
+    """
+
+    # Validate destination dimensions before any resampling
+    out_shape = (dem.shape[0], dem.shape[1]) if out_shape is None else out_shape
+    if len(out_shape) != 2 or any(not isinstance(size, (int, np.integer)) or size <= 0 for size in out_shape):
+        raise ValueError("'out_shape' must contain two positive integers.")
+    dem = np.asarray(np.ma.filled(np.ma.asarray(dem, dtype=np.result_type(dem.dtype, np.float32)), np.nan))
+
+    # Invert matrix if required
+    if invert:
+        matrix = invert_matrix(matrix)
+
+    # Check DEM has valid values
+    if np.count_nonzero(np.isfinite(dem)) == 0:
+        raise ValueError("Input DEM has all nans.")
+
+    shift_z_only_matrix = np.diag(np.ones(4, float))
+    shift_z_only_matrix[2, 3] = matrix[2, 3]
+
+    shift_only_matrix = np.diag(np.ones(4, float))
+    shift_only_matrix[:3, 3] = matrix[:3, 3]
+
+    # 1/ Check if the matrix only contains a Z correction, in that case only shift the DEM values by the vertical shift
+    if (
+        np.array_equal(shift_z_only_matrix, matrix)
+        and force_regrid_method is None
+        and out_shape == dem.shape
+        and (out_transform is None or out_transform == transform)
+    ):
+        return dem + matrix[2, 3], transform
+
+    # 2/ Check if the matrix contains only translations, in that case only shift the DEM only by translation
+    if np.array_equal(shift_only_matrix, matrix) and force_regrid_method is None:
+        new_transform = _translate(transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
+        new_dem = dem + matrix[2, 3]
+
+        # Reproject onto a different output grid with GeoUtils
+        if out_shape != dem.shape or (out_transform is not None and out_transform != new_transform):
+            out_transform = new_transform if out_transform is None else out_transform
+            new_dem = _reproject_grid_operator(
+                new_dem,
+                src_transform=new_transform,
+                src_crs=None,
+                dst_transform=out_transform,
+                dst_crs=None,
+                dst_shape=out_shape,
+                operator=_resampling_operator(resampling),
+                source_nodata=np.nan,
+                nodata_propagation="nearest",
+            )
+            new_transform = out_transform
+        return new_dem, new_transform
+
+    # 3/ If matrix contains only small rotations (less than 20 degrees), use the fast iterative reprojection
+    rotations = translations_rotations_from_matrix(matrix)[3:]
+    if all(np.abs(rot) < 20 for rot in rotations) and force_regrid_method is None or force_regrid_method == "iterative":
+        new_dem, transform = _iterate_affine_regrid_small_rotations(
+            dem=dem,
+            transform=transform,
+            matrix=matrix,
+            centroid=centroid,
+            resampling=cast(Literal["nearest", "linear", "cubic", "quintic"], resampling),
+            out_transform=out_transform,
+            out_shape=out_shape,
+            grid_meta=grid_meta,
+        )
+        return new_dem, transform
+
+    # 4/ Otherwise, we grid the transformed point cloud
+    # Convert DEM to elevation point cloud, keeping all exact grid coordinates X/Y even for NaNs
+    dem_rst = gu.Raster.from_array(dem, transform=transform, crs=None, nodata=99999)
+    epc = dem_rst.to_pointcloud(data_name="z").gdf
+    trans_epc = _apply_matrix_pts(epc, matrix=matrix, centroid=centroid)
+
+    out_transform = transform if out_transform is None else out_transform
+    new_dem = _grid_pointcloud(
+        trans_epc,
+        grid_coords=_coords(out_transform, out_shape, grid=False),
+        data_name="z",
+        resampling=resampling,
+        grid_res=(abs(out_transform.a), abs(out_transform.e)),
+        **dict(gridding_options or {}),
+    )[0]
+
+    return new_dem, out_transform
+
+
+############################################################
+# Affine transforms for raster chunks and point partitions
+############################################################
+
+
+def _zmin_zmax(arr: NDArrayf) -> tuple[float, float]:
+    """Calculate min/max elevation in a source chunk."""
+
+    values = np.ma.asarray(arr)
+    values = values.compressed()
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return np.nan, np.nan
+    return float(values.min()), float(values.max())
+
+
+def _wrapper_multiproc_zmin_zmax_per_block(rst: RasterBase | NDArrayf, tile_idx: dict[str, int]) -> tuple[float, float]:
+    """Extract altitude min and max in a block, for multiprocessing."""
+    if isinstance(rst, np.ndarray):
+        return _zmin_zmax(rst)
+    rst_block = rst.icrop((tile_idx["xs"], tile_idx["ys"], tile_idx["xe"], tile_idx["ye"]))
+    return _zmin_zmax(_get_raster_interface(rst_block).data)
+
+
+def _delayed_zmin_zmax(arr_chunk: NDArrayf) -> tuple[float, float]:
+    """Extract altitude min and max in a block for Dask."""
+    return _zmin_zmax(arr_chunk)
+
+
+def _build_geotiling_and_meta_apply_matrix(
+    src_geotiling: ChunkedGeoGrid,
+    dst_geotiling: ChunkedGeoGrid,
+    elevation_bounds: list[tuple[float, float]],
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    resampling: str | Interpolator | Reducer = "linear",
+    force_regrid_method: Literal["iterative", "griddata"] | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
+) -> tuple[list[list[int]], list[tuple[dict[str, Any], list[dict[str, int]]]]]:
+    """
+    Map destination chunks to source chunks using their transformed elevation bounds.
+
+    Each source chunk bounds a 3D box (xmin/xmax, ymin/ymax and zmin/zmax). We transform the 8 corners of that 3D
+    box to ensure we cover any transformation that could happen within the chunk.
+
+    This requires a first quick pass reading zmax/zmin in each chunk (so not entirely "lazy", although the computation
+    of the result is).
+
+    Other than these steps, this function has similar logic than chunk mapping for reproject() in GeoUtils.
+    """
+
+    from shapely.geometry import MultiPoint, Polygon
+    from shapely.strtree import STRtree
+
+    # 1/ Get bounds of source tiles after the affine transform at both elevation extremes
+    src_block_ids = src_geotiling.get_block_locations()
+    src_boxes = []
+    for block_id, (zmin, zmax) in zip(src_block_ids, elevation_bounds):
+        block = GeoGrid(
+            _affine_matmul(src_geotiling.grid.transform, affine.Affine.translation(block_id["xs"], block_id["ys"])),
+            (block_id["ye"] - block_id["ys"], block_id["xe"] - block_id["xs"]),
+            src_geotiling.grid.crs,
+        )
+        if not np.isfinite(zmin):
+            src_boxes.append(Polygon())
+            continue
+        columns = np.array([0, block.width, block.width, 0])
+        rows = np.array([0, 0, block.height, block.height])
+        xx, yy = _affine_matmul(block.transform, (columns, rows))
+        corners = np.vstack((np.tile(xx, 2), np.tile(yy, 2), np.repeat([zmin, zmax], 4)))
+        moved = _apply_matrix_pts_mat(corners, matrix=matrix, centroid=centroid)
+        src_boxes.append(MultiPoint(moved[:2].T).convex_hull)
+
+    # 2/ Get bounds of tiles in CRS of destination array, with an interpolation buffer for destination ones to ensure
+    # overlap, then map indexes of source blocks that intersect a given destination block
+    tree = STRtree(src_boxes)
+    if force_regrid_method == "griddata":
+        options = dict(gridding_options or {})
+        depth = _source_support_pixels(
+            dst_geotiling.grid,
+            resampling=resampling,
+            radius=options.get("radius", 1.0),
+            nodata_handling=options.get("nodata_handling"),
+        )
+    else:
+        depth = _compute_resampling_overlap(resampling)
+    dst_block_geogrids = [
+        GeoGrid(
+            _affine_matmul(dst_geotiling.grid.transform, affine.Affine.translation(block["xs"], block["ys"])),
+            (block["ye"] - block["ys"], block["xe"] - block["xs"]),
+            dst_geotiling.grid.crs,
+        )
+        for block in dst_geotiling.get_block_locations()
+    ]
+    # Build mapping: for each destination box, list intersecting source indices
+    dest2source = []
+    row_edges = np.cumsum((0, *src_geotiling.chunks[0]))
+    column_edges = np.cumsum((0, *src_geotiling.chunks[1]))
+    for block in dst_block_geogrids:
+        columns = np.array([0, block.width, block.width, 0])
+        rows = np.array([0, 0, block.height, block.height])
+        xx, yy = _affine_matmul(block.transform, (columns, rows))
+        # Adjacent source cells can contribute even when their centers fall just outside the output block
+        if np.isfinite(depth):
+            footprint = Polygon(zip(xx, yy)).buffer(depth * max(block.res))
+            indices = sorted(int(index) for index in tree.query(footprint, predicate="intersects"))
         else:
-            sub_bias_vars = None
+            # An unbounded point neighborhood must search every source chunk
+            indices = [index for index, footprint in enumerate(src_boxes) if not footprint.is_empty]
+        if indices and np.isfinite(depth):
+            # Read a rectangle around the contributors, including the interpolation buffer on every side
+            selected = [src_block_ids[index] for index in indices]
+            xs = min(block_id["xs"] for block_id in selected) - depth
+            xe = max(block_id["xe"] for block_id in selected) + depth
+            ys = min(block_id["ys"] for block_id in selected) - depth
+            ye = max(block_id["ye"] for block_id in selected) + depth
+            # Locate intersecting source rows and columns without scanning every source block
+            first_row = max(0, int(np.searchsorted(row_edges, ys, side="right")) - 1)
+            last_row = min(len(row_edges) - 1, int(np.searchsorted(row_edges, ye, side="left")))
+            first_column = max(0, int(np.searchsorted(column_edges, xs, side="right")) - 1)
+            last_column = min(len(column_edges) - 1, int(np.searchsorted(column_edges, xe, side="left")))
+            indices = [
+                src_geotiling.flat_block_index((row, column))
+                for row in range(first_row, last_row)
+                for column in range(first_column, last_column)
+            ]
+        dest2source.append(indices)
 
-    return sub_dh_interpolator, sub_bias_vars
+    # 3/ To reconstruct a square source array during chunked reprojection, we need to derive the combined shape and
+    # transform of each tuples of source blocks
+    finite_bounds = np.asarray(elevation_bounds)
+    finite_bounds = finite_bounds[np.isfinite(finite_bounds)]
+    z_range = (float(finite_bounds.min()), float(finite_bounds.max())) if finite_bounds.size else (0.0, 0.0)
+    meta_params = []
+    for indices, destination, dst_id in zip(dest2source, dst_block_geogrids, dst_geotiling.get_block_locations()):
+        if indices:
+            selected = [src_block_ids[index] for index in indices]
+            src_offset = (min(block["ys"] for block in selected), min(block["xs"] for block in selected))
+            src_end = (max(block["ye"] for block in selected), max(block["xe"] for block in selected))
+            combined = {"src_shape": (src_end[0] - src_offset[0], src_end[1] - src_offset[1])}
+            relative = [
+                {
+                    "rys": block["ys"] - src_offset[0],
+                    "rye": block["ye"] - src_offset[0],
+                    "rxs": block["xs"] - src_offset[1],
+                    "rxe": block["xe"] - src_offset[1],
+                }
+                for block in selected
+            ]
+            combined["src_transform"] = tuple(
+                _affine_matmul(src_geotiling.grid.transform, affine.Affine.translation(*src_offset[::-1]))
+            )
+        else:
+            combined, relative, src_offset = {}, [], (0, 0)
+        # Append dst shape/transform to metadata
+        combined.update(
+            dst_shape=destination.shape,
+            dst_transform=destination.transform,
+            global_src_transform=src_geotiling.grid.transform,
+            global_dst_transform=dst_geotiling.grid.transform,
+            src_offset=src_offset,
+            dst_offset=(dst_id["ys"], dst_id["xs"]),
+            z_range=z_range,
+        )
+        meta_params.append((combined, relative))
+    return dest2source, meta_params
 
 
-def _subsample_rst_pts_interpolator(
-    params_random: InRandomDict,
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb,
-    ref_transform: rio.transform.Affine | None,
-    tba_transform: rio.transform.Affine | None,
-    crs: rio.crs.CRS,
-    area_or_point: Literal["Area", "Point"] | None,
-    z_name: str | None,
-    aux_vars: None | dict[str, NDArrayf] = None,
-) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf], int]:
+def _apply_matrix_per_block(
+    *src_arrs: NDArrayf,
+    block_ids: list[dict[str, int]],
+    combined_meta: dict[str, Any],
+    src_nodata: int | float | None,
+    output_dtype: Any,
+    **kwargs: Any,
+) -> NDArrayf:
     """
-    Mirrors coreg.base._subsample_rst_pts, but returning an interpolator for efficiency in iterative methods.
-
-    Pre-process raster-raster or point-raster datasets into an elevation difference interpolator at the same
-    points, and subsample arrays for auxiliary variables, with subsampled coordinates to evaluate the interpolator.
-
-    Returns dh interpolator, tuple of 1D arrays of subsampled coordinates, and dictionary of 1D arrays of subsampled
-    auxiliary variables.
+    Apply affine transform per destination block (also rebuilds a square array from intersecting source blocks).
     """
 
-    # Get subsample mask (a 2D array for raster-raster, a 1D array of length the point data for point-raster)
-    sub_mask = _get_subsample_mask_pts_rst(
-        subsample=params_random["subsample"],
-        random_state=params_random["random_state"],
-        ref_elev=ref_elev,
-        tba_elev=tba_elev,
-        inlier_mask=inlier_mask,
-        ref_transform=ref_transform,
-        tba_transform=tba_transform,
-        crs=crs,
-        area_or_point=area_or_point,
-        z_name=z_name,
-        aux_vars=aux_vars,
+    # If no source chunk intersects, we return a chunk of destination nodata values
+    dst_shape = combined_meta["dst_shape"]
+    if len(src_arrs) == 0:
+        return np.full(dst_shape, np.nan, dtype=output_dtype)
+
+    # First, we build an empty array with the combined shape, only with nodata values
+    working_dtype = np.result_type(src_arrs[0].dtype, np.float32)
+    comb_src_arr = np.full(combined_meta["src_shape"], np.nan, dtype=working_dtype)
+    # Then fill it with the source chunks values
+    for arr, bid in zip(src_arrs, block_ids):
+        values = np.asarray(np.ma.getdata(arr), dtype=working_dtype).copy()
+        invalid = np.ma.getmaskarray(arr) | ~np.isfinite(values)
+        if src_nodata is not None:
+            invalid |= values == src_nodata
+        values[invalid] = np.nan
+        comb_src_arr[bid["rys"] : bid["rye"], bid["rxs"] : bid["rxe"]] = values
+    if not np.any(np.isfinite(comb_src_arr)):
+        return np.full(dst_shape, np.nan, dtype=output_dtype)
+
+    # Apply matrix directly on the destination grid
+    dst_arr, _ = _apply_matrix_rst(
+        dem=comb_src_arr,
+        transform=affine.Affine(*combined_meta["src_transform"]),
+        out_transform=combined_meta["dst_transform"],
+        out_shape=dst_shape,
+        grid_meta=combined_meta,
+        **kwargs,
+    )
+    return np.asarray(dst_arr, dtype=output_dtype)
+
+
+def _wrapper_multiproc_apply_matrix_per_block(
+    rst: RasterBase | None,
+    src_block_ids: Mapping[int, dict[str, int]],
+    dst_block_id: dict[str, int],
+    idx_d2s: list[int],
+    block_ids: list[dict[str, int]],
+    combined_meta: dict[str, Any],
+    source_arrays: tuple[NDArrayf, ...] | None = None,
+    **kwargs: Any,
+) -> tuple[NDArrayf, tuple[int, int, int, int]]:
+    """Wrapper of affine transform for multiprocessing."""
+
+    # Get source array block for each destination block
+    src_arrs = list(source_arrays) if source_arrays is not None else []
+    if source_arrays is None:
+        assert rst is not None
+        for index in idx_d2s:
+            block = src_block_ids[index]
+            cropped = rst.icrop((block["xs"], block["ys"], block["xe"], block["ye"]))
+            src_arrs.append(
+                _get_raster_interface(cropped).data.reshape((block["ye"] - block["ys"], block["xe"] - block["xs"]))
+            )
+    # Call apply matrix per block
+    dst_block_arr = _apply_matrix_per_block(*src_arrs, block_ids=block_ids, combined_meta=combined_meta, **kwargs)
+
+    # Preserve missing cells in integer-nodata files as well as NaN-nodata files
+    dst_block_arr = np.ma.masked_invalid(dst_block_arr)
+    if kwargs["src_nodata"] is not None:
+        dst_block_arr = dst_block_arr.filled(kwargs["src_nodata"])
+    return dst_block_arr, (dst_block_id["ys"], dst_block_id["ye"], dst_block_id["xs"], dst_block_id["xe"])
+
+
+def _multiproc_apply_matrix(
+    rst: RasterBase,
+    mp_config: MultiprocConfig,
+    dst_transform: affine.Affine,
+    dst_shape: tuple[int, int],
+    **kwargs: Any,
+) -> Raster:
+    """Apply affine transform to raster chunks with multiprocessing and write to a file."""
+
+    # Prepare geotiling and reprojection metadata for source and destination grids
+    src_chunks = normalize_chunks(mp_config.chunks, rst.shape)
+    src_geotiling = ChunkedGeoGrid(GeoGrid(rst.transform, rst.shape, rst.crs), src_chunks)
+    dst_chunks = normalize_chunks(tuple(max(axis) for axis in src_chunks), dst_shape)
+    dst_geotiling = ChunkedGeoGrid(GeoGrid(dst_transform, dst_shape, rst.crs), dst_chunks)
+    src_block_ids = src_geotiling.get_block_locations()
+    # Send loaded source slices rather than serializing the complete raster for every task
+    loaded_values = rst.data.reshape(rst.shape) if rst.is_loaded else None
+    bounds_arguments = (
+        (
+            rst if loaded_values is None else loaded_values[block["ys"] : block["ye"], block["xs"] : block["xe"]],
+            block,
+        )
+        for block in src_block_ids
+    )
+    elevation_bounds = [
+        result
+        for _, result in _map_bounded(mp_config.cluster, _wrapper_multiproc_zmin_zmax_per_block, bounds_arguments)
+    ]
+    if not np.any(np.isfinite(elevation_bounds)):
+        raise ValueError("Input DEM has all nans.")
+    dest2source, meta_params = _build_geotiling_and_meta_apply_matrix(
+        src_geotiling,
+        dst_geotiling,
+        elevation_bounds,
+        kwargs["matrix"],
+        kwargs["centroid"],
+        resampling=kwargs["resampling"],
+        force_regrid_method=kwargs.get("force_regrid_method"),
+        gridding_options=kwargs.get("gridding_options"),
     )
 
-    # Return interpolator of elevation differences and subsampled auxiliary variables
-    sub_dh_interpolator, sub_bias_vars = _subsample_on_mask_interpolator(
-        ref_elev=ref_elev,
-        tba_elev=tba_elev,
-        aux_vars=aux_vars,
-        sub_mask=sub_mask,
-        ref_transform=ref_transform,
-        tba_transform=tba_transform,
-        area_or_point=area_or_point,
-        z_name=z_name,
+    # Get location of destination blocks to write file
+    dst_block_ids = np.array(dst_geotiling.get_block_locations())
+
+    # Create tasks for multiprocessing
+    def arguments() -> Iterable[tuple[Any, ...]]:
+        """Yield only the source blocks needed by each output tile."""
+        for index, indices in enumerate(dest2source):
+            blocks = {source_index: src_block_ids[source_index] for source_index in indices}
+            source_arrays = None
+            if loaded_values is not None:
+                source_arrays = tuple(
+                    loaded_values[block["ys"] : block["ye"], block["xs"] : block["xe"]] for block in blocks.values()
+                )
+            yield (
+                rst if source_arrays is None else None,
+                blocks,
+                dst_block_ids[index],
+                indices,
+                meta_params[index][1],
+                meta_params[index][0],
+                source_arrays,
+            )
+
+    tasks = _map_bounded(mp_config.cluster, partial(_wrapper_multiproc_apply_matrix_per_block, **kwargs), arguments())
+
+    # Retrieve metadata for saving file
+    file_metadata = {
+        "width": dst_shape[1],
+        "height": dst_shape[0],
+        "count": 1,
+        "crs": rst.crs,
+        "transform": dst_transform,
+        "dtype": kwargs["output_dtype"],
+        "nodata": kwargs["src_nodata"],
+    }
+    # Create a new raster file to save the processed results
+    return _write_multiproc_result(tasks, mp_config, file_metadata, tags=rst.tags)
+
+
+def _delayed_apply_matrix_per_block(
+    *src_arrs: NDArrayf, block_ids: list[dict[str, int]], combined_meta: dict[str, Any], **kwargs: Any
+) -> NDArrayf:
+    """
+    Delayed apply matrix per destination block (also rebuilds a square array combined from intersecting source blocks).
+    """
+    return _apply_matrix_per_block(*src_arrs, block_ids=block_ids, combined_meta=combined_meta, **kwargs)
+
+
+def _dask_apply_matrix(
+    darr: Any,
+    src_grid: GeoGrid,
+    dst_grid: GeoGrid,
+    **kwargs: Any,
+) -> Any:
+    """Apply affine transform per source chunk with Dask."""
+
+    # To raise appropriate error on missing optional dependency
+    import_optional("dask")
+    import dask.array as da
+    from dask import compute, delayed
+
+    # Create a delayed object for each block, and flatten the blocks into a 1d shape
+    blocks_delayed = darr.to_delayed().ravel()
+    # Read elevation bounds together
+    elevation_bounds = list(compute(*(delayed(_delayed_zmin_zmax)(block) for block in blocks_delayed)))
+    if not np.any(np.isfinite(elevation_bounds)):
+        raise ValueError("Input DEM has all nans.")
+    src_geotiling = ChunkedGeoGrid(src_grid, darr.chunks)
+    dst_chunks = darr.chunks if dst_grid.shape == src_grid.shape else normalize_chunks(darr.chunksize, dst_grid.shape)
+    dst_geotiling = ChunkedGeoGrid(dst_grid, dst_chunks)
+    dest2source, meta_params = _build_geotiling_and_meta_apply_matrix(
+        src_geotiling,
+        dst_geotiling,
+        elevation_bounds,
+        kwargs["matrix"],
+        kwargs["centroid"],
+        resampling=kwargs["resampling"],
+        force_regrid_method=kwargs.get("force_regrid_method"),
+        gridding_options=kwargs.get("gridding_options"),
     )
 
-    # Derive subsample size to pass back to class
-    subsample_final = np.count_nonzero(sub_mask)
+    # Output data type
+    out_dtype = np.dtype(kwargs.get("output_dtype", darr.dtype))
 
-    # Return 1D arrays of subsampled points at the same location
-    return sub_dh_interpolator, sub_bias_vars, subsample_final
+    # Run the delayed apply matrix, looping for each destination block
+    list_reproj_da = []
+    for indices, (combined, relative) in zip(dest2source, meta_params):
+        r = delayed(_delayed_apply_matrix_per_block)(
+            *(blocks_delayed[index] for index in indices), block_ids=relative, combined_meta=combined, **kwargs
+        )
+        # We define the expected output shape and dtype to simplify things for Dask
+        list_reproj_da.append(da.from_delayed(r, shape=combined["dst_shape"], dtype=out_dtype))
+
+    # Array comes out as flat blocks x chunksize0 (varying) x chunksize1 (varying), so we can't reshape directly
+    # We concatenate all columns, then rows to align X/Y
+    nx_dst = len(dst_chunks[1])
+    rows = [
+        da.concatenate(list_reproj_da[start : start + nx_dst], axis=1)
+        for start in range(0, len(list_reproj_da), nx_dst)
+    ]
+    concat_all = da.concatenate(rows, axis=0)
+
+    return concat_all
+
+
+def _apply_matrix_raster(
+    source: RasterBase,
+    matrix: NDArrayf,
+    centroid: tuple[float, float, float] | None = None,
+    mp_config: MultiprocConfig | None = None,
+    resample: bool = False,
+    resampling: str | Interpolator | Reducer = "linear",
+    output_dtype: Any = None,
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    force_regrid_method: Literal["iterative", "griddata"] | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
+) -> Any:
+    """Select the raster output grid and transform it in memory, with Dask, or with multiprocessing."""
+
+    # 1/ Check inputs
+    chunked = source._chunks is not None
+    if mp_config is not None and chunked:
+        raise ValueError("Cannot use multiprocessing and Dask simultaneously. Remove mp_config for Dask inputs.")
+
+    if source.count != 1:
+        raise ValueError("apply_matrix() requires a single elevation band.")
+    out_shape = source.shape if out_shape is None else out_shape
+    if len(out_shape) != 2 or any(not isinstance(size, (int, np.integer)) or size <= 0 for size in out_shape):
+        raise ValueError("'out_shape' must contain two positive integers.")
+    if out_transform is None:
+        out_transform = source.transform
+        if not resample and np.array_equal(matrix[:3, :3], np.eye(3)):
+            out_transform = _translate(source.transform, xoff=matrix[0, 3], yoff=matrix[1, 3])
+    if force_regrid_method not in (None, "iterative", "griddata"):
+        raise ValueError("'force_regrid_method' must be 'iterative', 'griddata' or None.")
+    regular_interpolation = isinstance(resampling, str) and resampling in ("nearest", "linear", "cubic", "quintic")
+    if force_regrid_method == "iterative" and (not regular_interpolation or gridding_options is not None):
+        raise ValueError("Iterative regridding requires a regular interpolation name and no gridding_options.")
+    rotations = translations_rotations_from_matrix(matrix)[3:]
+    if force_regrid_method is None and (
+        not regular_interpolation or gridding_options is not None or any(abs(rotation) >= 20 for rotation in rotations)
+    ):
+        force_regrid_method = "griddata"
+
+    # 2/ Run depending on chunked execution
+    dtype = np.dtype(output_dtype if output_dtype is not None else np.result_type(source.dtype, np.float32))
+    nodata = source.nodata if source.nodata is not None else np.nan
+    options: dict[str, Any] = dict(
+        matrix=matrix,
+        centroid=centroid,
+        resampling=resampling,
+        force_regrid_method=force_regrid_method,
+        gridding_options=gridding_options,
+    )
+
+    # 2.1/ Multiprocessing
+    if mp_config is not None:
+        result = _multiproc_apply_matrix(
+            source, mp_config, out_transform, out_shape, src_nodata=nodata, output_dtype=dtype, **options
+        )
+        return source._cast_raster_output(result)
+
+    # 2.2/ Dask
+    if chunked:
+        values = _dask_apply_matrix(
+            source.data.reshape(source.shape),
+            GeoGrid(source.transform, source.shape, source.crs),
+            GeoGrid(out_transform, out_shape, source.crs),
+            src_nodata=nodata,
+            output_dtype=dtype,
+            **options,
+        )
+
+    # 2.3/ In-memory
+    else:
+        values, _ = _apply_matrix_rst(
+            source.to_nanarray(), source.transform, out_transform=out_transform, out_shape=out_shape, **options
+        )
+        values = values.astype(dtype)
+
+    # 3/ Build output
+    return source.from_array(
+        values, out_transform, source.crs, nodata=nodata, area_or_point=source.area_or_point, tags=source.tags.copy()
+    )
+
+
+@overload
+def apply_matrix(
+    elev: NDArrayf,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
+    resampling: str | Interpolator | Reducer = "linear",
+    transform: rio.transform.Affine = None,
+    z_name: str | None = "z",
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    mp_config: MultiprocConfig | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
+    **kwargs: Any,
+) -> tuple[NDArrayf, affine.Affine]: ...
+
+
+@overload
+def apply_matrix(
+    elev: RasterLike | PointCloudLike,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
+    resampling: str | Interpolator | Reducer = "linear",
+    transform: rio.transform.Affine = None,
+    z_name: str | None = "z",
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    mp_config: MultiprocConfig | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
+    **kwargs: Any,
+) -> RasterLike | PointCloudLike: ...
+
+
+def apply_matrix(
+    elev: RasterLike | PointCloudLike | NDArrayf,
+    matrix: NDArrayf,
+    invert: bool = False,
+    centroid: tuple[float, float, float] | None = None,
+    resample: bool = True,
+    resampling: str | Interpolator | Reducer = "linear",
+    transform: rio.transform.Affine = None,
+    z_name: str | None = "z",
+    out_transform: affine.Affine | None = None,
+    out_shape: tuple[int, int] | None = None,
+    mp_config: MultiprocConfig | None = None,
+    gridding_options: Mapping[str, Any] | None = None,
+    **kwargs: Any,
+) -> tuple[NDArrayf, affine.Affine] | RasterLike | PointCloudLike:
+    """
+    Apply a 3D affine transformation matrix to a 3D elevation point cloud or 2.5D DEM.
+
+    Chunked datasets are supported through Dask or multiprocessing.
+
+    For an elevation point cloud, the transformation is exact.
+
+    For a DEM, it requires re-gridding because the affine-transformed point cloud of the DEM does not fall onto a
+    regular grid anymore (except if the affine transformation only has translations). For this, this function uses the
+    three following methods:
+
+    1. For transformations with only translations, the transform is updated and vertical shift added to the array,
+
+    2. For transformations with a small rotation (20 degrees or less for all axes), this function maps which 2D
+    point coordinates will fall back exactly onto the original DEM grid coordinates after affine transformation by
+    searching iteratively using the invert affine transformation and 2D point regular-grid interpolation on the
+    original DEM with GeoUtils,
+
+    3. For transformations with large rotations (20 degrees or more), or when gridding is requested, GeoUtils
+    re-grids the irregular affine-transformed 3D point cloud using the selected method.
+
+    :param elev: Elevation point cloud or DEM, including GeoUtils objects, Xarray/GeoPandas objects or accessors,
+        or a 2D array (requires transform).
+    :param matrix: Affine (4x4) transformation matrix to apply to the DEM.
+    :param invert: Whether to invert the transformation matrix.
+    :param centroid: The X/Y/Z transformation centroid. Irrelevant for pure translations.
+        Defaults to the midpoint (Z=0).
+    :param resample: (For translations) If set to True, will resample output on the translated grid to match the input
+        transform. Otherwise, only the transform will be updated and no resampling is done.
+    :param resampling: GeoUtils resampling, or Interpolator/Reducer object.
+        The names 'nearest', 'linear', 'cubic' and 'quintic' use iterative regridding for small rotations by default.
+        Other methods grid the transformed points. Defaults to linear.
+    :param transform: Geotransform of the DEM, only for DEM passed as 2D array.
+    :param z_name: Column name to use as elevation, only for point elevation data passed as geodataframe.
+    :param out_transform: Destination grid transform, overriding the grid selected by resample.
+    :param out_shape: Destination rows and columns. Defaults to the input shape.
+    :param mp_config: Worker, chunk and output file settings for raster tiles or point partitions.
+    :param gridding_options: Additional GeoUtils grid() options, such as radius, nodata_handling,
+        distance_power, min_points or max_points. Supplying this mapping selects point gridding.
+    :param kwargs: Keywords passed to _apply_matrix_rst for testing.
+
+    :return: Affine transformed elevation point cloud or DEM.
+    """
+
+    # 1/ Check inputs
+    # Identify point clouds and rasters before handling array input
+    _check_coreg_input_families(elev, mp_config=mp_config)
+    array_input = isinstance(elev, np.ndarray) or is_dask_array(elev)
+
+    # Wrap NumPy and Dask arrays with their geotransform
+    if array_input:
+        if transform is None:
+            raise ValueError("'transform' must be given if the DEM is array-like.")
+        constructor = Raster.from_array
+        if is_dask_array(elev):
+            from geoutils.raster.xr_accessor import DataArrayRasterAccessor
+
+            constructor = DataArrayRasterAccessor.from_array
+        nodata = np.nan if np.issubdtype(elev.dtype, np.floating) else None
+        source = _get_raster_interface(constructor(elev, transform, crs=None, nodata=nodata))
+    else:
+        source = _as_coreg_elevation(elev, z_name=z_name)
+
+    # 2/ Dispatch to the point cloud or raster function
+    if invert:
+        matrix = invert_matrix(matrix)
+
+    if not _is_raster(source):
+        return _apply_matrix_pointcloud(source, matrix, centroid, mp_config)
+    applied = _apply_matrix_raster(
+        source,
+        matrix,
+        centroid,
+        mp_config=mp_config,
+        resample=resample,
+        resampling=resampling,
+        out_transform=out_transform,
+        out_shape=out_shape,
+        gridding_options=gridding_options,
+        **kwargs,
+    )
+
+    # 3/ Format outputs
+    # We return a raster if input was a raster
+    if not array_input:
+        return applied
+
+    # Return arrays in their original family with the destination geotransform
+    result = _get_raster_interface(applied)
+    values = result.data if is_dask_array(elev) else result.to_nanarray()
+    if np.ma.isMaskedArray(elev):
+        values = np.ma.masked_invalid(values)
+    return values, result.transform
+
+
+######################################
+# Raster and point cloud preparation
+######################################
+
+
+def _prepare_affine_inputs(
+    ref_elev: RasterBase | PointCloudBase,
+    tba_elev: RasterBase | PointCloudBase,
+    mp_config: MultiprocConfig | None,
+    temporary_files: ExitStack | None,
+) -> tuple[RasterBase | PointCloudBase, RasterBase | PointCloudBase]:
+    """
+    Reproject a raster or point cloud to the reference CRS when needed.
+
+    For affine methods, we cannot rely directly on cosample() for CRS reprojection, because it always returns
+    a single support (point or raster), and we need to interpolate the raster multiple times (once per iteration) even
+    if the other sample is point.
+
+    Therefore, we reproject the tba_elev to ref_elev, using Dask or multiprocessing in a temporary file.
+    """
+
+    if ref_elev.crs != tba_elev.crs:
+        config = None
+        if mp_config is not None:
+            assert temporary_files is not None
+            config = temporary_files.enter_context(mp_config.temporary())
+        projected = tba_elev.reproject(crs=ref_elev.crs, mp_config=config)
+        if _is_raster(tba_elev):
+            tba_elev = _get_raster_interface(projected)
+        else:
+            tba_elev = _get_pointcloud_interface(projected)
+    return ref_elev, tba_elev
+
+
+def _prepare_interpolation_raster(raster: RasterBase) -> RasterBase:
+    """Cast raster values to float64 before interpolation."""
+
+    if raster.dtype == np.dtype(float):
+        return raster
+    if raster._is_xr:
+        return _get_raster_interface(raster.copy(new_array=raster.data.astype(float)))
+    return raster.astype(float, convert_nodata=False)
 
 
 def _get_centroid_scale(
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    transform: affine.Affine | None,
-    z_name: str | None = None,
+    ref_elev: RasterBase | PointCloudBase,
+    mp_config: MultiprocConfig | None = None,
 ) -> tuple[tuple[float, float, float], float]:
     """
     Get centroid and standardization factor from reference elevation (whether it is a DEM or an elevation point cloud).
 
-    This step needs to be computed before subsampling to avoid inconsistencies between random samplings.
+    This step respects chunked inputs, with Dask or multiprocessing.
 
-    :param ref_elev: Reference elevation, either an array or a point cloud.
-    :param transform: Geotransform if reference elevation is a DEM.
+    It needs to be computed before subsampling to avoid inconsistencies between random samplings.
+
+    :param ref_elev: Reference elevation raster or point cloud.
+    :param mp_config: Worker and tile settings for calculating the elevation statistics.
 
     :return: Centroid of elevation object, Scale factor of elevation object.
     """
 
     # For a DEM
-    if isinstance(ref_elev, np.ndarray):
+    if _is_raster(ref_elev):
+        raster = ref_elev
 
         # Derive centroid from the middle of the grid
-        assert transform is not None
-        centroid_x, centroid_y = transform * (
-            (ref_elev.shape[1] - 1) / 2,
-            (ref_elev.shape[0] - 1) / 2,
-        )
-        if np.ma.isMaskedArray(ref_elev):
-            centroid_z = np.ma.median(ref_elev)
-        else:
-            centroid_z = np.nanmedian(ref_elev)
-        centroid = (centroid_x, centroid_y, centroid_z)
+        centroid_x, centroid_y = raster.ij2xy((raster.height - 1) / 2, (raster.width - 1) / 2, force_offset="ul")
+        statistics = raster.stats(["median", "nmad"], method="groupwise", mp_config=mp_config)
+        centroid = (centroid_x, centroid_y, statistics["median"])
 
         # Derive standardization factor along the pixel axes without building coordinate grids
         # (and accounting for possible rotated grids)
-        column_distances = np.arange(ref_elev.shape[1]) * np.hypot(transform.a, transform.d)
-        row_distances = np.arange(ref_elev.shape[0]) * np.hypot(transform.b, transform.e)
-        std_fac = np.mean([nmad(column_distances), nmad(row_distances), nmad(ref_elev - centroid[2])])
+        column_distances = np.arange(raster.width) * np.hypot(raster.transform.a, raster.transform.d)
+        row_distances = np.arange(raster.height) * np.hypot(raster.transform.b, raster.transform.e)
+        scale = np.mean([nmad(column_distances), nmad(row_distances), statistics["nmad"]])
+        return centroid, float(scale)
 
     # For an elevation point cloud
-    else:
-        # Derive centroid
-        centroid = (
-            np.nanmedian(ref_elev.geometry.x.values),
-            np.nanmedian(ref_elev.geometry.y.values),
-            np.nanmedian(ref_elev[z_name].values),
-        )
-
-        # Derive standardization factor
-        std_fac = float(
-            np.mean(
-                [
-                    nmad(ref_elev.geometry.x.values - centroid[0]),
-                    nmad(ref_elev.geometry.y.values - centroid[1]),
-                    nmad(ref_elev[z_name].values - centroid[2]),
-                ]
-            )
-        )
-
-    return centroid, std_fac
+    # Derive centroid and standardization factor
+    points = ref_elev
+    x, y, z = points.to_xyz()
+    statistics = points.stats(
+        ["median", "nmad"], values={"x": x, "y": y, "z": z}, method="groupwise", mp_config=mp_config
+    )
+    centroid = tuple(statistics[name]["median"] for name in ("x", "y", "z"))
+    scale = np.mean([statistics[name]["nmad"] for name in ("x", "y", "z")])
+    return centroid, float(scale)
 
 
 def _standardize_epc(
@@ -481,126 +1695,6 @@ def _standardize_epc(
         tba_epc = tba_epc / scale
 
     return ref_epc, tba_epc
-
-
-################################
-# Helpers for computing normals
-################################
-
-
-class DemGeometryDict(TypedDict, total=False):
-    """Keys and types of DEM-derived geometry rasters."""
-
-    nx: NDArrayf
-    ny: NDArrayf
-    nz: NDArrayf
-    curv: NDArrayf
-
-
-def _dem_normals_curvature(
-    dem: NDArrayf,
-    transform: affine.Affine,
-    *,
-    return_curvature: bool = False,
-) -> DemGeometryDict:
-    """
-    Derive fixed-surface geometry from a DEM: unit normals (and optionally a curvature proxy).
-
-    This helper is meant to be used consistently by both ICP ("point-to-plane") and CPD (LSG variant),
-    so that "fixed surface" geometry is derived the same way across methods.
-
-    Normals are derived from the height field z(x, y) using (-dz/dx, -dz/dy, 1) normalized to unit length.
-
-    :param dem: DEM array.
-    :param transform: Affine transform of DEM.
-    :param return_curvature: Whether to derive and return a curvature-like proxy.
-
-    :return: Dictionary of rasters: nx (east component of unit normal), ny (north), nz (up), and curvature (if
-        return_curvature=True)
-    """
-    # Get resolution
-    res_x, res_y = _res(transform)
-
-    # If masked array input
-    if np.ma.isMaskedArray(dem):
-        dem = dem.filled(np.nan)
-
-    # 1) First derivatives (dz/dx, dz/dy) in map units (need to scale per resolution)
-    dz_drow, dz_dcol = np.gradient(dem.astype(float), edge_order=1)
-    inverse = ~transform
-    dz_dx = inverse.a * dz_dcol + inverse.d * dz_drow
-    dz_dy = inverse.b * dz_dcol + inverse.e * dz_drow
-
-    # 2) Unit normals: (-dz/dx, -dz/dy, 1)
-    nx = -dz_dx
-    ny = -dz_dy
-    nz = np.ones_like(nx)
-    # Normalize relative to precision
-    n_norm = np.sqrt(nx * nx + ny * ny + nz * nz)
-    n_norm = np.clip(n_norm, np.finfo(float).eps, None)
-    nx = nx / n_norm
-    ny = ny / n_norm
-    nz = nz / n_norm
-
-    out: DemGeometryDict = {"nx": nx, "ny": ny, "nz": nz}
-
-    # 3) Curvature proxy, scaled + mapped to (0, 1)
-    if return_curvature:
-        # Second derivatives in index space
-        d2z_drow2, _ = np.gradient(dz_drow, edge_order=1)
-        _, d2z_dcol2 = np.gradient(dz_dcol, edge_order=1)
-
-        # Convert to map-coordinate second derivatives
-        d2z_dx2 = d2z_dcol2 / (res_x * res_x)
-        d2z_dy2 = d2z_drow2 / (res_y * res_y)
-        curv_raw = np.sqrt(d2z_dx2 * d2z_dx2 + d2z_dy2 * d2z_dy2)
-        curv_raw = np.clip(curv_raw, np.finfo(float).eps, None)
-
-        # Make approximately dimensionless by multiplying with a pixel length scale
-        pix = float(np.sqrt(res_x * res_y))
-        curv_dimless = curv_raw * pix
-
-        # Map to (0, 1) with a robust scale
-        c0 = float(np.nanmedian(curv_dimless))
-        c0 = max(c0, float(np.finfo(float).eps))
-        curvature = curv_dimless / (curv_dimless + c0)
-
-        # Final clip (so that 1/curvature is well-behaved)
-        curvature = np.clip(curvature, 1e-12, 1.0)
-
-        out["curv"] = curvature
-
-    return out
-
-
-def _epc_normals_curvature(points: NDArrayf, neighbours: int) -> tuple[NDArrayf, NDArrayf]:
-    """
-    Compute normals and curvature-like variation measure from a point cloud using kNN PCA.
-
-    :param points: Point cloud (M,3).
-    :param neighbours: Number of neighbors for local PCA.
-    :return: normals (M,3) unit, curvature (M,) = smallest_eig / sum_eigs.
-    """
-    Y = np.asarray(points, dtype=float)
-    k = min(max(int(neighbours), 3), len(Y) - 1)
-
-    tree = cKDTree(Y)
-    _, idx = tree.query(Y, k=k + 1)  # includes itself
-    idx = idx[:, 1:]  # drop self
-    neigh = Y[idx]  # (M,k,3)
-
-    mu = neigh.mean(axis=1, keepdims=True)
-    Xc = neigh - mu
-    C = np.einsum("mki,mkj->mij", Xc, Xc) / max(k - 1, 1)
-
-    evals, evecs = np.linalg.eigh(C)  # ascending
-    normals = evecs[:, :, 0]
-    normals /= np.linalg.norm(normals, axis=1, keepdims=True) + 1e-12
-
-    curvature = evals[:, 0] / (evals.sum(axis=1) + 1e-12)
-    curvature = np.clip(curvature, 1e-12, None)
-
-    return normals.astype(float), curvature.astype(float)
 
 
 def _axis_weights_from_epc(
@@ -649,6 +1743,289 @@ def _axis_weights_from_epc(
         raise ValueError("anisotropic must be None, 'xy_vs_z', or 'per_axis'.")
 
     return w.astype(float)
+
+
+#####################
+# Iteration helpers
+#####################
+
+
+def _format_iteration_value(value: float | None) -> str:
+    """Format iteration statistics and tolerances with the precision used in workflow reports."""
+
+    if value is None:
+        return "None"
+    if 0 < abs(value) < 1e-3 or abs(value) > 1e5:
+        return np.format_float_scientific(value, precision=3)
+    return f"{value:.3f}"
+
+
+def _iterate_method(
+    method: Callable[..., Any],
+    iterating_input: Any,
+    constant_inputs: tuple[Any, ...],
+    tolerances: dict[str, float | None],
+    max_iterations: int,
+) -> tuple[Any, Any, OutIterativeDict, Any]:
+    """
+    Function to iterate a method (e.g. ICP, Nuth and Kääb) until it reaches tolerances or maximum number of iterations.
+
+    :param method: Method that needs to be iterated to derive a transformation. Takes argument "inputs" as its input,
+        and outputs three terms: a "statistic" to compare to tolerance, "updated inputs" with this transformation, and
+        the parameters of the transformation.
+    :param iterating_input: Iterating input to method, should be first argument.
+    :param constant_inputs: Constant inputs to method, should be all positional arguments after first.
+    :param tolerances: Tolerances to reach for the method statistics (i.e. maximum value for the statistic).
+    :param max_iterations: Maximum number of iterations for the method.
+
+    :return: Final output of iterated method.
+    """
+
+    # Initiate inputs
+    new_inputs = iterating_input
+    converged = False
+
+    # Initiate storage of iteration statistics
+    list_df = []
+
+    # Iteratively run the analysis until the maximum iterations or until the error gets low enough
+    # If logging level <= INFO, will use progressbar and print additional statements
+    pbar = get_progress(
+        range(max_iterations), disable=logging.getLogger().getEffectiveLevel() > logging.INFO, desc="   Progress"
+    )
+    for i in pbar:
+        # Apply method and get new statistics to compare to tolerances, new inputs for next iterations, and
+        # outputs in case this is the final one
+        new_inputs, new_statistics, static_outputs = method(new_inputs, *constant_inputs)
+
+        # Store statistics to dataframe and append to list
+        df_iteration = pd.DataFrame(new_statistics, index=[i + 1])
+        df_iteration["iteration"] = i + 1
+        list_df.append(df_iteration)
+
+        # Check that all statistics have a matching tolerance, otherwise the process should fail with a dev error
+        new_statistics_keys = list(new_statistics.keys())
+        tolerance_keys = list(tolerances.keys())
+        if not all(n in tolerance_keys for n in new_statistics_keys):
+            raise NotImplementedError(
+                "Developer Error: The keys of the tolerances dictionary passed "
+                "to _iterate_method in the coregistration method call should match the keys of "
+                "the statistics return by the method's iteration_step function."
+            )
+
+        # Print final results
+        if logging.getLogger().getEffectiveLevel() <= logging.INFO:
+            pbar.write(f"      Iteration #{i + 1:d}")
+            for name in tolerances:
+                pbar.write(f"   Last {name} offset: {_format_iteration_value(new_statistics[name])}")
+
+        # Check that all statistics are below their respective tolerance
+        if all(tolerances[k] is None or new_statistics[k] < tolerances[k] for k in tolerances):
+            converged = True
+            if logging.getLogger().getEffectiveLevel() <= logging.INFO:
+                pbar.write("   The last offset(s) were all below the set tolerance(s) -> stopping")
+                all_tolerances = "; ".join(f"{k}: {_format_iteration_value(v)}" for k, v in tolerances.items())
+                pbar.write(f"   Set tolerance(s) were: {all_tolerances}.")
+
+            break
+
+    df_all_it = pd.concat(list_df)
+    output_iterative = OutIterativeDict(last_iteration=i + 1, iteration_stats=df_all_it, converged=converged)
+
+    return new_inputs, new_statistics, output_iterative, static_outputs
+
+
+###############################################
+# Helpers for computing gradients and normals
+###############################################
+
+
+class DemGeometryDict(TypedDict, total=False):
+    """Keys and types of DEM-derived geometry rasters."""
+
+    nx: NDArrayf
+    ny: NDArrayf
+    nz: NDArrayf
+
+
+def _dem_gradients(array: NDArrayf) -> tuple[NDArrayf, NDArrayf]:
+    """Calculate pixel X/Y gradients where centered differences are available."""
+
+    # Discard one-sided gradients at the raster edges
+    gradient_y, gradient_x = np.gradient(array)
+    gradients = np.stack((gradient_x, gradient_y))
+    gradients[:, [0, -1], :] = np.nan
+    gradients[:, :, [0, -1]] = np.nan
+    return gradients[0], gradients[1]
+
+
+def _dem_normals_curvature(
+    dem: NDArrayf,
+    transform: affine.Affine,
+) -> DemGeometryDict:
+    """
+    Derive fixed-surface geometry from a DEM: unit normals.
+
+    This helper is meant to be used consistently by both ICP ("point-to-plane") and CPD (LSG variant),
+    so that "fixed surface" geometry is derived the same way across methods.
+
+    Normals are derived from the height field z(x, y) using (-dz/dx, -dz/dy, 1) normalized to unit length.
+
+    :param dem: DEM array.
+    :param transform: Affine transform of DEM.
+
+    :return: Dictionary of rasters: nx (east component of unit normal), ny (north), nz (up).
+    """
+
+    # If masked array input
+    if np.ma.isMaskedArray(dem):
+        dem = dem.filled(np.nan)
+
+    # 1) First derivatives (dz/dx, dz/dy) in map units (need to scale per resolution)
+    dz_dcol, dz_drow = _dem_gradients(dem.astype(float))
+    inverse = ~transform
+    dz_dx = inverse.a * dz_dcol + inverse.d * dz_drow
+    dz_dy = inverse.b * dz_dcol + inverse.e * dz_drow
+
+    # 2) Unit normals: (-dz/dx, -dz/dy, 1)
+    nx = -dz_dx
+    ny = -dz_dy
+    nz = np.ones_like(nx)
+    # Normalize relative to precision
+    n_norm = np.sqrt(nx * nx + ny * ny + nz * nz)
+    n_norm = np.clip(n_norm, np.finfo(float).eps, None)
+    nx = nx / n_norm
+    ny = ny / n_norm
+    nz = nz / n_norm
+
+    return {"nx": nx, "ny": ny, "nz": nz}
+
+
+def _dem_geometry_array(
+    array: NDArrayf, transform: affine.Affine, normals: bool, pixel_gradients: bool = False, min_slope: float = 0
+) -> NDArrayf:
+    """Derive raster gradients or unit normals, returned as a stack (nx, ny nz) or (gradx, grady)."""
+
+    if normals:
+        geometry = _dem_normals_curvature(array, transform)
+        return np.stack((geometry["nx"], geometry["ny"], geometry["nz"]))
+    if pixel_gradients:
+        # Exclude gentle slopes before interpolating NK gradients
+        gradient_x, gradient_y = _dem_gradients(array)
+        inverse = ~transform
+        slope_x = inverse.a * gradient_x + inverse.d * gradient_y
+        slope_y = inverse.b * gradient_x + inverse.e * gradient_y
+        valid = np.sqrt(slope_x**2 + slope_y**2) > np.tan(np.deg2rad(min_slope))
+        return np.stack((np.where(valid, gradient_x, np.nan), np.where(valid, gradient_y, np.nan)))
+    return np.stack(_lzd_aux_vars(array, transform))
+
+
+def _dem_geometry_block(raster: gu.Raster, normals: bool, pixel_gradients: bool, min_slope: float) -> gu.Raster:
+    """Calculate raster gradients or normals on a tile with neighboring pixels."""
+
+    array = _dem_geometry_array(raster.data.filled(np.nan), raster.transform, normals, pixel_gradients, min_slope)
+    return gu.Raster.from_array(array, raster.transform, raster.crs, nodata=np.nan, area_or_point=raster.area_or_point)
+
+
+def _dem_geometry(
+    raster: RasterBase,
+    normals: bool,
+    mp_config: MultiprocConfig | None,
+    temporary_files: ExitStack | None,
+    pixel_gradients: bool = False,
+    min_slope: float = 0,
+) -> dict[str, RasterBase]:
+    """
+    Calculate raster gradients or unit normals with NumPy, Dask or multiprocessing.
+
+    _dem_geometry_array() calculates X/Y gradients or X/Y/Z unit normals. Dask shares neighboring raster pixels
+    between chunks; multiprocessing passes overlapping raster tiles to _dem_geometry_block().
+    Each gradient or normal component is returned as a separate raster.
+    """
+
+    # 1/ Calculate gradient or normal rasters with multiprocessing
+    names = ("nx", "ny", "nz") if normals else ("gradient_x", "gradient_y")
+    if mp_config is not None:
+        assert temporary_files is not None
+        config = temporary_files.enter_context(mp_config.temporary())
+        result = map_overlap(
+            _dem_geometry_block,
+            raster,
+            config,
+            normals=normals,
+            pixel_gradients=pixel_gradients,
+            min_slope=min_slope,
+            depth=1,
+        )
+
+        # Separate the gradient or normal bands for point interpolation
+        result = _get_raster_interface(result)
+        if result._is_xr:
+            bands = [result._obj.isel(band=index, drop=True) for index in range(len(names))]
+        else:
+            bands = result.split_bands(deep=False)
+        return {name: _prepare_interpolation_raster(_get_raster_interface(band)) for name, band in zip(names, bands)}
+
+    # 2/ Read DEM values and adjust Dask raster chunks
+    array = raster.data
+    if array.ndim == 3:
+        array = array[0]
+    if is_dask_array(array):
+        import_optional("dask")
+        from dask.array.overlap import ensure_minimum_chunksize
+
+        # Dask gradients need at least two cells per chunk
+        chunks = tuple(ensure_minimum_chunksize(2, axis_chunks) for axis_chunks in array.chunks)
+        array = array.rechunk(chunks)
+    else:
+        array = np.ma.filled(array, np.nan)
+
+    # 3/ Calculate gradient or normal rasters with NumPy or Dask
+    # Dask chunks remain lazy until the rasters are sampled
+    geometry = _dem_geometry_array(array, raster.transform, normals, pixel_gradients, min_slope)
+
+    # Gradients can have missing values even when the DEM has no nodata value
+    rasters = {}
+    for index, name in enumerate(names):
+        component = raster.from_array(
+            geometry[index].reshape(raster.data.shape),
+            raster.transform,
+            raster.crs,
+            nodata=np.nan,
+            area_or_point=raster.area_or_point,
+        )
+        rasters[name] = _prepare_interpolation_raster(_get_raster_interface(component))
+    return rasters
+
+
+def _epc_normals_curvature(points: NDArrayf, neighbours: int) -> tuple[NDArrayf, NDArrayf]:
+    """
+    Compute normals and curvature-like variation measure from a point cloud using kNN PCA.
+
+    :param points: Point cloud (M,3).
+    :param neighbours: Number of neighbors for local PCA.
+    :return: normals (M,3) unit, curvature (M,) = smallest_eig / sum_eigs.
+    """
+    Y = np.asarray(points, dtype=float)
+    k = min(max(int(neighbours), 3), len(Y) - 1)
+
+    tree = cKDTree(Y)
+    _, idx = tree.query(Y, k=k + 1)  # includes itself
+    idx = idx[:, 1:]  # drop self
+    neigh = Y[idx]  # (M,k,3)
+
+    mu = neigh.mean(axis=1, keepdims=True)
+    Xc = neigh - mu
+    C = np.einsum("mki,mkj->mij", Xc, Xc) / max(k - 1, 1)
+
+    evals, evecs = np.linalg.eigh(C)  # ascending
+    normals = evecs[:, :, 0]
+    normals /= np.linalg.norm(normals, axis=1, keepdims=True) + 1e-12
+
+    curvature = evals[:, 0] / (evals.sum(axis=1) + 1e-12)
+    curvature = np.clip(curvature, 1e-12, None)
+
+    return normals.astype(float), curvature.astype(float)
 
 
 ###########################################
@@ -1665,8 +3042,8 @@ def _nuth_kaab_bin_fit(
     :param aspect: 1D array of aspect (units = radians).
     :param params_fit_or_bin: Dictionary of parameters for fitting or binning.
 
-    :returns: Optimized parameters of Nuth and Kääb (2011) fit function: easting, northing, and vertical offsets
-        (in georeferenced unit).
+    :returns: Horizontal offsets in pixels and the fitted constant in slope-normalized units.
+        The fitted constant is not a vertical translation.
     """
 
     # Slope tangents near zero were removed beforehand, so errors should never happen here
@@ -1721,76 +3098,42 @@ def _nuth_kaab_bin_fit(
     # OLS fits A*cos(x) + B*sin(x) + c, so it returns Cartesian coefficients rather than the amplitude and phase
     # returned by optimizers fitting a*cos(b-x) + c
     if params_fit_or_bin["fit_optimizer"] == "ols":
-        northing_offset, easting_offset, vertical_offset = results[0]
+        northing_offset, easting_offset, normalized_offset = results[0]
     else:
-        amplitude, phase, vertical_offset = results[0]
+        amplitude, phase, normalized_offset = results[0]
         easting_offset = amplitude * np.sin(phase)
         northing_offset = amplitude * np.cos(phase)
 
-    return float(easting_offset), float(northing_offset), float(vertical_offset)
+    return float(easting_offset), float(northing_offset), float(normalized_offset)
 
 
-def _nuth_kaab_aux_vars_grad(
-    elev: NDArrayf,
-) -> tuple[NDArrayf, NDArrayf]:
-    """
-    Derive map-consistent gradients (gradx, grady) expected by NK, scaled based on DEM resolution.
-
-    :return: gradx, grady (unitless, dz/dx and dz/dy in map units).
-    """
-    if np.ma.isMaskedArray(elev):
-        dem_arr = elev.filled(np.nan)
-    else:
-        dem_arr = elev
-
-    # Gradient in raster axis order (row=y, col=x)
-    gradient_y, gradient_x = np.gradient(dem_arr)
-
-    return gradient_x, gradient_y
-
-
-def _nuth_kaab_iteration_step(
-    coords_offsets: tuple[float, float, float],
-    sub_rst: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+def _nuth_kaab_interpolate(
+    sub_rst: RasterBase,
     sub_pts: NDArrayf,
-    sub_coords: tuple[NDArrayf, NDArrayf],
-    sub_gradx: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
-    sub_grady: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
-    res: tuple[float, float],
-    params_fit_bin: InFitOrBinDict,
-) -> tuple[tuple[float, float, float], dict[str, float], None]:
-    """
-    Iteration step of Nuth and Kääb (2011), using LZD-like preprocessing.
+    coordinates: tuple[NDArrayf, NDArrayf],
+    sub_gradx: RasterBase,
+    sub_grady: RasterBase,
+    min_slope: float,
+    mp_config: MultiprocConfig | None,
+) -> tuple[NDArrayf, NDArrayf, NDArrayf]:
+    """Interpolate raster elevations and gradients, excluding invalid values and slopes below the threshold."""
 
-    Returns newly incremented coordinate offsets, and new statistic to compare to tolerance to reach.
-
-    :param coords_offsets: Coordinate offsets at this iteration (easting, northing, vertical) in georeferenced unit.
-    :param sub_rst: Interpolator for 2D array of reference DEM (continuous grid).
-    :param sub_pts: Subsampled elevation for the other elevation data (DEM or point) as 1D array.
-    :param sub_coords: Subsampled X/Y coordinates arrays for point or second DEM input as 1D arrays.
-    :param sub_gradx: Interpolator for 2D gradient in X.
-    :param sub_grady: Interpolator for 2D gradient in Y.
-    :param res: Resolution of X/Y grid.
-    :param params_fit_bin: Dictionary of fitting and binning parameters.
-
-    :return X/Y/Z offsets, Horizontal tolerance.
-    """
-
-    # Apply horizontal offsets to subsampled coordinates (same convention as LZD: interpolators take (y, x))
-    coords_y = sub_coords[1] - coords_offsets[1]
-    coords_x = sub_coords[0] - coords_offsets[0]
+    coords_x, coords_y = coordinates
 
     # Calculate the elevation difference with offsets at the same XY locations
     # (continuous grid minus other elevations)
-    dh_step = sub_rst((coords_y, coords_x)) - sub_pts
-
-    # Using the median/mean vertical offset is necessary (the Z component of the NK algorithm is not well defined)
-    vshift = float(np.nanmedian(dh_step))
-    dh_step -= vshift
+    dh_step = (
+        np.asarray(sub_rst.interp_at_points((coords_x, coords_y), method="linear", as_array=True, mp_config=mp_config))
+        - sub_pts
+    )
 
     # Evaluate auxiliary variables at the same shifted XY locations
-    gradx = sub_gradx((coords_y, coords_x))
-    grady = sub_grady((coords_y, coords_x))
+    gradx = np.asarray(
+        sub_gradx.interp_at_points((coords_x, coords_y), method="linear", as_array=True, mp_config=mp_config)
+    )
+    grady = np.asarray(
+        sub_grady.interp_at_points((coords_x, coords_y), method="linear", as_array=True, mp_config=mp_config)
+    )
 
     # Original NK slope/aspect from raw pixel gradients
     slope_tan = np.sqrt(gradx**2 + grady**2)
@@ -1798,10 +3141,16 @@ def _nuth_kaab_iteration_step(
     aspect += np.pi
 
     # Interpolating with an offset creates new invalid values, so the subsample is reduced
-    slope_min = 0.0001  # Prevent tiny slope blow-up numerically
+    # Check the slope in map units after interpolating the pixel gradients
+    inverse = ~sub_rst.transform
+    slope_x = inverse.a * gradx + inverse.d * grady
+    slope_y = inverse.b * gradx + inverse.e * grady
+    map_slope_tan = np.sqrt(slope_x**2 + slope_y**2)
     with np.errstate(divide="ignore", invalid="ignore"):
         y = dh_step / slope_tan
-    mask_valid = np.isfinite(y) & np.isfinite(aspect) & np.isfinite(slope_tan) & (slope_tan > slope_min)
+    mask_valid = (
+        np.isfinite(y) & np.isfinite(aspect) & np.isfinite(slope_tan) & (map_slope_tan > np.tan(np.deg2rad(min_slope)))
+    )
 
     if np.count_nonzero(mask_valid) == 0:
         raise ValueError(
@@ -1812,6 +3161,54 @@ def _nuth_kaab_iteration_step(
     dh_step = dh_step[mask_valid]
     slope_tan = slope_tan[mask_valid]
     aspect = aspect[mask_valid]
+
+    return dh_step, slope_tan, aspect
+
+
+def _nuth_kaab_iteration_step(
+    coords_offsets: tuple[float, float, float],
+    sub_rst: RasterBase,
+    sub_pts: NDArrayf,
+    sub_coords: tuple[NDArrayf, NDArrayf],
+    sub_gradx: RasterBase,
+    sub_grady: RasterBase,
+    res: tuple[float, float],
+    params_fit_bin: InFitOrBinDict,
+    min_slope: float,
+    vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]],
+    mp_config: MultiprocConfig | None = None,
+) -> tuple[tuple[float, float, float], dict[str, float], None]:
+    """
+    Iteration step of Nuth and Kääb (2011), using LZD-like preprocessing.
+
+    Returns newly incremented coordinate offsets, and new statistic to compare to tolerance to reach.
+
+    :param coords_offsets: Coordinate offsets at this iteration (easting, northing, vertical) in georeferenced unit.
+    :param sub_rst: Reference DEM raster sampled during each iteration.
+    :param sub_pts: Subsampled elevation for the other elevation data (DEM or point) as 1D array.
+    :param sub_coords: Subsampled X/Y coordinates arrays for point or second DEM input as 1D arrays.
+    :param sub_gradx: Raster of the gradient in X.
+    :param sub_grady: Raster of the gradient in Y.
+    :param res: Resolution of X/Y grid.
+    :param params_fit_bin: Dictionary of fitting and binning parameters.
+    :param min_slope: Minimum terrain slope in degrees.
+    :param vshift_reduc_func: Function estimating the vertical offset from valid elevation differences.
+    :param mp_config: Worker settings for interpolating the raster values.
+
+    :return X/Y/Z offsets, Horizontal tolerance.
+    """
+
+    # Apply horizontal offsets to subsampled coordinates
+    coords_y = sub_coords[1] - coords_offsets[1]
+    coords_x = sub_coords[0] - coords_offsets[0]
+
+    dh_step, slope_tan, aspect = _nuth_kaab_interpolate(
+        sub_rst, sub_pts, (coords_x, coords_y), sub_gradx, sub_grady, min_slope, mp_config
+    )
+
+    # Estimate an absolute Z offset because the fitted sinusoid constant is not a vertical translation
+    vshift = float(vshift_reduc_func(dh_step))
+    dh_step -= vshift
 
     # Estimate the horizontal shift from the implementation by Nuth and Kääb (2011)
     easting_offset, northing_offset, _ = _nuth_kaab_bin_fit(
@@ -1837,19 +3234,16 @@ def _nuth_kaab_iteration_step(
 
 
 def nuth_kaab(
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb,
-    ref_transform: rio.transform.Affine,
-    tba_transform: rio.transform.Affine,
-    crs: rio.crs.CRS,
-    area_or_point: Literal["Area", "Point"] | None,
+    ref_elev: RasterBase | PointCloudBase,
+    tba_elev: RasterBase | PointCloudBase,
+    inlier_mask: Any,
     tolerance_translation: float | None,
     max_iterations: int,
     params_fit_or_bin: InFitOrBinDict,
     params_random: InRandomDict,
-    z_name: str | None,
     weights: NDArrayf | None = None,
+    min_slope: float = 1.0,
+    vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]] = np.median,
     **kwargs: Any,
 ) -> tuple[tuple[float, float, float], int, OutIterativeDict]:
     """
@@ -1858,33 +3252,44 @@ def nuth_kaab(
     This function subsamples input data, then runs Nuth and Kääb iteration steps to optimize its fit function until
     convergence or a maximum of iterations is reached.
 
+    :param min_slope: Minimum terrain slope in degrees, checked before sampling and after interpolation.
+    :param vshift_reduc_func: Function used to center each iteration and estimate Z at the final X/Y alignment.
+
     :return: Final estimated offset: east, north, vertical (in georeferenced units).
     """
+
+    mp_config = kwargs.pop("mp_config", None)
+    temporary_files = kwargs.pop("temporary_files", None)
+    ref_elev, tba_elev = _prepare_affine_inputs(ref_elev, tba_elev, mp_config, temporary_files)
+
     logging.info("Running Nuth and Kääb (2011) coregistration")
 
-    transform = ref_transform if ref_transform is not None else tba_transform
-
     # Check that DEM CRS is projected, otherwise slope is not correctly calculated
-    if not crs.is_projected:
+    if not ref_elev.crs.is_projected:
         raise NotImplementedError(
-            f"NuthKaab coregistration only works with a projected CRS, current CRS is {crs}. Reproject "
+            f"NuthKaab coregistration only works with a projected CRS, current CRS is {ref_elev.crs}. Reproject "
             f"your DEMs with DEM.reproject() in a local projected CRS such as UTM, that you can find "
             f"using DEM.get_metric_crs()."
         )
 
+    # Calculate gradients before selecting valid raster or point elevations
+    grid_dem = ref_elev if _is_raster(ref_elev) else tba_elev
+    if not _is_raster(grid_dem):
+        raise TypeError("NuthKaab requires a DEM raster as the continuous grid to derive slope/aspect.")
+    gradients = _dem_geometry(grid_dem, False, mp_config, temporary_files, pixel_gradients=True, min_slope=min_slope)
+    sub_gradx, sub_grady = gradients["gradient_x"], gradients["gradient_y"]
+
     # First, enforce identical XY sampling
-    sub_ref, sub_tba, _ = _subsample_rst_pts(
+    sub_ref, sub_tba, _ = _sample_coreg_inputs(
         subsample=params_random["subsample"],
         random_state=params_random["random_state"],
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
-        ref_transform=ref_transform,
-        tba_transform=tba_transform,
         sampling_strategy="same_xy",
-        crs=crs,
-        area_or_point=area_or_point,
-        z_name=z_name,
+        aux_vars=gradients,
+        aux_tied_to="ref" if _is_raster(ref_elev) else "tba",
+        mp_config=mp_config,
     )
 
     # Simplify output given that the X/Y coordinates are the same
@@ -1893,40 +3298,31 @@ def nuth_kaab(
     sub_tba = sub_tba[2, :]
 
     # Define the continuous grid used for dh and for deriving slope/aspect (same logic as LZD)
-    if ref_transform is not None:
-        if not isinstance(ref_elev, np.ndarray):
-            raise TypeError("NuthKaab requires a DEM raster as the continuous grid to derive slope/aspect.")
+    sub_rst = _prepare_interpolation_raster(grid_dem)
+    if _is_raster(ref_elev):
         sub_pts = sub_tba
-        sub_rst = _reproject_horizontal_shift_samecrs(
-            ref_elev, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
-        )
-        grid_dem = ref_elev
         ref = "rst"
     else:
-        if not isinstance(tba_elev, np.ndarray):
-            raise TypeError("NuthKaab requires a DEM raster as the continuous grid to derive slope/aspect.")
         sub_pts = sub_ref
-        sub_rst = _reproject_horizontal_shift_samecrs(
-            tba_elev, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
-        )
-        grid_dem = tba_elev
         ref = "pts"
-
-    # Derive auxiliary variables on the continuous DEM grid (once), then build 2D interpolators (once)
-    gradx, grady = _nuth_kaab_aux_vars_grad(elev=grid_dem)
-    sub_gradx = _reproject_horizontal_shift_samecrs(
-        gradx, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
-    )
-    sub_grady = _reproject_horizontal_shift_samecrs(
-        grady, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
-    )
 
     # Initialise east, north and vertical offset variables (these will be incremented up and down)
     initial_offset = (0.0, 0.0, 0.0)
-    res = _res(transform=transform)
+    res = grid_dem.res
 
     # Iterate through method of Nuth and Kääb (2011) until tolerance or max number of iterations is reached
-    constant_inputs = (sub_rst, sub_pts, sub_coords, sub_gradx, sub_grady, res, params_fit_or_bin)
+    constant_inputs = (
+        sub_rst,
+        sub_pts,
+        sub_coords,
+        sub_gradx,
+        sub_grady,
+        res,
+        params_fit_or_bin,
+        min_slope,
+        vshift_reduc_func,
+        mp_config,
+    )
     final_offsets, _, output_iterative, _ = _iterate_method(
         method=_nuth_kaab_iteration_step,
         iterating_input=initial_offset,
@@ -1935,6 +3331,12 @@ def nuth_kaab(
         max_iterations=max_iterations,
     )
 
+    # Re-estimate Z at the final X/Y alignment without another horizontal fit
+    final_coordinates = (sub_coords[0] - final_offsets[0], sub_coords[1] - final_offsets[1])
+    final_dh, _, _ = _nuth_kaab_interpolate(
+        sub_rst, sub_pts, final_coordinates, sub_gradx, sub_grady, min_slope, mp_config
+    )
+    final_offsets = (final_offsets[0], final_offsets[1], float(vshift_reduc_func(final_dh)))
     subsample_final = len(sub_pts)
 
     # Change sign of output if reference was the point dataset
@@ -1949,35 +3351,21 @@ def nuth_kaab(
 ####################
 
 
-def _dh_minimize_fit_func(
-    coords_offsets: tuple[float, float],
-    dh_interpolator: Callable[[float, float], NDArrayf],
-) -> NDArrayf:
-    """
-    Fitting function of dh minimization method, returns the NMAD of elevation differences.
-
-    :param coords_offsets: Coordinate offsets at this iteration (easting, northing) in georeferenced unit.
-    :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
-        horizontal offset (see _preprocess_pts_rst_subsample_interpolator).
-    :returns: NMAD of residuals.
-    """
-
-    # Calculate the elevation difference
-    dh = dh_interpolator(coords_offsets[0], coords_offsets[1]).flatten()
-
-    return dh
-
-
 def _dh_minimize_fit(
-    dh_interpolator: Callable[[float, float], NDArrayf],
+    grid_dem: RasterBase,
+    points: NDArrayf,
+    grid_is_reference: bool,
     params_fit_or_bin: InFitOrBinDict,
+    mp_config: MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> tuple[float, float, float]:
     """
     Optimize the statistical dispersion of the elevation differences residuals.
 
-    :param dh_interpolator: Interpolator returning elevation differences at the subsampled points for a certain
-        horizontal offset (see _preprocess_pts_rst_subsample_interpolator).
+    :param grid_dem: Raster interpolated at each candidate horizontal offset.
+    :param points: Sampled point X/Y/Z coordinates as a 3-by-N array.
+    :param grid_is_reference: Whether the raster supplies the reference elevations.
+    :param mp_config: Worker settings for interpolating the raster at the shifted coordinates.
     :param params_fit_or_bin: Parameters for fitting or binning.
 
     :return: Optimized offsets (easing, northing, vertical) in georeferenced unit.
@@ -1987,8 +3375,18 @@ def _dh_minimize_fit(
     fit_minimizer = params_fit_or_bin["fit_minimizer"]
     assert callable(fit_minimizer)
 
+    def difference(shift_x: float, shift_y: float) -> NDArrayf:
+        """Calculate elevation differences at the shifted point coordinates."""
+
+        # Reverse coordinate offsets and residual signs when sampling the reference raster
+        direction = -1 if grid_is_reference else 1
+        coordinates = (points[0] + direction * shift_x, points[1] + direction * shift_y)
+        values = grid_dem.interp_at_points(coordinates, method="linear", as_array=True, mp_config=mp_config)
+        return direction * (points[2] - np.asarray(values))
+
     def fit_func(coords_offsets: tuple[float, float]) -> np.floating[Any]:
-        return loss_func(_dh_minimize_fit_func(coords_offsets=coords_offsets, dh_interpolator=dh_interpolator))
+        residuals = difference(coords_offsets[0], coords_offsets[1]).flatten()
+        return loss_func(residuals)
 
     # Initial offset near zero
     init_offsets = (0, 0)
@@ -2006,22 +3404,17 @@ def _dh_minimize_fit(
     # Get final offsets with the right sign direction
     offset_east = -results.x[0]
     offset_north = -results.x[1]
-    offset_vertical = float(np.nanmedian(dh_interpolator(-offset_east, -offset_north)))
+    offset_vertical = float(np.nanmedian(difference(-offset_east, -offset_north)))
 
     return offset_east, offset_north, offset_vertical
 
 
 def dh_minimize(
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb,
-    ref_transform: rio.transform.Affine,
-    tba_transform: rio.transform.Affine,
-    crs: rio.crs.CRS,
-    area_or_point: Literal["Area", "Point"] | None,
+    ref_elev: RasterBase | PointCloudBase,
+    tba_elev: RasterBase | PointCloudBase,
+    inlier_mask: Any,
     params_random: InRandomDict,
     params_fit_or_bin: InFitOrBinDict,
-    z_name: str | None,
     weights: NDArrayf | None = None,
     **kwargs: Any,
 ) -> tuple[tuple[float, float, float], int]:
@@ -2034,22 +3427,27 @@ def dh_minimize(
 
     logging.info("Running dh minimization coregistration.")
 
-    # Perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
-    dh_interpolator, _, subsample_final = _subsample_rst_pts_interpolator(
-        params_random=params_random,
-        ref_elev=ref_elev,
-        tba_elev=tba_elev,
-        inlier_mask=inlier_mask,
-        ref_transform=ref_transform,
-        tba_transform=tba_transform,
-        crs=crs,
-        area_or_point=area_or_point,
-        z_name=z_name,
+    mp_config = kwargs.pop("mp_config", None)
+    temporary_files = kwargs.pop("temporary_files", None)
+    ref_elev, tba_elev = _prepare_affine_inputs(ref_elev, tba_elev, mp_config, temporary_files)
+
+    # Perform preprocessing: subsampling inputs
+    reference, aligned, _ = _sample_coreg_inputs(
+        ref_elev,
+        tba_elev,
+        inlier_mask,
+        subsample=params_random["subsample"],
+        random_state=params_random["random_state"],
+        mp_config=mp_config,
     )
+    grid_is_reference = not _is_raster(tba_elev)
+    grid_dem = _prepare_interpolation_raster(ref_elev if grid_is_reference else tba_elev)
+    points = aligned if grid_is_reference else reference
 
     # Perform fit
     # TODO: To match original implementation, need to add back weight support for point data
-    final_offsets = _dh_minimize_fit(dh_interpolator=dh_interpolator, params_fit_or_bin=params_fit_or_bin)
+    final_offsets = _dh_minimize_fit(grid_dem, points, grid_is_reference, params_fit_or_bin, mp_config=mp_config)
+    subsample_final = reference.shape[1]
 
     return final_offsets, subsample_final
 
@@ -2060,16 +3458,11 @@ def dh_minimize(
 
 
 def vertical_shift(
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb,
-    ref_transform: rio.transform.Affine,
-    tba_transform: rio.transform.Affine,
-    crs: rio.crs.CRS,
-    area_or_point: Literal["Area", "Point"] | None,
+    ref_elev: RasterBase | PointCloudBase,
+    tba_elev: RasterBase | PointCloudBase,
+    inlier_mask: Any,
     params_random: InRandomDict,
     vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]],
-    z_name: str | None,
     weights: NDArrayf | None = None,
     **kwargs: Any,
 ) -> tuple[float, int]:
@@ -2080,19 +3473,15 @@ def vertical_shift(
     logging.info("Running vertical shift coregistration")
 
     # Pre-process point-raster inputs to the same subsampled points
-    sub_ref, sub_tba, _ = _subsample_rst_pts(
+    sub_ref, sub_tba, _ = _sample_coreg_inputs(
+        mp_config=kwargs.get("mp_config"),
         subsample=params_random["subsample"],
         random_state=params_random["random_state"],
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
-        ref_transform=ref_transform,
-        tba_transform=tba_transform,
         # Enforce identical X/Y samples so the elevation differences describe the same locations
         sampling_strategy="same_xy",
-        crs=crs,
-        area_or_point=area_or_point,
-        z_name=z_name,
     )
     # Get elevation difference
     dh = sub_ref[2] - sub_tba[2]
@@ -2752,21 +4141,16 @@ def _icp_iteration_step(
 
 
 def icp(
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb,
-    ref_transform: rio.transform.Affine,
-    tba_transform: rio.transform.Affine,
-    crs: rio.CRS,
-    area_or_point: Literal["Area", "Point"] | None,
-    z_name: str | None,
+    ref_elev: RasterBase | PointCloudBase,
+    tba_elev: RasterBase | PointCloudBase,
+    inlier_mask: Any,
     max_iterations: int,
     tolerance_translation: float | None,
     tolerance_rotation: float | None,
     params_random: InRandomDict,
     params_fit_or_bin: InFitOrBinDict,
     method: Literal["point-to-point", "point-to-plane"] = "point-to-plane",
-    sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
+    sampling_strategy: Literal["independent", "same_xy", "nearest_xy"] = "nearest_xy",
     picky: bool = False,
     linearized: bool = False,
     only_translation: bool = False,
@@ -2783,6 +4167,10 @@ def icp(
     gls_neighbors: int | None = None,
     gls_rank: int | None = None,
     tls_method: Literal["spatial", "independent"] | None = None,
+    mp_config: MultiprocConfig | None = None,
+    temporary_files: ExitStack | None = None,
+    *,
+    iterative_sampling: bool = False,
 ) -> tuple[NDArrayf, tuple[float, float, float], int, OutIterativeDict, NDArrayf | None]:
     """
     Main function for Iterative Closest Point coregistration.
@@ -2799,6 +4187,14 @@ def icp(
     :return: Affine transform matrix, centroid, sample size, iteration metadata and optional covariance.
     """
 
+    # The "same_xy" sampling requires a raster for interpolation
+    if sampling_strategy == "same_xy" and not (_is_raster(ref_elev) or _is_raster(tba_elev)):
+        raise ValueError("same_xy requires at least one raster. Use nearest_xy or independent for two point clouds.")
+
+    if mp_config is not None:
+        assert temporary_files is not None
+    ref_elev, tba_elev = _prepare_affine_inputs(ref_elev, tba_elev, mp_config, temporary_files)
+
     models, predictors = _coreg_error_inputs(error_structure, error_predictors)
     legacy_errors = any(value is not None for value in (sig_ref, corr_ref, sig_tba, corr_tba))
     tls_method = _check_gls_tls_options(
@@ -2808,22 +4204,21 @@ def icp(
     if has_errors:
         if method != "point-to-plane" or not linearized or dict(params_fit_or_bin).get("fit_loss_func") != "linear":
             raise NotImplementedError("Analytical ICP requires linearized point-to-plane fitting with a linear loss.")
-        if (models and params_fit_or_bin.get("trim_residuals", False)) or sampling_strategy == "iterative_same_xy":
+        if (models and params_fit_or_bin.get("trim_residuals", False)) or iterative_sampling:
             raise NotImplementedError("Analytical ICP requires a fixed sample without residual trimming.")
         if force_opti == "ols":
             raise ValueError("error_structure cannot be combined with force_opti='ols'.")
         if any(
-            transform.b != 0 or transform.d != 0
-            for transform in (ref_transform, tba_transform)
-            if transform is not None
+            elevation.transform.b != 0 or elevation.transform.d != 0
+            for elevation in (ref_elev, tba_elev)
+            if _is_raster(elevation)
         ):
             raise NotImplementedError("Analytical ICP requires north-up raster grids.")
 
     # Derive centroid and scale ahead of any potential iterative sampling loop, and scale translation tolerance
     centroid, scale = _get_centroid_scale(
-        ref_elev=ref_elev if isinstance(ref_elev, np.ndarray) else tba_elev,
-        transform=ref_transform if ref_transform is not None else tba_transform,
-        z_name=z_name,
+        ref_elev=ref_elev if _is_raster(ref_elev) else tba_elev,
+        mp_config=mp_config,
     )
     if not standardize:
         scale = 1
@@ -2839,24 +4234,22 @@ def icp(
     # and we wanted a fixed valid data size for subsampling)
     invert_output = False
     if method == "point-to-plane":
-
-        # Fixed reference must be an array to derive normals
-        if isinstance(ref_elev, np.ndarray):
+        # Fixed reference must be a raster to derive normals
+        if _is_raster(ref_elev):
             fixed_elev = "ref"
-        elif isinstance(tba_elev, np.ndarray):
+        elif _is_raster(tba_elev):
             fixed_elev = "tba"
         else:
-            raise TypeError("point-to-plane ICP requires one input to be a DEM array to derive normals.")
+            raise TypeError("point-to-plane ICP requires one input to be a DEM raster to derive normals.")
 
         # The normals must always be derived relative to a "fixed reference" (we don't rotate them during iterations),
-        # so internally we'll need to invert inputs if 'tba' is the array, then invert the matrix at the end
+        # so internally we'll need to invert inputs if 'tba' is the raster, then invert the matrix at the end
         if fixed_elev == "tba":
             invert_output = True
             ref_elev, tba_elev = tba_elev, ref_elev
-            ref_transform, tba_transform = tba_transform, ref_transform
 
-        # Now ref is always the array
-        aux_vars = _dem_normals_curvature(ref_elev, ref_transform)
+        # Now ref is always the raster
+        aux_vars = _dem_geometry(ref_elev, True, mp_config, temporary_files)
 
     else:
         aux_vars = None
@@ -2868,52 +4261,48 @@ def icp(
         sig_ref, sig_tba, corr_ref, corr_tba = sig_tba, sig_ref, corr_tba, corr_ref
     auxiliary: dict[str, Any] = dict(aux_vars or {})
     owners = dict.fromkeys(auxiliary, "ref")
+    if aux_vars is not None and sampling_strategy != "same_xy":
+        # Exclude moving points where reference normals are invalid
+        auxiliary["normal_validity"] = aux_vars["nx"]
+        owners["normal_validity"] = "tba"
     for side, sigma in (("ref", sig_ref), ("tba", sig_tba)):
         if sigma is not None:
             auxiliary[f"sigma_{side}"] = sigma
             owners[f"sigma_{side}"] = side
     for side, values in predictors.items():
         for name, value in values.items():
-            if isinstance(value, (gu.Raster, gu.PointCloud)) or np.ndim(value):
+            if _is_raster(value) or _is_pointcloud(value) or np.ndim(value):
                 auxiliary[f"error_{side}_{name}"] = value
                 owners[f"error_{side}_{name}"] = side
-    pixel_size = _res(ref_transform) if ref_transform is not None else 1.0
+    pixel_size = ref_elev.res if _is_raster(ref_elev) else 1.0
 
     # If we iterate the sampling, we re-define maximum iterations to be in the outside loop,
     # running a single iteration with every sample
-    if sampling_strategy == "iterative_same_xy":
+    if iterative_sampling:
         in_loop_max_it = 1
         out_loop_max_it = max_iterations
-        in_loop_sampling_strategy = "same_xy"
     # Otherwise, we run a single iteration of outside loop, as if there was no loop
     else:
         in_loop_max_it = max_iterations
         out_loop_max_it = 1
-        in_loop_sampling_strategy = sampling_strategy
 
     # Initialize values for iterative sampling loop (tba_elev updates out_step_matrix that updates tba_elev)
     list_iteration_stats = []
     final_matrix = np.eye(4)
-    tba_elev_orig = tba_elev.copy()
-    tba_transform_orig = tba_transform
+    original = tba_elev.copy()
+    tba_elev_orig = _get_raster_interface(original) if _is_raster(tba_elev) else _get_pointcloud_interface(original)
     for i in range(out_loop_max_it):
-
-        # Pre-process point-raster inputs to the same subsampled points
-        ref_epc, tba_epc, sub_aux = _subsample_rst_pts(
+        # Pre-process raster or point cloud inputs to subsampled points
+        ref_epc, tba_epc, sub_aux = _sample_coreg_inputs(
+            mp_config=mp_config,
             subsample=params_random["subsample"],
             random_state=params_random["random_state"],
             ref_elev=ref_elev,
             tba_elev=tba_elev,  # For iterative sampling, tba_elev is updated below
             inlier_mask=inlier_mask,
-            ref_transform=ref_transform,
-            tba_transform=tba_transform,  # For iterative sampling, tba_transform can be updated below
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
-            sampling_strategy=in_loop_sampling_strategy,
+            sampling_strategy=sampling_strategy,
             aux_vars=auxiliary or None,
             aux_tied_to=owners,
-            preserve_coordinates=True,
         )
 
         # Re-stack normals if defined
@@ -2989,15 +4378,16 @@ def icp(
         final_matrix = out_step_matrix @ final_matrix
 
         # If we apply iterative sampling, we need to do additional things each loop
-        if sampling_strategy == "iterative_same_xy":
+        if iterative_sampling:
             # Update the to-be-aligned elevation before subsampling so each iteration uses the transformed X/Y positions
-            if isinstance(tba_elev, np.ndarray):
-                tba_elev, tba_transform = _apply_matrix_rst(
-                    tba_elev_orig, transform=tba_transform_orig, centroid=centroid, matrix=final_matrix
-                )
-            else:
-                assert z_name is not None
-                tba_elev = _apply_matrix_pts(tba_elev_orig, matrix=final_matrix, centroid=centroid, z_name=z_name)
+            assert temporary_files is not None
+            config = temporary_files.enter_context(mp_config.temporary()) if mp_config is not None else None
+            if config is not None and not _is_raster(tba_elev_orig):
+                # Use point row counts and a point file format
+                config.chunks = int(np.prod(config.chunks))
+                config.driver = "GPKG"
+            moved = apply_matrix(tba_elev_orig, final_matrix, centroid=centroid, resample=False, mp_config=config)
+            tba_elev = _get_raster_interface(moved) if _is_raster(tba_elev_orig) else _get_pointcloud_interface(moved)
             # We update the iterative output with the outside loop iteration number
             it_stats = output_iterative["iteration_stats"]
             it_stats["iteration"] = i + 1
@@ -3009,7 +4399,7 @@ def icp(
                 break
 
     # Over-write iterative output for iterative sampling
-    if sampling_strategy == "iterative_same_xy":
+    if iterative_sampling:
         iteration_stats = pd.concat(list_iteration_stats)
         output_iterative = OutIterativeDict(
             last_iteration=i + 1, iteration_stats=iteration_stats, converged=output_iterative["converged"]
@@ -3183,9 +4573,6 @@ def _cpd_precompute(
     # Precompute dot(x, n)
     X_normal = np.sum(X * ref_normals, axis=1)  # (N,)
 
-    # Precompute the squared weighted target coordinates used by the E-step
-    X_X2 = np.sum((X * X) * w[None, :], axis=1)  # (N,)
-
     # pi(m) base (before sigma2-dependent scaling and outlier reweighting)
     f_X_base = np.ones(N, dtype=float) / N
     vol = np.sqrt(a + 1.0)
@@ -3209,7 +4596,6 @@ def _cpd_precompute(
         "x_invSigma": x_invSigma,
         "x_invSigma_x": x_invSigma_x,
         "X_normal": X_normal,
-        "X_X2": X_X2,
         "f_X_scaled": f_X_scaled,  # (N,)
         "confidence_Y": confidence_Y,
         "lsg_lambda": float(lsg_lambda),
@@ -3371,7 +4757,6 @@ def _cpd_mstep_classic_fit_minimizer(
 
     # With rotation (and maybe scale)
     if not only_translation:
-
         if scale is True:
 
             def fit_func(params: NDArrayf) -> NDArrayf:
@@ -3409,7 +4794,6 @@ def _cpd_mstep_classic_fit_minimizer(
 
     # Without rotation: translate only (and maybe scale)
     else:
-
         if scale is True:
 
             def fit_func(params: NDArrayf) -> NDArrayf:
@@ -3511,7 +4895,6 @@ def _cpd_mstep_classic_fit_minimizer_fast(
     w_sqrt = np.sqrt(P1_safe)  # (M,)
 
     if not only_translation:
-
         if scale is True:
 
             def fit_func(params: NDArrayf) -> NDArrayf:
@@ -3539,7 +4922,6 @@ def _cpd_mstep_classic_fit_minimizer_fast(
             init_offsets = np.zeros(6, dtype=float)
 
     else:
-
         if scale is True:
 
             def fit_func(params: NDArrayf) -> NDArrayf:
@@ -3657,14 +5039,12 @@ def _cpd_estep_lsg(
     normals = cache_lsg["ref_normals"]  # (N,3)
     normal_variance = cache_lsg["normal_variance"]  # (N,)
     X_normal = cache_lsg["X_normal"]  # (N,) = x^T n
-    X_X2 = cache_lsg["X_X2"]  # (N,)
 
     F_matrix = sigma_terms["F_matrix"]  # (N,M)
     C_const = sigma_terms["C_const"]  # scalar
     c_const = sigma_terms["c_const"]  # scalar
 
     gY = np.asarray(TY, dtype=float)  # (M,3)
-    gY2 = np.sum((gY * gY) * w[None, :], axis=1)  # (M,)
 
     N = X.shape[0]
     M = gY.shape[0]
@@ -3677,9 +5057,10 @@ def _cpd_estep_lsg(
         normal_distance = (normals @ gY.T) - X_normal[:, None]
         plane_term = (normal_distance * normal_distance) / normal_variance[:, None]
 
-        # Dense: quad term weighted (N,M)
-        xWy = (X * w[None, :]) @ gY.T
-        quad_term = X_X2[:, None] + gY2[None, :] - 2.0 * xWy
+        # Calculate squared distances directly to avoid cancellation near an exact fit (N,M)
+        weighted_reference = X * np.sqrt(w)
+        weighted_moving = gY * np.sqrt(w)
+        quad_term = scipy.spatial.distance.cdist(weighted_reference, weighted_moving, metric="sqeuclidean")
 
         P = F_matrix * np.exp(c_const * (a[:, None] * plane_term + quad_term))
 
@@ -3701,7 +5082,6 @@ def _cpd_estep_lsg(
         a_nb = a[idx]
         normal_variance_nb = normal_variance[idx]
         X_normal_nb = X_normal[idx]
-        X_X2_nb = X_X2[idx]
         normals_nb = normals[idx]  # (M,k,3)
 
         # Plane term (M,k)
@@ -3709,10 +5089,8 @@ def _cpd_estep_lsg(
         normal_distance = normal_dot_y - X_normal_nb
         plane_term = (normal_distance * normal_distance) / np.clip(normal_variance_nb, 1e-12, None)
 
-        # Quad term (M,k)
-        Xw_nb = X[idx] * w[None, None, :]
-        xWy_nb = np.einsum("mkd,md->mk", Xw_nb, gY)
-        quad_term = X_X2_nb + gY2[:, None] - 2.0 * xWy_nb
+        # The neighbour search already calculates weighted distances without cancellation
+        quad_term = dists**2
 
         # F_nb = F_matrix[n, m] for (m,k) pairs
         cols_m = np.arange(M)[:, None]
@@ -3942,7 +5320,6 @@ def _cpd_fit(
 
     # Classic CPD
     if not lsg:
-
         w = cache["classic"]["w"]
 
         # 1/ Expectation step
@@ -4083,14 +5460,9 @@ def _cpd_iteration_step(
 
 
 def cpd(
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb,
-    ref_transform: rio.transform.Affine,
-    tba_transform: rio.transform.Affine,
-    crs: rio.crs.CRS,
-    area_or_point: Literal["Area", "Point"] | None,
-    z_name: str | None,
+    ref_elev: RasterBase | PointCloudBase,
+    tba_elev: RasterBase | PointCloudBase,
+    inlier_mask: Any,
     weight_cpd: float,
     params_random: InRandomDict,
     params_fit_or_bin: InFitOrBinDict,
@@ -4098,12 +5470,16 @@ def cpd(
     tolerance_q: float | None,
     tolerance_translation: float | None,
     tolerance_rotation: float | None,
-    sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
+    sampling_strategy: Literal["independent", "same_xy", "nearest_xy"] = "nearest_xy",
     anisotropic: Literal["xy_vs_z", "per_axis"] | None = "xy_vs_z",
     estep_knn_k: int | None = 64,
     only_translation: bool = False,
     lsg: bool = False,
     standardize: bool = True,
+    mp_config: MultiprocConfig | None = None,
+    temporary_files: ExitStack | None = None,
+    *,
+    iterative_sampling: bool = False,
 ) -> tuple[NDArrayf, tuple[float, float, float], int, OutIterativeDict]:
     """
     Main function for Coherent Point Drift coregistration including "local surface geometry" (LSG) variant.
@@ -4117,8 +5493,16 @@ def cpd(
     The function assumes we have two DEMs, or DEM and an elevation point cloud, in the same CRS.
     """
 
+    # Common X/Y sampling in ICP and CPD requires a raster for interpolation
+    if sampling_strategy == "same_xy" and not (_is_raster(ref_elev) or _is_raster(tba_elev)):
+        raise ValueError("same_xy requires at least one raster. Use nearest_xy or independent for two point clouds.")
+
+    if mp_config is not None:
+        assert temporary_files is not None
+    ref_elev, tba_elev = _prepare_affine_inputs(ref_elev, tba_elev, mp_config, temporary_files)
+
     # Derive centroid and scale ahead of any potential iterative sampling loop, and scale translation tolerance
-    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, transform=ref_transform, z_name=z_name)
+    centroid, scale = _get_centroid_scale(ref_elev=ref_elev, mp_config=mp_config)
     if not standardize:
         scale = 1
     if tolerance_translation is not None:
@@ -4133,50 +5517,52 @@ def cpd(
     # Derive normals if method is LSG, otherwise not
     invert_output = False
     if lsg:
-        if isinstance(ref_elev, np.ndarray):
+        if _is_raster(ref_elev):
             fixed_elev = "ref"
-        elif isinstance(tba_elev, np.ndarray):
+        elif _is_raster(tba_elev):
             fixed_elev = "tba"
         else:
-            raise TypeError("LSG-CPD requires one input to be a DEM array to derive normals.")
+            raise TypeError("LSG-CPD requires one input to be a DEM raster to derive normals.")
 
         # The normals must always be derived relative to a "fixed reference" (we don't rotate them during iterations),
-        # so internally we'll need to invert inputs if 'tba' is the array, then invert the matrix at the end
+        # so internally we'll need to invert inputs if 'tba' is the raster, then invert the matrix at the end
         if fixed_elev == "tba":
             invert_output = True
             ref_elev, tba_elev = tba_elev, ref_elev
-            ref_transform, tba_transform = tba_transform, ref_transform
 
-        # Now ref is always the array
-        aux_vars = _dem_normals_curvature(ref_elev, ref_transform)
-        aux_tied_to = "ref"
+        # Now ref is always the raster
+        aux_vars = _dem_geometry(ref_elev, True, mp_config, temporary_files)
+        aux_tied_to: str | dict[str, str] = "ref"
+        if sampling_strategy != "same_xy":
+            # Exclude moving points where reference normals are invalid
+            aux_tied_to = dict.fromkeys(aux_vars, "ref")
+            aux_vars["normal_validity"] = aux_vars["nx"]
+            aux_tied_to["normal_validity"] = "tba"
     else:
         aux_vars = None
         aux_tied_to = "ref"
 
     # If we iterate the sampling, we re-define maximum iterations to be in the outside loop,
     # running a single CPD iteration with every sample
-    if sampling_strategy == "iterative_same_xy":
+    if iterative_sampling:
         in_loop_max_it = 1
         out_loop_max_it = max_iterations
-        in_loop_sampling_strategy = "same_xy"
     # Otherwise, we run a single iteration of outside loop, as if there was no loop
     else:
         in_loop_max_it = max_iterations
         out_loop_max_it = 1
-        in_loop_sampling_strategy = sampling_strategy
 
     # Initialize values for iterative sampling loop (tba_elev updates out_step_matrix that updates tba_elev)
     list_iteration_stats = []
     final_matrix = np.eye(4)
-    tba_elev_orig = tba_elev.copy()
-    tba_transform_orig = tba_transform
+    original = tba_elev.copy()
+    tba_elev_orig = _get_raster_interface(original) if _is_raster(tba_elev) else _get_pointcloud_interface(original)
     new_q = init_q
     new_sigma2 = init_sigma2
     for i in range(out_loop_max_it):
-
-        # Pre-process point-raster inputs to the same subsampled points
-        ref_epc, tba_epc, sub_aux = _subsample_rst_pts(
+        # Pre-process raster or point cloud inputs to subsampled points
+        ref_epc, tba_epc, sub_aux = _sample_coreg_inputs(
+            mp_config=mp_config,
             subsample=params_random["subsample"],
             random_state=params_random["random_state"],
             ref_elev=ref_elev,
@@ -4184,13 +5570,7 @@ def cpd(
             aux_vars=aux_vars,
             aux_tied_to=aux_tied_to,
             inlier_mask=inlier_mask,
-            ref_transform=ref_transform,
-            tba_transform=tba_transform,  # For iterative sampling, tba_transform can be updated below
-            crs=crs,
-            area_or_point=area_or_point,
-            sampling_strategy=in_loop_sampling_strategy,
-            z_name=z_name,
-            preserve_coordinates=True,
+            sampling_strategy=sampling_strategy,
         )
 
         # Remove centroid and standardize to facilitate numerical convergence
@@ -4248,15 +5628,16 @@ def cpd(
         final_matrix = out_step_matrix @ final_matrix
 
         # If we apply iterative sampling, we need to do additional things each loop
-        if sampling_strategy == "iterative_same_xy":
+        if iterative_sampling:
             # Update the to-be-aligned elevation before subsampling so each iteration uses the transformed X/Y positions
-            if isinstance(tba_elev, np.ndarray):
-                tba_elev, tba_transform = _apply_matrix_rst(
-                    tba_elev_orig, transform=tba_transform_orig, centroid=centroid, matrix=final_matrix
-                )
-            else:
-                assert z_name is not None
-                tba_elev = _apply_matrix_pts(tba_elev_orig, matrix=final_matrix, centroid=centroid, z_name=z_name)
+            assert temporary_files is not None
+            config = temporary_files.enter_context(mp_config.temporary()) if mp_config is not None else None
+            if config is not None and not _is_raster(tba_elev_orig):
+                # Use point row counts and a point file format
+                config.chunks = int(np.prod(config.chunks))
+                config.driver = "GPKG"
+            moved = apply_matrix(tba_elev_orig, final_matrix, centroid=centroid, resample=False, mp_config=config)
+            tba_elev = _get_raster_interface(moved) if _is_raster(tba_elev_orig) else _get_pointcloud_interface(moved)
             # We update the iterative output with the outside loop iteration number
             it_stats = output_iterative["iteration_stats"]
             it_stats["iteration"] = i + 1
@@ -4268,7 +5649,7 @@ def cpd(
                 break
 
     # Over-write iterative output for iterative sampling
-    if sampling_strategy == "iterative_same_xy":
+    if iterative_sampling:
         iteration_stats = pd.concat(list_iteration_stats)
         output_iterative = OutIterativeDict(
             last_iteration=i + 1, iteration_stats=iteration_stats, converged=output_iterative["converged"]
@@ -4318,8 +5699,7 @@ def _check_lzd_rank(
 
 
 def _lzd_aux_vars(
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
+    array: NDArrayf,
     transform: affine.Affine,
 ) -> tuple[NDArrayf, NDArrayf]:
     """
@@ -4328,32 +5708,9 @@ def _lzd_aux_vars(
     :return: Gradient in X/Y, scaled based on the DEM resolution.
     """
 
-    # If inputs are both point clouds, raise an error
-    if isinstance(ref_elev, gpd.GeoDataFrame) and isinstance(tba_elev, gpd.GeoDataFrame):
-
-        raise TypeError(
-            "The LZD coregistration does not support two point clouds, one elevation "
-            "dataset in the pair must be a DEM."
-        )
-
-    # If inputs are both rasters, derive terrain attributes from ref and get 2D dh interpolator
-    elif isinstance(ref_elev, np.ndarray) and isinstance(tba_elev, np.ndarray):
-
-        # Derive slope and aspect from the reference as default
-        ref_arr = np.asarray(np.ma.filled(ref_elev, np.nan))
-        gradient_y, gradient_x = np.gradient(ref_arr)
-
-    # If inputs are one raster and one point cloud, derive terrain attribute from raster and get 1D dh interpolator
-    else:
-
-        if isinstance(ref_elev, gpd.GeoDataFrame):
-            rst_elev = tba_elev
-        else:
-            rst_elev = ref_elev
-        assert isinstance(rst_elev, np.ndarray)
-        rst_arr = np.asarray(np.ma.filled(rst_elev, np.nan))
-        # Derive slope and aspect from the raster dataset
-        gradient_y, gradient_x = np.gradient(rst_arr)
+    # Derive gradients along the raster axes
+    dem_array = array if is_dask_array(array) else np.asarray(np.ma.filled(array, np.nan))
+    gradient_x, gradient_y = _dem_gradients(dem_array)
 
     # Convert column/row derivatives to gradients per map X/Y unit
     # The inverse affine accounts for both pixel size and rotation
@@ -4368,7 +5725,7 @@ def _lzd_aux_vars(
 
 
 def _lzd_fit_func_nonlinear(
-    inputs: tuple[Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf], NDArrayf, tuple[float, float, float]],
+    inputs: tuple[RasterBase, NDArrayf, tuple[float, float, float], MultiprocConfig | None],
     t1: float,
     t2: float,
     t3: float,
@@ -4382,10 +5739,11 @@ def _lzd_fit_func_nonlinear(
     Returns elevation residuals after applying a candidate rigid step transform to the point cloud:
         r = z_grid(x', y') - z'
 
-    :param inputs: Tuple of (grid interpolator, point cloud, centroid).
-        - sub_rst: Callable interpolator z_grid((y, x)) -> z, matching _reproject_horizontal_shift_samecrs signature.
+    :param inputs: Tuple of (reference raster, point cloud, centroid, worker settings).
+        - sub_rst: Reference raster sampled at candidate X/Y coordinates.
         - pts_epc: Point cloud as 3xN array (in map coordinates).
         - centroid: Centroid used as rotation center for _apply_matrix_pts_mat.
+        - mp_config: Worker settings for interpolating the raster values.
     :param t1: Translation in X.
     :param t2: Translation in Y.
     :param t3: Translation in Z.
@@ -4396,7 +5754,7 @@ def _lzd_fit_func_nonlinear(
     :return: 1D array of finite residuals (dh) in map units.
     """
 
-    sub_rst, pts_epc, centroid = inputs
+    sub_rst, pts_epc, centroid, mp_config = inputs
 
     # Build candidate step matrix
     step = matrix_from_translations_rotations(t1, t2, t3, alpha1, alpha2, alpha3, use_degrees=False)
@@ -4409,7 +5767,7 @@ def _lzd_fit_func_nonlinear(
     z = pts_step[2, :]
 
     # Residuals: grid elevation at transformed XY minus transformed Z
-    dh = sub_rst((y, x)) - z
+    dh = np.asarray(sub_rst.interp_at_points((x, y), method="linear", as_array=True, mp_config=mp_config)) - z
     dh = np.asarray(dh).reshape(-1)
 
     # Exclude invalid samples from the objective without changing its residual dimensions during finite differences
@@ -4420,11 +5778,12 @@ def _lzd_fit_func_nonlinear(
 
 
 def _lzd_fit_nonlinear(
-    sub_rst: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    sub_rst: RasterBase,
     pts_epc: NDArrayf,
     centroid: tuple[float, float, float],
     params_fit_or_bin: InFitOrBinDict,
     only_translation: bool,
+    mp_config: MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> NDArrayf:
     """
@@ -4434,17 +5793,18 @@ def _lzd_fit_nonlinear(
     - return a residual vector (here: vertical residuals),
     - let fit_minimizer + loss handle robust losses.
 
-    :param sub_rst: Interpolator of the reference grid elevation.
+    :param sub_rst: Reference raster sampled during optimization.
     :param pts_epc: Current point cloud as 3xN array (already in the current iteration frame).
     :param centroid: Centroid used as rotation center for _apply_matrix_pts_mat.
     :param params_fit_or_bin: Fit configuration dictionary (expects keys "fit_minimizer" and "fit_loss_func").
     :param only_translation: Whether to solve only for translation (no rotations).
     :param kwargs: Extra keyword arguments forwarded to fit_minimizer.
+    :param mp_config: Worker settings for interpolating the raster values.
 
     :return: Step affine matrix (4x4) for this iteration.
     """
 
-    inputs = (sub_rst, pts_epc, centroid)
+    inputs = (sub_rst, pts_epc, centroid, mp_config)
 
     fit_minimizer = params_fit_or_bin["fit_minimizer"]
     assert callable(fit_minimizer)
@@ -4851,7 +6211,6 @@ def _lzd_fit_gls_tls(
     # 1/ GENERALIZED LEAST SQUARES: Only error in dependent variable Y, no errors in the independent variable X
     # In our case, if only the secondary (not necessarily gridded) elevation has significant errors
     if force_opti == "gls" or (force_opti is None and sig_h_grid is None):
-
         if force_opti == "gls":
             logging.info("Forcing method optimization method 'gls' for LZD.")
         logging.info("No error passed for gridded elevation, using GLS for LZD error propagation.")
@@ -4919,7 +6278,6 @@ def _lzd_fit_gls_tls(
     # 2/ TOTAL LEAST SQUARES: Errors in both dependent variable Y and independent variable X
     # In our case, if the gridded elevation and its gradient have significant errors
     else:
-
         if force_opti == "tls":
             logging.info("Forcing method optimization method 'tls' for LZD.")
 
@@ -5080,7 +6438,6 @@ def _lzd_fit_linearized(
 
     # Run optimizer on function
     if force_opti == "ols" or (force_opti is None and errors is None and error_structure is None):
-
         if force_opti == "ols":
             logging.info("Forcing method optimization method 'ols' for LZD.")
         fit_minimizer = params_fit_or_bin["fit_minimizer"]
@@ -5127,11 +6484,11 @@ def _lzd_fit_linearized(
 
 def _lzd_fit(
     matrix: NDArrayf,
-    sub_rst: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    sub_rst: RasterBase,
     trans_pts_epc: NDArrayf,
     centroid: tuple[float, float, float],
-    sub_gradx: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
-    sub_grady: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    sub_gradx: RasterBase,
+    sub_grady: RasterBase,
     params_fit_or_bin: Any,  # InFitOrBinDict
     only_translation: bool,
     sub_errors: _SampledErrors | None,
@@ -5145,6 +6502,7 @@ def _lzd_fit(
     error_predictors: tuple[Mapping[str, Any] | None, Mapping[str, Any] | None] = (None, None),
     tls_method: Literal["spatial", "independent"] = "independent",
     error_output: dict[str, Any] | None = None,
+    mp_config: MultiprocConfig | None = None,
     **kwargs: Any,
 ) -> tuple[NDArrayf, NDArrayf | None]:
     """
@@ -5156,11 +6514,11 @@ def _lzd_fit(
     3) Solves for a step transform matrix (and optionally parameter uncertainties for linearized GLS/TLS).
 
     :param matrix: Current affine transform matrix of the iteration.
-    :param sub_rst: Interpolator for the reference grid elevation.
+    :param sub_rst: Reference raster sampled during optimization.
     :param sub_pts: Transformed elevation point cloud for this step.
     :param centroid: Centroid used as rotation center for _apply_matrix_pts_mat.
-    :param sub_gradx: Interpolator for grid gradient along X (used only for linearized solver).
-    :param sub_grady: Interpolator for grid gradient along Y (used only for linearized solver).
+    :param sub_gradx: Raster of the gradient along X.
+    :param sub_grady: Raster of the gradient along Y.
     :param params_fit_or_bin: Fit configuration dictionary.
     :param only_translation: Whether to solve only for translation.
     :param sub_errors: Error inputs (used only for linearized GLS/TLS).
@@ -5168,6 +6526,7 @@ def _lzd_fit(
     :param force_opti: Force optimization method in linearized solver ("ols", "gls", "tls").
     :param linearized: Whether solver is "linearized" (R&T 1988 small-rotation) or not (exact vertical residual).
     :param kwargs: Extra keyword arguments forwarded to the fit minimizer.
+    :param mp_config: Worker settings for interpolating the raster values.
 
     :return: (step_matrix, err_beta) where err_beta is only returned for the linearized GLS/TLS path.
     """
@@ -5180,12 +6539,15 @@ def _lzd_fit(
 
         # Check the same terrain geometry as the linearized solve before nonlinear optimization
         x, y, z = trans_pts_epc
-        gradx = sub_gradx((y, x))
-        grady = sub_grady((y, x))
-        valid = np.isfinite(gradx) & np.isfinite(grady) & np.isfinite(sub_rst((y, x))) & np.isfinite(z)
+        gradx = np.asarray(sub_gradx.interp_at_points((x, y), method="linear", as_array=True, mp_config=mp_config))
+        grady = np.asarray(sub_grady.interp_at_points((x, y), method="linear", as_array=True, mp_config=mp_config))
+        sampled_elevations = np.asarray(
+            sub_rst.interp_at_points((x, y), method="linear", as_array=True, mp_config=mp_config)
+        )
+        valid = np.isfinite(gradx) & np.isfinite(grady) & np.isfinite(sampled_elevations) & np.isfinite(z)
         if params_fit_or_bin.get("trim_residuals", False):
             # Select finite residuals before trimming the current point sample
-            residuals = sub_rst((y[valid], x[valid])) - z[valid]
+            residuals = sampled_elevations[valid] - z[valid]
             trimmed = index_trimmed(
                 residuals,
                 central_estimator=params_fit_or_bin["trim_central_statistic"],
@@ -5208,6 +6570,7 @@ def _lzd_fit(
             centroid=centroid,
             params_fit_or_bin=params_fit_or_bin,
             only_translation=only_translation,
+            mp_config=mp_config,
             **kwargs,
         )
         err_beta = None
@@ -5220,9 +6583,9 @@ def _lzd_fit(
         z = trans_pts_epc[2, :].copy()
 
         # Evaluate dh and gradients at transformed coordinates
-        dh = sub_rst((y, x)) - z
-        gradx = sub_gradx((y, x))
-        grady = sub_grady((y, x))
+        dh = np.asarray(sub_rst.interp_at_points((x, y), method="linear", as_array=True, mp_config=mp_config)) - z
+        gradx = np.asarray(sub_gradx.interp_at_points((x, y), method="linear", as_array=True, mp_config=mp_config))
+        grady = np.asarray(sub_grady.interp_at_points((x, y), method="linear", as_array=True, mp_config=mp_config))
 
         errors = sub_errors
 
@@ -5290,12 +6653,12 @@ def _lzd_fit(
 
 def _lzd_iteration_step(
     matrix: NDArrayf,
-    sub_rst: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    sub_rst: RasterBase,
     sub_pts: NDArrayf,
     sub_coords: tuple[NDArrayf, NDArrayf],
     centroid: tuple[float, float, float],
-    sub_gradx: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
-    sub_grady: Callable[[tuple[NDArrayf, NDArrayf]], NDArrayf],
+    sub_gradx: RasterBase,
+    sub_grady: RasterBase,
     params_fit_or_bin: InFitOrBinDict,
     only_translation: bool,
     linearized: bool,
@@ -5303,28 +6666,30 @@ def _lzd_iteration_step(
     pixel_size: float | tuple[float, float],
     force_opti: Literal["ols", "gls", "tls"] | None = None,
     fit_kwargs: dict[str, Any] | None = None,
+    mp_config: MultiprocConfig | None = None,
 ) -> tuple[NDArrayf, dict[str, float], NDArrayf | None]:
     """
     Iteration step of Least Z-difference coregistration from Rosenholm and Torlegård (1988).
 
-    The function uses 2D array interpolators of the DEM input and its gradient, computed only once outside iteration
+    The function uses the DEM input and its gradient rasters, computed only once outside iteration
     loops, to optimize computing time.
 
     Returns optimized affine matrix and statistics (mostly offsets) to compare to tolerances for this iteration step.
 
     :param matrix: Affine transform matrix.
-    :param sub_rst: Interpolator for 2D array of DEM.
+    :param sub_rst: DEM raster sampled during each iteration.
     :param sub_pts: Subsampled elevation for other elevation data (DEM or point) as 1D array.
     :param sub_coords: Subsampled X/Y coordinates arrays for point or second DEM input as 1D arrays.
     :param centroid: Centroid removed from point or second DEM input (to facilitate numerical convergence).
-    :param sub_gradx: Interpolator for 2D array of DEM gradient along X axis.
-    :param sub_grady: Interpolator for 2D array of DEM gradient along Y axis.
+    :param sub_gradx: Raster of the DEM gradient along X.
+    :param sub_grady: Raster of the DEM gradient along Y.
     :param params_fit_or_bin: Dictionary of fitting and binning parameters.
     :param only_translation: Whether to solve only for a translation, otherwise solves for both translation and
         rotation as default.
     :param sub_errors: Input errors.
     :param pixel_size: Pixel size in meters.
     :param fit_kwargs: Additional arguments for the fit minimizer.
+    :param mp_config: Worker settings for interpolating the raster values.
 
     :return Affine matrix, Iteration statistics to compare to tolerances, Error outputs.
     """
@@ -5347,6 +6712,7 @@ def _lzd_iteration_step(
         pixel_size=pixel_size,
         force_opti=force_opti,
         linearized=linearized,
+        mp_config=mp_config,
         **(fit_kwargs or {}),
     )
 
@@ -5366,14 +6732,9 @@ def _lzd_iteration_step(
 
 
 def lzd(
-    ref_elev: NDArrayf | gpd.GeoDataFrame,
-    tba_elev: NDArrayf | gpd.GeoDataFrame,
-    inlier_mask: NDArrayb,
-    ref_transform: rio.transform.Affine,
-    tba_transform: rio.transform.Affine,
-    crs: rio.crs.CRS,
-    area_or_point: Literal["Area", "Point"] | None,
-    z_name: str | None,
+    ref_elev: RasterBase | PointCloudBase,
+    tba_elev: RasterBase | PointCloudBase,
+    inlier_mask: Any,
     max_iterations: int,
     tolerance_translation: float | None,
     tolerance_rotation: float | None,
@@ -5406,6 +6767,10 @@ def lzd(
     The function assumes we have two DEMs, or a DEM and an elevation point cloud, in the same CRS.
     """
 
+    mp_config = kwargs.pop("mp_config", None)
+    temporary_files = kwargs.pop("temporary_files", None)
+    ref_elev, tba_elev = _prepare_affine_inputs(ref_elev, tba_elev, mp_config, temporary_files)
+
     models, predictors = _coreg_error_inputs(error_structure, error_predictors)
     legacy_errors = any(value is not None for value in (sig_ref, sig_tba, corr_ref, corr_tba))
     tls_method = _check_gls_tls_options(
@@ -5418,34 +6783,37 @@ def lzd(
             or params_fit_or_bin.get("trim_residuals", False)
         ):
             raise NotImplementedError("LZD error models require a linearized fit with linear loss and no trimming.")
-        if any(t.b != 0 or t.d != 0 for t in (ref_transform, tba_transform) if t is not None):
+        if any(
+            elevation.transform.b != 0 or elevation.transform.d != 0
+            for elevation in (ref_elev, tba_elev)
+            if _is_raster(elevation)
+        ):
             raise NotImplementedError("Analytical LZD requires north-up raster grids.")
 
     logging.info("Running LZD coregistration")
 
     # Estimate centroid to use
-    transform = ref_transform if ref_transform is not None else tba_transform
-    centroid = _get_centroid_scale(
-        ref_elev=ref_elev if isinstance(ref_elev, np.ndarray) else tba_elev, transform=transform
-    )[0]
+    centroid = _get_centroid_scale(ref_elev=ref_elev if _is_raster(ref_elev) else tba_elev, mp_config=mp_config)[0]
 
-    pixel_size = _res(transform)
-    continuous_grid = "reference" if ref_transform is not None else "to-be-aligned"
+    pixel_size = (ref_elev if _is_raster(ref_elev) else tba_elev).res
+    continuous_grid = "reference" if _is_raster(ref_elev) else "to-be-aligned"
     logging.info(f"Using {continuous_grid} as continuous grid for deriving gradients.")
 
     # Check that DEM CRS is projected, otherwise slope is not correctly calculated
-    if not crs.is_projected:
+    if not ref_elev.crs.is_projected:
         raise NotImplementedError(
-            f"LZD coregistration only works with a projected CRS, current CRS is {crs}. Reproject "
+            f"LZD coregistration only works with a projected CRS, current CRS is {ref_elev.crs}. Reproject "
             f"your DEMs with DEM.reproject() in a local projected CRS such as UTM, that you can find "
             f"using DEM.get_metric_crs()."
         )
 
     # First, derive auxiliary variables of Nuth and Kääb (slope tangent, and aspect) for any point-raster input
-    gradx, grady = _lzd_aux_vars(ref_elev=ref_elev, tba_elev=tba_elev, transform=transform)
+    grid_dem = ref_elev if _is_raster(ref_elev) else tba_elev
+    gradients = _dem_geometry(grid_dem, False, mp_config, temporary_files)
+    gradx, grady = gradients["gradient_x"], gradients["gradient_y"]
 
     # Bind every auxiliary to the elevation input whose observations it describes
-    grid_name = "ref" if ref_transform is not None else "tba"
+    grid_name = "ref" if _is_raster(ref_elev) else "tba"
     other_name = "tba" if grid_name == "ref" else "ref"
     auxiliaries: dict[str, Any] = {"gradient_x": gradx, "gradient_y": grady}
     owners = dict.fromkeys(auxiliaries, grid_name)
@@ -5455,23 +6823,19 @@ def lzd(
             owners[f"sigma_{name}"] = name
     for side, values in predictors.items():
         for name, values_at_source in values.items():
-            if isinstance(values_at_source, (gu.Raster, gu.PointCloud)) or np.ndim(values_at_source):
+            if _is_raster(values_at_source) or _is_pointcloud(values_at_source) or np.ndim(values_at_source):
                 auxiliaries[f"error_{side}_{name}"] = values_at_source
                 owners[f"error_{side}_{name}"] = side
 
     # Then, perform preprocessing: subsampling and interpolation of inputs and auxiliary vars at same points
-    sub_ref, sub_tba, sub_aux = _subsample_rst_pts(
+    sub_ref, sub_tba, sub_aux = _sample_coreg_inputs(
+        mp_config=mp_config,
         subsample=params_random["subsample"],
         random_state=params_random["random_state"],
         ref_elev=ref_elev,
         tba_elev=tba_elev,
         inlier_mask=inlier_mask,
-        ref_transform=ref_transform,
-        tba_transform=tba_transform,
         sampling_strategy="same_xy",  # This sampling needs to be enforced for LZD
-        crs=crs,
-        area_or_point=area_or_point,
-        z_name=z_name,
         aux_vars=auxiliaries,
         aux_tied_to=owners,
     )
@@ -5481,25 +6845,16 @@ def lzd(
     sub_tba = sub_tba[2, :]
 
     # Define inputs of methods, depending on if they are point or raster data
-    if not isinstance(ref_elev, gpd.GeoDataFrame):
+    if _is_raster(ref_elev):
         ref = "rst"
         sub_pts = sub_tba
-        sub_rst = _reproject_horizontal_shift_samecrs(
-            ref_elev, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
-        )
+        sub_rst = _prepare_interpolation_raster(ref_elev)
     else:
         ref = "pts"
         sub_pts = sub_ref
-        sub_rst = _reproject_horizontal_shift_samecrs(
-            tba_elev, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
-        )
-    # We use interpolators of gradx and grady in any case
-    sub_gradx = _reproject_horizontal_shift_samecrs(
-        gradx, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
-    )
-    sub_grady = _reproject_horizontal_shift_samecrs(
-        grady, src_transform=transform, return_interpolator=True, area_or_point=area_or_point
-    )
+        sub_rst = _prepare_interpolation_raster(tba_elev)
+    # We use rasters of gradx and grady in any case
+    sub_gradx, sub_grady = gradx, grady
 
     # Read error predictors and magnitudes from the same valid observation sample
     assert sub_aux is not None
@@ -5544,6 +6899,7 @@ def lzd(
             tls_method=tls_method,
             error_output=error_output,
         ),
+        mp_config,
     )
     final_matrix, _, output_iterative, err_beta = _iterate_method(
         method=_lzd_iteration_step,
@@ -5634,29 +6990,18 @@ class AffineCoreg(Coreg):
 
     def _fit_any_rst_pts(
         self,
-        ref_elev: NDArrayf | gpd.GeoDataFrame,
-        tba_elev: NDArrayf | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb,
-        ref_transform: rio.transform.Affine,
-        tba_transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str | None = None,
-        weights: NDArrayf | None = None,
-        bias_vars: dict[str, NDArrayf] | None = None,
+        ref_elev: RasterBase | PointCloudBase,
+        tba_elev: RasterBase | PointCloudBase,
+        inlier_mask: Any = None,
         **kwargs: Any,
     ) -> None:
         raise NotImplementedError("This method is meant to be subclassed.")
 
     def _fit_rst_rst(
         self,
-        ref_elev: NDArrayf,
-        tba_elev: NDArrayf,
-        inlier_mask: NDArrayb,
-        ref_transform: rio.transform.Affine,
-        tba_transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
+        ref_elev: RasterBase,
+        tba_elev: RasterBase,
+        inlier_mask: Any,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -5669,10 +7014,6 @@ class AffineCoreg(Coreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            ref_transform=ref_transform,
-            tba_transform=tba_transform,
-            crs=crs,
-            area_or_point=area_or_point,
             weights=weights,
             bias_vars=bias_vars,
             **kwargs,
@@ -5680,13 +7021,9 @@ class AffineCoreg(Coreg):
 
     def _fit_rst_pts(
         self,
-        ref_elev: NDArrayf | gpd.GeoDataFrame,
-        tba_elev: NDArrayf | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb,
-        transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str,
+        ref_elev: RasterBase | PointCloudBase,
+        tba_elev: RasterBase | PointCloudBase,
+        inlier_mask: Any,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -5699,11 +7036,6 @@ class AffineCoreg(Coreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            ref_transform=transform if isinstance(ref_elev, np.ndarray) else None,
-            tba_transform=transform if isinstance(tba_elev, np.ndarray) else None,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
             **kwargs,
@@ -5711,11 +7043,9 @@ class AffineCoreg(Coreg):
 
     def _fit_pts_pts(
         self,
-        ref_elev: gpd.GeoDataFrame,
-        tba_elev: gpd.GeoDataFrame,
-        inlier_mask: NDArrayb,
-        crs: rio.crs.CRS,
-        z_name: str,
+        ref_elev: PointCloudBase,
+        tba_elev: PointCloudBase,
+        inlier_mask: Any,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -5728,15 +7058,45 @@ class AffineCoreg(Coreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            ref_transform=None,
-            tba_transform=None,
-            crs=crs,
-            area_or_point=None,
-            z_name=z_name,
             weights=weights,
             bias_vars=bias_vars,
             **kwargs,
         )
+
+    def _apply(
+        self,
+        elev: RasterBase | PointCloudBase,
+        resample: bool = True,
+        resampling: str | rio.warp.Resampling | Interpolator | Reducer = "bilinear",
+        **kwargs: Any,
+    ) -> tuple[RasterLike | PointCloudLike, affine.Affine | None]:
+        """Apply the fitted affine matrix to a raster or point cloud."""
+
+        # Check options shared by affine rasters and point clouds
+        if kwargs.get("bias_vars") is not None:
+            warnings.warn("This coregistration method is affine, ignoring `bias_vars` passed to apply().")
+        if _is_raster(elev) and not self.is_translation and not resample:
+            raise NotImplementedError(
+                f"Option `resample=False` not supported by {self.__class__},"
+                " only available for translation coregistrations such as NuthKaab."
+            )
+
+        # Normalize Rasterio resampling names before calling apply_matrix()
+        interpolation = resampling.name if isinstance(resampling, rio.warp.Resampling) else resampling
+        interpolation = "linear" if interpolation == "bilinear" else interpolation
+        apply_options: dict[str, Any] = dict(
+            centroid=self.centroid(),
+            mp_config=kwargs.get("mp_config"),
+            resample=resample,
+            resampling=interpolation,
+            out_transform=kwargs.get("out_transform"),
+            out_shape=kwargs.get("out_shape"),
+            force_regrid_method=kwargs.get("force_regrid_method"),
+            gridding_options=kwargs.get("gridding_options"),
+        )
+
+        result = apply_matrix(elev, self.to_matrix(), **apply_options)
+        return result, kwargs.get("transform")
 
     def to_matrix(self) -> NDArrayf:
         """Convert the transform to a 4x4 transformation matrix."""
@@ -5779,62 +7139,6 @@ class AffineCoreg(Coreg):
 
         # Unpack the centroid in case it is in an unexpected format (an array, list or something else).
         return meta_centroid[0], meta_centroid[1], meta_centroid[2]
-
-    def _preprocess_rst_pts_subsample_interpolator(
-        self,
-        ref_elev: NDArrayf | gpd.GeoDataFrame,
-        tba_elev: NDArrayf | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb,
-        aux_vars: dict[str, NDArrayf] | None = None,
-        weights: NDArrayf | None = None,
-        transform: rio.transform.Affine | None = None,
-        crs: rio.crs.CRS | None = None,
-        area_or_point: Literal["Area", "Point"] | None = None,
-        z_name: str = "z",
-    ) -> tuple[Callable[[float, float], NDArrayf], None | dict[str, NDArrayf]]:
-        """
-        Pre-process raster-raster or point-raster datasets into 1D arrays subsampled at the same points
-        (and interpolated in the case of point-raster input).
-
-        Return 1D arrays of reference elevation, to-be-aligned elevation and dictionary of 1D arrays of auxiliary
-        variables at subsampled points.
-        """
-
-        # Get random parameters
-        params_random = self._meta["inputs"]["random"]
-
-        # Get subsample mask (a 2D array for raster-raster, a 1D array of length the point data for point-raster)
-        sub_mask = _get_subsample_mask_pts_rst(
-            subsample=params_random["subsample"],
-            random_state=params_random["random_state"],
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            inlier_mask=inlier_mask,
-            ref_transform=transform,
-            tba_transform=transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
-            aux_vars=aux_vars,
-        )
-
-        # Return interpolator of elevation differences and subsampled auxiliary variables
-        sub_dh_interpolator, sub_bias_vars = _subsample_on_mask_interpolator(
-            ref_elev=ref_elev,
-            tba_elev=tba_elev,
-            aux_vars=aux_vars,
-            sub_mask=sub_mask,
-            ref_transform=transform,
-            tba_transform=transform,
-            area_or_point=area_or_point,
-            z_name=z_name,
-        )
-
-        # Write final subsample to class
-        self._meta["outputs"]["random"] = {"subsample_final": int(np.count_nonzero(sub_mask))}
-
-        # Return 1D arrays of subsampled points at the same location
-        return sub_dh_interpolator, sub_bias_vars
 
     @classmethod
     def from_matrix(cls, matrix: NDArrayf) -> AffineCoreg:
@@ -5942,14 +7246,9 @@ class VerticalShift(AffineCoreg):
 
     def _fit_any_rst_pts(
         self,
-        ref_elev: NDArrayf | gpd.GeoDataFrame,
-        tba_elev: NDArrayf | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb,
-        ref_transform: rio.transform.Affine,
-        tba_transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str | None = None,
+        ref_elev: RasterBase | PointCloudBase,
+        tba_elev: RasterBase | PointCloudBase,
+        inlier_mask: Any = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -5963,13 +7262,8 @@ class VerticalShift(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            ref_transform=ref_transform,
-            tba_transform=tba_transform,
-            crs=crs,
-            area_or_point=area_or_point,
             params_random=params_random,
             vshift_reduc_func=self._meta["inputs"]["affine"]["vshift_reduc_func"],
-            z_name=z_name,
             weights=weights,
             **kwargs,
         )
@@ -6027,7 +7321,7 @@ class ICP(AffineCoreg):
         max_iterations: int = 20,
         tolerance_translation: float | None = 0.01,
         tolerance_rotation: float | None = 0.001,
-        sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
+        sampling_strategy: Literal["independent", "same_xy", "nearest_xy"] = "nearest_xy",
         standardize: bool = True,
         subsample: float | int = 5e5,
         trim_residuals: bool = False,
@@ -6036,6 +7330,8 @@ class ICP(AffineCoreg):
         trim_spread_coverage: float = 3,
         trim_iterative: bool = False,
         initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
+        *,
+        iterative_sampling: bool = False,
     ) -> None:
         """
         Instantiate an ICP coregistration object.
@@ -6057,6 +7353,13 @@ class ICP(AffineCoreg):
             iterations (once other tolerances are also reached, if any).
         :param tolerance_rotation: Magnitude of iteration rotation (in degrees) at which to stop the iterations (once
             other tolerances are also reached, if any)
+        :param sampling_strategy: "nearest_xy" (default) samples target X/Y coordinates and selects the nearest
+            original observations in the other input. A point cloud defines the target for a raster and point cloud
+            pair, otherwise the reference defines it. "same_xy" interpolates rasters at common X/Y coordinates and
+            requires at least one raster. "independent" samples each input separately.
+        :param iterative_sampling: Whether to update the moving input and select the point samples again after each
+            optimization step. Defaults to False, which uses a fixed sample throughout fitting. The same random state
+            is used for each sample, and max_iterations counts the total optimization steps in either case.
         :param standardize: Whether to standardize input point clouds to the unit sphere for numerical convergence
             (tolerance is also standardized by the same factor).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
@@ -6083,6 +7386,7 @@ class ICP(AffineCoreg):
             "tolerance_rotation": tolerance_rotation,
             "only_translation": only_translation,
             "sampling_strategy": sampling_strategy,
+            "iterative_sampling": iterative_sampling,
             "standardize": standardize,
             "anisotropic": anisotropic,
         }
@@ -6112,21 +7416,16 @@ class ICP(AffineCoreg):
             raise NotImplementedError("Analytical ICP requires linearized point-to-plane fitting with a linear loss.")
         if settings["fitorbin"].get("trim_residuals", False):
             raise NotImplementedError("Analytical ICP does not support residual trimming. Use numerical propagation.")
-        if settings["specific"]["sampling_strategy"] == "iterative_same_xy":
+        if settings["specific"]["iterative_sampling"]:
             raise NotImplementedError(
                 "Analytical ICP requires a fixed sample. Use numerical propagation for iterative sampling."
             )
 
     def _fit_any_rst_pts(
         self,
-        ref_elev: NDArrayf | gpd.GeoDataFrame,
-        tba_elev: NDArrayf | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb,
-        ref_transform: rio.transform.Affine,
-        tba_transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str | None = None,
+        ref_elev: RasterBase | PointCloudBase,
+        tba_elev: RasterBase | PointCloudBase,
+        inlier_mask: Any = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -6148,11 +7447,6 @@ class ICP(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            ref_transform=ref_transform,
-            tba_transform=tba_transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
             params_random=params_random,
             params_fit_or_bin=params_fit_or_bin,
             max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
@@ -6163,6 +7457,7 @@ class ICP(AffineCoreg):
             linearized=self._meta["inputs"]["affine"]["linearized"],
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
             sampling_strategy=self._meta["inputs"]["specific"]["sampling_strategy"],
+            iterative_sampling=self._meta["inputs"]["specific"]["iterative_sampling"],
             standardize=self._meta["inputs"]["affine"]["standardize"],
             anisotropic=self._meta["inputs"]["affine"]["anisotropic"],
             error_structure=error_structure,
@@ -6176,6 +7471,8 @@ class ICP(AffineCoreg):
             gls_neighbors=kwargs.get("gls_neighbors"),
             gls_rank=kwargs.get("gls_rank"),
             tls_method=kwargs.get("tls_method"),
+            mp_config=kwargs.get("mp_config"),
+            temporary_files=kwargs["temporary_files"],
         )
 
         # Write output to class
@@ -6226,10 +7523,12 @@ class CPD(AffineCoreg):
         tolerance_translation: float | None = 0.01,
         tolerance_rotation: float | None = 0.001,
         tolerance_objective_func: float | None = 0.001,
-        sampling_strategy: Literal["independent", "same_xy", "iterative_same_xy"] = "same_xy",
+        sampling_strategy: Literal["independent", "same_xy", "nearest_xy"] = "nearest_xy",
         standardize: bool = True,
         subsample: int | float = 5e3,
         initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
+        *,
+        iterative_sampling: bool = False,
     ) -> None:
         """
         Instantiate a CPD coregistration object.
@@ -6248,6 +7547,13 @@ class CPD(AffineCoreg):
             other tolerances are also reached, if any)
         :param tolerance_objective_func: Magnitude of iteration objective function value (see Q in Myronenko and Song
             (2010)) at which to stop the iterations (once other tolerances are also reached, if any).
+        :param sampling_strategy: "nearest_xy" (default) samples target X/Y coordinates and selects the nearest
+            original observations in the other input. A point cloud defines the target for a raster and point cloud
+            pair, otherwise the reference defines it. "same_xy" interpolates rasters at common X/Y coordinates and
+            requires at least one raster. "independent" samples each input separately.
+        :param iterative_sampling: Whether to update the moving input and select the point samples again after each
+            optimization step. Defaults to False, which uses a fixed sample throughout fitting. The same random state
+            is used for each sample, and max_iterations counts the total optimization steps in either case.
         :param standardize: Whether to standardize input point clouds to the unit sphere for numerical convergence
             (tolerance is also standardized by the same factor).
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
@@ -6270,6 +7576,7 @@ class CPD(AffineCoreg):
             "cpd_lsg": lsg,
             "only_translation": only_translation,
             "sampling_strategy": sampling_strategy,
+            "iterative_sampling": iterative_sampling,
             "standardize": standardize,
             "anisotropic": anisotropic,
             "cpd_estep_knearest": estep_knearest,
@@ -6279,14 +7586,9 @@ class CPD(AffineCoreg):
 
     def _fit_any_rst_pts(
         self,
-        ref_elev: NDArrayf | gpd.GeoDataFrame,
-        tba_elev: NDArrayf | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb,
-        ref_transform: rio.transform.Affine,
-        tba_transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str | None = None,
+        ref_elev: RasterBase | PointCloudBase,
+        tba_elev: RasterBase | PointCloudBase,
+        inlier_mask: Any = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -6300,11 +7602,6 @@ class CPD(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            ref_transform=ref_transform,
-            tba_transform=tba_transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
             params_random=params_random,
             lsg=self._meta["inputs"]["specific"]["cpd_lsg"],
             weight_cpd=self._meta["inputs"]["specific"]["cpd_weight"],
@@ -6313,11 +7610,14 @@ class CPD(AffineCoreg):
             tolerance_rotation=self._meta["inputs"]["iterative"]["tolerance_rotation"],
             tolerance_q=self._meta["inputs"]["iterative"]["tolerance_objective_func"],
             sampling_strategy=self._meta["inputs"]["specific"]["sampling_strategy"],
+            iterative_sampling=self._meta["inputs"]["specific"]["iterative_sampling"],
             only_translation=self._meta["inputs"]["affine"]["only_translation"],
             standardize=self._meta["inputs"]["affine"]["standardize"],
             anisotropic=self._meta["inputs"]["affine"]["anisotropic"],
             estep_knn_k=self._meta["inputs"]["specific"]["cpd_estep_knearest"],
             params_fit_or_bin=params_fitorbin,
+            mp_config=kwargs.get("mp_config"),
+            temporary_files=kwargs["temporary_files"],
         )
 
         # Write output to class
@@ -6363,6 +7663,9 @@ class NuthKaab(AffineCoreg):
         trim_iterative: bool = False,
         vertical_shift: bool = True,
         initial_shift: tuple[Number, Number] | tuple[Number, Number, Number] | None = None,
+        *,
+        min_slope: float = 1.0,
+        vshift_reduc_func: Callable[[NDArrayf], np.floating[Any]] = np.median,
     ) -> None:
         """
         Instantiate a new Nuth and Kääb (2011) coregistration object.
@@ -6378,6 +7681,11 @@ class NuthKaab(AffineCoreg):
         :param bin_statistic: Statistic of central tendency (e.g., mean) to apply during the binning.
         :param subsample: Subsample the input for speed-up. <1 is parsed as a fraction. >1 is a pixel count.
             A value of 1 selects all valid observations.
+        :param min_slope: Minimum terrain slope to consider during the fit, in degrees. Defaults to 1 degree. This
+            parameter is necessary for Nuth and Kääb, because the function to optimize divides by the slope tangent,
+            which becomes undefined near zero.
+        :param vshift_reduc_func: Reductor function to estimate the central tendency of the vertical shift.
+            Defaults to the median.
         :param vertical_shift: Whether to apply the vertical shift or not (default is True).
         :param initial_shift: Tuple containing x, y and z shifts (in georeferenced units).
             These shifts are applied before the fit() part.
@@ -6385,7 +7693,15 @@ class NuthKaab(AffineCoreg):
 
         self.vertical_shift = vertical_shift
 
-        # Input checks
+        # Check the slope threshold, vertical statistic and binning options
+        if (
+            not isinstance(min_slope, (int, float, np.integer, np.floating))
+            or not np.isfinite(min_slope)
+            or not 0 <= min_slope < 90
+        ):
+            raise ValueError("min_slope must be a finite angle in degrees between 0 (inclusive) and 90 (exclusive).")
+        if not callable(vshift_reduc_func):
+            raise TypeError("vshift_reduc_func must be callable.")
         _check_inputs_bin_before_fit(
             bin_before_fit=bin_before_fit, fit_optimizer=fit_optimizer, bin_sizes=bin_sizes, bin_statistic=bin_statistic
         )
@@ -6395,6 +7711,8 @@ class NuthKaab(AffineCoreg):
             "max_iterations": max_iterations,
             "tolerance_translation": tolerance_translation,
             "apply_vshift": vertical_shift,
+            "min_slope": float(min_slope),
+            "vshift_reduc_func": vshift_reduc_func,
         }
         if trim_residuals:
             meta_input_filtering = {
@@ -6425,20 +7743,17 @@ class NuthKaab(AffineCoreg):
                 "bin_statistic": bin_statistic,
             }
             meta_bin_and_fit.update(meta_input_iterative)
+            # fmt: off
             super().__init__(
                 subsample=subsample, meta=meta_bin_and_fit, initial_shift=initial_shift
             )  # t)  # type: ignore
+            # fmt: on
 
     def _fit_any_rst_pts(
         self,
-        ref_elev: NDArrayf | gpd.GeoDataFrame,
-        tba_elev: NDArrayf | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb,
-        ref_transform: rio.transform.Affine,
-        tba_transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str | None = None,
+        ref_elev: RasterBase | PointCloudBase,
+        tba_elev: RasterBase | PointCloudBase,
+        inlier_mask: Any = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -6453,16 +7768,14 @@ class NuthKaab(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            ref_transform=ref_transform,
-            tba_transform=tba_transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
             weights=weights,
             params_random=params_random,
+            min_slope=self._meta["inputs"]["specific"]["min_slope"],
+            vshift_reduc_func=self._meta["inputs"]["affine"]["vshift_reduc_func"],
             params_fit_or_bin=params_fit_or_bin,
             max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
             tolerance_translation=self._meta["inputs"]["iterative"]["tolerance_translation"],
+            **kwargs,
         )
 
         # Write output to class
@@ -6571,14 +7884,9 @@ class LZD(AffineCoreg):
 
     def _fit_any_rst_pts(
         self,
-        ref_elev: NDArrayf | gpd.GeoDataFrame,
-        tba_elev: NDArrayf | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb,
-        ref_transform: rio.transform.Affine,
-        tba_transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str | None = None,
+        ref_elev: RasterBase | PointCloudBase,
+        tba_elev: RasterBase | PointCloudBase,
+        inlier_mask: Any = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -6597,11 +7905,6 @@ class LZD(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            ref_transform=ref_transform,
-            tba_transform=tba_transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
             params_random=params_random,
             params_fit_or_bin=params_fit_or_bin,
             max_iterations=self._meta["inputs"]["iterative"]["max_iterations"],
@@ -6679,14 +7982,9 @@ class DhMinimize(AffineCoreg):
 
     def _fit_any_rst_pts(
         self,
-        ref_elev: NDArrayf | gpd.GeoDataFrame,
-        tba_elev: NDArrayf | gpd.GeoDataFrame,
-        inlier_mask: NDArrayb,
-        ref_transform: rio.transform.Affine,
-        tba_transform: rio.transform.Affine,
-        crs: rio.crs.CRS,
-        area_or_point: Literal["Area", "Point"] | None,
-        z_name: str | None = None,
+        ref_elev: RasterBase | PointCloudBase,
+        tba_elev: RasterBase | PointCloudBase,
+        inlier_mask: Any = None,
         weights: NDArrayf | None = None,
         bias_vars: dict[str, NDArrayf] | None = None,
         **kwargs: Any,
@@ -6701,11 +7999,6 @@ class DhMinimize(AffineCoreg):
             ref_elev=ref_elev,
             tba_elev=tba_elev,
             inlier_mask=inlier_mask,
-            ref_transform=ref_transform,
-            tba_transform=tba_transform,
-            crs=crs,
-            area_or_point=area_or_point,
-            z_name=z_name,
             weights=weights,
             params_random=params_random,
             params_fit_or_bin=params_fit_or_bin,

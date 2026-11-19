@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES)
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -21,6 +21,7 @@ Topo class from workflows.
 """
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import logging
@@ -34,9 +35,9 @@ from geoutils.raster import Raster
 
 import xdem
 from xdem._misc import import_optional
+from xdem.workflows import toolbox
 from xdem.workflows.schemas import TOPO_SCHEMA
 from xdem.workflows.workflows import _ALIAS, Workflows
-from xdem.workflows import toolbox
 
 
 class Topo(Workflows):
@@ -160,12 +161,14 @@ class Topo(Workflows):
                     self.outputs_folder,
                     self.config_attributes,
                     (
-                            self.config.get("reproject", None) is None
-                            or self.config["reproject"].get("crs", None) is None
-                            or self.config["reproject"]["crs"] is True
+                        self.config.get("reproject", None) is None
+                        or self.config["reproject"].get("crs", None) is None
+                        or self.config["reproject"]["crs"] is True
                     ),
-                    self.config["reproject"]["crs"] if "reproject" in  self.config and "crs" in  self.config["reproject"] else None,
-                    self.level > 1
+                    self.config["reproject"]["crs"]
+                    if "reproject" in self.config and "crs" in self.config["reproject"]
+                    else None,
+                    self.level > 1,
                 )
             else:
                 logging.info("No terrain attributes to compute")

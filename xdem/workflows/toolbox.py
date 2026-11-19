@@ -63,7 +63,6 @@ except ImportError:
     _HAS_PLUTOPRINT = False
 
 
-
 def return_info(dem: RasterType) -> dict[str, Any]:
     """
     xxxx
@@ -86,9 +85,7 @@ def return_info(dem: RasterType) -> dict[str, Any]:
     }
 
 
-def floats_process(
-    dict_with_floats: Dict[str, Any] | InputCoregDict | OutputCoregDict | Any
-) -> Dict[str, Any]:  # type: ignore
+def floats_process(dict_with_floats: Dict[str, Any] | InputCoregDict | OutputCoregDict | Any) -> Dict[str, Any]:  # type: ignore
     """
     Allows rounding all floats present in a dictionary to two decimal places
     :param dict_with_floats: Dictionary with float
@@ -204,8 +201,6 @@ def generate_plot_with_profiles(
     logging.info(nx)
     logging.info(ny)
 
-
-
     # Initial min/max for mean profiles
     profile_cols = np.nanmean(data, axis=0)
     profile_cols_stats = [profile_cols.min(), profile_cols.max()]
@@ -286,9 +281,15 @@ def generate_plot_with_profiles(
     plt.show()
 
 
-
-
-def generate_terrain_attributes(dem: RasterType, list_attributes: list[str], outputs_folder, config_attributes, proj_crs, proj_crs_value, export_tif: bool = False, ) -> None:
+def generate_terrain_attributes(
+    dem: RasterType,
+    list_attributes: list[str],
+    outputs_folder,
+    config_attributes,
+    proj_crs,
+    proj_crs_value,
+    export_tif: bool = False,
+) -> None:
     """
     Generates an image png containing the plots of the terrain attributes requested by the user.
 
@@ -386,7 +387,9 @@ def generate_terrain_attributes(dem: RasterType, list_attributes: list[str], out
     logging.info("fin ok generate_terrain_attributes")
 
 
-def generate_terrain_attributes_png(dem: RasterType, list_attribues: list[str], outputs_folder, attributes: list[RasterType]) -> None:
+def generate_terrain_attributes_png(
+    dem: RasterType, list_attribues: list[str], outputs_folder, attributes: list[RasterType]
+) -> None:
     """
     Generate terrain attributes png
     :param dem:

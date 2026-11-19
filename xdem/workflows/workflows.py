@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES)
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -41,7 +41,6 @@ import xdem
 from xdem import DEM
 from xdem._misc import import_optional
 from xdem.coreg.base import InputCoregDict, OutputCoregDict
-
 from xdem.examples import _FILEPATHS_ALL
 from xdem.vcrs import vertical_unit_symbol
 from xdem.workflows.schemas import validate_configuration
@@ -189,8 +188,8 @@ class Workflows(ABC):
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"File not found : {self.config_path}")
 
-        if not Path(self.config_path).suffix in [".yaml", ".yml"]:
-            raise ValueError("Unsupported configuration file format. " "Please use .yaml, or .yml file.")
+        if Path(self.config_path).suffix not in [".yaml", ".yml"]:
+            raise ValueError("Unsupported configuration file format. Please use .yaml, or .yml file.")
 
         with open(self.config_path) as f:
             config_dict = yaml.safe_load(f)
@@ -207,8 +206,6 @@ class Workflows(ABC):
                 return some_dict
 
             return replace_none_str_with_none_type(config_dict)
-
-
 
     @staticmethod
     def load_dem(
@@ -253,10 +250,7 @@ class Workflows(ABC):
         inlier_mask = None
         mask_path = None
 
-
-
         if config_dem.get("path_to_mask") is not None:
-
             mask_path = config_dem["path_to_mask"]
 
             # If alias, get its path
@@ -307,7 +301,6 @@ class Workflows(ABC):
         if isinstance(dico, dict):
             cleaned_dict = {}
             for k, v in dico.items():
-
                 if k == "statistics":
                     cleaned_dict[k] = v
                     continue
@@ -377,4 +370,3 @@ class Workflows(ABC):
             return np.format_float_scientific(val, precision=3)
         else:
             return f"{val:.3f}"
-

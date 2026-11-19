@@ -221,8 +221,6 @@ def test_pipeline_topo_default_values(get_topo_inputs_config_list, tmp_path):
     assert pipeline_topo_test["outputs"] == COMPLETE_CONFIG_TOPO["outputs"]
 
 
-
-
 def test_save_stat_as_csv(get_topo_inputs_config_list, tmp_path):
     """
     Test save_stat_as_csv function
@@ -265,8 +263,8 @@ def test_load_dem(data, force_vcrs, dask):
         assert isinstance(mask_path, str) if "path_to_mask" in config_dem else mask_path is None
 
     else:
-        assert isinstance(output_dem, xr.DataArray)
-        assert isinstance(inlier_mask, xr.DataArray) if "path_to_mask" in config_dem else inlier_mask is None
+        assert isinstance(output_dem, xr.core.dataarray.DataArray)
+        assert isinstance(inlier_mask, xr.core.dataarray.DataArray) if "path_to_mask" in config_dem else inlier_mask is None
         assert isinstance(mask_path, str) if "path_to_mask" in config_dem else mask_path is None
         output_dem = output_dem.dem
 

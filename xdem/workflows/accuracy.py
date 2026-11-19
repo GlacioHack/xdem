@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES)
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -19,7 +19,9 @@
 """
 Accuracy class from workflow
 """
+
 import matplotlib
+
 matplotlib.use("Agg")
 
 import logging
@@ -31,16 +33,15 @@ from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
-from geoutils.raster import RasterType
+from geoutils.raster import Raster, RasterType
 from numpy import floating
-from geoutils.raster import Raster
 
 import xdem
 from xdem._misc import import_optional
 from xdem.vcrs import vertical_unit_symbol
+from xdem.workflows import toolbox
 from xdem.workflows.schemas import ACCURACY_SCHEMA
 from xdem.workflows.workflows import _ALIAS, Workflows
-from xdem.workflows import toolbox
 
 
 class Accuracy(Workflows):
@@ -91,8 +92,12 @@ class Accuracy(Workflows):
         else:
             dask = None
 
-        self.reference_elev, ref_mask, ref_mask_path = self.load_dem(self.config["inputs"].get("reference_elev", None), dask=dask)
-        self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(self.config["inputs"]["to_be_aligned_elev"], dask=dask)
+        self.reference_elev, ref_mask, ref_mask_path = self.load_dem(
+            self.config["inputs"].get("reference_elev", None), dask=dask
+        )
+        self.to_be_aligned_elev, tba_mask, tba_path_mask = self.load_dem(
+            self.config["inputs"]["to_be_aligned_elev"], dask=dask
+        )
         if self.reference_elev is None:
             self.reference_elev = self._get_reference_elevation()
 
@@ -120,8 +125,9 @@ class Accuracy(Workflows):
                 dem=self.reference_elev if isinstance(self.reference_elev, Raster) else self.reference_elev.dem,
                 title="Masked terrain for reference elevation",
                 file_path=self.outputs_folder / "plots" / f"masked_elev_map.png",
-                dem_right=self.to_be_aligned_elev if isinstance(self.reference_elev,
-                                                                Raster) else self.reference_elev.dem,
+                dem_right=self.to_be_aligned_elev
+                if isinstance(self.reference_elev, Raster)
+                else self.reference_elev.dem,
                 title_dem_right="Masked terrain for to-be-aligned elevation",
                 vmin=vmin,
                 vmax=vmax,
@@ -169,7 +175,7 @@ class Accuracy(Workflows):
         # Coregister
         logging.info(type(my_coreg))
         logging.info(my_coreg)
-        
+
         aligned_elev = self.to_be_aligned_elev.dem.coregister_3d(self.reference_elev.dem, my_coreg, random_state=42)
         aligned_elev.dem.to_file(self.outputs_folder / "rasters" / "aligned_elev.tif")
 
@@ -218,15 +224,11 @@ class Accuracy(Workflows):
         elif sampling_grid == "to_be_aligned_elev":
             self.reference_elev = ref.reproject(self.to_be_aligned_elev, silent=True)
 
-
-
         if not ref.get_stats("validcount") or not tba.get_stats("validcount"):
-
             msg_error = "Reference and to-be-aligned elevation datasets do not overlap horizontally. "
             if self.compute_coreg:
                 msg_error += (
-                    "All possible coregistration methods rely on elevation differencing, and thus "
-                    "produce only NaNs. "
+                    "All possible coregistration methods rely on elevation differencing, and thus produce only NaNs. "
                 )
             else:
                 msg_error += "No differences can be calculated. "
@@ -310,7 +312,7 @@ class Accuracy(Workflows):
         plt.text(
             0.2,
             0.5,
-            f'Before:\nmedian = {self.stats_before["median"]:.2f}\nnmad = {self.stats_before["nmad"]:.2f}',
+            f"Before:\nmedian = {self.stats_before['median']:.2f}\nnmad = {self.stats_before['nmad']:.2f}",
             color="g",
             transform=ax.transAxes,
             ha="center",
@@ -319,7 +321,7 @@ class Accuracy(Workflows):
         plt.text(
             0.8,
             0.5,
-            f'After:\nmedian = {self.stats_after["median"]:.2f}\nnmad = {self.stats_after["nmad"]:.2f}',
+            f"After:\nmedian = {self.stats_after['median']:.2f}\nnmad = {self.stats_after['nmad']:.2f}",
             color="b",
             transform=ax.transAxes,
             ha="center",
@@ -359,7 +361,6 @@ class Accuracy(Workflows):
         stats_keys = ["min", "max", "nmad", "median"]
 
         if self.compute_coreg:
-
             self.diff_before = self.to_be_aligned_elev - self.reference_elev
             self.stats_before = self.diff_before.dem.get_stats(stats_keys)
 
@@ -409,7 +410,6 @@ class Accuracy(Workflows):
 
                 self.generate_plot_with_profiles(
                     dem=self.diff_coreg_tba if isinstance(self.diff_coreg_tba, Raster) else self.diff_coreg_tba.dem,
-
                     title="Difference between Aligned and To-be-aligned elevation\n(after coregistration)",
                     filename="diff_elev_coreg_tba_map",
                     cmap="RdBu",
