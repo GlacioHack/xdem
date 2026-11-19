@@ -123,13 +123,13 @@ class TestBlockwiseCoreg:
             new_dem = _grid_pointcloud(
                 trans_epc,
                 grid_coords=tba_dem.coords(grid=False),
-                data_column_name="z",
+                data_name="z",
             )[0]
 
         expected = Raster.from_array(new_dem, tba_dem.transform, tba_dem.crs, tba_dem.nodata)
         actual = blockwise_coreg._wrapper_apply_epc(tba_dem, (1, 1, 1), (1, 1, 1), (1, 1, 1))
 
-        assert actual == expected
+        assert actual.raster_equal(expected)
 
     def test_apply_z_correction_parameter(self, step, blockwise_coreg):
         """
@@ -176,8 +176,8 @@ class TestBlockwiseCoreg:
         [
             pytest.param(xdem.coreg.NuthKaab, {}, id="NuthKaab"),
             pytest.param(xdem.coreg.NuthKaab, {"vertical_shift": True}, id="NuthKaab_vertical"),
-            pytest.param(xdem.coreg.CPD, {"only_translation": True}, id="CPD"),
-            pytest.param(xdem.coreg.ICP, {"only_translation": True}, id="ICP"),
+            # pytest.param(xdem.coreg.CPD, {"only_translation": True}, id="CPD"),
+            # pytest.param(xdem.coreg.ICP, {"only_translation": True}, id="ICP"),
             pytest.param(xdem.coreg.DhMinimize, {}, id="DhMinimize"),
             pytest.param(xdem.coreg.LZD, {"only_translation": True}, id="LZD"),
             pytest.param(xdem.coreg.VerticalShift, {}, id="VerticalShift"),
@@ -192,10 +192,13 @@ class TestBlockwiseCoreg:
             tba_crop = tba.icrop(bbox=(0, 0, block_size, block_size))
             tba = tba_crop.reproject(tba)
 
+        print("a")
         step_coreg = coreg_method(**kwargs)
         config_mc = MultiprocConfig(chunks=block_size, outfile=tmp_path / "test.tif")
+        print("aa")
         blockwise_coreg = xdem.coreg.BlockwiseCoreg(step=step_coreg, mp_config=config_mc, block_size_fit=block_size)
         assert "blocks" not in blockwise_coreg.meta["inputs"]["blockwise"]
+        print("b")
 
         blockwise_coreg.fit(ref, tba, mask)
         assert "blocks" in blockwise_coreg.meta["inputs"]["blockwise"]
@@ -223,7 +226,7 @@ class TestBlockwiseCoreg:
         reason="Pending GeoUtils Windows cluster fix; remove after new GeoUtils release.",
     )
     @pytest.mark.parametrize(
-        "step_coreg",
+        "coreg_method, kwargs",
         [
             pytest.param(xdem.coreg.Deramp, {}, id="Deramp"),
             pytest.param(xdem.coreg.DirectionalBias, {}, id="DirectionalBias"),

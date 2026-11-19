@@ -177,7 +177,6 @@ def copy_doc(
 
         # Replace argument description of dem and resolution (not used in the DEM class, only in terrain)
         if remove_dem_res_params:
-
             # Accept either raw or dedented docstrings, including strings produced by decorators
             other_doc = re.sub(r"\n[ \t]*:param (?:dem|resolution):[^\n]*", "", other_doc)
 

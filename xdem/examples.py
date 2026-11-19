@@ -154,7 +154,7 @@ def _process_longyearbyen_coreg_examples(output_dir: str, overwrite: bool = Fals
         glacier_mask = gu.Vector(get_path("longyearbyen_glacier_outlines", output_dir=output_dir))
         inlier_mask = ~glacier_mask.create_mask(reference_raster)
 
-        nuth_kaab = xdem.coreg.NuthKaab(offset_threshold=0.005)
+        nuth_kaab = xdem.coreg.NuthKaab(tolerance_translation=0.005)
         nuth_kaab.fit(reference_raster, to_be_aligned_raster, inlier_mask=inlier_mask, random_state=42)
 
         aligned_raster = nuth_kaab.apply(to_be_aligned_raster, resample=True)
@@ -167,7 +167,6 @@ def _process_longyearbyen_coreg_examples(output_dir: str, overwrite: bool = Fals
 
     # If the tba_dem_coreg file does not exist, create it
     if overwrite or not op.isfile(op.join(output_dir, _FILEPATHS_PROCESSED["longyearbyen_tba_dem_coreg"])):
-
         dem_2009 = xdem.DEM(get_path("longyearbyen_ref_dem", output_dir), silent=True)
         ddem = xdem.DEM(ddem_path, silent=True)  # absolute path to avoid recursivity
 
@@ -220,7 +219,6 @@ def _crop_lonyearbyen_test_examples(output_dir: str, overwrite: bool = False) ->
     :param overwrite: Whether to overwrite the files if they already exist.
     """
     for k in _FILEPATHS_TEST.keys():
-
         # Verify if data is longyearbyen and need to be computed
         if not k.lower().startswith("longyearbyen") or (
             op.exists(op.join(output_dir, _FILEPATHS_TEST[k])) and not overwrite

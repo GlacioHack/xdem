@@ -1,3 +1,21 @@
+# Copyright (c) 2026 xDEM developers
+#
+# This file is part of the xDEM project:
+# https://github.com/glaciohack/xdem
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+#
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Xarray accessor ``dem`` and file opening for digital elevation models."""
 
 from __future__ import annotations
@@ -6,7 +24,8 @@ import pathlib
 from typing import Any, Literal
 
 import xarray as xr
-from geoutils.raster.xr_accessor import RasterAccessor, open_raster
+from geoutils import open_raster
+from geoutils.raster.xr_accessor import DataArrayRasterAccessor
 from pyproj.crs import VerticalCRS
 
 from xdem.dem.base import DEMBase
@@ -42,12 +61,12 @@ def open_dem(
 
 
 @xr.register_dataarray_accessor("dem")
-class DEMAccessor(DEMBase, RasterAccessor):  # type: ignore[misc]
+class DEMAccessor(DEMBase, DataArrayRasterAccessor):  # type: ignore[misc]
     """
     Xarray accessor ``dem`` sharing elevation methods with DEM and raster methods with ``rst``.
 
     Only DataArray validation and conversion to the native DEM class live here. Calculation and metadata behavior
-    are inherited from DEMBase and RasterAccessor.
+    are inherited from DEMBase and DataArrayRasterAccessor.
     """
 
     def __init__(self, xarray_obj: xr.DataArray) -> None:

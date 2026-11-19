@@ -16,13 +16,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from xdem import coreg, dem, examples, fit, spatialstats, terrain, volume  # noqa
+from xdem import (  # noqa
+    coreg,
+    dem,
+    examples,
+    fit,
+    spatialstats,
+    terrain,
+    uncertainty,
+    volume,
+)
 from xdem.ddem import dDEM  # noqa
 from xdem.dem import DEM, xr_accessor  # noqa
 from xdem.dem.xr_accessor import open_dem  # noqa
 from xdem.demcollection import DEMCollection  # noqa
 from xdem.epc import EPC  # noqa
 from xdem.epc.pd_accessor import open_epc  # noqa
+from xdem.uncertainty import ErrorComponent, ErrorMagnitude, ErrorStructure  # noqa
 
 try:
     from xdem._version import __version__  # noqa

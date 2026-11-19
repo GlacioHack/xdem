@@ -12,6 +12,7 @@ kernelspec:
   language: python
   name: xdem
 ---
+(data-example)=
 (data)=
 
 # Data examples
@@ -44,6 +45,8 @@ Another data is available over the Giza pyramid complex:
 | `"giza_dem"` | DSM.tif  | Raster | DEM of the area in 2013 |
 
 
+
+(doi-references)=
 
 ```{note}
 If you need more information about the data, you can read this [page](https://github.com/GlacioHack/xdem-data/blob/main/README.md)

@@ -69,6 +69,11 @@ def fail_on_logging_warnings(request: Any) -> Any:
     if request.node.get_closest_marker("allow_logging_warnings"):
         return
 
+    # Ignore Matplotlib cache setup warning
+    ignored_logs = {
+        ("matplotlib.font_manager", "Matplotlib is building the font cache; this may take a moment."),
+    }
+
     # Categorize bad tests
     # IGNORED = ("rasterio",)   # If we want to add a list of "IGNORED" packages in the future
     bad = [
@@ -76,6 +81,7 @@ def fail_on_logging_warnings(request: Any) -> Any:
         for r in collector.records
         if r.levelno >= logging.WARNING
         and not getattr(r, "expected", False)  # Skip expected logging warnings (tagged manually in the tests)
+        and (r.name, r.getMessage()) not in ignored_logs
         # and not r.name.startswith(IGNORED)
     ]
 

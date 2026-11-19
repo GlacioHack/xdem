@@ -334,7 +334,7 @@ def test_load_dem_alias():
     config_dem["path_to_mask"] = "longyearbyen_glacier_outlines"
     output_dem, inlier_mask, mask_path = Workflows.load_dem(config_dem)
 
-    assert output_dem == xdem.DEM(xdem.examples.get_path(config_dem["path_to_elev"]))
+    assert output_dem.raster_equal(xdem.DEM(xdem.examples.get_path(config_dem["path_to_elev"])))
     assert inlier_mask.raster_equal(~gu.Vector(mask_path).create_mask(output_dem))
     assert mask_path == xdem.examples.get_path("longyearbyen_glacier_outlines")
 

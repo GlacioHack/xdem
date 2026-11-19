@@ -34,7 +34,6 @@ def load_examples_giza() -> Raster:
 
 
 class TestExamples:
-
     ref_dem, tba_dem, glacier_mask, ddem, epc = load_examples_longyearbyen()
     giza_dem = load_examples_giza()
 
@@ -43,7 +42,7 @@ class TestExamples:
         [
             (ref_dem, np.array([465.11816, 207.3236, 208.30563, 748.7337, 797.28644], dtype=np.float32), None),
             (tba_dem, np.array([464.6715, 213.7554, 207.8788, 760.8192, 797.3268], dtype=np.float32), None),
-            (ddem, np.array([1.37, -1.67, 0.13, -10.10, 2.49], dtype=np.float32), 10e-3),
+            (ddem, np.array([1.46, -1.64, 0.20, -10.05, 2.54], dtype=np.float32), 10e-3),
             (giza_dem, np.array([-32768.0, 80.30466, -32768.0, -32768.0, -32768.0], dtype=np.float32), None),
         ],
     )
@@ -59,9 +58,7 @@ class TestExamples:
         assert values == pytest.approx(truevals, abs=abs)
 
     # Note: Following PR #329, no gaps on DEM edges after coregistration
-    @pytest.mark.parametrize(
-        "rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 0), (giza_dem, 838023)]
-    )  # type: ignore
+    @pytest.mark.parametrize("rst_and_truenodata", [(ref_dem, 0), (tba_dem, 0), (ddem, 0), (giza_dem, 838023)])  # type: ignore
     def test_array_nodata(self, rst_and_truenodata: tuple[Raster, int]) -> None:
         """Let's also check that the data arrays have always the same number of not finite values"""
 
@@ -108,7 +105,7 @@ class TestExamples:
         data = nb_files_data[0]
         nb_files = nb_files_data[1]
         examples.get_path(data, output_dir=str(tmp_path))
-        assert nb_files == sum([len(files) for _, _, files in os.walk(tmp_path)])
+        assert nb_files == sum(len(files) for _, _, files in os.walk(tmp_path))
 
     def test_download_all_data(self, tmp_path: Path) -> None:
         """Let's ensure that the all the data are successfully downloaded."""
@@ -116,7 +113,7 @@ class TestExamples:
         # Verify if all the data are well download in a new directory
         output_dir = examples.get_all_data(output_dir=str(tmp_path))
         assert str(tmp_path) == output_dir
-        assert sum([len(files) for _, _, files in os.walk(tmp_path)]) == 14
+        assert sum(len(files) for _, _, files in os.walk(tmp_path)) == 14
 
         # Verify if all the data are well present in the default path (can be more)
         output_dir = examples.get_all_data()
@@ -128,18 +125,18 @@ class TestExamples:
         """Let's ensure that the data are successfully downloaded in case of a missing data and overwrite config."""
 
         examples.get_path("longyearbyen_epc", output_dir=str(tmp_path))
-        nbFile_needed = sum([len(files) for _, _, files in os.walk(tmp_path)])
+        nbFile_needed = sum(len(files) for _, _, files in os.walk(tmp_path))
         path_epc = tmp_path / "Longyearbyen" / "data" / "EPC_IS2.gpkg"
 
         # Test download if missing file
         os.remove(path_epc)
         examples.get_path("longyearbyen_epc", output_dir=str(tmp_path))
-        assert nbFile_needed == sum([len(files) for _, _, files in os.walk(str(tmp_path))])
+        assert nbFile_needed == sum(len(files) for _, _, files in os.walk(str(tmp_path)))
 
         # Test overwrite
         os.remove(path_epc)
         examples.get_path("longyearbyen_ref_dem", output_dir=str(tmp_path), overwrite=True)
-        assert nbFile_needed == sum([len(files) for _, _, files in os.walk(tmp_path)])
+        assert nbFile_needed == sum(len(files) for _, _, files in os.walk(tmp_path))
 
     def test_get_path_test_longyearbyen(self, tmp_path: Path) -> None:
         """Let's ensure that the cropped data are successfully downloaded in case call from the test."""
@@ -150,8 +147,8 @@ class TestExamples:
         dest_bounds = BoundingBox(left=512310.0, bottom=8660950.0, right=513710.0, top=8662030.0)
         longyearbyen_dir = os.path.dirname(os.path.dirname(path))
 
-        assert sum([len(files) for _, _, files in os.walk(os.path.join(longyearbyen_dir, "data"))]) == 26
-        assert sum([len(files) for _, _, files in os.walk(os.path.join(longyearbyen_dir, "processed"))]) == 4
+        assert sum(len(files) for _, _, files in os.walk(os.path.join(longyearbyen_dir, "data"))) == 26
+        assert sum(len(files) for _, _, files in os.walk(os.path.join(longyearbyen_dir, "processed"))) == 4
 
         # Verify Raster files: shape and bounds
         for test_file in glob.glob(os.path.join(longyearbyen_dir, "*", "*_test.tif")):

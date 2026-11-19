@@ -50,8 +50,7 @@ larger than this correlation range. If static surfaces cover too small an area, 
 less reliable.
 
 ```{note}
-One of the objectives of xDEM is to allow to use knowledge on random errors to refine
-coregistration for limited static surface areas, stay tuned!
+The estimated random errors can also be propagated to fitted coregistration parameters, see {ref}`uncertainty`!
 ```
 
 ### For further uncertainty analysis (random errors)

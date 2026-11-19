@@ -16,14 +16,12 @@ from pyproj import CRS
 from pyproj.transformer import Transformer
 
 import xdem
-import xdem.vcrs
 from xdem.dem import DEM
 
 DO_PLOT = False
 
 
 class TestDEM:
-
     def test_init(self) -> None:
         """Test that inputs work properly in DEM class init."""
         fn_img = xdem.examples.get_path_test("longyearbyen_ref_dem")
@@ -218,8 +216,7 @@ class TestDEM:
         with pytest.warns(UserWarning, match="Grid 'grid.tif' not found in*"):
             with pytest.raises(
                 ValueError,
-                match="The provided grid 'grid.tif' does not exist at https://cdn.proj.org/. "
-                "Provide an existing grid.",
+                match="The provided grid 'grid.tif' does not exist at https://cdn.proj.org/. Provide an existing grid.",
             ):
                 dem.set_vcrs(new_vcrs="grid.tif")
 
@@ -276,14 +273,14 @@ class TestDEM:
         # With both inputs as names
         dem.set_vcrs("EGM96")
         with pytest.warns(
-            UserWarning, match="Source and destination vertical CRS are the same, " "skipping vertical transformation."
+            UserWarning, match="Source and destination vertical CRS are the same, skipping vertical transformation."
         ):
             dem.to_vcrs("EGM96")
 
         # With one input as name, the other as CRS
         dem.set_vcrs("Ellipsoid")
         with pytest.warns(
-            UserWarning, match="Source and destination vertical CRS are the same, " "skipping vertical transformation."
+            UserWarning, match="Source and destination vertical CRS are the same, skipping vertical transformation."
         ):
             dem.to_vcrs(CRS("EPSG:4979"))
 
@@ -295,17 +292,20 @@ class TestDEM:
 
     @pytest.mark.parametrize("grid_shifts", [egm08_chile, egm08_chile, geoid96_alaska, isn93_iceland])
     def test_to_vcrs__grids(self, grid_shifts: dict[str, Any]) -> None:
-        """Tests grids to convert vertical CRS."""
+        """Checks that grid-based vertical transformations match known geoid shifts at pixel centers."""
 
         # Most grids aren't going to be downloaded, so this warning can be raised
         warnings.filterwarnings("ignore", category=UserWarning, message="Grid .*")
 
         # Using an arbitrary elevation of 100 m (no influence on the transformation)
+        # Place the first pixel center at the longitude and latitude checked above
+        pixel_size = 0.01
+        transform = rio.transform.from_origin(
+            grid_shifts["lon"] - pixel_size / 2, grid_shifts["lat"] + pixel_size / 2, pixel_size, pixel_size
+        )
         dem = DEM.from_array(
             data=np.array([[100, 100]]),
-            transform=rio.transform.from_bounds(
-                grid_shifts["lon"], grid_shifts["lat"], grid_shifts["lon"] + 0.01, grid_shifts["lat"] + 0.01, 0.01, 0.01
-            ),
+            transform=transform,
             crs=CRS.from_epsg(4326),
             nodata=None,
         )
@@ -513,7 +513,9 @@ class TestDEM:
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
 
-        sig_h, corr_sig = dem_tba.estimate_uncertainty(dem_ref, random_state=42)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            sig_h, corr_sig = dem_tba.estimate_uncertainty(dem_ref, random_state=42)
 
         assert isinstance(sig_h, gu.Raster)
         assert callable(corr_sig)
@@ -528,8 +530,9 @@ class TestDEM:
         dem_ref = DEM(fn_ref)
         dem_tba = DEM(fn_tba)
 
+        # Use Matheron to reach correlation fitting without the optional t-digest dependency
         with pytest.raises(ImportError, match="Optional dependency 'scikit-gstat' required.*"):
-            dem_tba.estimate_uncertainty(dem_ref)
+            dem_tba.estimate_uncertainty(dem_ref, variogram_estimator="matheron")
 
     def test_to_pointcloud__type_override(self) -> None:
 

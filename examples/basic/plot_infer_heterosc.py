@@ -46,8 +46,9 @@ df_binning
 # (*Note: below we divide the max curvature by 100 to convert it in* m\ :sup:`-1` ):
 for slope, maxc in [(0, 0), (40, 0), (0, 5), (40, 5)]:
     print(
-        "Error for a slope of {:.0f} degrees and"
-        " {:.2f} m-1 max. curvature: {:.1f} m".format(slope, maxc / 100, error_function((slope, maxc)))
+        "Error for a slope of {:.0f} degrees and {:.2f} m-1 max. curvature: {:.1f} m".format(
+            slope, maxc / 100, error_function((slope, maxc))
+        )
     )
 
 # %%

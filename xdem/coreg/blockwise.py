@@ -1,5 +1,5 @@
 # Copyright (c) 2024 xDEM developers
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
+# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES)
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -83,7 +83,7 @@ class BlockwiseCoreg:
 
         if isinstance(step, type):
             raise ValueError(
-                "The 'step' argument must be an instantiated Coreg subclass. " "Hint: write e.g. ICP() instead of ICP"
+                "The 'step' argument must be an instantiated Coreg subclass. Hint: write e.g. ICP() instead of ICP"
             )
         if not step.is_affine:
             raise ValueError("The blockwise coregistration only supports affine coregistration methods.")
@@ -115,8 +115,9 @@ class BlockwiseCoreg:
 
         self.output_path_aligned = self.parent_path / self.mp_config.outfile
 
-        blockwise_dict = {"block_size_fit": self.block_size_fit, "block_size_apply": self.block_size_apply}
-        self.meta = {"inputs": {"blockwise": blockwise_dict}, "outputs": {}}
+        self.procstep.meta["inputs"]["block_size_fit"] = self.block_size_fit
+        self.procstep.meta["inputs"]["block_size_apply"] = self.block_size_apply
+        self.procstep.meta["blocks"] = {}
         self.shape_tiling_grid = (0, 0, 0)
 
     @staticmethod
@@ -136,6 +137,9 @@ class BlockwiseCoreg:
         :return: The coregistration method with updated transformation parameters.
         """
         coreg_method = coreg_method.copy()
+        blocks = coreg_method.meta.pop("blocks", None)
+        if blocks:
+            coreg_method.meta["outputs"] = {}
         tba_dem_tiled = tba_dem.crop(ref_dem_tiled)
 
         _, ref_mask = get_array_and_mask(ref_dem_tiled)
@@ -147,7 +151,7 @@ class BlockwiseCoreg:
             coreg_method.meta["outputs"] = {"affine": {"shift_z": np.nan}}
             return coreg_method
         else:
-            if inlier_mask:
+            if inlier_mask is not None:
                 inlier_mask = inlier_mask.crop(ref_dem_tiled)
             try:
                 return coreg_method.fit(ref_dem_tiled, tba_dem_tiled, inlier_mask)
@@ -173,8 +177,8 @@ class BlockwiseCoreg:
         :param inlier_mask: Optional boolean mask indicating valid data points to use in the fitting.
         :return: None. Updates internal model parameters.
         """
-        self.meta["inputs"].update(self.procstep.meta["inputs"])  # type: ignore
-        self.meta["inputs"]["blockwise"]["blocks"] = {}  # type: ignore
+        self.procstep.meta["inputs"]["block_size_fit"] = self.block_size_fit
+        self.procstep.meta["inputs"]["block_size_apply"] = self.block_size_apply
         outputs_coreg = map_multiproc_collect(
             self._coreg_wrapper,
             reference_elev,
@@ -189,10 +193,9 @@ class BlockwiseCoreg:
             self.block_size_fit, reference_elev.shape, to_be_aligned_elev.shape
         ).shape
 
-        print(self.shape_tiling_grid)
-        print(outputs_coreg)
-
         rows_cols = list(itertools.product(range(self.shape_tiling_grid[0]), range(self.shape_tiling_grid[1])))
+        self.procstep.meta["blocks"] = {}
+        self.procstep.meta["outputs"] = {}
 
         self.x_coords = []  # type: ignore
         self.y_coords = []  # type: ignore
@@ -201,9 +204,6 @@ class BlockwiseCoreg:
         self.shifts_z = []  # type: ignore
 
         for idx, (coreg, tile_coords) in enumerate(outputs_coreg):
-            print("idx", idx, ")")
-            print("coreg.meta[outputs]", coreg.meta["outputs"])
-
             shift_x = coreg.meta["outputs"]["affine"].get("shift_x", np.nan)
             shift_y = coreg.meta["outputs"]["affine"].get("shift_y", np.nan)
             shift_z = coreg.meta["outputs"]["affine"].get("shift_z", np.nan)
@@ -222,7 +222,7 @@ class BlockwiseCoreg:
 
             tile_str = f"{rows_cols[idx][0]}_{rows_cols[idx][1]}"
 
-            self.meta["inputs"]["blockwise"]["blocks"][tile_str] = {  # type: ignore
+            self.procstep.meta["blocks"][tile_str] = {
                 "start_x": tile_coords[0],
                 "end_x": tile_coords[1],
                 "start_y": tile_coords[2],
@@ -230,12 +230,9 @@ class BlockwiseCoreg:
             }
 
             self.procstep._meta["outputs"][tile_str] = coreg.meta["outputs"]  # type: ignore
-            print(tile_str, ":", coreg.meta["outputs"])
-            print()
         self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z = map(  # type: ignore
             np.array, (self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z)
         )
-        print("self.procstep._meta[outputs]", self.procstep._meta["outputs"])
         # Flag that the fitting function has been called.
         self.procstep._fit_called = True
 
@@ -358,7 +355,7 @@ class BlockwiseCoreg:
             new_dem = _grid_pointcloud(
                 trans_epc,
                 grid_coords=tba_dem_tile.coords(grid=False),
-                data_column_name="z",
+                data_name="z",
                 resampling=resampling,
             )[0]
 
@@ -439,10 +436,10 @@ class BlockwiseCoreg:
             "  Blocks repartition:    \n",
         ]
 
-        print(self.meta["inputs"]["blockwise"])
-        if "blocks" in self.meta["inputs"]["blockwise"]:
+        block_bounds = self.procstep.meta["blocks"]
+        if block_bounds:
             blocks = []
-            for b, data in self.meta["inputs"]["blockwise"]["blocks"].items():
+            for b, data in block_bounds.items():
                 start_x = data["start_x"]
                 end_x = data["end_x"]
                 start_y = data["start_y"]
@@ -458,7 +455,7 @@ class BlockwiseCoreg:
             tab_coords = [max(len(str(col[j])) for col in blocks) + 4 for j in range(len(blocks[0]))]
 
             for block in blocks:
-                header_str += "    " + "".join(str(v).rjust(tab_coords[b]) for b, v in enumerate(block)) + "\n"
+                header_str.append("    " + "".join(str(v).rjust(tab_coords[b]) for b, v in enumerate(block)) + "\n")
 
         step_str_tab = self.procstep.info(as_str=True).split("\n")
 

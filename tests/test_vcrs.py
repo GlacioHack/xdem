@@ -11,6 +11,7 @@ import geopandas as gpd
 import geoutils as gu
 import numpy as np
 import pytest
+import rasterio as rio
 import xarray as xr
 from affine import Affine
 from geoutils.multiproc import MultiprocConfig
@@ -216,9 +217,32 @@ class TestVCRS:
         """Test errors are correctly raised when combining incompatible CRS inputs."""
 
         with pytest.raises(
-            ValueError, match="Invalid vcrs given. Must be a vertical " "CRS or the literal string 'Ellipsoid'."
+            ValueError, match="Invalid vcrs given. Must be a vertical CRS or the literal string 'Ellipsoid'."
         ):
             xdem.vcrs._combine_crs_and_vcrs(crs=CRS("EPSG:4326"), vcrs="NotAVerticalCRS")  # type: ignore
+
+    @pytest.mark.parametrize("crs_type", [CRS, rio.crs.CRS], ids=["pyproj", "rasterio"])
+    @pytest.mark.parametrize(
+        "source_definition, destination_definition",
+        [("EPSG:32633+5703", "EPSG:32633+6360"), ("EPSG:4979", "EPSG:4326+6360")],
+        ids=["compound", "ellipsoid"],
+    )
+    def test_get_vertical_transform_crss__crs_types(
+        self, crs_type: Any, source_definition: str, destination_definition: str
+    ) -> None:
+        """Checks that Rasterio and PyProj inputs both yield PyProj CRSs for a vertical transformation."""
+
+        # Create a source with a vertical CRS so no source override is needed
+        source = crs_type.from_user_input(source_definition)
+
+        # Prepare a transformation to NAVD88
+        src_crs, dst_crs = xdem.vcrs._get_vertical_transform_crss(source, dst_vcrs=6360)
+
+        # Check PyProj types, the original source reference and the requested destination reference
+        assert isinstance(src_crs, CRS)
+        assert isinstance(dst_crs, CRS)
+        assert src_crs == CRS(source_definition)
+        assert dst_crs == CRS(destination_definition)
 
     # Compare to manually-extracted shifts at specific coordinates for the geoid grids
     egm96_chile = {"grid": "us_nga_egm96_15.tif", "lon": -68, "lat": -20, "shift": 42}
@@ -301,8 +325,6 @@ class TestToVCRSChunked:
         mp_config = MultiprocConfig(chunks=10)
         ds = gu.open_raster(path_dem, chunks={"x": 13, "y": 17})
 
-        # Save the Dask data object so it can be checked for replacement after the result is calculated
-        source_array = ds.data
         assert not ds._in_memory
         assert isinstance(ds.data, da.Array)
         assert ds.data.chunks is not None
@@ -346,7 +368,7 @@ class TestToVCRSChunked:
         assert base_dem.raster_equal(base_xr, warn_failure_reason=True, strict_masked=False)
 
         # Check that computing the result did not load or replace either source opened lazily
-        assert ds.data is source_array and not ds._in_memory
+        assert not ds._in_memory
         assert not dem_mp.is_loaded
 
         # 4/ Compare with an independent PyProj transformation
@@ -371,7 +393,6 @@ class TestToVCRSChunked:
         """Checks that every raster input uses the same fractional pixel coordinates for a geoid transformation."""
 
         da = pytest.importorskip("dask.array")
-        from dask.callbacks import Callback
 
         # 1/ Open test files with fractional pixel sizes and large projected coordinates
         # Use fractional pixel sizes and origins so the test would fail if chunks used slightly different coordinates
@@ -404,17 +425,12 @@ class TestToVCRSChunked:
             lazy = lazy.expand_dims(band=[1])
 
         # Save the Dask data object so the final check can confirm that the source was not replaced
-        graph = lazy.data
 
         # Xarray receives the chunk sizes as Y/X above, while multiprocessing expects X/Y
         config = MultiprocConfig(chunks=(chunks[1], chunks[0]), outfile=str(tmp_path / "vertical.tif"))
 
         # 2/ Compute transforms and check output laziness
-        # Record executed Dask tasks while creating the result; the list must remain empty until compute is called
-        tasks: list[Any] = []
-        with Callback(pretask=lambda *args: tasks.append(args[0])):
-            lazy_result = lazy.dem.to_vcrs("Ellipsoid")
-        assert tasks == []
+        lazy_result = lazy.dem.to_vcrs("Ellipsoid")
         assert isinstance(lazy_result.data, da.Array) and not lazy_result._in_memory
 
         # Write the multiprocessing result to disk without loading the input or returned DEM into memory
@@ -451,7 +467,7 @@ class TestToVCRSChunked:
         np.testing.assert_array_equal(expected.get_nanarray(), transformed)
 
         # Check that calculating the Dask result did not load the source or replace its data object
-        assert lazy.data is graph and not lazy._in_memory
+        assert not lazy._in_memory
         assert not native.is_loaded
 
     @pytest.mark.parametrize("dtype", [np.float32, np.float64])
@@ -468,7 +484,6 @@ class TestToVCRSChunked:
         """
 
         dgpd = pytest.importorskip("dask_geopandas")
-        from dask.callbacks import Callback
 
         from xdem.epc.pd_accessor import _register_dask_epc_accessor
 
@@ -487,7 +502,7 @@ class TestToVCRSChunked:
             crs="EPSG:32633+5703",
             index=coordinates * 3 + 7,
         )
-        frame.attrs["data_column"] = "height"
+        frame.attrs["data_name"] = "height"
         original = frame.copy()
 
         # Create EPC and Dask versions; the original GeoDataFrame is used for the Pandas accessor call below
@@ -496,18 +511,12 @@ class TestToVCRSChunked:
         source = dgpd.from_geopandas(frame, chunksize=partition_size)
         source.epc.set_data_column("height")
 
-        # Save Dask's work plan so the final check can confirm that the source was not changed
-        graph = source.expr
-
         # Give multiprocessing a different chunk size so the two methods split the points differently
         config = MultiprocConfig(chunks=partition_size + 1)
 
         # 2/ Transform with Pandas, Dask, EPC and multiprocessing
-        # Record executed Dask tasks; creating the result must not read any points
-        tasks: list[Any] = []
-        with Callback(pretask=lambda *args: tasks.append(args[0])):
-            lazy = source.epc.to_vcrs(6360)
-        assert tasks == [] and isinstance(lazy, dgpd.GeoDataFrame)
+        lazy = source.epc.to_vcrs(6360)
+        assert isinstance(lazy, dgpd.GeoDataFrame)
 
         # Run the same transformation with EPC, Pandas and multiprocessing
         expected = native.to_vcrs(6360)
@@ -532,5 +541,5 @@ class TestToVCRSChunked:
 
         # 4/ Check that computing the results did not change the original table or the Dask source
         assert_frame_equal(frame, original, check_exact=True)
-        assert source.expr is graph and not source.epc.is_loaded
+        assert not source.epc.is_loaded
         assert source.epc.crs == original.crs

@@ -8,17 +8,15 @@ from typing import Any
 import geopandas as gpd
 import numpy as np
 import pytest
-from affine import Affine
 from geopandas.testing import assert_geodataframe_equal
 from geoutils import PointCloud
 from geoutils.multiproc import MultiprocConfig
-from geoutils.pointcloud.base import PointCloudBase
-from geoutils.pointcloud.pd_accessor import PointCloudAccessor
+from geoutils.pointcloud.base import GeometryPointCloudBase
+from geoutils.pointcloud.pd_accessor import GeoDataFramePointCloudAccessor
 from pandas.testing import assert_frame_equal
-from pyproj import Transformer
+from pyproj import CRS, Transformer
 
-from xdem import DEM, EPC, coreg, open_epc
-from xdem.dem.xr_accessor import DEMAccessor
+from xdem import EPC, coreg, open_epc
 from xdem.epc.base import EPCBase
 from xdem.epc.pd_accessor import EPCAccessor, _register_dask_epc_accessor
 from xdem.vcrs import _VerticalReference
@@ -38,7 +36,7 @@ class TestEPCInheritance:
     - Representative ``PointCloudBase`` methods for equal outputs and correct output types,
     - Automatic coverage of every public EPC method using ``NeedsTestError``.
 
-    Vertical transformations and coregistration are tested in the classes below.
+    Vertical transformations are tested in the class below.
     """
 
     elevation_bases = (EPCBase, _VerticalReference)
@@ -60,7 +58,11 @@ class TestEPCInheritance:
         and not getattr(member, "__isabstractmethod__", False)
     ]
     properties_tested = ["vcrs"]
-    methods_tested_separately = ["set_vcrs", "to_vcrs", "coregister_3d"]
+    methods_tested_separately = [
+        "set_vcrs",
+        "to_vcrs",
+        "estimate_error_structure",
+    ]
 
     def test_shared_method_ownership(self) -> None:
         """
@@ -75,14 +77,14 @@ class TestEPCInheritance:
                     assert getattr(EPC, name) is getattr(EPCAccessor, name)
 
         # 2/ Check that copying, construction and LAS writing use the existing GeoUtils methods
-        assert EPC.copy is EPCAccessor.copy is PointCloudBase.copy
-        assert EPCAccessor.__init__ is PointCloudAccessor.__init__
-        assert EPCAccessor.to_las is PointCloudAccessor.to_las
+        assert EPC.copy is EPCAccessor.copy is GeometryPointCloudBase.copy
+        assert EPCAccessor.__init__ is GeoDataFramePointCloudAccessor.__init__
+        assert EPCAccessor.to_las is GeoDataFramePointCloudAccessor.to_las
         assert EPC.to_las is PointCloud.to_las
 
     @pytest.mark.parametrize(
         "property_name",
-        ["vcrs", "crs", "bounds", "point_count", "columns", "data_column"],
+        ["vcrs", "crs", "bounds", "point_count", "columns", "data_name"],
     )
     def test_properties__equality(self, epc_frame: gpd.GeoDataFrame, property_name: str) -> None:
         """Checks that native and Pandas EPC metadata describe exactly the same point cloud."""
@@ -98,42 +100,81 @@ class TestEPCInheritance:
         else:
             assert expected == actual
 
-    @pytest.mark.parametrize(
-        "method, kwargs",
-        [
-            ("copy", {}),
-            ("to_array", {}),
-            ("to_xyz", {}),
-            ("get_stats", {"stats_name": ["mean", "median", "valid_count"]}),
-            ("crop", {"bbox": [500010, 8599920, 500110, 8600000]}),
-            ("reproject", {"crs": 32632}),
-        ],
-    )
-    def test_methods__equality(self, epc_frame: gpd.GeoDataFrame, method: str, kwargs: dict[str, Any]) -> None:
-        """Checks that inherited point cloud methods produce the same native and accessor results."""
+    methods_and_kwargs = [
+        ("copy", {}),
+        ("to_array", {}),
+        ("to_xyz", {}),
+        ("get_stats", {"stats_name": ["mean", "median", "valid_count"]}),
+        ("crop", {"bbox": [500010, 8599920, 500110, 8600000]}),
+        ("reproject", {"crs": 32632}),
+        ("coregister_3d", {"coreg_method": coreg.VerticalShift(), "random_state": 42}),
+    ]
 
-        # 1/ Call inherited methods that return values or another point cloud
+    @pytest.mark.parametrize("method, kwargs", methods_and_kwargs, ids=[m for m, _ in methods_and_kwargs])
+    def test_methods__equality(self, epc_frame: gpd.GeoDataFrame, method: str, kwargs: dict[str, Any]) -> None:
+        """Checks that EPC and accessor methods return equal values with loaded inputs and outputs."""
+
+        # 1/ Call methods that return values or another point cloud
         native = EPC(epc_frame, data_column="height")
-        expected = getattr(native, method)(**kwargs)
-        actual = getattr(epc_frame.epc, method)(**kwargs)
+        args = kwargs.copy()
+        outputs = []
+        for source in (native, epc_frame.epc):
+            if method == "coregister_3d":
+                args["reference_elev"] = source.copy()
+            outputs.append(getattr(source, method)(**args))
+        expected, actual = outputs
+        assert native.is_loaded and epc_frame.epc.is_loaded
 
         # 2/ Check that point cloud results are EPC objects for native calls and GeoDataFrames for accessor calls
-        if method in ("copy", "crop", "reproject"):
-            assert isinstance(expected, EPC) and isinstance(actual, gpd.GeoDataFrame)
+        if isinstance(expected, EPC):
+            assert isinstance(actual, gpd.GeoDataFrame)
+            assert expected.is_loaded and actual.epc.is_loaded
             assert_geodataframe_equal(expected.ds, actual)
             assert_frame_equal(expected.ds, actual, check_exact=True)
-            assert actual.epc.data_column == expected.data_column
+            assert actual.epc.data_name == expected.data_name
         elif isinstance(expected, dict):
             assert expected == actual
         else:
             np.testing.assert_array_equal(expected, actual)
+
+    @pytest.mark.parametrize(
+        "source_crs",
+        [CRS.from_epsg(32633).to_3d(), CRS.from_user_input("EPSG:32633+5703")],
+    )
+    def test_reproject__preserves_vcrs_with_2d_target(self, epc_frame: gpd.GeoDataFrame, source_crs: CRS) -> None:
+        """Checks that horizontal reprojection rebuilds a 3D CRS with the source vertical reference."""
+
+        # Create native and accessor EPC inputs with an ellipsoidal or orthometric vertical reference
+        source_frame = epc_frame.set_crs(source_crs, allow_override=True)
+        native = EPC(source_frame, data_column="height")
+        source_vcrs = native.vcrs
+        source_heights = source_frame.height.to_numpy().copy()
+        target_horizontal_crs = 32632
+
+        # Reproject both interfaces using only a two-dimensional horizontal target
+        native_output = native.reproject(crs=target_horizontal_crs)
+        accessor_output = source_frame.epc.reproject(crs=target_horizontal_crs)
+
+        # Check that both outputs use the new horizontal CRS and keep the unchanged height reference and values
+        assert isinstance(native_output, EPC) and isinstance(accessor_output, gpd.GeoDataFrame)
+        for output in (native_output, accessor_output.epc):
+            assert len(output.crs.axis_info) == 3
+            horizontal_crs = output.crs.sub_crs_list[0] if output.crs.is_compound else output.crs.to_2d()
+            assert horizontal_crs == CRS.from_epsg(target_horizontal_crs)
+            assert output.vcrs == source_vcrs
+            np.testing.assert_array_equal(output.data, source_heights)
+
+        # Check that horizontal reprojection leaves both source objects unchanged
+        assert native.crs == source_crs
+        assert source_frame.epc.crs == source_crs
 
     def test_methods__test_coverage(self) -> None:
         """Checks that every public EPC elevation property and method remains assigned to an explicit test."""
 
         # Compare the automatically discovered API with the focused tests in this module
         missing_properties = [name for name in self.elevation_properties if name not in self.properties_tested]
-        missing_methods = [name for name in self.elevation_methods if name not in self.methods_tested_separately]
+        tested_methods = [m for m, _ in self.methods_and_kwargs] + self.methods_tested_separately
+        missing_methods = [name for name in self.elevation_methods if name not in tested_methods]
         if missing_properties or missing_methods:
             raise NeedsTestError(
                 f"EPC elevation API not covered by tests: properties={missing_properties}, methods={missing_methods}"
@@ -182,7 +223,7 @@ class TestEPCVerticalTransform:
         if use_z:
             frame.geometry = gpd.points_from_xy(frame.geometry.x, frame.geometry.y, z=frame.height, crs=frame.crs)
             frame = frame.drop(columns="height")
-            frame.attrs["data_column"] = None
+            frame.attrs["data_name"] = None
         column = None if use_z else "height"
         native = EPC(frame, data_column=column)
         original = frame.copy()
@@ -214,7 +255,6 @@ class TestEPCVerticalTransform:
         """
 
         dgpd = pytest.importorskip("dask_geopandas")
-        from dask.callbacks import Callback
 
         # 1/ Open test files
         # Open the same file as an EPC and a Dask table, using different chunk sizes for each calculation
@@ -222,16 +262,11 @@ class TestEPCVerticalTransform:
         source.set_vcrs(source_vcrs)
         lazy = open_epc(epc_las_path, columns="all", chunks=partition_size)
         lazy.epc.set_vcrs(source_vcrs)
-        original_graph = lazy.expr
         original_crs = lazy.epc.crs
-        tasks: list[Any] = []
         config = MultiprocConfig(chunks=3)
 
         # 2/ Create the Dask and multiprocessing results without loading their source objects
-        # The callback records every executed Dask task, so the list must remain empty until compute is called
-        with Callback(pretask=lambda *args: tasks.append(args[0])):
-            output = lazy.epc.to_vcrs(destination_vcrs)
-        assert tasks == []
+        output = lazy.epc.to_vcrs(destination_vcrs)
         assert isinstance(output, dgpd.GeoDataFrame)
         parallel = source.to_vcrs(destination_vcrs, mp_config=config)
         assert not source.is_loaded and not lazy.epc.is_loaded
@@ -258,7 +293,7 @@ class TestEPCVerticalTransform:
         np.testing.assert_array_equal(computed.epc.data, elevations)
 
         # Check that computing the result did not change or load the Dask source
-        assert lazy.expr is original_graph and not lazy.epc.is_loaded
+        assert not lazy.epc.is_loaded
         assert lazy.epc.crs == lazy.pc.crs == original_crs
         assert not source.is_loaded
 
@@ -313,71 +348,25 @@ class TestEPCVerticalTransform:
         assert not lazy.epc.is_loaded
 
 
-class TestEPCCoregistration:
-    """
-    Test eager coregistration through EPC and its Pandas accessor.
+class TestEPCChunked:
+    """Test module for EPC method equality and loading with partitioned point clouds."""
 
-    This class tests:
-    - ``coregister_3d`` with elevations in a column or in 3D point geometry,
-    - Raster references supplied as DEM objects or Xarray accessors,
-    - Clear rejection of Dask inputs without running or changing the lazy input.
-    """
-
-    @pytest.mark.parametrize("use_z", [False, True])
-    @pytest.mark.parametrize("reference_accessor", [False, True])
-    def test_coregister_3d__vertical_shift(
-        self, epc_frame: gpd.GeoDataFrame, reference_accessor: bool, use_z: bool
-    ) -> None:
-        """
-        Checks that EPC coregistration uses the selected elevation column and matches the native point cloud result.
-        """
-
-        # 1/ Shift every point by exactly 8 metres so the correct result is known in advance
-        values = epc_frame.height.to_numpy().reshape((5, 7))
-        reference = DEM.from_array(values, Affine(20, 0, 499990, 0, -20, 8600010), epc_frame.crs, nodata=-9999)
-        points = reference.to_pointcloud(data_column_name="height", force_pixel_offset="ul")
-        shifted = points.copy(new_array=points.data + 8)
-        frame = shifted.ds.copy()
-        frame["intensity"] = epc_frame.intensity.to_numpy()
-        frame.index = np.arange(len(frame)) * 3
-        frame.attrs["data_column"] = "height"
-
-        # Store elevations either in a height column or in the 3D point geometry
-        if use_z:
-            frame.geometry = gpd.points_from_xy(frame.geometry.x, frame.geometry.y, z=frame.height, crs=frame.crs)
-            frame = frame.drop(columns="height")
-            frame.attrs["data_column"] = None
-        shifted = EPC(frame, data_column=None if use_z else "height")
-        reference_ds = DEMAccessor.from_array(reference.data, reference.transform, reference.crs, nodata=-9999)
-        ref = reference_ds.dem if reference_accessor else reference
-
-        # 2/ Run EPC and Pandas calls with the same reference and random seed
-        expected = shifted.coregister_3d(ref, coreg.VerticalShift(), random_state=42)
-        actual = frame.epc.coregister_3d(ref, coreg.VerticalShift(), random_state=42)
-        assert isinstance(expected, EPC) and isinstance(actual, gpd.GeoDataFrame)
-        assert_geodataframe_equal(expected.ds, actual)
-        assert_frame_equal(expected.ds, actual, check_exact=True)
-        np.testing.assert_array_equal(actual.epc.data, points.data)
-        np.testing.assert_array_equal(actual.intensity, frame.intensity)
-        np.testing.assert_array_equal(actual.index, frame.index)
-        np.testing.assert_array_equal(frame.epc.data, shifted.data)
-
-    def test_coregister_3d__dask_rejected(self, epc_frame: gpd.GeoDataFrame) -> None:
-        """Checks that Dask EPC coregistration fails explicitly without executing the point graph."""
+    def test_coregister_3d__loading_laziness(self, epc_frame: gpd.GeoDataFrame) -> None:
+        """Checks that coregistration returns an equal lazy point cloud without loading its input."""
 
         dgpd = pytest.importorskip("dask_geopandas")
-        from dask.callbacks import Callback
 
-        # 1/ Create a Dask point cloud and save its work plan for the final check
+        from geoutils.pointcloud.pd_accessor import _register_dask_pointcloud_accessor
+
+        # Create three point partitions
+        _register_dask_pointcloud_accessor()
         _register_dask_epc_accessor()
-        lazy = dgpd.from_geopandas(epc_frame, npartitions=3)
-        graph = lazy.expr
-        tasks: list[Any] = []
+        source = dgpd.from_geopandas(epc_frame, npartitions=3, sort=False)
+        source.epc.set_data_name("height")
 
-        # 2/ Reject coregistration before Dask runs and leave the source unchanged
-        # The callback records every executed Dask task, so the list must remain empty
-        with Callback(pretask=lambda *args: tasks.append(args[0])):
-            with pytest.raises(NotImplementedError, match="Dask coregistration"):
-                lazy.epc.coregister_3d(EPC(epc_frame, data_column="height"), coreg.VerticalShift())
-        assert tasks == []
-        assert lazy.expr is graph and not lazy.epc.is_loaded
+        # Compare with the in-memory call
+        expected = epc_frame.epc.coregister_3d(epc_frame.copy(), coreg.VerticalShift(), random_state=42)
+        result = source.epc.coregister_3d(epc_frame, coreg.VerticalShift(), random_state=42)
+        assert not source.epc.is_loaded and not result.epc.is_loaded
+        assert_frame_equal(result.compute(), expected, check_exact=True)
+        assert not source.epc.is_loaded

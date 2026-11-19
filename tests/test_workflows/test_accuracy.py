@@ -25,6 +25,7 @@ import logging
 from pathlib import Path
 
 import geoutils as gu
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -45,9 +46,7 @@ def test_init_diff_analysis(get_accuracy_inputs_test):
     workflows.run()
 
     dem = xdem.DEM(xdem.examples.get_path_test("longyearbyen_tba_dem"))
-    mask = gu.Vector(xdem.examples.get_path_test("longyearbyen_glacier_outlines"))
-    inlier_mask = ~mask.create_mask(dem)
-    assert workflows.to_be_aligned_elev.get_mask() == inlier_mask
+    np.testing.assert_array_equal(workflows.to_be_aligned_elev.get_mask(), dem.get_mask())
 
 
 def test__get_reference_elevation(get_accuracy_inputs_test, tmp_path, caplog, assert_and_allow_log):
@@ -482,7 +481,10 @@ def test_mask(tmp_path, get_accuracy_inputs_test, masked):
 @pytest.mark.parametrize("sampling_grid_first_step", ["reference_elev", "to_be_aligned_elev"])
 # @pytest.mark.parametrize("sampling_grid_second_step", ["reference_elev", "to_be_aligned_elev"])
 def test_vcrs_change(
-    tmp_path, get_accuracy_inputs_test, vcrs_first_step, sampling_grid_first_step  # vcrs_second_step,
+    tmp_path,
+    get_accuracy_inputs_test,
+    vcrs_first_step,
+    sampling_grid_first_step,  # vcrs_second_step,
 ):
     user_config = get_accuracy_inputs_test
     user_config["inputs"]["reference_elev"]["force_vcrs"] = vcrs_first_step[0]

@@ -159,6 +159,7 @@ in order to capture potential correlations at all ranges.
 
 For more details on variography, **we refer to [the documentation of SciKit-GStat](https://scikit-gstat.readthedocs.io/en/latest/userguide/userguide.html).**
 
+(spatialstats-errorpropag)=
 ## Error propagation
 
 Once the heteroscedasticity $\sigma_{dh}(\textrm{var}_{1},\textrm{var}_{2}, \textrm{...})$ and spatial

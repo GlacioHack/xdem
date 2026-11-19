@@ -38,4 +38,4 @@ Maintainers may decline PRs whose descriptions appear predominantly AI-generated
 human understanding and validation, or attention to copyright and source.
 
 This AI policy was inspired from that of [NumPy](https://numpy.org/devdocs/dev/ai_policy.html) and [SciPy](https://docs.scipy.org/doc/scipy/dev/conduct/ai_policy.html) as of September 2026,
-which were themselves inspired by that of [SymPy]([https://www.sympy.org/en/index.html](https://docs.sympy.org/dev/contributing/ai-generated-code-policy.html)).
+which were themselves inspired by that of [SymPy](https://docs.sympy.org/dev/contributing/ai-generated-code-policy.html).
