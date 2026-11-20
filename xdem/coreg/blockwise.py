@@ -27,6 +27,11 @@ import math
 import os
 import warnings
 from pathlib import Path
+from typing import (
+    Literal,
+    TypedDict,
+    overload,
+)
 
 import geopandas as gpd
 import geoutils as gu
@@ -45,7 +50,20 @@ from geoutils.raster.array import get_array_and_mask
 from xdem._misc import import_optional
 from xdem._typing import MArrayf, NDArrayf
 from xdem.coreg.affine import NuthKaab
-from xdem.coreg.base import Coreg
+from xdem.coreg.base import BlockOutputDict, Coreg
+
+
+class InBlockwiseDict(TypedDict, total=False):
+    """Information about the blocks used for the fit in the Blockwise."""
+
+    block_size_fit: int
+    block_size_apply: int
+
+
+class BlockwiseMetaDict(TypedDict):
+    """Configuration owned by the blockwise orchestrator."""
+
+    inputs: InBlockwiseDict
 
 
 class BlockwiseCoreg:
@@ -111,7 +129,9 @@ class BlockwiseCoreg:
 
         self.output_path_aligned = self.parent_path / self.mp_config.outfile
 
-        self.meta = {"inputs": {}, "outputs": {}}
+        self.meta: BlockwiseMetaDict = {
+            "inputs": {"block_size_fit": self.block_size_fit, "block_size_apply": self.block_size_apply}
+        }
         self.shape_tiling_grid = (0, 0, 0)
 
     @staticmethod
@@ -131,6 +151,8 @@ class BlockwiseCoreg:
         :return: The coregistration method with updated transformation parameters.
         """
         coreg_method = coreg_method.copy()
+        if "blocks" in coreg_method.meta["outputs"]:
+            coreg_method.meta["outputs"] = {}
         tba_dem_tiled = tba_dem.crop(ref_dem_tiled)
 
         _, ref_mask = get_array_and_mask(ref_dem_tiled)
@@ -169,8 +191,6 @@ class BlockwiseCoreg:
         :return: None. Updates internal model parameters.
         """
 
-        self.meta["inputs"] = self.procstep.meta["inputs"]  # type: ignore
-
         outputs_coreg = map_multiproc_collect(
             self._coreg_wrapper,
             reference_elev,
@@ -186,6 +206,8 @@ class BlockwiseCoreg:
         ).shape
 
         rows_cols = list(itertools.product(range(self.shape_tiling_grid[0]), range(self.shape_tiling_grid[1])))
+        blocks: list[BlockOutputDict] = []
+        self.procstep.meta["outputs"] = {"blocks": blocks}
 
         self.x_coords = []  # type: ignore
         self.y_coords = []  # type: ignore
@@ -210,16 +232,12 @@ class BlockwiseCoreg:
             self.shifts_y.append(shift_y)
             self.shifts_z.append(shift_z)
 
-            tile_str = f"{rows_cols[idx][0]}_{rows_cols[idx][1]}"
-            self.meta["outputs"][tile_str] = {  # type: ignore
-                "shift_x": shift_x,
-                "shift_y": shift_y,
-                "shift_z": shift_z,
-            }
-
+            blocks.append({"index": rows_cols[idx], "center": (x, y), "outputs": coreg.meta["outputs"]})
         self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z = map(  # type: ignore
             np.array, (self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z)
         )
+        # Flag that the fitting function has been called.
+        self.procstep._fit_called = True
 
     @staticmethod
     def _ransac(
@@ -404,3 +422,26 @@ class BlockwiseCoreg:
         )
 
         return aligned_dem
+
+    @overload
+    def info(self, as_str: Literal[False] = ...) -> None: ...
+
+    @overload
+    def info(self, as_str: Literal[True]) -> str: ...
+
+    def info(self, as_str: bool = False) -> None | str:
+        """Summarize information about this blockwise."""
+
+        header_str = [
+            "Blockwise information \n",
+            f"  Block size fit:       {self.block_size_fit} \n",
+            f"  Block size apply:     {self.block_size_apply} \n",
+        ]
+        info_str = "".join(header_str) + self.procstep.info(as_str=True)
+
+        # Return as string or print (default)
+        if as_str:
+            return info_str
+        else:
+            print(info_str)
+            return None

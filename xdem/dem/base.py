@@ -43,7 +43,6 @@ from xdem import coreg, terrain
 from xdem._misc import copy_doc, deprecate
 from xdem._typing import MArrayf, NDArrayb, NDArrayf
 from xdem.coreg import Coreg
-from xdem.coreg.base import _as_eager_elevation
 from xdem.vcrs import (
     _to_vcrs_2d,
     _VerticalReference,
@@ -348,17 +347,13 @@ class DEMBase(RasterBase, _VerticalReference):  # type: ignore[misc]
         if not isinstance(coreg_method, Coreg):
             raise ValueError("Argument `coreg_method` must be an xdem.coreg instance (e.g. xdem.coreg.NuthKaab()).")
 
-        # Reuse eager coregistration with equivalent GeoUtils objects for every accessor input
-        source = _as_eager_elevation(self)
-        reference = _as_eager_elevation(reference_elev)
-        mask = _as_eager_elevation(inlier_mask)
-        variables = None if bias_vars is None else {name: _as_eager_elevation(var) for name, var in bias_vars.items()}
+        # Coregister
         aligned_dem = coreg_method.fit_and_apply(
-            reference,
-            source.copy(),
-            inlier_mask=mask,
+            reference_elev,
+            self,
+            inlier_mask=inlier_mask,
             random_state=random_state,
-            bias_vars=variables,
+            bias_vars=bias_vars,
             **kwargs,
         )
 
@@ -480,7 +475,8 @@ class DEMBase(RasterBase, _VerticalReference):  # type: ignore[misc]
         # Read the active point attribute unless a custom legacy column is input
         if isinstance(other_elev, gpd.GeoDataFrame):
             data_name = other_elev.attrs.get("data_name", z_name) if z_name == "z" else z_name
-            other_elev = gu.PointCloud(other_elev, data_name=data_name)
+            other_elev = other_elev.copy()
+            other_elev.attrs["data_name"] = data_name
 
         # Keep the deprecated workflow close to its former 1,000-location variogram cost
         structure = estimate_error_structure(

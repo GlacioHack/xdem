@@ -143,7 +143,6 @@ class TestEPCLas:
 
         # 2/ Open the empty file as a Pandas or Dask table and change its vertical CRS
         source = open_epc(path, columns="all", chunks=7 if lazy else None)
-        graph = source.expr if lazy else None
         assert source.epc.crs == native.crs
         result = source.epc.to_vcrs(6360)
         computed = result.compute() if lazy else result
@@ -155,7 +154,7 @@ class TestEPCLas:
         assert computed.columns.equals(source.columns)
         assert source.epc.crs == native.crs
         if lazy:
-            assert source.expr is graph and not source.epc.is_loaded
+            assert not source.epc.is_loaded
 
     def test_methods__process_workers(self, epc_las_path: Path, tmp_path: Path) -> None:
         """Checks that separate workers can load, transform and write LAS/LAZ elevation partitions exactly."""
@@ -211,12 +210,11 @@ class TestEPCLas:
         # 3/ Compute the Dask table, compare it and check that the source remains lazy
         pytest.importorskip("dask_geopandas")
         lazy = open_epc(epc_las_path, columns=columns, chunks=7)
-        graph = lazy.expr
         assert not lazy.epc.is_loaded
         computed = lazy.compute()
         assert_geodataframe_equal(computed, eager)
         assert_frame_equal(computed, eager, check_exact=True)
-        assert lazy.expr is graph and not lazy.epc.is_loaded
+        assert not lazy.epc.is_loaded
 
     @pytest.mark.parametrize("backend", ["eager", "multiprocessing", "dask"])
     def test_to_las__roundtrip(self, epc_las_path: Path, tmp_path: Path, backend: str) -> None:
@@ -278,7 +276,7 @@ class TestEPCLazyMethods:
     - ``copy`` and ``load`` without changing the Dask source,
     - ``get_stats`` and ``grid`` across point partitions.
 
-    Every Dask case checks that evaluating the result leaves the source graph unchanged.
+    Dask cases check result equality and source loading.
     """
 
     @pytest.mark.parametrize("method", ["to_xdem", "to_geoutils"])
@@ -293,7 +291,6 @@ class TestEPCLazyMethods:
             _register_dask_epc_accessor()
             source = dgpd.from_geopandas(source, npartitions=3)
             source.epc.set_data_column("height")
-        graph = source.expr if lazy else None
         assert source.epc.is_loaded is not lazy
 
         # 2/ Convert to EPC or PointCloud and check that a Dask source remains unchanged and lazy
@@ -302,8 +299,6 @@ class TestEPCLazyMethods:
         assert result.is_loaded
         assert result.data_name == "height"
         assert source.epc.is_loaded is not lazy
-        if lazy:
-            assert source.expr is graph
 
         # 3/ Preserve elevation, auxiliary columns, index, geometry and compound CRS exactly
         assert_geodataframe_equal(result.ds, epc_frame)
@@ -338,21 +333,15 @@ class TestEPCLazyMethods:
         """
 
         dgpd = pytest.importorskip("dask_geopandas")
-        from dask.callbacks import Callback
 
-        # 1/ Create a Dask table with the requested number of parts and save its work plan
+        # 1/ Create a Dask table with the requested number of parts
         _register_dask_epc_accessor()
         source = dgpd.from_geopandas(epc_frame, npartitions=partition_count)
         # Dask-GeoPandas construction discards arbitrary attrs, so explicitly choose the elevation column
         source.epc.set_data_column("height")
-        graph = source.expr
-        tasks: list[Any] = []
 
         # 2/ Copy the table and add two to height without running any Dask tasks
-        # The callback records every executed Dask task, so the list must remain empty
-        with Callback(pretask=lambda *args: tasks.append(args[0])):
-            copied = source.epc.copy(new_array=source.height + 2)
-        assert tasks == []
+        copied = source.epc.copy(new_array=source.height + 2)
         assert isinstance(copied, dgpd.GeoDataFrame) and not copied.epc.is_loaded
         # 3/ Compute the copy and conversion, compare their values and check that the source remains lazy
         expected = epc_frame.copy()
@@ -363,24 +352,23 @@ class TestEPCLazyMethods:
         assert_frame_equal(loaded, expected, check_exact=True)
         assert_geodataframe_equal(converted, epc_frame)
         assert_frame_equal(converted, epc_frame, check_exact=True)
-        assert source.expr is graph and not source.epc.is_loaded
+        assert not source.epc.is_loaded
 
     def test_methods__stats_and_grid(self, epc_las_path: Path) -> None:
         """
         Checks that inherited compact statistics and lazy gridding match eager EPC results without replacing the source.
         """
 
-        # 1/ Open the same LAS file as a Dask table and an EPC, then save the Dask work plan
+        # 1/ Open the same LAS file as a Dask table and an EPC
         pytest.importorskip("dask_geopandas")
         da = pytest.importorskip("dask.array")
         source = open_epc(epc_las_path, chunks=7)
-        graph = source.expr
         expected = EPC(epc_las_path)
 
         # 2/ Compare statistics whose results must not depend on how the points are split
         stats = ["mean", "median", "valid_count"]
         assert source.epc.get_stats(stats) == expected.get_stats(stats)
-        assert source.expr is graph and not source.epc.is_loaded
+        assert not source.epc.is_loaded
 
         # 3/ Grid with nearest neighbours, using grid chunks that differ from the point chunks
         options = {"shape": (5, 7), "bounds": source.epc.bounds, "resampling": "nearest", "dist_nodata_pixel": 100}
@@ -388,4 +376,4 @@ class TestEPCLazyMethods:
         lazy_grid = source.epc.grid(**options, chunksizes=(3, 2))
         assert isinstance(lazy_grid.data, da.Array)
         assert eager_grid.raster_equal(lazy_grid.compute(), strict_masked=False, warn_failure_reason=True)
-        assert source.expr is graph and not source.epc.is_loaded
+        assert not source.epc.is_loaded

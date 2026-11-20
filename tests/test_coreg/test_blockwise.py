@@ -54,7 +54,8 @@ class TestBlockwiseCoreg:
         assert coreg_obj.block_size_fit == 25
         assert coreg_obj.apply_z_correction is False
         assert coreg_obj.output_path_aligned == tmp_path / "aligned_dem.tif"
-        assert coreg_obj.meta == {"inputs": {}, "outputs": {}}
+        assert coreg_obj.meta == {'inputs': {'block_size_fit': 25, 'block_size_apply': 25}}
+        ass
 
     def test_init_raises_if_both_mp_config_and_parent_path_are_provided(self, mp_config, step, tmp_path) -> None:
         """Test error is raised when both 'mp_config' and 'parent_path' are set."""
