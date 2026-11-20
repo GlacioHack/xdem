@@ -110,7 +110,8 @@ class TestCoregClass:
 
         # Temporary exceptions: pipeline/blockwise
         list_exceptions = [
-            "step_meta",
+            "steps",
+            "blocks",
             "pipeline",
         ]
 

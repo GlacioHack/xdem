@@ -1212,7 +1212,7 @@ class CoregDict(TypedDict, total=False):
 
     # For pipelines and blocks
     # TODO: Move out to separate TypedDict?
-    step_meta: list[Any]
+    steps: list[Any]
     pipeline: list[Any]
 
 
