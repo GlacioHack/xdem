@@ -29,6 +29,7 @@ import warnings
 from pathlib import Path
 from typing import (
     Literal,
+    TypedDict,
     overload,
 )
 
@@ -49,7 +50,20 @@ from geoutils.raster.array import get_array_and_mask
 from xdem._misc import import_optional
 from xdem._typing import MArrayf, NDArrayf
 from xdem.coreg.affine import NuthKaab
-from xdem.coreg.base import Coreg
+from xdem.coreg.base import BlockOutputDict, Coreg
+
+
+class InBlockwiseDict(TypedDict, total=False):
+    """Information about the blocks used for the fit in the Blockwise."""
+
+    block_size_fit: int
+    block_size_apply: int
+
+
+class BlockwiseMetaDict(TypedDict):
+    """Configuration owned by the blockwise orchestrator."""
+
+    inputs: InBlockwiseDict
 
 
 class BlockwiseCoreg:
@@ -115,9 +129,9 @@ class BlockwiseCoreg:
 
         self.output_path_aligned = self.parent_path / self.mp_config.outfile
 
-        self.procstep.meta["inputs"]["block_size_fit"] = self.block_size_fit
-        self.procstep.meta["inputs"]["block_size_apply"] = self.block_size_apply
-        self.procstep.meta["blocks"] = {}
+        self.meta: BlockwiseMetaDict = {
+            "inputs": {"block_size_fit": self.block_size_fit, "block_size_apply": self.block_size_apply}
+        }
         self.shape_tiling_grid = (0, 0, 0)
 
     @staticmethod
@@ -137,8 +151,7 @@ class BlockwiseCoreg:
         :return: The coregistration method with updated transformation parameters.
         """
         coreg_method = coreg_method.copy()
-        blocks = coreg_method.meta.pop("blocks", None)
-        if blocks:
+        if "blocks" in coreg_method.meta["outputs"]:
             coreg_method.meta["outputs"] = {}
         tba_dem_tiled = tba_dem.crop(ref_dem_tiled)
 
@@ -177,8 +190,7 @@ class BlockwiseCoreg:
         :param inlier_mask: Optional boolean mask indicating valid data points to use in the fitting.
         :return: None. Updates internal model parameters.
         """
-        self.procstep.meta["inputs"]["block_size_fit"] = self.block_size_fit
-        self.procstep.meta["inputs"]["block_size_apply"] = self.block_size_apply
+
         outputs_coreg = map_multiproc_collect(
             self._coreg_wrapper,
             reference_elev,
@@ -194,8 +206,8 @@ class BlockwiseCoreg:
         ).shape
 
         rows_cols = list(itertools.product(range(self.shape_tiling_grid[0]), range(self.shape_tiling_grid[1])))
-        self.procstep.meta["blocks"] = {}
-        self.procstep.meta["outputs"] = {}
+        blocks: list[BlockOutputDict] = []
+        self.procstep.meta["outputs"] = {"blocks": blocks}
 
         self.x_coords = []  # type: ignore
         self.y_coords = []  # type: ignore
@@ -220,16 +232,7 @@ class BlockwiseCoreg:
             self.shifts_y.append(shift_y)
             self.shifts_z.append(shift_z)
 
-            tile_str = f"{rows_cols[idx][0]}_{rows_cols[idx][1]}"
-
-            self.procstep.meta["blocks"][tile_str] = {
-                "start_x": tile_coords[0],
-                "end_x": tile_coords[1],
-                "start_y": tile_coords[2],
-                "end_y": tile_coords[3],
-            }
-
-            self.procstep._meta["outputs"][tile_str] = coreg.meta["outputs"]  # type: ignore
+            blocks.append({"index": rows_cols[idx], "center": (x, y), "outputs": coreg.meta["outputs"]})
         self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z = map(  # type: ignore
             np.array, (self.x_coords, self.y_coords, self.shifts_x, self.shifts_y, self.shifts_z)
         )
@@ -433,35 +436,12 @@ class BlockwiseCoreg:
             "Blockwise information \n",
             f"  Block size fit:       {self.block_size_fit} \n",
             f"  Block size apply:     {self.block_size_apply} \n",
-            "  Blocks repartition:    \n",
         ]
-
-        block_bounds = self.procstep.meta["blocks"]
-        if block_bounds:
-            blocks = []
-            for b, data in block_bounds.items():
-                start_x = data["start_x"]
-                end_x = data["end_x"]
-                start_y = data["start_y"]
-                end_y = data["end_y"]
-
-                blocks.append(
-                    [
-                        f"{b} :",
-                        f"X:{start_x}-{end_x}",
-                        f"Y:{start_y}-{end_y}",
-                    ]
-                )
-            tab_coords = [max(len(str(col[j])) for col in blocks) + 4 for j in range(len(blocks[0]))]
-
-            for block in blocks:
-                header_str.append("    " + "".join(str(v).rjust(tab_coords[b]) for b, v in enumerate(block)) + "\n")
-
-        step_str_tab = self.procstep.info(as_str=True).split("\n")
+        info_str = "".join(header_str) + self.procstep.info(as_str=True)
 
         # Return as string or print (default)
         if as_str:
-            return "".join(header_str) + "\n".join(step_str_tab)
+            return info_str
         else:
-            print("".join(header_str) + "\n".join(step_str_tab))
+            print(info_str)
             return None

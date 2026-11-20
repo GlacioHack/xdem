@@ -126,6 +126,8 @@ dict_key_to_str = {
     "apply_vshift": "Vertical shift activated",
     "min_slope": "Minimum terrain slope (degrees)",
     "centroid": "Centroid found for affine rotation",
+    "block_size_fit": "Block size fit",
+    "block_size_apply": "Block size apply",
     "shift_x": "Eastward shift estimated (georeferenced unit)",
     "shift_y": "Northward shift estimated (georeferenced unit)",
     "shift_z": "Vertical shift estimated (elevation unit)",
@@ -1156,17 +1158,31 @@ class InAffineDict(TypedDict, total=False):
     anisotropic: Literal["xy_vs_z", "per_axis"] | None
 
 
-class InBlockDict(TypedDict, total=False):
-    """Information about the blocks used for the fit in the Blockwise"""
+class BlockOutputDict(TypedDict):
+    """Fit location and outputs of one block."""
 
-    # Estimated initial shift (z currently always equal to zero)
-    start_x: int
-    # Vertical shift reduction function for methods focusing on translation coregistration
-    end_x: int
-    # Vertical shift activated
-    start_y: int
-    # Apply coregistration method only for translations
-    end_y: int
+    index: tuple[int, int]
+    center: tuple[float, float]
+    outputs: OutputCoregDict
+
+
+class InputCoregDict(TypedDict, total=False):
+    random: InRandomDict
+    fitorbin: InFitOrBinDict
+    iterative: InIterativeDict
+    specific: InSpecificDict
+    affine: InAffineDict
+    steps: list[InputCoregDict]  # recursive inputs for pipeline
+
+
+class OutputCoregDict(TypedDict, total=False):
+    random: OutRandomDict
+    fitorbin: OutFitOrBinDict
+    iterative: OutIterativeDict
+    specific: OutSpecificDict
+    affine: OutAffineDict
+    steps: list[OutputCoregDict]  # recursive inputs for pipeline
+    blocks: list[BlockOutputDict]  # blockwise output
 
 
 class OutAffineDict(TypedDict, total=False):
@@ -1180,22 +1196,6 @@ class OutAffineDict(TypedDict, total=False):
     shift_x: float
     shift_y: float
     shift_z: float
-
-
-class InputCoregDict(TypedDict, total=False):
-    random: InRandomDict
-    fitorbin: InFitOrBinDict
-    iterative: InIterativeDict
-    specific: InSpecificDict
-    affine: InAffineDict
-
-
-class OutputCoregDict(TypedDict, total=False):
-    random: OutRandomDict
-    fitorbin: OutFitOrBinDict
-    iterative: OutIterativeDict
-    specific: OutSpecificDict
-    affine: OutAffineDict
 
 
 class CoregDict(TypedDict, total=False):
@@ -1256,7 +1256,7 @@ class Coreg:
 
             # First, we get the typed dictionary keys ("random", "fitorbin", etc),
             # this is a typing class so requires to get its keys in __annotations__
-            list_input_levels = list(InputCoregDict.__annotations__.keys())
+            list_input_levels = [key for key in InputCoregDict.__annotations__ if key != "steps"]
             # Then the list of keys per level, getting the nested class value for each key (via __forward_arg__)
             keys_per_level = [
                 list(globals()[InputCoregDict.__annotations__[lv].__forward_arg__].__annotations__.keys())
@@ -1350,26 +1350,9 @@ class Coreg:
     def info(self, as_str: bool = False) -> None | str:
         """Summarize information about this coregistration."""
 
-        # Define max tabulation: longest name + 2 spaces
-        keys_ = list(dict_key_to_str.values())
-
-        if "0_0" in self._meta["outputs"]:
-            keys_.remove(dict_key_to_str["shift_x"])
-            keys_.remove(dict_key_to_str["shift_y"])
-            keys_.remove(dict_key_to_str["shift_z"])
-
         tab = np.max([len(v) for v in dict_key_to_str.values()]) + 4
 
-        # Get list of existing deepest level keys in this coreg metadata
-        def recursive_items(dictionary: Mapping[str, Any]) -> Iterable[tuple[str, Any]]:
-            for key, value in dictionary.items():
-                if type(value) is dict:
-                    yield from recursive_items(value)
-                else:
-                    yield (key, value)
-
-        existing_deep_keys = [k for k, v in recursive_items(self._meta)]
-
+        # Formatting function for key values, rounding up digits for numbers and returning function names
         # Formatting function for key values, rounding up digits for numbers and returning function names
         def format_coregdict_values(val: Any, tab: int) -> str:
             """
@@ -1412,7 +1395,92 @@ class Coreg:
             "affine": "Affine",
             "iterative": "Iterative",
             "specific": "Specific",
+            "blockwise": "Blockwise",
         }
+
+        def format_metadata(metadata: Mapping[str, Any], indent: int = 2) -> list[str]:
+            lines = []
+            for key, value in metadata.items():
+                label = sublevels.get(key, dict_key_to_str.get(key, key))
+                if key == "steps":
+                    for index, step in enumerate(value):
+                        lines.append(f"{' ' * indent}Step {index}\n")
+                        lines.extend(format_metadata(step, indent + 2))
+                elif key == "blocks":
+                    table_keys = (
+                        ("affine", "shift_x"),
+                        ("affine", "shift_y"),
+                        ("affine", "shift_z"),
+                        ("random", "subsample_final"),
+                    )
+                    columns = []
+                    rows = []
+                    details = []
+                    for block in value:
+                        tables = {}
+                        expicite_lines = {}
+                        outputs = block["outputs"]
+                        for category, name in table_keys:
+                            category_values = outputs.get(category, {})
+                            if name in category_values:
+                                column = (category, name)
+                                tables[column] = str(float(category_values[name]))
+                                if column not in columns:
+                                    columns.append(column)
+                        for category, category_values in outputs.items():
+                            if isinstance(category_values, Mapping):
+                                other_values = {
+                                    name: result
+                                    for name, result in category_values.items()
+                                    if (category, name) not in table_keys
+                                }
+                                if other_values:
+                                    expicite_lines[category] = other_values
+                            else:
+                                expicite_lines[category] = category_values
+
+                        row, col = block["index"]
+                        rows.append((f"{row}_{col}", tables))
+                        if expicite_lines:
+                            details.append(
+                                f"{' ' * indent}Block {block['index']}\n"
+                                + f"{' ' * (indent + 2)}Center:".ljust(tab)
+                                + f"{tuple(float(coord) for coord in block['center'])}\n"
+                            )
+                            details.extend(format_metadata(expicite_lines, indent + 2))
+                    if columns:
+                        columns = [column for column in table_keys if column in columns]
+                        lines.append(f"{' ' * indent}Affine\n")
+                        for _, name in columns:
+                            lines.append(
+                                f"{' ' * (indent + 2)}{name}:".ljust(tab) + dict_key_to_str.get(name, name) + "\n"
+                            )
+                        widths = [
+                            max(len(column[1]), *(len(tables.get(column, "nan")) for _, tables in rows))
+                            for column in columns
+                        ]
+                        label_width = max(tab, max(len(index) + indent + 5 for index, _ in rows))
+                        lines.append(
+                            f"{' ' * (indent + 2)}Blocks".ljust(label_width)
+                            + ", ".join(column[1].rjust(width) for column, width in zip(columns, widths))
+                            + "\n"
+                        )
+                        for index, tables in rows:
+                            lines.append(
+                                f"{' ' * (indent + 4)}{index}:".ljust(label_width)
+                                + ", ".join(
+                                    tables.get(column, "nan").rjust(width) for column, width in zip(columns, widths)
+                                )
+                                + "\n"
+                            )
+                    lines.extend(details)
+                elif isinstance(value, Mapping):
+                    if value:
+                        lines.append(f"{' ' * indent}{label}\n")
+                        lines.extend(format_metadata(value, indent + 2))
+                else:
+                    lines.append(f"{' ' * indent}{label}:".ljust(tab) + f"{format_coregdict_values(value, tab)}\n")
+            return lines
 
         header_str = [
             "Generic coregistration information \n",
@@ -1425,74 +1493,15 @@ class Coreg:
         inputs_str = [
             "Inputs\n",
         ]
-        for lk, lv in sublevels.items():
-            if lk in self._meta["inputs"].keys():
-                existing_level_keys = [
-                    (k, v)
-                    for k, v in self._meta["inputs"][lk].items()  # type: ignore
-                    if k in existing_deep_keys
-                ]
-                if len(existing_level_keys) > 0:
-                    inputs_str += [f"  {lv}\n"]
-                    inputs_str += [
-                        f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v, tab)}\n"
-                        for k, v in existing_level_keys
-                    ]
+        metadata = self.meta
+        inputs_str.extend(format_metadata(metadata["inputs"]))
 
         # And for outputs
         outputs_str = ["Outputs\n"]
+
         # If dict not empty
-        if self._meta["outputs"]:
-            for lk, lv in sublevels.items():
-                if lk in self._meta["outputs"].keys():
-                    existing_level_keys = [
-                        (k, v)
-                        for k, v in self._meta["outputs"][lk].items()  # type: ignore
-                        if k in existing_deep_keys
-                    ]
-                    if len(existing_level_keys) > 0:
-                        outputs_str += [f"  {lv}\n"]
-                        outputs_str += [
-                            f"    {dict_key_to_str[k]}:".ljust(tab) + f"{format_coregdict_values(v, tab)}\n"
-                            for k, v in existing_level_keys
-                        ]
-            output_first_block = self._meta["outputs"].get("0_0")
-            if output_first_block is not None:
-                outputs_str += "  Affine\n"
-
-                blocks = self._meta["outputs"].keys()
-                keys = output_first_block.keys()
-                sub_keys = [sub_key for key in keys for sub_key in output_first_block[key].keys()]  # type: ignore
-                for sub_key in sub_keys:
-                    outputs_str += (
-                        f"    {sub_key}:".ljust(tab) + f"{format_coregdict_values(dict_key_to_str[sub_key], tab)}\n"
-                    )
-
-                shifts = []
-                for block in blocks:
-                    shifts_block = []
-                    for key in keys:
-                        for sub_key in output_first_block[key].keys():  # type: ignore
-                            shifts_block.append(str(float(self._meta["outputs"][block][key][sub_key])))  # type: ignore
-                    shifts.append(shifts_block)
-
-                # shifts = [list(colonne) for colonne in zip(*shifts)]
-
-                tab_shifts = [max(len(str(ligne[j])) for ligne in shifts) for j in range(len(shifts[0]))]
-
-                outputs_str += (
-                    "    Blocks".ljust(tab)
-                    + ", ".join(str(sub_key).rjust(tab_shifts[sk]) for sk, sub_key in enumerate(sub_keys))
-                    + "\n"
-                )
-
-                for b, block in enumerate(blocks):
-                    outputs_str += (
-                        f"      {block}:".ljust(tab)
-                        + ", ".join(str(key).rjust(tab_shifts[k]) for k, key in enumerate(shifts[b]))
-                        + "\n"
-                    )
-
+        if metadata["outputs"]:
+            outputs_str.extend(format_metadata(metadata["outputs"]))
         elif not self._fit_called:
             outputs_str += ["  None yet (fit not called)"]
         # Not sure this case can happen, but just in case
