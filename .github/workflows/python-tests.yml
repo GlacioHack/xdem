@@ -40,7 +40,7 @@ jobs:
         channel-priority: strict
         activate-environment: xdem-dev
 
-    - uses: astral-sh/setup-uv@v10.3.3
+    - uses: astral-sh/setup-uv@v10.4.0
       with:
         enable-cache: true
 
