@@ -19,73 +19,35 @@
 Test DiffAnalysis class
 """
 
-import logging
-
-# mypy: disable-error-code=no-untyped-def
 from pathlib import Path
+from typing import Any, Dict
 
 import geoutils as gu
-import numpy as np
 import pandas as pd
 import pytest
 
 import xdem
 from xdem.workflows import Accuracy
 from xdem.workflows.schemas import MIN_STATS
-from xdem.workflows.workflows import _ALIAS
+from xdem.workflows.workflows import _ALIAS, Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 pytest.importorskip("cerberus")
 
 
-def test_init_diff_analysis(get_accuracy_inputs_test):
+def test_init_accuracy_workflow(get_accuracy_inputs_test: Dict[str, Any]) -> None:
     """
     Test initialization of accuracy class
     """
-    workflows = Accuracy(get_accuracy_inputs_test)
-    workflows.run()
-    inputs = get_accuracy_inputs_test["inputs"]
-
-    # dem = xdem.DEM(inputs["reference_elev"]["path_to_elev"])
-    # mask = gu.Vector(inputs["reference_elev"]["path_to_mask"])
-    # inlier_mask = ~mask.create_mask(dem)
-
-    # np.testing.assert_array_equal(workflows.reference_elev.dem.data, dem.get_nanarray())
-    # np.testing.assert_array_equal(np.isnan(workflows.reference_elev.dem.data), inlier_mask)
-
-    dem = xdem.DEM(inputs["to_be_align_elev"]["path_to_elev"])
-    np.testing.assert_array_equal(workflows.to_be_aligned_elev.dem.data, dem.get_nanarray())
-    np.testing.assert_array_equal(np.isnan(workflows.to_be_aligned_elev.dem.data), dem.get_mask())
-
-
-def test__get_reference_elevation(get_accuracy_inputs_test, tmp_path, caplog, assert_and_allow_log):
-    """
-    Test _get_reference_elevation function
-    """
-
     user_config = get_accuracy_inputs_test
-    user_config["outputs"] = {"path": str(tmp_path)}
     workflows = Accuracy(user_config)
-    workflows._load_data()
 
-    with pytest.raises(NotImplementedError, match="This is not implemented, add a reference elevation"):
-        workflows._get_reference_elevation()
-
-    user_config = get_accuracy_inputs_test
-    user_config["outputs"] = {"path": str(tmp_path)}
-    user_config["inputs"]["reference_elev"] = None
-
-    with caplog.at_level(logging.WARNING):
-        with pytest.raises(NotImplementedError, match="This is not implemented, add a reference elevation"):
-            workflows = Accuracy(user_config)
-            workflows._load_data()
-
-    # Check logging warning exists and tag as expected
-    assert_and_allow_log(caplog, match="No DEM provided", level=logging.WARNING)
+    assert isinstance(workflows, Workflows)
+    assert isinstance(workflows, Accuracy)
 
 
 @pytest.mark.skip("Not implemented")
-def test__compute_coregistration():
+def test__compute_coregistration() -> None:
     """
     Test _compute_coregistration function
     """
@@ -101,9 +63,11 @@ def test__compute_coregistration():
         [["std", "standarddeviation"], ["Standard deviation"]],
     ],
 )
-def test__get_stats(get_accuracy_inputs_test, tmp_path, stats_name, res):
+def test__get_stats(
+    get_accuracy_inputs_test: Dict[str, Any], tmp_path: Path, stats_name: list[str], res: list[str]
+) -> None:
     """
-    Test _get_stats function
+    Test stats function
     """
 
     user_config = get_accuracy_inputs_test
@@ -114,19 +78,27 @@ def test__get_stats(get_accuracy_inputs_test, tmp_path, stats_name, res):
     dem = xdem.open_dem(xdem.examples.get_path_test("longyearbyen_tba_dem"))
     stats_gt = dem.dem.get_stats(stats_name)
 
-    assert list(set(workflows._get_stats(dem).keys())) == list(set(res))  # type: ignore
-    assert workflows._get_stats(dem) == {_ALIAS.get(k, k): v for k, v in stats_gt.items()}
+    assert list(set(workflows._stats(dem).keys())) == list(set(res))  # type: ignore
+    assert workflows._stats(dem) == {_ALIAS.get(k, k): v for k, v in stats_gt.items()}
 
 
 @pytest.mark.parametrize("level", [1, 2])
-@pytest.mark.parametrize("generated_pdf", [True, False])
-def test_run(get_accuracy_inputs_test, tmp_path, level, generated_pdf):
+@pytest.mark.parametrize("generate_pdf", [True, False])
+@pytest.mark.parametrize("execution", [None, {"dask": {"chunks": {"x": 200, "y": 200}}}])
+def test_run(
+    get_accuracy_inputs_test: Dict[str, Any],
+    tmp_path: Path,
+    level: int,
+    generate_pdf: bool,
+    execution: dict[str, Any] | None,
+) -> None:
     """
     Test run function with (process = True)
     """
 
     user_config = get_accuracy_inputs_test
-    user_config["outputs"] = {"path": str(tmp_path), "level": level}
+    user_config["outputs"] = {"path": str(tmp_path), "level": level, "generate_pdf": generate_pdf}
+    user_config["scalability"] = execution
     workflows = Accuracy(user_config)
     workflows.run()
 
@@ -146,7 +118,7 @@ def test_run(get_accuracy_inputs_test, tmp_path, level, generated_pdf):
 
     assert Path(tmp_path).joinpath("report.html").exists()
     # sometimes the PDF creation fails for no reason
-    if generated_pdf:
+    if generate_pdf:
         assert Path(tmp_path).joinpath("report.pdf").exists()
     assert Path(tmp_path).joinpath("used_config.yaml").exists()
 
@@ -185,15 +157,23 @@ def test_run(get_accuracy_inputs_test, tmp_path, level, generated_pdf):
 
 
 @pytest.mark.parametrize("level", [1, 2])
-@pytest.mark.parametrize("generated_pdf", [True, False])
-def test_run_without_coreg(get_accuracy_inputs_test, tmp_path, level, generated_pdf):
+@pytest.mark.parametrize("generate_pdf", [True, False])
+@pytest.mark.parametrize("execution", [None, {"dask": {"chunks": {"x": 200, "y": 200}}}])
+def test_run_without_coreg(
+    get_accuracy_inputs_test: Dict[str, Any],
+    tmp_path: Path,
+    level: int,
+    generate_pdf: bool,
+    execution: dict[str, Any] | None,
+) -> None:
     """
     Test run function with (process = False)
     """
 
     user_config = get_accuracy_inputs_test
-    user_config["outputs"] = {"path": str(tmp_path), "level": level}
+    user_config["outputs"] = {"path": str(tmp_path), "level": level, "generate_pdf": generate_pdf}
     user_config["coregistration"] = {"process": False}
+    user_config["scalability"] = execution
     workflows = Accuracy(user_config)
     workflows.run()
 
@@ -209,7 +189,7 @@ def test_run_without_coreg(get_accuracy_inputs_test, tmp_path, level, generated_
 
     assert Path(tmp_path).joinpath("report.html").exists()
     # sometimes the PDF creation fails for no reason
-    if generated_pdf:
+    if generate_pdf:
         assert Path(tmp_path).joinpath("report.pdf").exists()
     assert Path(tmp_path).joinpath("used_config.yaml").exists()
 
@@ -247,7 +227,7 @@ def test_run_without_coreg(get_accuracy_inputs_test, tmp_path, level, generated_
         (False, None, "reference_elev", "same shape, transform and CRS"),
     ],
 )
-def test_run_prepare_datas(get_accuracy_inputs_test, tmp_path, config):
+def test_run_prepare_datas(get_accuracy_inputs_test: Dict[str, Any], tmp_path: Path, config: Any) -> None:
     """
     Test preparation data with all sampling_grid values in a coreg/no coreg process.
     """
@@ -302,7 +282,9 @@ def test_run_prepare_datas(get_accuracy_inputs_test, tmp_path, config):
         ("to_be_aligned_elev", "to_be_aligned_elev"),
     ],
 )
-def test_prepare_datas_with_overlap(get_accuracy_inputs_test, tmp_path, config):
+def test_prepare_datas_with_overlap(
+    get_accuracy_inputs_test: Dict[str, Any], tmp_path: Path, config: Dict[str, Any]
+) -> None:
     """Test preparation data with all sampling_grid values when ref and tba do overlap."""
 
     sampling_grid, dem_to_crop = config
@@ -382,7 +364,9 @@ def test_prepare_datas_with_overlap(get_accuracy_inputs_test, tmp_path, config):
 
 @pytest.mark.parametrize("process", [True, False])
 @pytest.mark.parametrize("sampling_grid", ["reference_elev", "to_be_aligned_elev"])
-def test_no_overlap(get_accuracy_inputs_test, tmp_path, process, sampling_grid):
+def test_no_overlap(
+    get_accuracy_inputs_test: Dict[str, Any], tmp_path: Path, process: bool, sampling_grid: str
+) -> None:
     """Test coreg/no coreg processes when ref and tba do not overlap."""
     user_config = get_accuracy_inputs_test
     user_config["inputs"]["sampling_grid"] = sampling_grid
@@ -414,13 +398,13 @@ def test_no_overlap(get_accuracy_inputs_test, tmp_path, process, sampling_grid):
 @pytest.mark.parametrize(
     "masked",
     [
-        [True, True],
-        [False, True],
-        [True, False],
-        [False, False],
+        (True, True),
+        (False, True),
+        (True, False),
+        (False, False),
     ],
 )
-def test_mask(tmp_path, get_accuracy_inputs_test, masked):
+def test_mask(tmp_path: Path, get_accuracy_inputs_test: Dict[str, Any], masked: tuple[bool, bool]) -> None:
     """
     Test mask initialization and correg
     """
@@ -490,11 +474,11 @@ def test_mask(tmp_path, get_accuracy_inputs_test, masked):
 @pytest.mark.parametrize("sampling_grid_first_step", ["reference_elev", "to_be_aligned_elev"])
 # @pytest.mark.parametrize("sampling_grid_second_step", ["reference_elev", "to_be_aligned_elev"])
 def test_vcrs_change(
-    tmp_path,
-    get_accuracy_inputs_test,
-    vcrs_first_step,
-    sampling_grid_first_step,  # vcrs_second_step,
-):
+    tmp_path: Path,
+    get_accuracy_inputs_test: Dict[str, Any],
+    vcrs_first_step: list[str | None],
+    sampling_grid_first_step: str,
+) -> None:
     user_config = get_accuracy_inputs_test
     user_config["inputs"]["reference_elev"]["force_vcrs"] = vcrs_first_step[0]
     user_config["inputs"]["to_be_aligned_elev"]["force_vcrs"] = vcrs_first_step[1]

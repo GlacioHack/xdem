@@ -19,30 +19,22 @@
 Workflow class
 """
 
-import csv
 import logging
-import math
 import os
-import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
 import geoutils as gu
-import numpy as np
 import pyogrio.errors
 import rasterio.errors
 from geoutils import Raster
 from geoutils.raster import RasterType
-from pyproj import CRS
-from rasterio.warp import calculate_default_transform
 
 import xdem
 from xdem import DEM
 from xdem._misc import import_optional
-from xdem.coreg.base import InputCoregDict, OutputCoregDict
 from xdem.examples import _FILEPATHS_ALL
-from xdem.vcrs import vertical_unit_symbol
 from xdem.workflows.schemas import validate_configuration
 
 # Inheritance of optional dependencies
@@ -53,13 +45,6 @@ try:
 except ImportError:
     SafeDumper = object
     _HAS_YAML = False
-
-try:
-    import plutoprint
-
-    _HAS_PLUTOPRINT = True
-except ImportError:
-    _HAS_PLUTOPRINT = False
 
 
 _ALIAS = {
@@ -141,11 +126,15 @@ class Workflows(ABC):
         for folder in ["plots", "rasters", "tables"]:
             Path(self.outputs_folder / folder).mkdir(parents=True, exist_ok=True)
 
+    def configure_execution(self) -> None:
+        """Configure Dask or multiprocessing from the workflow settings."""
         self.dask = None
         self.mp_config = None
+
         if self.config.get("scalability", None) is not None:
             sca = self.config["scalability"]
             self.dask = sca.get("dask", None)
+
             if self.dask is None:
                 from geoutils.multiproc import MultiprocConfig
 
@@ -269,12 +258,15 @@ class Workflows(ABC):
             except pyogrio.errors.DataSourceError as vector_error:
                 try:
                     if dask is not None:
+                        import dask.array as da
+
                         chunks = dask["chunks"]
                         inlier_mask = gu.open_raster(
                             mask_path, chunks=chunks, downsample=config_dem.get("downsample", 1)
                         )
-                        inlier_mask.rst.data = inlier_mask.rst.data.astype(bool)
-                        inlier_mask.rst.data = inlier_mask.rst.data.filled(False)
+                        data = da.ma.filled(inlier_mask.rst.data, 0)
+                        inlier_mask.rst.data = da.where(da.isnan(data), False, data != 0)
+                        inlier_mask.rst.set_nodata(None, update_array=False, update_mask=False)
                         inlier_mask = inlier_mask.rst.reproject(dem, silent=True)
                     else:
                         inlier_mask = Raster(mask_path).astype(bool)
@@ -326,47 +318,3 @@ class Workflows(ABC):
         :param list_dict: List containing tuples of title and various dictionaries.
         :return: None
         """
-
-    def generate_pdf(self) -> None:
-        """
-        Create PDF report page from HTML page.
-
-        :return: None
-        """
-        if self.config["outputs"]["generate_pdf"] and _HAS_PLUTOPRINT:
-            book = plutoprint.Book(plutoprint.PAGE_SIZE_A4, plutoprint.PAGE_MARGINS_NARROW)
-            book.load_url((self.outputs_folder / "report.html").resolve().as_uri())
-
-            # Export the entire document to PDF
-            book.write_to_pdf(str(self.outputs_folder / "report.pdf"))
-            logging.info("Report generated in " + str(self.outputs_folder / "report.pdf"))
-
-    def save_stat_as_csv(self, data: dict[str, float], file_name: str) -> None:
-        """
-        Save the statistics into a CSV file.
-
-        :param data: Statistics dictionary.
-        :param file_name: Name of csv file.
-        """
-        cleaned_data = {k: float(v) if isinstance(v, (np.float32, np.float64)) else v for k, v in data.items()}
-
-        fieldnames = list(cleaned_data.keys())
-        filename = self.outputs_folder / "tables" / f"{file_name}_stats.csv"
-
-        with filename.open(mode="w", newline="", encoding="utf-8") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerow(cleaned_data)
-
-    def format_values_stats(self, key: str, val: Union[float, int]) -> str:
-        """Format values for the statistics."""
-        if "count" in key.lower():
-            return str(int(val))
-        if "percentage" in key.lower():
-            return f"{val:.2f}" + "%"
-        elif abs(val) > 10e4:
-            return np.format_float_scientific(val, precision=3)
-        elif abs(val) < 10e-4:
-            return np.format_float_scientific(val, precision=3)
-        else:
-            return f"{val:.3f}"

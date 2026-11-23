@@ -21,26 +21,15 @@
 test for workflow class
 """
 
-# mypy: disable-error-code=no-untyped-def
-import csv
-import re
 from pathlib import Path
+from typing import Any, Dict
 
-import geoutils as gu
 import numpy as np
+import pandas as pd
 import pytest
-import xarray as xr
 
 import xdem
-from xdem.workflows.accuracy import Accuracy
-from xdem.workflows.schemas import (
-    COMPLETE_CONFIG_ACCURACY,
-    COMPLETE_CONFIG_TOPO,
-    MIN_STATS,
-    TERRAIN_ATTRIBUTES_DEFAULT,
-)
-from xdem.workflows.topo import Topo
-from xdem.workflows.workflows import Workflows
+from xdem.workflows import toolbox
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
@@ -48,13 +37,11 @@ pytest.importorskip("cerberus")
 
 import yaml  # type: ignore  # noqa
 
-from xdem.workflows import toolbox
-
 
 def test_return_info() -> None:
     """Test metadata extraction from a DEM."""
 
-    def compare(info, dem):
+    def compare(info: Dict[str, Any], dem: xdem.DEM) -> None:
         assert info["Driver"] == dem.driver
         assert info["Filename"] == dem.name
         assert info["Number of band"] == dem.bands
@@ -97,25 +84,112 @@ def test_return_info() -> None:
         pytest.param({"a": np.float64(2.71828)}, {"a": 2.72}, id="test_numpy_float"),
     ],
 )
-def test_floats_process(inputs, expected):
+def test_floats_process(inputs: Any, expected: Any) -> None:
     """Test floats_process function"""
     assert toolbox.floats_process(inputs) == expected
 
 
-@pytest.mark.parametrize("chunks", [None, {"band": 1, "x": 50, "y": 50}])
-def test_generate_graph(get_topo_inputs_config_list, tmp_path, chunks):
-    """
-    Test generate_plot function
-    """
-    dem = xdem.open_dem(xdem.examples.get_path_test("longyearbyen_tba_dem"), chunks=chunks)
-    filename = "test_generate_graph"
-    title = "Test graph"
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (
+            {"a": 1.2345, "nested": [np.float64(2.5), (3.14159, 42, None)]},
+            {"a": "1.234", "nested": ["2.500", ("3.142", 42, None)]},
+        ),
+        (1.25, "1.250"),
+        ("text", "text"),
+    ],
+)
+def test_recursive_format_values(value: Any, expected: Any) -> None:
+    assert toolbox.recursive_format_values(value) == expected
 
-    user_config = dict()
-    user_config["inputs"] = get_topo_inputs_config_list[:1]
-    user_config["outputs"] = {"path": str(tmp_path)}
-    workflows = Topo(user_config)
-    workflows.create_output_dir()
-    workflows.generate_plot(dem, filename=filename, title=title)
-    out = tmp_path / "plots" / f"{filename}.png"
-    assert out.exists()
+
+@pytest.mark.parametrize("dask", [False, True])
+@pytest.mark.parametrize("with_right", [False, True])
+def test_generate_graph(tmp_path: Path, dask: bool, with_right: bool) -> None:
+    """Generate a plot with one or two DEMs."""
+    pytest.importorskip("matplotlib")
+    path = xdem.examples.get_path_test("longyearbyen_tba_dem")
+    dem = xdem.open_dem(path, chunks={"x": 50, "y": 50}).dem if dask else xdem.DEM(path)
+    out = tmp_path / "test_generate_graph.png"
+    toolbox.generate_plot(
+        dem,
+        title="Test graph",
+        file_path=str(out),
+        dem_right=dem if with_right else None,
+        title_dem_right="Right" if with_right else None,
+    )
+    assert out.is_file() and out.stat().st_size > 0
+
+
+@pytest.mark.parametrize("dask", [False, True])
+def test_generate_plot_with_profiles(tmp_path: Path, dask: bool) -> None:
+    """Generate the profile plot from a DEM."""
+    pytest.importorskip("matplotlib")
+    path = xdem.examples.get_path_test("longyearbyen_tba_dem")
+    dem = xdem.open_dem(path, chunks={"x": 50, "y": 50}).dem if dask else xdem.DEM(path)
+    out = tmp_path / "profiles.png"
+    toolbox.generate_plot_with_profiles(dem, title="Profiles", file_path=str(out))
+    assert out.is_file() and out.stat().st_size > 0
+
+
+@pytest.mark.parametrize("attributes", [["slope"], ["slope", "aspect"]])
+@pytest.mark.parametrize("export_tif", [False, True])
+@pytest.mark.parametrize("as_dict", [False, True])
+@pytest.mark.parametrize("dask", [False, True])
+def test_generate_terrain_attributes(
+    tmp_path: Path, attributes: list[str], export_tif: bool, as_dict: bool, dask: bool
+) -> None:
+    """Generate terrain attribute plots and optional rasters."""
+    pytest.importorskip("matplotlib")
+    path = xdem.examples.get_path_test("longyearbyen_tba_dem")
+    dem = xdem.open_dem(path, chunks={"x": 50, "y": 50}).dem if dask else xdem.DEM(path)
+
+    (tmp_path / "plots").mkdir()
+    (tmp_path / "rasters").mkdir()
+    config = {attribute: {} for attribute in attributes} if as_dict else attributes  # type: ignore
+    toolbox.generate_terrain_attributes(
+        dem,
+        attributes,
+        tmp_path,
+        config,  # type: ignore
+        proj_crs=True,
+        proj_crs_value=None,
+        export_tif=export_tif,
+    )  # type: ignore
+    out = tmp_path / "plots" / "terrain_attributes_map.png"
+    assert out.is_file() and out.stat().st_size > 0
+    for attribute in attributes:
+        assert (tmp_path / "rasters" / f"{attribute}.tif").is_file() is export_tif
+
+
+@pytest.mark.parametrize(
+    "key, value, expected",
+    [
+        ("count", 42.0, "42"),
+        ("smt_COUNT", 42.0, "42"),
+        ("percentage", 87.456, "87.46%"),
+        ("smt_PERCENTAGE", 87.456, "87.46%"),
+        ("mean", -12.345678, "-12.346"),
+        (None, -12.345678, "-12.346"),
+        ("mean", 0.0001, "1.e-04"),
+        (None, 0.001, "0.001"),
+    ],
+)
+def test_format_values_stats(key: str | None, value: float, expected: str) -> None:
+    assert toolbox.format_values_stats(value, key) == expected
+
+
+def test_save_stat_as_csv(get_topo_inputs_config_list: dict[str, Any], tmp_path: Path) -> None:
+    """
+    Test save_stat_as_csv function
+    """
+
+    data = {"a": 1.2345, "b": 2.9876}
+    csv_path = tmp_path / "test_save_stat_as_csv_stats.csv"
+
+    toolbox.save_stat_as_csv(data, csv_path)
+    assert csv_path.exists()
+
+    output_csv = pd.read_csv(csv_path)
+    pd.testing.assert_frame_equal(output_csv, pd.DataFrame([data]))

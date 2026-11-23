@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Centre National d'Etudes Spatiales (CNES).
+# Copyright (c) 2026 Centre National d'Etudes Spatiales (CNES)
 #
 # This file is part of the xDEM project:
 # https://github.com/glaciohack/xdem
@@ -15,38 +15,34 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """
-Workflow class
+Toolbox for workflows.
 """
 
 import csv
 import logging
 import math
-import os
 import warnings
-from abc import ABC, abstractmethod
+from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any, Callable, Dict, ParamSpec, TypeVar, Union
 
 import geoutils as gu
 import numpy as np
-import pyogrio.errors
-import rasterio.errors
 from geoutils import Raster
 from geoutils.raster import RasterType
+from matplotlib.axes import Axes
 from pyproj import CRS
 from rasterio.warp import calculate_default_transform
 
 import xdem
 from xdem import DEM
 from xdem._misc import import_optional
-from xdem.coreg.base import InputCoregDict, OutputCoregDict
+from xdem.dem.base import DEMBase
 from xdem.dem.xr_accessor import DEMAccessor
-from xdem.examples import _FILEPATHS_ALL
 from xdem.vcrs import vertical_unit_symbol
-from xdem.workflows.schemas import validate_configuration
 
-# Inheritance of optional dependencies
 try:
     from yaml.dumper import SafeDumper  # type: ignore
 
@@ -63,12 +59,61 @@ except ImportError:
     _HAS_PLUTOPRINT = False
 
 
-def return_info(dem: RasterType) -> dict[str, Any]:
+_P = ParamSpec("_P")
+_T = TypeVar("_T")
+
+
+def _with_plot_style(func: Callable[_P, _T]) -> Callable[_P, _T]:
+    """Apply the plotting style in Matplotlib settings."""
+
+    @wraps(func)
+    def wrapped(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+        import_optional("matplotlib")
+        import matplotlib.pyplot as plt
+
+        with plt.rc_context(
+            {
+                "font.size": 6,
+                "axes.titlesize": 6,
+                "axes.labelsize": 6,
+                "xtick.labelsize": 6,
+                "ytick.labelsize": 6,
+                "legend.fontsize": 6,
+                "figure.titlesize": 6,
+            }
+        ):
+            return func(*args, **kwargs)
+
+    return wrapped
+
+
+def _plot_raster(dem: DEMBase, ax: Axes, label: str, **kwargs: Any) -> None:
+    """Plot a DEM or a DEM accessor with options."""
+    if isinstance(dem, DEM):
+        dem.plot(ax=ax, cbar_title=label, **kwargs)
+    else:
+        data = dem._obj if isinstance(dem, DEMAccessor) else dem
+        data.plot(ax=ax, cbar_kwargs={"label": label}, **kwargs)
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+
+
+def save_dem(dem: DEMBase, path: str | Path) -> None:
+    """Save a DEM to a file."""
+    dem.to_file(path) if isinstance(dem, xdem.DEM) else dem.dem.to_file(path)
+
+
+def save_raster(raster: RasterType, path: str | Path) -> None:
+    """Save a Raster to a file."""
+    raster.to_file(path) if isinstance(raster, gu.Raster) else raster.rst.to_file(path)
+
+
+def return_info(dem: DEMBase) -> dict[str, Any]:
     """
-    xxxx
+    Get information about a DEM to save them in a file.
 
     :param dem:
-    :return
+    :return dict: Dictionary with information about the DEM
     """
     return {
         "Driver": dem.driver,
@@ -85,54 +130,27 @@ def return_info(dem: RasterType) -> dict[str, Any]:
     }
 
 
-def floats_process(dict_with_floats: Dict[str, Any] | InputCoregDict | OutputCoregDict | Any) -> Dict[str, Any]:  # type: ignore
-    """
-    Allows rounding all floats present in a dictionary to two decimal places
-    :param dict_with_floats: Dictionary with float
-    :return: Dictionary with floats
-    """
-    if isinstance(dict_with_floats, dict):
-        return {k: floats_process(v) for k, v in dict_with_floats.items()}
-    elif isinstance(dict_with_floats, list):
-        return [floats_process(elem) for elem in dict_with_floats]  # type: ignore
-    elif isinstance(dict_with_floats, tuple):
-        return tuple(floats_process(elem) for elem in dict_with_floats)  # type: ignore
-    elif isinstance(dict_with_floats, (float, np.floating)):
-        return round(float(dict_with_floats), 2)  # type: ignore
-    else:
-        return dict_with_floats
-
-
+@_with_plot_style
 def generate_plot(
-    dem: RasterType,
+    dem: DEMBase,
     title: str,
-    file_path: str,
-    dem_right: RasterType = None,
-    title_dem_right: str = None,
+    file_path: str | Path,
+    dem_right: DEMBase | None = None,
+    title_dem_right: str | None = None,
     **kwargs: Any,
 ) -> None:
     """
-    Generate plot from a DEM.
+    Generate plot from one or two DEM(s).
 
     :param dem: Input digital elevation model (left)
     :param title: Title of dem plot (left)
-    :param filename: Filename of figure.
+    :param file_path: Path of the figure.
     :param dem_right: Input digital elevation model (right)
     :param title_dem_right: Title of dem_right plot (right)
-    :param mask_path: Path to mask file.
     :return: None
     """
     import_optional("matplotlib")
     import matplotlib.pyplot as plt
-
-    size_font = 6
-    plt.rc("font", size=size_font)
-    plt.rc("axes", titlesize=size_font)
-    plt.rc("axes", labelsize=size_font)
-    plt.rc("xtick", labelsize=size_font)
-    plt.rc("ytick", labelsize=size_font)
-    plt.rc("legend", fontsize=size_font)
-    plt.rc("figure", titlesize=size_font)
 
     # Apply default cmap if not given in inputs
     if "cmap" in kwargs:
@@ -144,36 +162,30 @@ def generate_plot(
 
     # Add colormap
     vunit = vertical_unit_symbol(dem.crs)
-    kwargs.setdefault(
-        "cbar_kwargs", {"label": f"Elevation differences ({vunit})" if vunit else "Elevation differences"}
-    )
+    label = f"Elevation differences ({vunit})" if vunit else "Elevation differences"
     # Force figsize with the good ratio to prevent larger right axe if not filled
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=[6.4, 2.4])
 
     # Add the first image to the figure (left position)
-    if isinstance(dem, DEMAccessor):
-        dem = dem._obj
-
-    dem.plot(ax=ax1)  # , **kwargs)
+    _plot_raster(dem, ax1, label, **kwargs)
     ax1.set_title(title)
 
     # If exists, add the second image to the figure
     if dem_right is not None:
-        if isinstance(dem_right, DEMAccessor):
-            dem_right = dem_right._obj
-        dem_right.plot(ax=ax2)  # , **kwargs)
+        _plot_raster(dem_right, ax2, label, **kwargs)
         ax2.set_title(title_dem_right)
     else:
         ax2.set_axis_off()
 
-    plt.savefig(file_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    fig.savefig(file_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
 
+@_with_plot_style
 def generate_plot_with_profiles(
-    dem: RasterType,
+    dem: DEMBase,
     title: str,
-    file_path: str,
+    file_path: str | Path,
     **kwargs: Any,
 ) -> None:
     """
@@ -181,25 +193,20 @@ def generate_plot_with_profiles(
 
     :param dem: Input digital elevation model
     :param title: Title of dem plot
-    :param filename: Filename of figure
+    :param file_path: Path of the figure
     """
-    print("generate")
     import_optional("matplotlib")
     import matplotlib.pyplot as plt
     from matplotlib.gridspec import GridSpec
 
     # Add the first image to the figure (left position)
 
-    logging.info(dem)
     vunit = vertical_unit_symbol(dem.crs)
     unit_label = f" ({vunit})" if vunit else ""
-    logging.info(unit_label)
 
     # Raster data
     data = dem.data
     ny, nx = data.shape
-    logging.info(nx)
-    logging.info(ny)
 
     # Initial min/max for mean profiles
     profile_cols = np.nanmean(data, axis=0)
@@ -222,16 +229,6 @@ def generate_plot_with_profiles(
         nb_valid_cols < data.shape[0] / 2,
         profile_cols,
     )
-
-    # Force figsize with the same size as generate_plot function
-    size_font = 6
-    plt.rc("font", size=size_font)
-    plt.rc("axes", titlesize=size_font)
-    plt.rc("axes", labelsize=size_font)
-    plt.rc("xtick", labelsize=size_font)
-    plt.rc("ytick", labelsize=size_font)
-    plt.rc("legend", fontsize=size_font)
-    plt.rc("figure", titlesize=size_font)
 
     gs = GridSpec(2, 3, width_ratios=[1.2, 4, 0.3], height_ratios=[4, 1.2])  # 1 for the colobar
 
@@ -261,9 +258,18 @@ def generate_plot_with_profiles(
     ax_left.invert_xaxis()
     ax_left.yaxis.tick_left()
     ax_left.yaxis.set_label_position("left")
+
+    if isinstance(dem, gu.Raster):
+        row_min, row_max = profile_rows_stats
+        col_min, col_max = profile_cols_stats
+    else:
+        import dask
+
+        row_min, row_max = dask.compute(*profile_rows_stats)
+        col_min, col_max = dask.compute(*profile_cols_stats)
+
     ax_left.set_xlabel(
-        f"Mean along lines{unit_label}\n"
-        f"Min: {np.round(profile_rows_stats[0], 2)} / Max: {np.round(profile_rows_stats[1], 2)}"
+        f"Mean along lines{unit_label}\nMin: {format_values(row_min, 'min')} / Max: {format_values(row_max, 'max')}"
     )
 
     # Columns profiles
@@ -273,38 +279,41 @@ def generate_plot_with_profiles(
     ax_bottom.yaxis.tick_left()
     ax_bottom.xaxis.set_label_position("bottom")
     ax_bottom.set_xlabel(
-        f"Mean along columns{unit_label}\n"
-        f"Min: {np.round(profile_cols_stats[0], 2)} / Max: {np.round(profile_cols_stats[1], 2)}"
+        f"Mean along columns{unit_label}\nMin: {format_values(col_min, 'min')} / Max: {format_values(col_max, 'max')}"
     )
 
     plt.savefig(file_path, dpi=300, bbox_inches="tight")
-    plt.show()
+    plt.close()
 
 
 def generate_terrain_attributes(
-    dem: RasterType,
-    list_attributes: list[str],
-    outputs_folder,
-    config_attributes,
-    proj_crs,
-    proj_crs_value,
+    dem: DEMBase,
+    list_attributes: list[str] | dict[str, Any],
+    outputs_folder: Path,
+    config_attributes: dict[str, Any],
+    proj_crs: bool = True,
+    proj_crs_value: str | None = None,
     export_tif: bool = False,
 ) -> None:
-    """
-    Generates an image png containing the plots of the terrain attributes requested by the user.
+    """Generates the terrain attributes
 
-    :param dem:
+    :param dem: input digital elevation model
+    :param outputs_folder: path of the output folder
+    :param list_attributes: list of terrain attributes to generate
+    :param config_attributes: configuration for the terrain attributes
+    :param proj_crs: whether to project to a CRS
+    :param proj_crs_value: the CRS value to project to
     :param export_tif: export tif for each terrain attributes
     :return: None
     """
 
-    proj_crs = None
+    target_crs = None
 
     if dem.crs.is_geographic:
         if proj_crs:
-            proj_crs = dem.get_metric_crs()
+            target_crs = dem.get_metric_crs()
 
-            logging.info(f"Reprojection in default projected CRS ({proj_crs})")
+            logging.info(f"Reprojection in default projected CRS ({target_crs})")
 
         elif not proj_crs_value:
             warnings.warn(
@@ -314,8 +323,8 @@ def generate_terrain_attributes(
             )
 
         else:
-            proj_crs = proj_crs_value
-            logging.info(f"Reprojection with crs = {proj_crs}")
+            target_crs = proj_crs_value
+            logging.info(f"Reprojection with crs = {target_crs}")
 
             if CRS.from_user_input(proj_crs_value).is_geographic:
                 warnings.warn(
@@ -324,15 +333,15 @@ def generate_terrain_attributes(
                     UserWarning,
                 )
 
-    if proj_crs is not None:
-        # Terrain derivatives require square pixels; request GDAL's suggested spacing explicitly
-        target_transform, _, _ = calculate_default_transform(dem.crs, proj_crs, dem.width, dem.height, *dem.bounds)
-        dem = dem.reproject(crs=proj_crs, res=abs(target_transform.a))
+    if target_crs is not None:
+        target_transform, _, _ = calculate_default_transform(dem.crs, target_crs, dem.width, dem.height, *dem.bounds)
+        reprojected = dem.reproject(crs=target_crs, res=abs(target_transform.a))
+        dem = reprojected if isinstance(reprojected, Raster) else reprojected.dem
         if export_tif:
-            dem.to_file(outputs_folder / "rasters" / "elev_reprojected.tif")
+            save_dem(dem, outputs_folder / "elev_reprojected.tif")
     elif dem.res[0] != dem.res[1]:
-        # Retain the chosen CRS while regularizing a rectangular grid at its finer pixel spacing
-        dem = dem.reproject(res=min(dem.res))
+        reprojected = dem.reproject(res=min(dem.res))
+        dem = reprojected if isinstance(reprojected, Raster) else reprojected.dem
 
     attribute_extra = {}
     from_str_to_fun = {
@@ -370,7 +379,11 @@ def generate_terrain_attributes(
     else:
         for attr in list_attributes:
             attribute_extra = config_attributes.get(attr) or {}  # type: ignore
-            attributes.append(from_str_to_fun[attr]().compute())
+            terrain = from_str_to_fun[attr]()
+            if isinstance(dem, DEM):
+                attributes.append(terrain)
+            else:
+                attributes.append(terrain.compute())
 
     # Generate terrain attributes png
     generate_terrain_attributes_png(dem, list_attributes, outputs_folder, attributes)
@@ -379,21 +392,24 @@ def generate_terrain_attributes(
     if export_tif:
         for k, attr in enumerate(list_attributes):
             logging.info(f"Saving {attr} as a raster file (rasters/{attr}.tif)")
-            if isinstance(dem, Raster):
-                attributes[k].to_file(outputs_folder / "rasters" / f"{attr}.tif")
-            else:
-                attributes[k].rst.to_file(outputs_folder / "rasters" / f"{attr}.tif")
+            save_raster(attributes[k], outputs_folder / "rasters" / f"{attr}.tif")
 
-    logging.info("fin ok generate_terrain_attributes")
+    logging.info("Terrain attributes generated")
 
 
+@_with_plot_style
 def generate_terrain_attributes_png(
-    dem: RasterType, list_attribues: list[str], outputs_folder, attributes: list[RasterType]
+    dem: RasterType,
+    list_attributes: list[str] | dict[str, Any],
+    outputs_folder: Path,
+    attributes: list[RasterType],
 ) -> None:
     """
     Generate terrain attributes png
-    :param dem:
-    :param attributes:
+    :param dem: input digital elevation model
+    :param list_attributes: list of terrain attributes name
+    :param outputs_folder: path of the output folder
+    :param attributes: terrain attributes
     """
 
     n = len(attributes)
@@ -426,25 +442,15 @@ def generate_terrain_attributes_png(
     import matplotlib.pyplot as plt
 
     fig, axes = plt.subplots(nrows, ncols)
-    size_font = 6
-    plt.rc("font", size=size_font)
-    plt.rc("axes", titlesize=size_font)
-    plt.rc("axes", labelsize=size_font)
-    plt.rc("xtick", labelsize=size_font)
-    plt.rc("ytick", labelsize=size_font)
-    plt.rc("legend", fontsize=size_font)
-    plt.rc("figure", titlesize=size_font)
-
     axes = np.atleast_1d(axes).flatten()
 
-    for i, attr in enumerate(list_attribues):
+    print("ici", list_attributes, attributes)
+    for i, attr in enumerate(list_attributes):
         ax = axes[i]
         params = attribute_params[attr]
         label = params["label"]
         vmin, vmax = params["vlim"]
-        kwargs = {"cmap": params["cmap"]}
-        kwargs.setdefault("cbar_kwargs", {"label": f"{label}"})
-        attributes[i].plot(ax=ax, vmin=vmin, vmax=vmax)  # , **kwargs)
+        _plot_raster(attributes[i], ax, label, cmap=params["cmap"], vmin=vmin, vmax=vmax)
         ax.set_title(None)
         ax.set_xticks([])
         ax.set_yticks([])
@@ -454,4 +460,149 @@ def generate_terrain_attributes_png(
     [fig.delaxes(ax) for ax in axes.flatten() if not ax.has_data()]
     plt.tight_layout()
     plt.savefig(outputs_folder / "plots" / "terrain_attributes_map.png", dpi=300)
-    plt.close()
+    plt.close(fig)
+
+
+def recursive_format_values(value: Any) -> Any:
+    """Format floats recursively in dictionaries, lists and tuples."""
+    if isinstance(value, dict):
+        return {k: recursive_format_values(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [recursive_format_values(elem) for elem in value]
+    elif isinstance(value, tuple):
+        return tuple(recursive_format_values(elem) for elem in value)
+    elif isinstance(value, (float, np.floating)):
+        return format_values(float(value))
+    else:
+        return value
+
+
+def format_values(val: Union[float, int], key: str = None) -> str:
+    """Format values (according to the statistics)."""
+    if isinstance(val, str):
+        return val
+    if key is not None and "count" in key.lower():
+        return str(int(val))
+    if key is not None and "percentage" in key.lower():
+        return f"{val:.2f}" + "%"
+    elif abs(val) > 10e4:
+        return np.format_float_scientific(val, precision=3)
+    elif abs(val) < 10e-4:
+        return np.format_float_scientific(val, precision=3)
+    else:
+        return f"{val:.3f}"
+
+
+def generate_pdf(html_path: Path, pdf_path: Path) -> None:
+    """
+    Create PDF report page from HTML page.
+
+    :param html_path: Path to the HTML file
+    :param pdf_path: Path to the PDF file
+    :return: None
+    """
+    if _HAS_PLUTOPRINT:
+        book = plutoprint.Book(plutoprint.PAGE_SIZE_A4, plutoprint.PAGE_MARGINS_NARROW)
+        book.load_url(html_path.resolve().as_uri())
+
+        # Export the entire document to PDF
+        book.write_to_pdf(pdf_path)
+        logging.info("Report generated in " + str(pdf_path))
+
+
+def save_stat_as_csv(data: dict[str, float], file_path: Path) -> None:
+    """
+    Save the statistics into a CSV file.
+
+    :param data: Statistics dictionary
+    :param file_path: Path to the CSV file
+    """
+    cleaned_data = {k: float(v) if isinstance(v, (np.float32, np.float64)) else v for k, v in data.items()}
+
+    fieldnames = list(cleaned_data.keys())
+    print(file_path, type(file_path))
+    with file_path.open(mode="w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerow(cleaned_data)
+
+
+@_with_plot_style
+def compute_histogram(
+    stats_before: Dict[str, Any],
+    stats_after: Dict[str, Any],
+    diff_before: RasterType,
+    diff_after: RasterType,
+    path: str | Path,
+) -> None:
+    """
+    Compute altitudes difference histogram.
+
+    :param stats_before: Statistics before coregistration
+    :param stats_after: Statistics after coregistration
+    :param diff_before: Altitude difference before coregistration
+    :param diff_after: Altitude difference after coregistration
+    :param path: Path to save the histogram plot
+    """
+
+    import_optional("matplotlib")
+    import matplotlib.pyplot as plt
+
+    logging.info("Computing histogram on altitude difference")
+    vunit = (
+        vertical_unit_symbol(diff_before.crs)
+        if isinstance(diff_before, gu.Raster)
+        else vertical_unit_symbol(diff_before.dem.crs)
+    )
+    unit_label = f" ({vunit})" if vunit else ""
+
+    # Force figsize with the same size as generate_plot function
+    fig = plt.figure(figsize=[6.4, 2.34])
+
+    bins = np.linspace(stats_before["min"], stats_before["max"], 300)
+    std_before = np.std(diff_before)
+    plt.xlim((-4 * std_before, 4 * std_before))
+
+    if isinstance(diff_after, gu.Raster):
+        plt.hist(diff_before.data.flatten(), bins=bins, color="g", alpha=0.5, label="Before coregistration")
+        plt.hist(diff_after.data.flatten().data, bins=bins, color="b", alpha=0.5, label="After coregistration")
+
+    else:
+        import dask
+        import dask.array as da
+
+        hist_before, _ = da.histogram(diff_before.data, bins=bins)
+        hist_after, _ = da.histogram(diff_after.data, bins=bins)
+
+        hist_before, hist_after = dask.compute(hist_before, hist_after)
+
+        plt.stairs(hist_before, bins, fill=True, color="g", alpha=0.5, label="Before coregistration")
+        plt.stairs(hist_after, bins, fill=True, color="b", alpha=0.5, label="After coregistration")
+    ax = plt.gca()
+    plt.text(
+        0.2,
+        0.5,
+        f"Before:\nmedian = {format_values(stats_before['median'], 'median')}\n"
+        f"nmad = {format_values(stats_before['nmad'], 'nmad')}",
+        color="g",
+        transform=ax.transAxes,
+        ha="center",
+        va="center",
+    )
+    plt.text(
+        0.8,
+        0.5,
+        f"After:\nmedian = {format_values(stats_after['median'], 'median')}\n"
+        f"nmad = {format_values(stats_after['nmad'], 'nmad')}",
+        color="b",
+        transform=ax.transAxes,
+        ha="center",
+        va="center",
+    )
+    plt.title("Histogram of elevation differences\nbefore and after coregistration")
+    plt.xlabel(f"Elevation differences{unit_label}")
+    plt.ylabel("Count")
+    plt.legend()
+    plt.grid(False)
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)

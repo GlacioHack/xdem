@@ -38,7 +38,6 @@ from numpy import floating
 
 import xdem
 from xdem._misc import import_optional
-from xdem.vcrs import vertical_unit_symbol
 from xdem.workflows import toolbox
 from xdem.workflows.schemas import ACCURACY_SCHEMA
 from xdem.workflows.workflows import _ALIAS, Workflows
@@ -107,7 +106,7 @@ class Accuracy(Workflows):
         toolbox.generate_plot(
             dem=self.reference_elev if isinstance(self.reference_elev, Raster) else self.reference_elev.dem,
             title="Reference elevation",
-            file_path=self.outputs_folder / "plots" / f"inputs.png",
+            file_path=self.outputs_folder / "plots" / "inputs.png",
             dem_right=self.to_be_aligned_elev if isinstance(self.reference_elev, Raster) else self.reference_elev.dem,
             title_dem_right="To-be-aligned elevation",
             vmin=vmin,
@@ -115,16 +114,24 @@ class Accuracy(Workflows):
         )
         if ref_mask is not None or tba_mask is not None:
             if ref_mask is not None:
-                inlier_mask_crop = ref_mask.reproject(self.reference_elev).crop(self.reference_elev)
+                inlier_mask_crop = (
+                    ref_mask.reproject(self.reference_elev).crop(self.reference_elev)
+                    if isinstance(ref_mask, Raster)
+                    else ref_mask.dem.reproject(self.reference_elev.dem).dem.crop(self.reference_elev.dem)
+                )
                 self.reference_elev.data = np.where(inlier_mask_crop.data, self.reference_elev.data, np.nan)
 
             if tba_mask is not None:
-                inlier_mask_crop = tba_mask.reproject(self.to_be_aligned_elev).crop(self.to_be_aligned_elev)
+                inlier_mask_crop = (
+                    tba_mask.reproject(self.to_be_aligned_elev).crop(self.to_be_aligned_elev)
+                    if isinstance(tba_mask, Raster)
+                    else tba_mask.dem.reproject(self.to_be_aligned_elev.dem).dem.crop(self.to_be_aligned_elev.dem)
+                )
                 self.to_be_aligned_elev.data = np.where(inlier_mask_crop.data, self.to_be_aligned_elev.data, np.nan)
             toolbox.generate_plot(
                 dem=self.reference_elev if isinstance(self.reference_elev, Raster) else self.reference_elev.dem,
                 title="Masked terrain for reference elevation",
-                file_path=self.outputs_folder / "plots" / f"masked_elev_map.png",
+                file_path=self.outputs_folder / "plots" / "masked_elev_map.png",
                 dem_right=self.to_be_aligned_elev
                 if isinstance(self.reference_elev, Raster)
                 else self.reference_elev.dem,
@@ -173,11 +180,11 @@ class Accuracy(Workflows):
         my_coreg = sum(coreg_functions[1:], coreg_functions[0]) if len(coreg_functions) > 1 else coreg_functions[0]
 
         # Coregister
-        logging.info(type(my_coreg))
-        logging.info(my_coreg)
-
-        aligned_elev = self.to_be_aligned_elev.dem.coregister_3d(self.reference_elev.dem, my_coreg, random_state=42)
-        aligned_elev.dem.to_file(self.outputs_folder / "rasters" / "aligned_elev.tif")
+        if isinstance(self.to_be_aligned_elev, xdem.DEM):
+            aligned_elev = self.to_be_aligned_elev.coregister_3d(self.reference_elev, my_coreg, random_state=42)
+        else:
+            aligned_elev = self.to_be_aligned_elev.dem.coregister_3d(self.reference_elev.dem, my_coreg, random_state=42)
+        toolbox.save_dem(aligned_elev, self.outputs_folder / "rasters" / "aligned_elev.tif")
 
         self.dico_to_show.append(("Coregistration user configuration", self.config["coregistration"]))
 
@@ -185,11 +192,12 @@ class Accuracy(Workflows):
             config_coreg = self.config["coregistration"].get(step)
             if config_coreg:
                 method_name = config_coreg.get("method")
+                print(coreg_functions[idx].meta["inputs"])
                 self.dico_to_show.append(
-                    (f"{method_name} inputs", self.floats_process(coreg_functions[idx].meta["inputs"]))
+                    (f"{method_name} inputs", toolbox.recursive_format_values(coreg_functions[idx].meta["inputs"]))
                 )
                 self.dico_to_show.append(
-                    (f"{method_name} outputs", self.floats_process(coreg_functions[idx].meta["outputs"]))
+                    (f"{method_name} outputs", toolbox.recursive_format_values(coreg_functions[idx].meta["outputs"]))
                 )
 
         return aligned_elev
@@ -205,7 +213,7 @@ class Accuracy(Workflows):
         sampling_grid = self.config["inputs"]["sampling_grid"]
 
         ref = self.reference_elev if isinstance(self.reference_elev, Raster) else self.reference_elev.dem
-        tba = self.to_be_aligned_elev if isinstance(self.reference_elev, Raster) else self.to_be_aligned_elev.dem
+        tba = self.to_be_aligned_elev if isinstance(self.to_be_aligned_elev, Raster) else self.to_be_aligned_elev.dem
 
         # Reprojection
         if sampling_grid == "reference_elev":
@@ -224,7 +232,7 @@ class Accuracy(Workflows):
         elif sampling_grid == "to_be_aligned_elev":
             self.reference_elev = ref.reproject(self.to_be_aligned_elev, silent=True)
 
-        if not ref.get_stats("validcount") or not tba.get_stats("validcount"):
+        if not ref.stats("validcount") or not tba.stats("validcount"):
             msg_error = "Reference and to-be-aligned elevation datasets do not overlap horizontally. "
             if self.compute_coreg:
                 msg_error += (
@@ -240,32 +248,42 @@ class Accuracy(Workflows):
 
         # Intersection
         logging.info("Computing intersection")
-        coord_intersection = ref.intersection(self.to_be_aligned_elev)
+        coord_intersection = ref.intersection(tba)
 
         if sampling_grid == "reference_elev":
-            self.to_be_aligned_elev = tba.crop(coord_intersection)
+            self.to_be_aligned_elev = (
+                self.to_be_aligned_elev.crop(coord_intersection)
+                if isinstance(self.to_be_aligned_elev, Raster)
+                else self.to_be_aligned_elev.dem.crop(coord_intersection)
+            )
             toolbox.generate_plot(
                 self.to_be_aligned_elev if isinstance(self.to_be_aligned_elev, Raster) else self.to_be_aligned_elev.dem,
                 title="Preprocessed to-be-aligned elevation",
-                file_path=self.outputs_folder / "plots" / f"preprocessed_to_be_aligned_elev_map.png",
+                file_path=self.outputs_folder / "plots" / "preprocessed_to_be_aligned_elev_map.png",
                 vmin=vmin,
                 vmax=vmax,
             )
         else:
-            self.reference_elev = self.reference_elev.dem.crop(coord_intersection)
+            self.reference_elev = (
+                self.reference_elev.crop(coord_intersection)
+                if isinstance(self.reference_elev, Raster)
+                else self.reference_elev.dem.crop(coord_intersection)
+            )
             toolbox.generate_plot(
                 self.reference_elev if isinstance(self.reference_elev, Raster) else self.reference_elev.dem,
                 title="Preprocessed reference elevation",
-                file_path=self.outputs_folder / "plots" / f"preprocessed_reference_elev_ma.ngp",
+                file_path=self.outputs_folder / "plots" / "preprocessed_reference_elev_map.png",
                 vmin=vmin,
                 vmax=vmax,
             )
 
         if self.level > 1:
-            self.reference_elev.dem.to_file(self.outputs_folder / "rasters" / "reference_elev_reprojected.tif")
-            self.to_be_aligned_elev.dem.to_file(self.outputs_folder / "rasters" / "to_be_aligned_elev_reprojected.tif")
+            toolbox.save_dem(self.reference_elev, self.outputs_folder / "rasters" / "reference_elev_reprojected.tif")
+            toolbox.save_dem(
+                self.to_be_aligned_elev, self.outputs_folder / "rasters" / "to_be_aligned_elev_reprojected.tif"
+            )
 
-    def _get_stats(self, dem: RasterType, name_of_data: str = "") -> floating[Any] | dict[str, floating[Any]]:
+    def _stats(self, dem: RasterType, name_of_data: str = "") -> floating[Any] | dict[str, floating[Any]]:
         """
         Return a list of computed statistics chose by user or the default one.
 
@@ -278,63 +296,10 @@ class Accuracy(Workflows):
 
         if list_to_compute is not None:
             logging.info(f"Computing statistics on {name_of_data}: {list_to_compute}")
-            dict_stats = dem.dem.get_stats(list_to_compute)
+            dict_stats = dem.stats(list_to_compute) if isinstance(dem, Raster) else dem.dem.stats(list_to_compute)
             dict_stats_aliased = {_ALIAS.get(k, k): v for k, v in dict_stats.items()}
 
         return dict_stats_aliased
-
-    def _compute_histogram(self) -> None:
-        """
-        Compute altitudes difference histogram.
-        """
-
-        import_optional("matplotlib")
-        import matplotlib.pyplot as plt
-
-        logging.info("Computing histogram on altitude difference")
-
-        # Force figsize with the same size as generate_plot function
-        plt.figure(figsize=[6.4, 2.34])
-        size_font = 6
-        plt.rc("font", size=size_font)
-        plt.rc("axes", titlesize=size_font)
-        plt.rc("axes", labelsize=size_font)
-        plt.rc("xtick", labelsize=size_font)
-        plt.rc("ytick", labelsize=size_font)
-        plt.rc("legend", fontsize=size_font)
-        plt.rc("figure", titlesize=size_font)
-
-        bins = np.linspace(self.stats_before["min"], self.stats_before["max"], 300)
-        plt.xlim((-4 * np.std(self.diff_before), 4 * np.std(self.diff_before)))
-        plt.hist(self.diff_before.data.flatten(), bins=bins, color="g", alpha=0.5, label="Before coregistration")
-        plt.hist(self.diff_after.data.flatten().data, bins=bins, color="b", alpha=0.5, label="After coregistration")
-        ax = plt.gca()
-        plt.text(
-            0.2,
-            0.5,
-            f"Before:\nmedian = {self.stats_before['median']:.2f}\nnmad = {self.stats_before['nmad']:.2f}",
-            color="g",
-            transform=ax.transAxes,
-            ha="center",
-            va="center",
-        )
-        plt.text(
-            0.8,
-            0.5,
-            f"After:\nmedian = {self.stats_after['median']:.2f}\nnmad = {self.stats_after['nmad']:.2f}",
-            color="b",
-            transform=ax.transAxes,
-            ha="center",
-            va="center",
-        )
-        plt.title("Histogram of elevation differences\nbefore and after coregistration")
-        ref_vunit = vertical_unit_symbol(self.reference_elev.dem.crs)
-        plt.xlabel(f"Elevation differences ({ref_vunit})" if ref_vunit is not None else "Elevation differences")
-        plt.ylabel("Count")
-        plt.legend()
-        plt.grid(False)
-        plt.savefig(self.outputs_folder / "plots" / "elev_diff_histo.png", dpi=300, bbox_inches="tight")
-        plt.close()
 
     def run(self) -> None:
         """
@@ -362,10 +327,22 @@ class Accuracy(Workflows):
 
         if self.compute_coreg:
             self.diff_before = self.to_be_aligned_elev - self.reference_elev
-            self.stats_before = self.diff_before.dem.get_stats(stats_keys)
+            self.stats_before = (
+                self.diff_before.stats(stats_keys)
+                if isinstance(self.diff_before, xdem.DEM)
+                else self.diff_before.dem.stats(stats_keys)
+            )
 
-            self.diff_after = aligned_elev.dem.reproject(self.reference_elev) - self.reference_elev
-            self.stats_after = self.diff_after.dem.get_stats(stats_keys)
+            self.diff_after = (
+                (aligned_elev.reproject(self.reference_elev) - self.reference_elev)
+                if isinstance(aligned_elev, xdem.DEM)
+                else (aligned_elev.dem.reproject(self.reference_elev.dem) - self.reference_elev)
+            )
+            self.stats_after = (
+                self.diff_after.stats(stats_keys)
+                if isinstance(self.diff_after, xdem.DEM)
+                else self.diff_after.dem.stats(stats_keys)
+            )
 
             vmin_diff = min(
                 -(self.stats_before["median"] + 3 * self.stats_before["nmad"]),
@@ -377,47 +354,54 @@ class Accuracy(Workflows):
             )
 
             if self.level == 1:
-                self.generate_plot(
-                    dem=self.diff_before,
+                toolbox.generate_plot(
+                    dem=self.diff_before if isinstance(self.diff_before, Raster) else self.diff_before.dem,
                     title="Difference between To-be-aligned and Reference elevation\n(before coregistration)",
-                    filename="diff_elev_diff_coreg_map",
-                    dem_right=self.diff_after,
+                    file_path=self.outputs_folder / "plots" / "diff_elev_diff_coreg_map.png",
+                    dem_right=self.diff_after if isinstance(self.diff_after, Raster) else self.diff_after.dem,
                     title_dem_right="Difference between Aligned and Reference elevation\n(after coregistration)",
                     vmin=vmin_diff,
                     vmax=vmax_diff,
                     cmap="RdBu",
                 )
             else:
-                self.generate_plot_with_profiles(
+                toolbox.generate_plot_with_profiles(
                     dem=self.diff_before if isinstance(self.diff_before, Raster) else self.diff_before.dem,
                     title="Difference between To-be-aligned and Reference elevation\n(before coregistration)",
-                    filename="diff_elev_before_coreg_map",
+                    file_path=self.outputs_folder / "plots" / "diff_elev_before_coreg_map.png",
                     vmin=vmin_diff,
                     vmax=vmax_diff,
                     cmap="RdBu",
                 )
 
-                self.generate_plot_with_profiles(
+                toolbox.generate_plot_with_profiles(
                     dem=self.diff_after if isinstance(self.diff_after, Raster) else self.diff_after.dem,
                     title="Difference between Aligned and Reference elevation\n(after coregistration)",
-                    filename="diff_elev_after_coreg_map",
+                    file_path=self.outputs_folder / "plots" / "diff_elev_after_coreg_map.png",
                     vmin=vmin_diff,
                     vmax=vmax_diff,
                     cmap="RdBu",
                 )
 
-                self.diff_coreg_tba = aligned_elev.dem.reproject(self.to_be_aligned_elev) - self.to_be_aligned_elev
-
-                self.generate_plot_with_profiles(
+                if isinstance(self.to_be_aligned_elev, xdem.DEM):
+                    self.diff_coreg_tba = aligned_elev.reproject(self.to_be_aligned_elev) - self.to_be_aligned_elev
+                else:
+                    self.diff_coreg_tba = (
+                        aligned_elev.dem.reproject(self.to_be_aligned_elev.dem) - self.to_be_aligned_elev
+                    )
+                toolbox.generate_plot_with_profiles(
                     dem=self.diff_coreg_tba if isinstance(self.diff_coreg_tba, Raster) else self.diff_coreg_tba.dem,
                     title="Difference between Aligned and To-be-aligned elevation\n(after coregistration)",
-                    filename="diff_elev_coreg_tba_map",
+                    file_path=self.outputs_folder / "plots" / "diff_elev_coreg_tba_map.png",
                     cmap="RdBu",
                 )
         else:
             self.diff = self.to_be_aligned_elev - self.reference_elev
 
-            self.stats = self.diff.dem.get_stats(stats_keys)
+            self.stats = (
+                self.diff.stats(stats_keys) if isinstance(self.diff, xdem.DEM) else self.diff.dem.stats(stats_keys)
+            )
+
             vmin, vmax = -(self.stats["median"] + 3 * self.stats["nmad"]), self.stats["median"] + 3 * self.stats["nmad"]
             if self.level == 1:
                 toolbox.generate_plot(
@@ -429,7 +413,7 @@ class Accuracy(Workflows):
                     cmap="RdBu",
                 )
             else:
-                self.diff = self.diff.compute()
+                self.diff = self.diff.compute() if not isinstance(self.diff, xdem.DEM) else self.diff
                 toolbox.generate_plot_with_profiles(
                     dem=self.diff if isinstance(self.diff, Raster) else self.diff.dem,
                     title="Difference between To-be-aligned and Reference elevation",
@@ -467,8 +451,8 @@ class Accuracy(Workflows):
         for i, (data, fname, title, level) in enumerate(stat_items):
             if (level > self.level and self.compute_coreg) or self.config["statistics"] is None:
                 continue
-            stats = self._get_stats(data, fname)
-            self.save_stat_as_csv(stats, fname)  # type: ignore
+            stats = self._stats(data, fname)
+            toolbox.save_stat_as_csv(stats, self.outputs_folder / "tables" / f"{fname}_stats.csv")  # type: ignore
 
             df = pd.DataFrame(data=stats, index=[i])
             df.insert(loc=0, column="Data", value=[title])
@@ -482,20 +466,27 @@ class Accuracy(Workflows):
         self.df_stats = df_stats
 
         if self.compute_coreg:
-            self._compute_histogram()
+            toolbox.compute_histogram(
+                self.stats_before,
+                self.stats_after,
+                self.diff_before,
+                self.diff_after,
+                self.outputs_folder / "plots" / "elev_diff_histo.png",
+            )
             if self.level > 1:
-                self.diff_before.dem.to_file(self.outputs_folder / "rasters" / "diff_elev_before_coreg_map.tif")
-                self.diff_after.dem.to_file(self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
-                self.diff_coreg_tba.dem.to_file(self.outputs_folder / "rasters" / "diff_elev_coreg_tba_map.tif")
+                toolbox.save_dem(self.diff_before, self.outputs_folder / "rasters" / "diff_elev_before_coreg_map.tif")
+                toolbox.save_dem(self.diff_after, self.outputs_folder / "rasters" / "diff_elev_after_coreg_map.tif")
+                toolbox.save_dem(self.diff_coreg_tba, self.outputs_folder / "rasters" / "diff_elev_coreg_tba_map.tif")
         else:
             if self.level > 1:
-                self.diff.dem.to_file(self.outputs_folder / "rasters" / "diff_elev_without_coreg_map.tif")
+                toolbox.save_dem(self.diff, self.outputs_folder / "rasters" / "diff_elev_without_coreg_map.tif")
 
         t1 = time.time()
         self.elapsed = t1 - t0
 
         self.create_html(self.dico_to_show)
-        self.generate_pdf()
+        if self.config["outputs"]["generate_pdf"]:
+            toolbox.generate_pdf(self.outputs_folder / "report.html", self.outputs_folder / "report.pdf")
 
         # Remove empty folder
         for folder in self.outputs_folder.rglob("*"):
@@ -590,7 +581,7 @@ class Accuracy(Workflows):
             df_cols = "".join([f'<td style="font-weight:bold">{col}</td>' for col in self.df_stats.T.columns])
             html += f'<tr><td style="font-weight:bold">Data</td>{df_cols}</tr>\n'
             for key, value in self.df_stats.T.iterrows():
-                df_values = "".join([f"<td>{self.format_values_stats(key, val)}</td>" for val in value.values])
+                df_values = "".join([f"<td>{toolbox.format_values(val, key)}</td>" for val in value.values])
                 html += f"<tr><td>{key}</td>{df_values}</tr>\n"
             html += "</table>\n"
 

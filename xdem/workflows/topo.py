@@ -87,7 +87,7 @@ class Topo(Workflows):
 
         toolbox.generate_plot(
             self.dem if isinstance(self.dem, Raster) else self.dem.dem,
-            file_path=self.outputs_folder / "plots" / f"elev_map.png",
+            file_path=self.outputs_folder / "plots" / "elev_map.png",
             title="Elevation",
         )
 
@@ -107,7 +107,7 @@ class Topo(Workflows):
             toolbox.generate_plot(
                 self.dem if isinstance(self.dem, Raster) else self.dem.dem,
                 title="Masked elevation",
-                file_path=self.outputs_folder / "plots" / f"masked_elev_map.png",
+                file_path=self.outputs_folder / "plots" / "masked_elev_map.png",
             )
 
     def run(self) -> None:
@@ -134,6 +134,7 @@ class Topo(Workflows):
                 logging.info(f"Elevation input #{k}")
 
             self.create_output_dir()
+            self.configure_execution()
             self._load_data(input)
 
             # Global information
@@ -143,14 +144,13 @@ class Topo(Workflows):
             # Statistics
             list_metrics = self.config["statistics"]
             if list_metrics is not None:
-                if isinstance(self.dem, Raster):
-                    stats_dem = self.dem.get_stats(list_metrics)
-                else:
-                    stats_dem = self.dem.dem.get_stats(list_metrics)
+                stats_dem = (
+                    self.dem.stats(list_metrics) if isinstance(self.dem, Raster) else self.dem.dem.stats(list_metrics)
+                )
 
                 stats_dem = {_ALIAS.get(k, k): v for k, v in stats_dem.items()}
-                self.save_stat_as_csv(stats_dem, "stats_elev")
-                self.dico_to_show[k].append(("Statistics", toolbox.floats_process(stats_dem)))
+                toolbox.save_stat_as_csv(stats_dem, self.outputs_folder / "tables" / "stats_elev_stats.csv")
+                self.dico_to_show[k].append(("Statistics", toolbox.recursive_format_values(stats_dem)))
                 logging.info(f"Computing metrics on elevation: {list_metrics}")
 
             # Terrain attributes
@@ -177,7 +177,8 @@ class Topo(Workflows):
             self.elapsed = t1 - t0
 
             self.create_html(self.dico_to_show[k])
-            self.generate_pdf()
+            if self.config["outputs"]["generate_pdf"]:
+                toolbox.generate_pdf(self.outputs_folder / "report.html", self.outputs_folder / "report.pdf")
 
             # Remove empty folder
             for folder in self.outputs_folder.rglob("*"):
@@ -217,7 +218,11 @@ class Topo(Workflows):
             html += "<tr><th>Information</th><th>Value</th></tr>\n"
             for key, val in dictionary.items():
                 if "statistics" in title.lower():
-                    html += f"<tr><td>{key}</td><td>{self.format_values_stats(key, val)}</td></tr>\n"
+                    print("ici")
+                    print(val, key)
+                    print("ici")
+                    print(toolbox.format_values(val, key))
+                    html += f"<tr><td>{key}</td><td>{toolbox.format_values(val, key)}</td></tr>\n"
                 else:
                     html += f"<tr><td>{key}</td><td>{val}</td></tr>\n"
             html += "</table>\n"

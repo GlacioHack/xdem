@@ -30,13 +30,13 @@ from rasterio import Affine
 from rasterio.coords import BoundingBox
 
 import xdem
-from xdem.workflows import Topo
+from xdem.workflows import Topo, toolbox
 from xdem.workflows.schemas import (
     MIN_STATS,
     TERRAIN_ATTRIBUTES,
     TERRAIN_ATTRIBUTES_DEFAULT,
 )
-from xdem.workflows.workflows import _ALIAS
+from xdem.workflows.workflows import _ALIAS, Workflows
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
@@ -86,6 +86,17 @@ def files_report(generate_pdf, tmp_path):
         assert not Path(tmp_path).joinpath("report.pdf").exists()
 
 
+def test_init_topo_workflow(get_topo_inputs_config_list, tmp_path):
+    """
+    Test initialization of topo class
+    """
+    user_config = get_topo_inputs_config_list[0]
+    workflows = Topo(user_config)
+
+    assert isinstance(workflows, Workflows)
+    assert isinstance(workflows, Topo)
+
+
 @pytest.mark.parametrize("level", [1, 2])
 @pytest.mark.parametrize("nb_inputs", [-1, 1, 2])
 @pytest.mark.parametrize("generate_pdf", [True, False])
@@ -93,7 +104,8 @@ def files_report(generate_pdf, tmp_path):
     "attributes",
     [None, ["slope", "aspect"], {"hillshade": {"method": "ZevenbergThorne", "azimuth": 90}}],
 )
-def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list, generate_pdf):
+@pytest.mark.parametrize("execution", [None, {"dask": {"chunks": {"x": 200, "y": 200}}}])
+def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list, generate_pdf, execution):
     """
     Test run function with all the outputs generation
 
@@ -106,6 +118,7 @@ def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list
         user_config["inputs"] = get_topo_inputs_config_list[:nb_inputs]
     user_config["outputs"] = {"path": str(tmp_path), "level": level, "generate_pdf": generate_pdf}
     user_config["terrain_attributes"] = attributes
+    user_config["scalability"] = execution
 
     workflows = Topo(user_config)
     workflows.run()
@@ -120,7 +133,7 @@ def test_run(tmp_path, level, attributes, nb_inputs, get_topo_inputs_config_list
     else:
         for k in range(len(user_config_list["inputs"])):
             dem_dir = "dem_" + str(k)
-            files_load_data(user_config_list["inputs"], Path(tmp_path / dem_dir))
+            files_load_data(user_config_list["inputs"][k], Path(tmp_path / dem_dir))
 
     # 2/ Test attributes
     if attributes is not None:
@@ -231,7 +244,7 @@ def test_run_dico_to_show(get_topo_inputs_config_list, nb_inputs, tmp_path):
             dem.load()
             inlier_mask = ~ref_mask.create_mask(dem)
             dem.set_mask(~inlier_mask)
-        res = workflows.floats_process(dem.get_stats(MIN_STATS))
+        res = toolbox.floats_process(dem.stats(MIN_STATS))
         assert workflows.dico_to_show[k][2][1] == {_ALIAS.get(key): res[key] for key in res.keys()}
 
 
