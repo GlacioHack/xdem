@@ -95,6 +95,10 @@ COMPARISON_SECTION_DETAILS: dict[ComparisonDimension, tuple[str, str]] = {
         "Surface fitting methods",
         "Compare surface fitting methods XXX",
     ),
+    "sampling_strategy": (
+        "Coregistration sampling strategies",
+        "Compare point sampling strategies for coregistration.",
+    ),
 }
 
 # Scaling sections answer which input grows, independently of the GeoUtils choices represented by plot lines
@@ -163,7 +167,8 @@ OPERATION_GROUPS: dict[str, str] = {
     "variogram_from_pairs": "Point ⟶ Other",
     "write": "DEM ⟶ Other",
     "attributes": "DEM ⟶ DEM",
-    "coreg_fit_and_apply": "DEM ⟶ DEM",
+    "coreg_fit": "DEM ⟶ Other",
+    "coreg_apply": "DEM ⟶ DEM",
     "topo": "DEM ⟶ DEM",  # todo
     "accuracy": "DEM ⟶ DEM",  # todo
 }
@@ -186,6 +191,7 @@ class ComparisonMeasurement:
     terrain_attribute: str | None
     coreg_method: str | None
     surface_fit: str | None
+    sampling_strategy: str | None
     series_dimension: str
     parameter: int
     operation_time_s: float
@@ -419,6 +425,7 @@ def collect_comparison_measurements(
                     terrain_attribute=selected_case.terrain_attribute,
                     coreg_method=selected_case.coreg_method,
                     surface_fit=selected_case.surface_fit,
+                    sampling_strategy=selected_case.sampling_strategy,
                     series_dimension={
                         "engine": "calculation_engine",
                         "execution": "execution_mode",
@@ -1152,8 +1159,13 @@ def _engine_summary_table(records: list[ComparisonMeasurement]) -> str:
     columns = ("rasterio", "scipy", "numba", "numpy", "gdal_cli")
 
     for comparison in _engine_summary_comparisons():
+        has_engine = any(BENCHMARK_CASE_BY_CLASS[class_name].engine is not None for _, class_name in comparison.series)
+        if not has_engine:
+            continue
+
         parameter = _summary_reference_parameter(comparison, records)
         _, by_implementation = _inmem_implementation_measurements(comparison, records, parameter)
+
         gdal = by_implementation.get("gdal_cli")
         best_time = min(measurement.end_to_end_time_s for measurement in by_implementation.values())
         lowest_memory = min(measurement.process_tree_mem_increase_mb for measurement in by_implementation.values())
@@ -1362,7 +1374,6 @@ def _headline_summary_table(records: list[ComparisonMeasurement]) -> str:
                 continue
 
             for record in records:
-
                 if record.comparison != comparison.slug or record.series_label != series_label:
                     continue
                 if operation.name == "grid":
@@ -1399,7 +1410,14 @@ def _headline_summary_table(records: list[ComparisonMeasurement]) -> str:
 
 def _choice_tables(
     dimension: Literal[
-        "method", "strategy", "output_driver", "terrain_attribute", "coreg_method", "surface_fit", "engine"
+        "method",
+        "strategy",
+        "output_driver",
+        "terrain_attribute",
+        "coreg_method",
+        "surface_fit",
+        "engine",
+        "sampling_strategy",
     ],
     records: list[ComparisonMeasurement],
 ) -> str:
@@ -1413,6 +1431,7 @@ def _choice_tables(
         "terrain_attribute": "terrain attribute",
         "coreg_method": "coregistration method",
         "surface_fit": "surface fit",
+        "sampling_strategy": "sampling strategy",
         "engine": "calculation engine",
     }[dimension]
     choice_title = choice_name.title() if dimension == "output_driver" else f"GeoUtils {choice_name}"
@@ -1697,6 +1716,7 @@ def _comparison_html(
             '<a href="#calculation-engines">Calculation engines</a><a href="#operation-methods">Methods</a>',
             '<a href="#chunk-strategies">Chunk strategies</a><a href="#point-output-formats">Point output formats</a>',
             '<a href="#coregistration-methods">Coregistration methods</a>',
+            '<a href="#sampling-strategies">Sampling strategies</a>',
             '<a href="#terrain-attributes">Terrain attributes</a>',
             '<a href="#surface-fitting">Surface fitting</a>',
             "</div></section>",
@@ -1726,6 +1746,10 @@ def _comparison_html(
             f"<h2>{html.escape(COMPARISON_SECTION_DETAILS['coreg_method'][0])}</h2>",
             f'<p class="section-intro">{html.escape(COMPARISON_SECTION_DETAILS["coreg_method"][1])}</p>',
             f'<div class="choice-grid">{_choice_tables("coreg_method", records)}</div></section>',
+            '<section class="option-section" id="sampling-strategies">',
+            f"<h2>{html.escape(COMPARISON_SECTION_DETAILS['sampling_strategy'][0])}</h2>",
+            f'<p class="section-intro">{html.escape(COMPARISON_SECTION_DETAILS["sampling_strategy"][1])}</p>',
+            f'<div class="choice-grid">{_choice_tables("sampling_strategy", records)}</div></section>',
             '<section class="option-section" id="terrain-attributes">',
             f"<h2>{html.escape(COMPARISON_SECTION_DETAILS['terrain_attribute'][0])}</h2>",
             f'<p class="section-intro">{html.escape(COMPARISON_SECTION_DETAILS["terrain_attribute"][1])}</p>',
@@ -1813,6 +1837,7 @@ def _parameter_html(
         "terrain_attribute": "Terrain attributes",
         "coreg_method": "Coregistration methods",
         "surface_fit": "Surface fitting methods",
+        "sampling_strategy": "Sampling strategies",
     }
     toc = []
     sections = []

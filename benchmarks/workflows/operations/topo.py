@@ -60,9 +60,8 @@ def prepare_topo(runner: Any, case: Case) -> None:
 
     config = COMPLETE_CONFIG_TOPO
     config["inputs"]["reference_elev"] = runner.path("source-dem.tif")
-    with open(
-        "/home/mbouchet/Documents/xDem_project/new_xdem/xdem/bm/runner_backend_" + runner.backend + ".yml", "w"
-    ) as yaml_file:
+    config_path = runner.path(f"runner_backend_{runner.backend}.yml")
+    with open(config_path, "w") as yaml_file:
         yaml.dump(COMPLETE_CONFIG_TOPO, yaml_file, sort_keys=False, allow_unicode=True)
 
 

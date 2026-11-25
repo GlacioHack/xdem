@@ -11,7 +11,15 @@ from benchmarks.workflows.config import RuntimeConfig, runtime_config
 ExecutionMode = Literal["inmem", "dask", "multiprocessing"]
 
 ComparisonDimension = Literal[
-    "method", "engine", "strategy", "execution", "output_driver", "terrain_attribute", "coreg_method", "surface_fit"
+    "method",
+    "engine",
+    "strategy",
+    "execution",
+    "output_driver",
+    "terrain_attribute",
+    "coreg_method",
+    "surface_fit",
+    "sampling_strategy",
 ]
 
 EXECUTION_MODE_LABELS: dict[ExecutionMode, str] = {
@@ -39,6 +47,7 @@ class Case:
     terrain_attribute: str | None = None
     coreg_method: str | None = None
     surface_fit: str | None = None
+    sampling_strategy: str | None = None
     options: Mapping[str, Any] = field(default_factory=dict)
     labels: Mapping[str, str] = field(default_factory=dict)
     implementation: str = "xdem"
@@ -145,6 +154,7 @@ class Benchmark:
             case.terrain_attribute,
             case.coreg_method,
             case.surface_fit,
+            case.sampling_strategy,
             implementation,
             case.strategy,
             output_driver,
@@ -235,6 +245,12 @@ class Comparison:
         return self._fixed("surface_fit")
 
     @property
+    def sampling_strategy(self) -> str | None:
+        """Return the sampling strategy fixed across selected cases, if any."""
+
+        return self._fixed("sampling_strategy")
+
+    @property
     def calculation_engine(self) -> str | None:
         """Return the engine fixed across selected cases, if any."""
 
@@ -291,7 +307,7 @@ class Comparison:
         if self.surface_fit is not None:
             subject = f"{subject} — {self.choice_label('surface_fit', self.surface_fit)}"
         if (
-            self.by in ("terrain_attribute", "coreg_method", "surface_fit", "engine")
+            self.by in ("terrain_attribute", "coreg_method", "surface_fit", "sampling_strategy", "engine")
             and self.execution_mode is not None
         ):
             subject += f" ({self.choice_label('execution', self.execution_mode)})"
@@ -304,6 +320,7 @@ class Comparison:
             "terrain_attribute": "",
             "coreg_method": " methods",
             "surface_fit": " surface fits",
+            "sampling_strategy": " sampling strategies",
         }[self.by]
         return f"{subject}{choice} by {self.benchmark.parameter_title}"
 
@@ -386,6 +403,7 @@ def execution_cases(
     terrain_attribute: str | None = None,
     coreg_method: str | None = None,
     surface_fit: str | None = None,
+    sampling_strategy: str | None = None,
 ) -> tuple[Case, ...]:
     """Generate an execution comparison around fixed numerical choices."""
 
@@ -399,6 +417,7 @@ def execution_cases(
             terrain_attribute=terrain_attribute,
             coreg_method=coreg_method,
             surface_fit=surface_fit,
+            sampling_strategy=sampling_strategy,
             options=options or {},
             labels=labels or {},
             variant=variant,
@@ -449,6 +468,7 @@ def reference_case(
                 item.terrain_attribute,
                 item.coreg_method,
                 item.surface_fit,
+                item.sampling_strategy,
                 item.output_driver,
                 repr(item.options),
             )
@@ -461,6 +481,7 @@ def reference_case(
         terrain_attribute=case.terrain_attribute,
         coreg_method=case.coreg_method,
         surface_fit=case.surface_fit,
+        sampling_strategy=case.sampling_strategy,
         execution=execution,
         output_driver=case.output_driver,
         options=case.options,
