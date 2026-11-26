@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "project": "xdem",
+  "project_url": "https://github.com/GlacioHack/xdem",
+  "repo": ".",
+  "branches": ["main"],
+  "dvcs": "git",
+  "environment_type": "virtualenv",
+  "install_command": "python -m pip install {wheel_file}[benchmark]",
+  "benchmark_dir": "benchmarks",
+  "env_dir": "benchmarks/results/asv/env",
+  "results_dir": "benchmarks/results/asv/results",
+  "html_dir": "benchmarks/results/asv/html/asv",
+  "matrix": {
+    "python": ["3.12"]
+  },
+  "show_commit_url": "https://github.com/GlacioHack/xdem/commit/"
+}
